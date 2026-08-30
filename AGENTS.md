@@ -32,6 +32,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/features/<area>/<feature>/` | Feature components; route files stay thin |
 | `design/` | **Canonical design reference** — vendored Figma prototype (own deps, own `pnpm dev` on :5173). FE stories port from it. Never imported by the app. |
 | `scripts/create-admin.ts` | Provision an admin (`pnpm create-admin <email> [name]`) |
+| `src/db/seed/`, `scripts/seed-catalog.ts` | Demo catalog seed (`pnpm seed-catalog`), idempotent; its images live in `public/products/` |
 
 ## Conventions
 
@@ -100,6 +101,12 @@ verify, cross-user isolation (IDOR). Tests assert behavior, not implementation; 
 story is not done until its tests would fail if its logic broke. Tests sit next
 to the code (`foo.test.ts`). Write the failing test first.
 
+Constraints (CHECK, unique, FK) and anything else the database itself enforces
+cannot be proven against a mocked `db`, so those suites run against the dev
+Postgres and skip themselves when it is unreachable (`src/db/test-db.ts`). Bring
+it up — `docker compose --file docker-compose-dev.yaml up --wait` — before
+trusting a green `pnpm test`.
+
 ## Quality gates — all must pass before a story is done
 
 ```bash
@@ -119,6 +126,7 @@ cp .env.example .env                # fill APP_CONFIG_AUTH_SECRET (openssl rand 
 pnpm install
 pnpm app:dev                        # dev Postgres (Docker) + Next on :3000
 pnpm migration:migrate              # first run, in a second terminal
+pnpm seed-catalog                   # demo categories + products (safe to re-run)
 pnpm create-admin you@example.com   # provision an admin
 ```
 
