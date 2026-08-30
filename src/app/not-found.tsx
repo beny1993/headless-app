@@ -1,30 +1,37 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
+import { Footer } from '@/features/storefront/layout/footer';
+import { Navbar } from '@/features/storefront/layout/navbar';
 import { PATHS } from '@/lib/constant/paths';
-import Layout from './(app)/layout';
 
 export const metadata: Metadata = {
-  title: 'Page Not Found',
-  description: "The page you're looking for doesn't exist or has been moved.",
+  title: 'صفحه پیدا نشد',
+  description: 'صفحه‌ای که دنبال آن هستید وجود ندارد یا جابه‌جا شده است.',
 };
 
+/* Unmatched URLs render outside every route group, so this page brings the
+   storefront chrome itself — components, never a group layout (that layout
+   owns nothing above <body> anymore, but importing layouts here re-creates
+   the nested-document bug this file once had). */
 export default function NotFound() {
   return (
-    <Layout>
-      <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center">
-        <p className="text-muted-foreground text-sm font-medium">404</p>
-        <h1 className="text-2xl font-semibold">Page not found</h1>
+    <>
+      <Navbar />
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 pt-16 text-center">
+        <p className="text-muted-foreground text-sm font-medium">۴۰۴</p>
+        <h1 className="text-2xl font-semibold">صفحه پیدا نشد</h1>
         <p className="text-muted-foreground text-sm">
-          The page you&apos;re looking for doesn&apos;t exist or has been moved.
+          صفحه‌ای که دنبال آن هستید وجود ندارد یا جابه‌جا شده است.
         </p>
         <Link
           href={PATHS.HOME}
           className="text-sm font-medium underline underline-offset-4"
           data-umami-event="not-found-home-link"
         >
-          Back to home
+          بازگشت به خانه
         </Link>
       </main>
-    </Layout>
+      <Footer />
+    </>
   );
 }
