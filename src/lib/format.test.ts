@@ -67,6 +67,10 @@ describe('formatNumber', () => {
     expect(formatNumber(-1500)).toBe(`${MINUS}۱${SEP}۵۰۰`);
   });
 
+  it('renders a computed negative zero as plain zero', () => {
+    expect(formatNumber(-0)).toBe('۰');
+  });
+
   it('rejects NaN and Infinity', () => {
     expect(() => formatNumber(Number.NaN)).toThrow(RangeError);
     expect(() => formatNumber(Number.POSITIVE_INFINITY)).toThrow(RangeError);
@@ -101,6 +105,10 @@ describe('formatToman', () => {
   it('formats negatives — refunds and adjustments are displayed, not rejected', () => {
     expect(formatToman(-50000)).toBe(`${MINUS}۵۰${SEP}۰۰۰ تومان`);
     expect(formatToman(-50000n)).toBe(`${MINUS}۵۰${SEP}۰۰۰ تومان`);
+  });
+
+  it('never renders a negative zero — a zero discount is not «‎−۰»', () => {
+    expect(formatToman(-0)).toBe('۰ تومان');
   });
 
   it('rejects a non-integer number — Toman is integer-only', () => {

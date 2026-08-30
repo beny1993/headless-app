@@ -29,7 +29,10 @@ export function formatNumber(value: number | bigint): string {
   if (typeof value === 'number' && !Number.isFinite(value)) {
     throw new RangeError(`formatNumber: not a finite number: ${value}`);
   }
-  return value.toLocaleString(LOCALE);
+  // ICU is sign-aware about zero, so a computed `-0` — `-discount` with no
+  // discount, `-(a - a)` — would render as «‎−۰». Nothing displays a negative
+  // zero on purpose; collapse it here so every caller is covered.
+  return (Object.is(value, -0) ? 0 : value).toLocaleString(LOCALE);
 }
 
 /**
