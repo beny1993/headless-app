@@ -1,6 +1,9 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
+    // ES2022, not Next's legacy ES2017 default: money is integer Toman held as
+    // bigint, and bigint literals need ES2020+. Node 24 and every browser this
+    // ships to are well past it.
+    "target": "ES2022",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
