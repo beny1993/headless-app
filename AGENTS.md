@@ -24,7 +24,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | Path | What |
 | --- | --- |
 | `src/app/(app)/` | Public storefront (own root layout + `globals.css`) |
-| `src/app/(admin)/` | Back office: `auth/(public)` sign-in, `(protected)` pages behind `requireSession()` |
+| `src/app/(admin)/` | Back office: `auth/(public)` sign-in, `(protected)` pages behind `requireAdmin()` |
 | `src/app/api/[[...route]]/` | Hono catch-all; Better Auth at `src/app/api/auth/[...all]/` |
 | `src/db/schema/`, `src/db/dao/`, `src/db/migrations/` | Drizzle schema, DAOs, generated migrations |
 | `src/lib/hono/` | API app, router factory, response envelope, routes |
@@ -50,6 +50,9 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 - **Route paths**: import from `src/lib/constant/paths.ts`; never hardcode.
 - **Styling**: Tailwind v4, CSS-first config in `src/app/(app)/globals.css`;
   tokens port from `design/src/styles/theme.css`. Merge classes with `cn()`.
+  Fonts are **self-hosted** (`src/lib/fonts.ts` → `src/assets/fonts/`) — never
+  `next/font/google`, which fetches from Google at build time and fails on
+  Iranian infrastructure.
   Storefront and admin are `lang="fa" dir="rtl"` — use logical properties
   (`ms-*`/`me-*`, `start`/`end`), never `left`/`right`.
 - **Persian UI copy** in components; identifiers, comments and commits in English.
@@ -70,9 +73,11 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   idempotent (Zarinpal redirect → callback → verify; no webhooks).
 - **Cart is client-side** (localStorage) until checkout; the server re-prices and
   validates at order creation.
-- **Authz**: admin routes and admin APIs are admin-role only, enforced
-  server-side. Every customer-facing read/write is owner-scoped. `role` defaults
-  to `customer` (`ROLES` in `src/db/schema/auth.ts`) — admin is granted only by
+- **Authz**: admin pages go through `requireAdmin()` (`src/lib/auth/session.ts`)
+  — a session alone is never authorization, since customers get sessions too.
+  Admin API routes need the same check server-side; there is no admin API yet.
+  Every customer-facing read/write is owner-scoped. `role` defaults to
+  `customer` (`ROLES` in `src/db/schema/auth.ts`) — admin is granted only by
   `pnpm create-admin`.
 - **Persian search text** is normalized on write (ي→ی, ك→ک, ZWNJ) + `pg_trgm`.
 - **Local-first**: everything must run locally with no third-party signup — SMS
@@ -95,8 +100,8 @@ to the code (`foo.test.ts`). Write the failing test first.
 ```bash
 pnpm type-check      # tsc --noEmit
 pnpm lint            # eslint .
-pnpm format          # prettier --write ./src (leave no diff behind)
-pnpm test            # vitest
+pnpm format:check    # prettier --check ./src  (`pnpm format` writes the fixes)
+pnpm test            # vitest run
 pnpm build           # next build
 ```
 

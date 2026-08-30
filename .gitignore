@@ -23,8 +23,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env
+# env files — every variant Next loads (.env, .env.local, .env.production…),
+# except the committed template.
+.env*
+!.env.example
 
 # local product-image uploads (dev storage driver)
 /uploads

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { DEFAULT_SITE_NAME } from '@/constants';
-import { requireSession } from '@auth/session';
+import { requireAdmin } from '@/lib/auth/session';
 import { PROTECTED_PATHS } from '@/lib/constant/paths';
 import { SignOutButton } from '@/features/auth/sign-out-button';
 
@@ -9,7 +9,7 @@ export default async function ProtectedLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await requireSession();
+  const session = await requireAdmin();
 
   return (
     <div className="min-h-screen">

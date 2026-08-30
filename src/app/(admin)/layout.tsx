@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { DEFAULT_SITE_NAME } from '@/constants';
+import { vazirmatn } from '@/lib/fonts';
 import '../(app)/globals.css';
 
 export const metadata: Metadata = {
@@ -20,7 +21,9 @@ export default function AdminRootLayout({
 }>) {
   return (
     <html lang="fa" dir="rtl">
-      <body className="antialiased">{children}</body>
+      <body className={`${vazirmatn.variable} font-sans antialiased`}>
+        {children}
+      </body>
     </html>
   );
 }

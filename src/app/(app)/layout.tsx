@@ -1,12 +1,7 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import { DEFAULT_SITE_NAME } from '@/constants';
+import { vazirmatn } from '@/lib/fonts';
 import './globals.css';
-
-const inter = Inter({
-  variable: '--font-inter',
-  subsets: ['latin'],
-});
 
 export const metadata: Metadata = {
   title: {
@@ -23,7 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fa" dir="rtl">
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body className={`${vazirmatn.variable} font-sans antialiased`}>
         {children}
       </body>
     </html>

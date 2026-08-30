@@ -11,5 +11,14 @@ services:
       - smokey_shop_postgres_data:/var/lib/postgresql/data
     ports:
       - ${APP_CONFIG_DATABASE_PORT}:5432
+    # Without this, `docker compose up --wait` returns as soon as the container
+    # is *running* — before Postgres accepts connections — and the migrate step
+    # that follows it races the server's startup.
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${APP_CONFIG_DATABASE_USERNAME} -d ${APP_CONFIG_DATABASE_NAME}']
+      interval: 2s
+      timeout: 3s
+      retries: 15
 volumes:
   smokey_shop_postgres_data:
