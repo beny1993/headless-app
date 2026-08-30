@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Next.js",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev"],
+      "port": 3000
+    },
+    {
+      "name": "design-prototype",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "design", "dev", "--host"],
+      "port": 5173
+    },
+    {
+      "name": "React Email",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev:email"],
+      "port": 3000
+    },
+    {
+      "name": "Drizzle Studio",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["drizzle-studio"],
+      "port": 4983
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+/* Vazirmatn — self-hosted (OFL, see src/assets/fonts/OFL.txt).
+   Variable weight axis 100–900: one file covers every weight the design uses.
+   No CDN: Google Fonts is unreliable from Iranian IPs. */
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('../assets/fonts/Vazirmatn-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}

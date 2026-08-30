@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: smokey_shop_postgres_container
+    restart: always
+    environment:
+      POSTGRES_USER: ${APP_CONFIG_DATABASE_USERNAME}
+      POSTGRES_PASSWORD: ${APP_CONFIG_DATABASE_PASSWORD}
+      POSTGRES_DB: ${APP_CONFIG_DATABASE_NAME}
+    volumes:
+      - smokey_shop_postgres_data:/var/lib/postgresql/data
+    ports:
+      # Loopback only. A bare `PORT:5432` publishes on every host interface, so
+      # the dev database — which ships with throwaway `postgres:postgres`
+      # credentials — would be reachable by anyone on the same network.
+      - 127.0.0.1:${APP_CONFIG_DATABASE_PORT}:5432
+    # Without this, `docker compose up --wait` returns as soon as the container
+    # is *running* — before Postgres accepts connections — and the migrate step
+    # that follows it races the server's startup.
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${APP_CONFIG_DATABASE_USERNAME} -d ${APP_CONFIG_DATABASE_NAME}']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+volumes:
+  smokey_shop_postgres_data:
