@@ -8,6 +8,13 @@
       "when": 1788109410536,
       "tag": "0000_orange_raider",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788114185663,
+      "tag": "0001_chunky_barracuda",
+      "breakpoints": true
     }
   ]
 }
