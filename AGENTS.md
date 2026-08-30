@@ -103,9 +103,12 @@ to the code (`foo.test.ts`). Write the failing test first.
 
 Constraints (CHECK, unique, FK) and anything else the database itself enforces
 cannot be proven against a mocked `db`, so those suites run against the dev
-Postgres and skip themselves when it is unreachable (`src/db/test-db.ts`). Bring
-it up — `docker compose --file docker-compose-dev.yaml up --wait` — before
-trusting a green `pnpm test`.
+Postgres (`src/db/test-db.ts`). They skip only when `APP_CONFIG_DATABASE_URL` is
+**unset**; if it is set and the server does not answer, the run fails rather
+than skipping — a configured-but-down database is a broken environment, not a
+green build. Bring it up with
+`docker compose --file docker-compose-dev.yaml up --wait`. CI must provide
+Postgres and set the variable, or it never exercises these suites at all.
 
 ## Quality gates — all must pass before a story is done
 

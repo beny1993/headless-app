@@ -7,6 +7,11 @@
 // database when one is up (`docker compose --file docker-compose-dev.yaml up --wait`).
 // The probe runs at import time because `@/db` throws on import when
 // APP_CONFIG_DATABASE_URL is unset — it must not be imported before we know.
+//
+// Unset and unreachable are deliberately *not* the same thing. Unset means this
+// machine has no database and the suites skip. Set means somebody intended to
+// run them, so a server that does not answer is a broken environment — it fails
+// the run rather than reporting 45 quiet skips that read as green.
 import { Pool } from 'pg';
 
 const connectionString = process.env.APP_CONFIG_DATABASE_URL;
@@ -26,9 +31,16 @@ const probe = async (url: string) => {
   }
 };
 
-export const databaseReachable = connectionString
-  ? await probe(connectionString)
-  : false;
+if (connectionString && !(await probe(connectionString))) {
+  // No URL in the message: it carries the database password.
+  throw new Error(
+    'APP_CONFIG_DATABASE_URL is set but Postgres did not answer. Start it with ' +
+      '`docker compose --file docker-compose-dev.yaml up --wait`, or unset the ' +
+      'variable to skip the database-backed suites.',
+  );
+}
+
+export const databaseReachable = Boolean(connectionString);
 
 /**
  * The app's Drizzle client, or a null stand-in when there is no database. Only
