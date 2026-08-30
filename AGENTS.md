@@ -48,6 +48,11 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   in `.env.example`. `NEXT_PUBLIC_*` must also be listed in `STATIC_INLINED_VARS`
   there. Never commit `.env`.
 - **Route paths**: import from `src/lib/constant/paths.ts`; never hardcode.
+- **Persian display formatting**: every number, price and date goes through
+  `src/lib/format.ts` (`formatToman`, `formatNumber`, `toPersianDigits`,
+  `formatJalali`, `formatJalaliYear`) — never a Persian numeral literal or an
+  ad-hoc `toLocaleString` in a component, or the same screen ends up with two
+  different thousands separators.
 - **Styling**: Tailwind v4, CSS-first config in `src/app/(app)/globals.css`;
   tokens port from `design/src/styles/theme.css`. Merge classes with `cn()`.
   Fonts are **self-hosted** (`src/lib/fonts.ts` → `src/assets/fonts/`) — never
