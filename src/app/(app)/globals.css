@@ -1,54 +1,98 @@
 @import 'tailwindcss';
 
+/* The `dark` variant stays defined so any `dark:` utility shipped inside a
+   shadcn primitive resolves — but no `.dark` class is ever set, so none of them
+   fire. Dark mode is cut in v1: the stock shadcn grey palette is not this brand,
+   and a deliberate dark cream/terracotta scheme is its own piece of work. */
 @custom-variant dark (&:is(.dark *));
 
+/* Ported from `design/src/styles/theme.css` — the canonical prototype. Contrast
+   ratios in the comments are measured, from the design review's AA pass. */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-}
+  --font-size: 16px;
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  /* Surfaces */
+  --background: #faf7f2;
+  --foreground: #2a2118;
+  --card: #ffffff;
+  --card-foreground: #2a2118;
+  --popover: #ffffff;
+  --popover-foreground: #2a2118;
+  --primary: #2a2118;
+  --primary-foreground: #faf7f2;
+  --secondary: #f0ebe3;
+  --secondary-foreground: #2a2118;
+  --muted: #ede8e0;
+  /* Was #7A6F65 — only 4.13:1 on --secondary, failed AA for small text. */
+  --muted-foreground: #6b6158;
+
+  /* Accent scale. #C9623F is 3.96:1 on white — decoration and large type only.
+     Anything that is small text or a filled button uses --accent-strong. */
+  --accent: #c9623f;
+  --accent-foreground: #ffffff;
+  --accent-strong: #b5522f; /* 4.98:1 on white — buttons, links, labels */
+  --accent-hover: #9c4527; /* hover for accent-strong fills; badge text */
+  --accent-on-dark: #e0845f; /* accent text on --ink / --ink-soft (4.7:1) */
+  --accent-soft: #f7e6df;
+
+  /* Brand ink surfaces (dark sections, sidebar, footer) */
+  --ink: #2a2118;
+  --ink-soft: #3d2e22;
+
+  /* Status scale — <x> fills/decoration, <x>-strong text, <x>-soft badge bg */
+  --success: #5c8a6e;
+  --success-strong: #416551;
+  --success-soft: #dee8e2;
+  --warning: #7f5810;
+  --warning-soft: #f5e9d2;
+  --info: #3a6d8c;
+  --info-soft: #e1eaf0;
+  --tan: #a07850;
+  --tan-strong: #7e5b36;
+  --tan-soft: #f0e7da;
+  --destructive: #b02e22;
+  --destructive-foreground: #ffffff;
+  --destructive-soft: #f7e4e1;
+
+  --border: rgba(42, 33, 24, 0.1);
+  /* Deviates from the prototype's `transparent`: that value assumes the
+     prototype's own field look (filled --input-background, no border), while our
+     `Input` primitive draws its border from this token and would render
+     invisible. Fields porting the prototype's look set `bg-input-background`
+     and a transparent border explicitly. */
+  --input: rgba(42, 33, 24, 0.1);
+  --input-background: #f0ebe3;
+  --switch-background: #c4b8ad;
+
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #c9623f;
+
+  --chart-1: #c9623f;
+  --chart-2: #8b5e3c;
+  --chart-3: #5c8a6e;
+  --chart-4: #d4956a;
+  --chart-5: #a07850;
+
+  --radius: 0.75rem;
+
+  --sidebar: #2a2118;
+  --sidebar-foreground: #faf7f2;
+  --sidebar-primary: #c9623f;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #3d2e22;
+  --sidebar-accent-foreground: #faf7f2;
+  --sidebar-border: rgba(250, 247, 242, 0.1);
+  --sidebar-ring: #c9623f;
 }
 
 @theme inline {
-  --font-sans: var(--font-vazirmatn), ui-sans-serif, system-ui, sans-serif;
+  /* Vazirmatn is self-hosted through `next/font/local`, which registers a
+     *hashed* family name and exposes it as --font-vazirmatn. The prototype's
+     literal 'Vazirmatn' string would match no registered family here and fall
+     through to Tahoma — silently, and green on every gate. */
+  --font-sans: var(--font-vazirmatn), Tahoma, Arial, sans-serif;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -63,22 +107,134 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-on-dark: var(--accent-on-dark);
+  --color-accent-soft: var(--accent-soft);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-success: var(--success);
+  --color-success-strong: var(--success-strong);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-tan: var(--tan);
+  --color-tan-strong: var(--tan-strong);
+  --color-tan-soft: var(--tan-soft);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-soft: var(--destructive-soft);
   --color-border: var(--border);
   --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
   --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
+  html {
+    font-size: var(--font-size);
+  }
+
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* One focus treatment for every interactive element. Components that set
+     `outline-none` (inputs, selects) opt into `focus-visible:ring-2 ring-ring`. */
+  *:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* Prices, quantities and table numerals align in Persian digits. */
+  table td,
+  table th,
+  .nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A modal <dialog> blocks background interaction, but not background
+     scrolling — this is the missing half of the scroll lock. */
+  body:has(dialog[open]) {
+    overflow: hidden;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Element defaults. These live in @layer base, so any Tailwind utility
+     (text-sm, text-lg, font-bold) still overrides them. */
+  h1 {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h2 {
+    font-size: var(--text-xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h3 {
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h4 {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  label {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  button {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  input {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: 1.5;
   }
 }

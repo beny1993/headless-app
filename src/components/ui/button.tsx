@@ -12,11 +12,16 @@ const buttonVariants = cva(
         default: 'bg-primary text-primary-foreground hover:bg-primary/90',
         destructive:
           'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40',
+        // `secondary`, not shadcn's stock `accent`, as the hover surface: in
+        // this theme --accent is the brand terracotta, so stock shadcn renders
+        // every hover as white on #C9623F — 3.96:1, an AA failure (design
+        // review, finding 24). Any primitive added by the shadcn CLI arrives
+        // with `hover:bg-accent` and needs the same swap.
         outline:
-          'border bg-background hover:bg-accent hover:text-accent-foreground',
+          'border bg-background hover:bg-secondary hover:text-secondary-foreground',
         secondary:
           'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        ghost: 'hover:bg-accent hover:text-accent-foreground',
+        ghost: 'hover:bg-secondary hover:text-secondary-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {

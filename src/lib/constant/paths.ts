@@ -3,6 +3,9 @@
 
 export const PATHS = {
   HOME: '/',
+  SHOP: '/shop',
+  ABOUT: '/about',
+  ACCOUNT: '/account',
 } as const;
 
 export const AUTH_PATHS = {
