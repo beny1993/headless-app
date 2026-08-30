@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { API_PATHS } from '@/lib/constant/paths';
 import { app } from './index';
 
@@ -35,5 +35,46 @@ describe('hono app', () => {
     const response = await app.request('/api/nope');
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe('hono app in production', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  // The docs describe every route the API has; they must not be a public map of
+  // the back office. The gate reads NODE_ENV when the module is first evaluated,
+  // so the production app has to be built from a fresh import.
+  const loadProductionApp = async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.resetModules();
+    return (await import('./index')).app;
+  };
+
+  it('does not serve the OpenAPI document', async () => {
+    const productionApp = await loadProductionApp();
+
+    const response = await productionApp.request(API_PATHS.DOC);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('does not serve the Scalar reference page', async () => {
+    const productionApp = await loadProductionApp();
+
+    const response = await productionApp.request(API_PATHS.REFERENCE);
+
+    expect(response.status).toBe(404);
+  });
+
+  it('still answers /api/health', async () => {
+    // Guards against "fixing" the docs gate by disabling the whole app.
+    const productionApp = await loadProductionApp();
+
+    const response = await productionApp.request(API_PATHS.HEALTH);
+
+    expect(response.status).toBe(200);
   });
 });

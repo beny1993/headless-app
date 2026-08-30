@@ -41,6 +41,12 @@ export const auth = betterAuth({
     emailOTP({
       sendVerificationOTP: handleOtpRequest,
       expiresIn: 3 * 60,
+      // Better Auth's default is `'plain'` — the live sign-in code sits in
+      // `verification.value` in clear text, so any read of that table (a
+      // backup, drizzle-studio, a future SQL bug) hands over a working admin
+      // sign-in. Hashing only affects storage: `handleOtpRequest` still gets
+      // the plaintext code for the email and the magic link.
+      storeOTP: 'hashed',
       // Back office is invite-only: an OTP never creates a user. Provision the
       // first admin with `pnpm create-admin <email>`.
       disableSignUp: true,

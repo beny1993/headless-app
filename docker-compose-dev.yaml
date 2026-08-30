@@ -10,7 +10,10 @@ services:
     volumes:
       - smokey_shop_postgres_data:/var/lib/postgresql/data
     ports:
-      - ${APP_CONFIG_DATABASE_PORT}:5432
+      # Loopback only. A bare `PORT:5432` publishes on every host interface, so
+      # the dev database — which ships with throwaway `postgres:postgres`
+      # credentials — would be reachable by anyone on the same network.
+      - 127.0.0.1:${APP_CONFIG_DATABASE_PORT}:5432
     # Without this, `docker compose up --wait` returns as soon as the container
     # is *running* — before Postgres accepts connections — and the migrate step
     # that follows it races the server's startup.

@@ -47,5 +47,20 @@ export const isDevelopmentServer = () => {
   return getEnvVariable(VARS.NODE_ENV, false, '') === 'development';
 };
 
-export const getAppBaseUrl = () =>
-  getEnvVariable(VARS.NEXT_PUBLIC_APP_URL, false, 'http://localhost:3000');
+export const getAppBaseUrl = () => {
+  const url = getEnvVariable(VARS.NEXT_PUBLIC_APP_URL, false, '');
+  if (url) return url;
+
+  // No silent localhost fallback in production. Better Auth derives both its
+  // trusted origins (its CSRF check) and the `Secure` flag on the session
+  // cookie from this URL — an unset value there would ship admin sessions on a
+  // non-secure cookie and reject the real origin. NEXT_PUBLIC_* is inlined at
+  // build time, so this has to be set as a build arg, not at container start.
+  if (getEnvVariable(VARS.NODE_ENV, false, '') === 'production') {
+    throw Error(
+      `Environment variable ${VARS.NEXT_PUBLIC_APP_URL} is required in production`,
+    );
+  }
+
+  return 'http://localhost:3000';
+};
