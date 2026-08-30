@@ -14,7 +14,7 @@ export const AUTH_PATHS = {
 } as const;
 
 export const PROTECTED_PATHS = {
-  INDEX: '/backoffice',
+  INDEX: '/admin-panel',
 } as const;
 
 export const API_PATHS = {

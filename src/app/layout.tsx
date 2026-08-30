@@ -1,20 +1,17 @@
 import type { Metadata } from 'next';
 import { DEFAULT_SITE_NAME } from '@/constants';
 import { vazirmatn } from '@/lib/fonts';
-import '../(app)/globals.css';
+import './globals.css';
 
 export const metadata: Metadata = {
   title: {
-    default: `Back office | ${DEFAULT_SITE_NAME}`,
+    default: DEFAULT_SITE_NAME,
     template: `%s | ${DEFAULT_SITE_NAME}`,
   },
-  robots: {
-    index: false,
-    follow: false,
-  },
+  description: 'فروشگاه آنلاین لوازم و غذای حیوانات خانگی',
 };
 
-export default function AdminRootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;

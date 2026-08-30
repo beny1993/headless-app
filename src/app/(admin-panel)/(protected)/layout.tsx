@@ -18,9 +18,9 @@ export default async function ProtectedLayout({
           <Link
             href={PROTECTED_PATHS.INDEX}
             className="text-sm font-semibold"
-            data-umami-event="backoffice-header-home"
+            data-umami-event="admin-panel-header-home"
           >
-            {DEFAULT_SITE_NAME} · Back office
+            {DEFAULT_SITE_NAME} · Admin panel
           </Link>
           <div className="flex items-center gap-4">
             <span className="text-muted-foreground text-sm">

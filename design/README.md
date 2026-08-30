@@ -32,10 +32,10 @@ with App Router paths.
 | `#/result/success` · `#/result/failed` · `#/result/pending` | Payment result — one page, three order states |
 | `#/account` | Account (orders, pets, addresses, profile) |
 | `#/account/orders/10040` | Customer order detail (this one is `pending_payment`, so it shows the retry CTA) |
-| `#/admin` | Admin panel — in the app this is a role-gated `/admin` route, never linked from the storefront |
-| `#/admin/orders/10045` | Admin order detail (try `10040`/`10044`/`10043`/`10042` for the other transition states) |
-| `#/admin/products/new` · `#/admin/products/1` | Product create / edit form |
-| `#/admin/settings` | Shipping rates — 31 provinces, editable fee |
+| `#/admin-panel` | Admin panel — in the app this is a role-gated `/admin` route, never linked from the storefront |
+| `#/admin-panel/orders/10045` | Admin order detail (try `10040`/`10044`/`10043`/`10042` for the other transition states) |
+| `#/admin-panel/products/new` · `#/admin-panel/products/1` | Product create / edit form |
+| `#/admin-panel/settings` | Shipping rates — 31 provinces, editable fee |
 
 ## What is deliberately not here
 

@@ -39,7 +39,7 @@ import imgHeroHome from "@/assets/img/hero-home.jpg";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Page =
-  | "home" | "shop" | "product" | "about" | "checkout" | "account" | "admin"
+  | "home" | "shop" | "product" | "about" | "checkout" | "account" | "admin-panel"
   | "login"    // phone OTP (two steps inside the page)
   | "result";  // payment result — one page, three states (see PaymentResultPage)
 
@@ -397,7 +397,7 @@ function Navbar({ cartCount, onNavigate, onCartOpen, currentPage }: {
     { label: "درباره ما", page: "about" as Page },
   ];
 
-  if (currentPage === "admin") return null;
+  if (currentPage === "admin-panel") return null;
 
   const iconCls = isOverDark
     ? "w-10 h-10 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors text-white"
@@ -2951,9 +2951,9 @@ function AdminPage({ args, onNavigate }: {
   args: string[];
   onNavigate: (page: Page, ...args: (string | number)[]) => void;
 }) {
-  // #/admin · #/admin/orders · #/admin/orders/10045 · #/admin/products/new · #/admin/settings
+  // #/admin-panel · #/admin-panel/orders · #/admin-panel/orders/10045 · #/admin-panel/products/new · #/admin-panel/settings
   const [adminTab = "dashboard", detailId] = args;
-  const setAdminTab = (t: string) => onNavigate("admin", t);
+  const setAdminTab = (t: string) => onNavigate("admin-panel", t);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const detailOrder = ORDERS.find(o => o.id === detailId);
 
@@ -3139,7 +3139,7 @@ function AdminPage({ args, onNavigate }: {
                           <td className="px-4 py-3.5">
                             <div className="flex items-center gap-1">
                               <button
-                                onClick={() => onNavigate("admin", "orders", o.id)}
+                                onClick={() => onNavigate("admin-panel", "orders", o.id)}
                                 aria-label={`مشاهده سفارش ${faDigits(o.id)}`}
                                 className="w-10 h-10 rounded-lg hover:bg-secondary flex items-center justify-center transition-colors"
                               >
@@ -3170,7 +3170,7 @@ function AdminPage({ args, onNavigate }: {
               <div className="flex items-center justify-between mb-6">
                 <h1 className="text-2xl font-black">محصولات</h1>
                 <button
-                  onClick={() => onNavigate("admin", "products", "new")}
+                  onClick={() => onNavigate("admin-panel", "products", "new")}
                   className="flex items-center gap-2 px-4 py-2.5 bg-accent-strong text-white font-medium rounded-xl text-sm hover:bg-accent-hover transition-colors"
                 >
                   <Plus size={14} /> افزودن محصول
@@ -3216,7 +3216,7 @@ function AdminPage({ args, onNavigate }: {
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1">
                               <button onClick={() => onNavigate("product", p.id)} aria-label={`مشاهده ${p.name} در فروشگاه`} className="w-10 h-10 rounded-lg hover:bg-secondary flex items-center justify-center transition-colors"><Eye size={14} /></button>
-                              <button onClick={() => onNavigate("admin", "products", p.id)} aria-label={`ویرایش ${p.name}`} className="w-10 h-10 rounded-lg hover:bg-secondary flex items-center justify-center transition-colors"><Edit size={14} /></button>
+                              <button onClick={() => onNavigate("admin-panel", "products", p.id)} aria-label={`ویرایش ${p.name}`} className="w-10 h-10 rounded-lg hover:bg-secondary flex items-center justify-center transition-colors"><Edit size={14} /></button>
                               <button aria-label={`غیرفعال کردن ${p.name}`} className="w-10 h-10 rounded-lg hover:bg-destructive-soft flex items-center justify-center transition-colors text-destructive"><Trash2 size={14} /></button>
                             </div>
                           </td>
@@ -3289,11 +3289,11 @@ function AdminPage({ args, onNavigate }: {
 }
 
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
-const PAGES: Page[] = ["home", "shop", "product", "about", "checkout", "account", "admin", "login", "result"];
+const PAGES: Page[] = ["home", "shop", "product", "about", "checkout", "account", "admin-panel", "login", "result"];
 
 /**
  * Hash routing so every screen is deep-linkable and demoable:
- *   #/shop  #/product/3  #/login  #/checkout  #/result/failed  #/admin
+ *   #/shop  #/product/3  #/login  #/checkout  #/result/failed  #/admin-panel
  * The port replaces this with App Router paths — it exists so the design
  * prototype has no hidden screens (and so the storefront needs no floating
  * "پنل مدیریت" button, which must never ship).
@@ -3366,9 +3366,9 @@ export default function App() {
   const arg = args[0];
   const cartCount = cartItems.reduce((s, i) => s + i.qty, 0);
 
-  // Admin is a separate full-screen layout, reachable only at #/admin —
+  // Admin is a separate full-screen layout, reachable only at #/admin-panel —
   // in the app it is a role-gated /admin route ([[Story - Admin Product Management]]).
-  if (page === "admin") {
+  if (page === "admin-panel") {
     return <AdminPage args={args} onNavigate={navigate} />;
   }
 
