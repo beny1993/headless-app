@@ -5,7 +5,18 @@
 // title, sku and unit price, and support needs the row behind that snapshot to
 // still exist. There is deliberately no hard-delete method here — the storefront
 // reads filter on `is_active` instead.
-import { and, asc, desc, eq, getTableColumns, inArray } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  getTableColumns,
+  gte,
+  inArray,
+  lte,
+  type SQL,
+} from 'drizzle-orm';
 import { db } from '@/db';
 import {
   categories,
@@ -21,32 +32,106 @@ import {
 /** What a caller supplies; the database owns the id and both timestamps. */
 export type ProductInput = Omit<NewProduct, 'id' | 'createdAt' | 'updatedAt'>;
 
+/** The orderings the storefront offers. Never compare against bare strings. */
+export const PRODUCT_SORTS = {
+  NEWEST: 'newest',
+  PRICE_ASC: 'price-asc',
+  PRICE_DESC: 'price-desc',
+} as const;
+
+export type ProductSort = (typeof PRODUCT_SORTS)[keyof typeof PRODUCT_SORTS];
+
+/**
+ * Every ordering ends in `sku`, which is unique. Without that tiebreak Postgres
+ * is free to return rows with equal prices in a different order per query, and
+ * two products at the same price can appear on both page 1 and page 2.
+ */
+const ORDER_BY: Record<ProductSort, SQL[]> = {
+  [PRODUCT_SORTS.NEWEST]: [desc(products.createdAt), asc(products.sku)],
+  [PRODUCT_SORTS.PRICE_ASC]: [asc(products.price), asc(products.sku)],
+  [PRODUCT_SORTS.PRICE_DESC]: [desc(products.price), asc(products.sku)],
+};
+
+/** Page size when the caller names none, and the ceiling the API enforces. */
+export const DEFAULT_PRODUCT_PAGE_SIZE = 12;
+export const MAX_PRODUCT_PAGE_SIZE = 48;
+
 export type ProductFilters = {
   categorySlug?: string;
   petType?: PetType;
+  /** Inclusive, integer Toman. */
+  minPrice?: number;
+  /** Inclusive, integer Toman. */
+  maxPrice?: number;
 };
 
+export type ProductListOptions = ProductFilters & {
+  sort?: ProductSort;
+  /** One-based. */
+  page?: number;
+  limit?: number;
+};
+
+/** One page of products plus the size of the whole filtered result. */
+export type ProductPage = { items: ProductWithImages[]; total: number };
+
 export class ProductDao {
-  /** Storefront listing — active products only, whatever the filters say. */
-  static async list(
-    filters: ProductFilters = {},
-  ): Promise<ProductWithImages[]> {
-    const where = [eq(products.isActive, true)];
+  /**
+   * Storefront listing — active products only, whatever the filters say.
+   *
+   * `total` counts the filtered result, not the page: the storefront needs it to
+   * draw page links. It is produced by a second query over the *same* where
+   * clause and join, so it cannot drift from the page it describes.
+   */
+  static async list({
+    sort = PRODUCT_SORTS.NEWEST,
+    page = 1,
+    limit = DEFAULT_PRODUCT_PAGE_SIZE,
+    ...filters
+  }: ProductListOptions = {}): Promise<ProductPage> {
+    const where = and(...ProductDao.storefrontWhere(filters));
+
+    const [rows, [counted]] = await Promise.all([
+      db
+        .select(getTableColumns(products))
+        .from(products)
+        .innerJoin(categories, eq(products.categoryId, categories.id))
+        .where(where)
+        .orderBy(...ORDER_BY[sort])
+        .limit(limit)
+        .offset((page - 1) * limit),
+      db
+        .select({ value: count() })
+        .from(products)
+        .innerJoin(categories, eq(products.categoryId, categories.id))
+        .where(where),
+    ]);
+
+    return { items: await ProductDao.withImages(rows), total: counted.value };
+  }
+
+  /**
+   * The storefront's where clause. `is_active` leads it and no argument can
+   * remove it — that is the single place a soft-deleted product is kept out of
+   * every filter combination the listing offers.
+   */
+  private static storefrontWhere(filters: ProductFilters): SQL[] {
+    const where: SQL[] = [eq(products.isActive, true)];
     if (filters.categorySlug) {
       where.push(eq(categories.slug, filters.categorySlug));
     }
     if (filters.petType) {
       where.push(eq(products.petType, filters.petType));
     }
-
-    const rows = await db
-      .select(getTableColumns(products))
-      .from(products)
-      .innerJoin(categories, eq(products.categoryId, categories.id))
-      .where(and(...where))
-      .orderBy(desc(products.createdAt), asc(products.sku));
-
-    return ProductDao.withImages(rows);
+    // Compared against undefined, not truthiness: a `minPrice` of 0 is a real
+    // bound, even if the price check makes it a no-op.
+    if (filters.minPrice !== undefined) {
+      where.push(gte(products.price, filters.minPrice));
+    }
+    if (filters.maxPrice !== undefined) {
+      where.push(lte(products.price, filters.maxPrice));
+    }
+    return where;
   }
 
   /** Admin panel listing — includes the products a soft delete hid. */

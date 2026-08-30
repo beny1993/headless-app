@@ -75,7 +75,9 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       const category = await makeCategory();
       const created = await ProductDao.create(makeProduct(category));
 
-      const rows = await ProductDao.list({ categorySlug: category.slug });
+      const { items: rows } = await ProductDao.list({
+        categorySlug: category.slug,
+      });
 
       expect(rows.map((row) => row.id)).toEqual([created.id]);
     });
@@ -86,7 +88,9 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       const removed = await ProductDao.create(makeProduct(category));
 
       await ProductDao.softDelete(removed.id);
-      const rows = await ProductDao.list({ categorySlug: category.slug });
+      const { items: rows } = await ProductDao.list({
+        categorySlug: category.slug,
+      });
 
       expect(rows.map((row) => row.id)).toEqual([kept.id]);
     });
@@ -96,7 +100,7 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       const removed = await ProductDao.create(makeProduct(category));
       await ProductDao.softDelete(removed.id);
 
-      const rows = await ProductDao.list();
+      const { items: rows } = await ProductDao.list();
 
       expect(rows.map((row) => row.id)).not.toContain(removed.id);
     });
@@ -110,7 +114,7 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
         makeProduct(category, { petType: PET_TYPES.DOG }),
       );
 
-      const dogs = await ProductDao.list({
+      const { items: dogs } = await ProductDao.list({
         categorySlug: category.slug,
         petType: PET_TYPES.DOG,
       });
@@ -128,7 +132,7 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       await ProductDao.create(makeProduct(wanted, { petType: PET_TYPES.CAT }));
       await ProductDao.create(makeProduct(other, { petType: PET_TYPES.DOG }));
 
-      const rows = await ProductDao.list({
+      const { items: rows } = await ProductDao.list({
         categorySlug: wanted.slug,
         petType: PET_TYPES.DOG,
       });
@@ -137,7 +141,9 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
     });
 
     it('returns nothing for a category slug that does not exist', async () => {
-      const rows = await ProductDao.list({ categorySlug: 'no-such-category' });
+      const { items: rows } = await ProductDao.list({
+        categorySlug: 'no-such-category',
+      });
 
       expect(rows).toEqual([]);
     });
@@ -150,7 +156,9 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
         'products/first.jpg',
       ]);
 
-      const [row] = await ProductDao.list({ categorySlug: category.slug });
+      const {
+        items: [row],
+      } = await ProductDao.list({ categorySlug: category.slug });
 
       expect(row.images.map((image) => image.objectKey)).toEqual([
         'products/second.jpg',
@@ -163,9 +171,279 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       const category = await makeCategory();
       await ProductDao.create(makeProduct(category));
 
-      const [row] = await ProductDao.list({ categorySlug: category.slug });
+      const {
+        items: [row],
+      } = await ProductDao.list({ categorySlug: category.slug });
 
       expect(row.images).toEqual([]);
+    });
+  });
+
+  describe('list — sorting, price range and pagination', () => {
+    /**
+     * Three products in one throwaway category, priced and dated apart so every
+     * ordering below has exactly one correct answer. `createdAt` is set
+     * explicitly rather than left to `now()`: two consecutive inserts can share
+     * a timestamp, and a newest-first assertion that ties is a flaky test.
+     */
+    const makeSortableTrio = async () => {
+      const category = await makeCategory();
+      const at = (day: number) => new Date(Date.UTC(2026, 0, day));
+      const [cheapOldest, midNewest, dearMiddle] = await Promise.all([
+        testDb
+          .insert(products)
+          .values({ ...makeProduct(category), price: 50_000, createdAt: at(1) })
+          .returning()
+          .then(([row]) => row),
+        testDb
+          .insert(products)
+          .values({
+            ...makeProduct(category),
+            price: 150_000,
+            createdAt: at(3),
+          })
+          .returning()
+          .then(([row]) => row),
+        testDb
+          .insert(products)
+          .values({
+            ...makeProduct(category),
+            price: 250_000,
+            createdAt: at(2),
+          })
+          .returning()
+          .then(([row]) => row),
+      ]);
+      return { category, cheapOldest, midNewest, dearMiddle };
+    };
+
+    it('reports a total that counts every match, not just the page', async () => {
+      const { category } = await makeSortableTrio();
+
+      const page = await ProductDao.list({
+        categorySlug: category.slug,
+        limit: 2,
+      });
+
+      expect(page.items).toHaveLength(2);
+      expect(page.total).toBe(3);
+    });
+
+    it('counts through the same filters as the page it describes', async () => {
+      // A count that ignores the filters is the classic pagination leak: the
+      // storefront would render page links to pages that are always empty.
+      const category = await makeCategory();
+      const other = await makeCategory();
+      await ProductDao.create(
+        makeProduct(category, { petType: PET_TYPES.DOG }),
+      );
+      await ProductDao.create(
+        makeProduct(category, { petType: PET_TYPES.CAT }),
+      );
+      await ProductDao.create(makeProduct(other, { petType: PET_TYPES.DOG }));
+
+      const dogs = await ProductDao.list({
+        categorySlug: category.slug,
+        petType: PET_TYPES.DOG,
+      });
+
+      expect(dogs.total).toBe(1);
+      expect(dogs.items).toHaveLength(1);
+    });
+
+    it('leaves soft-deleted products out of the total as well as the page', async () => {
+      const category = await makeCategory();
+      await ProductDao.create(makeProduct(category));
+      const removed = await ProductDao.create(makeProduct(category));
+      await ProductDao.softDelete(removed.id);
+
+      const page = await ProductDao.list({ categorySlug: category.slug });
+
+      expect(page.total).toBe(1);
+      expect(page.items.map((row) => row.id)).not.toContain(removed.id);
+    });
+
+    it('walks pages without repeating or dropping a product', async () => {
+      const { category } = await makeSortableTrio();
+
+      const first = await ProductDao.list({
+        categorySlug: category.slug,
+        sort: 'price-asc',
+        page: 1,
+        limit: 2,
+      });
+      const second = await ProductDao.list({
+        categorySlug: category.slug,
+        sort: 'price-asc',
+        page: 2,
+        limit: 2,
+      });
+
+      expect(first.items.map((row) => row.price)).toEqual([50_000, 150_000]);
+      expect(second.items.map((row) => row.price)).toEqual([250_000]);
+      expect(second.total).toBe(3);
+    });
+
+    it('returns an empty page past the end while still reporting the total', async () => {
+      const { category } = await makeSortableTrio();
+
+      const page = await ProductDao.list({
+        categorySlug: category.slug,
+        page: 99,
+        limit: 2,
+      });
+
+      expect(page.items).toEqual([]);
+      expect(page.total).toBe(3);
+    });
+
+    it('sorts newest first by default', async () => {
+      const { category, cheapOldest, midNewest, dearMiddle } =
+        await makeSortableTrio();
+
+      const { items } = await ProductDao.list({ categorySlug: category.slug });
+
+      expect(items.map((row) => row.id)).toEqual([
+        midNewest.id,
+        dearMiddle.id,
+        cheapOldest.id,
+      ]);
+    });
+
+    it('sorts by ascending price', async () => {
+      const { category, cheapOldest, midNewest, dearMiddle } =
+        await makeSortableTrio();
+
+      const { items } = await ProductDao.list({
+        categorySlug: category.slug,
+        sort: 'price-asc',
+      });
+
+      expect(items.map((row) => row.id)).toEqual([
+        cheapOldest.id,
+        midNewest.id,
+        dearMiddle.id,
+      ]);
+    });
+
+    it('sorts by descending price', async () => {
+      const { category, cheapOldest, midNewest, dearMiddle } =
+        await makeSortableTrio();
+
+      const { items } = await ProductDao.list({
+        categorySlug: category.slug,
+        sort: 'price-desc',
+      });
+
+      expect(items.map((row) => row.id)).toEqual([
+        dearMiddle.id,
+        midNewest.id,
+        cheapOldest.id,
+      ]);
+    });
+
+    it('orders equal prices deterministically, so paging cannot repeat a row', async () => {
+      // Inserted in the opposite order to the one expected back: with no
+      // tiebreak Postgres returns the two equal prices in heap order — B, then
+      // A — and this test fails, which is exactly what it is here to catch.
+      // Sorting on price alone lets the same product land on page 1 and page 2.
+      const category = await makeCategory();
+      const b = await ProductDao.create(
+        makeProduct(category, { price: 90_000, sku: 'TIE-B' }),
+      );
+      const a = await ProductDao.create(
+        makeProduct(category, { price: 90_000, sku: 'TIE-A' }),
+      );
+
+      const first = await ProductDao.list({
+        categorySlug: category.slug,
+        sort: 'price-asc',
+        page: 1,
+        limit: 1,
+      });
+      const second = await ProductDao.list({
+        categorySlug: category.slug,
+        sort: 'price-asc',
+        page: 2,
+        limit: 1,
+      });
+
+      expect(first.items.map((row) => row.id)).toEqual([a.id]);
+      expect(second.items.map((row) => row.id)).toEqual([b.id]);
+    });
+
+    it('filters on a minimum price, inclusively', async () => {
+      const { category } = await makeSortableTrio();
+
+      const { items, total } = await ProductDao.list({
+        categorySlug: category.slug,
+        minPrice: 150_000,
+        sort: 'price-asc',
+      });
+
+      expect(items.map((row) => row.price)).toEqual([150_000, 250_000]);
+      expect(total).toBe(2);
+    });
+
+    it('filters on a maximum price, inclusively', async () => {
+      const { category } = await makeSortableTrio();
+
+      const { items } = await ProductDao.list({
+        categorySlug: category.slug,
+        maxPrice: 150_000,
+        sort: 'price-asc',
+      });
+
+      expect(items.map((row) => row.price)).toEqual([50_000, 150_000]);
+    });
+
+    it('applies both ends of the price range together', async () => {
+      const { category } = await makeSortableTrio();
+
+      const { items } = await ProductDao.list({
+        categorySlug: category.slug,
+        minPrice: 100_000,
+        maxPrice: 200_000,
+      });
+
+      expect(items.map((row) => row.price)).toEqual([150_000]);
+    });
+
+    it('returns nothing for an inverted price range rather than throwing', async () => {
+      const { category } = await makeSortableTrio();
+
+      const { items, total } = await ProductDao.list({
+        categorySlug: category.slug,
+        minPrice: 300_000,
+        maxPrice: 100_000,
+      });
+
+      expect(items).toEqual([]);
+      expect(total).toBe(0);
+    });
+
+    it('hides an inactive product from every sort and price window there is', async () => {
+      const category = await makeCategory();
+      const removed = await ProductDao.create(
+        makeProduct(category, { price: 70_000 }),
+      );
+      await ProductDao.softDelete(removed.id);
+
+      const everyWay = await Promise.all(
+        (['newest', 'price-asc', 'price-desc'] as const).map((sort) =>
+          ProductDao.list({
+            categorySlug: category.slug,
+            sort,
+            minPrice: 1,
+            maxPrice: 1_000_000,
+          }),
+        ),
+      );
+
+      for (const page of everyWay) {
+        expect(page.items).toEqual([]);
+        expect(page.total).toBe(0);
+      }
     });
   });
 
@@ -251,7 +529,9 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       const admin = (await ProductDao.listForAdmin()).filter(
         (row) => row.categoryId === category.id,
       );
-      const storefront = await ProductDao.list({ categorySlug: category.slug });
+      const { items: storefront } = await ProductDao.list({
+        categorySlug: category.slug,
+      });
 
       expect(admin.map((row) => row.id).sort()).toEqual(
         [active.id, removed.id].sort(),
@@ -305,7 +585,9 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
         makeProduct(category, { stock: 0 }),
       );
 
-      const rows = await ProductDao.list({ categorySlug: category.slug });
+      const { items: rows } = await ProductDao.list({
+        categorySlug: category.slug,
+      });
 
       expect(product.stock).toBe(0);
       expect(rows.map((row) => row.id)).toEqual([product.id]);
@@ -451,7 +733,7 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       expect(second.id).toBe(first.id);
       expect(second.price).toBe(111_000);
       expect(
-        await ProductDao.list({ categorySlug: category.slug }),
+        (await ProductDao.list({ categorySlug: category.slug })).items,
       ).toHaveLength(1);
     });
 
