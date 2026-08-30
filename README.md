@@ -20,7 +20,7 @@ pnpm create-admin you@example.com   # provision an admin
 | URL | What |
 | --- | --- |
 | `http://localhost:3000` | Storefront |
-| `http://localhost:3000/backoffice` | Back office (email OTP, invite-only) |
+| `http://localhost:3000/admin-panel` | Admin panel (email OTP, invite-only) |
 | `http://localhost:3000/api/reference` | Interactive API docs (non-production) |
 
 `design/` holds the vendored design prototype the front-end ports from —

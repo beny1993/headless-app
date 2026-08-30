@@ -9,7 +9,7 @@ type OtpEmailProps = {
 export function OtpEmail({ otp, magicUrl }: OtpEmailProps) {
   return (
     <EmailLayout preview={`Your sign-in code is ${otp}`}>
-      <Text style={heading}>Sign in to the back office</Text>
+      <Text style={heading}>Sign in to the admin panel</Text>
       <Text style={paragraph}>
         Use this one-time code to sign in. It expires in 3 minutes.
       </Text>

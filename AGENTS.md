@@ -24,7 +24,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | Path | What |
 | --- | --- |
 | `src/app/(app)/` | Public storefront (own root layout + `globals.css`) |
-| `src/app/(admin)/` | Back office: `auth/(public)` sign-in, `(protected)` pages behind `requireAdmin()` |
+| `src/app/(admin)/` | Admin panel: `auth/(public)` sign-in, `(protected)` pages behind `requireAdmin()` |
 | `src/app/api/[[...route]]/` | Hono catch-all; Better Auth at `src/app/api/auth/[...all]/` |
 | `src/db/schema/`, `src/db/dao/`, `src/db/migrations/` | Drizzle schema, DAOs, generated migrations |
 | `src/lib/hono/` | API app, router factory, response envelope, routes |
@@ -133,7 +133,7 @@ pnpm seed-catalog                   # demo categories + products (safe to re-run
 pnpm create-admin you@example.com   # provision an admin
 ```
 
-`http://localhost:3000` storefront · `/backoffice` back office ·
+`http://localhost:3000` storefront · `/admin-panel` admin panel ·
 `/api/reference` interactive API docs (non-production only). Back-office sign-in
 prints the OTP and a magic link to the server console in development — no SMTP
 needed. Other commands: `pnpm dev:email` (email preview), `pnpm drizzle-studio`,

@@ -45,7 +45,7 @@ describe('hono app in production', () => {
   });
 
   // The docs describe every route the API has; they must not be a public map of
-  // the back office. The gate reads NODE_ENV when the module is first evaluated,
+  // the admin panel. The gate reads NODE_ENV when the module is first evaluated,
   // so the production app has to be built from a fresh import.
   const loadProductionApp = async () => {
     vi.stubEnv('NODE_ENV', 'production');

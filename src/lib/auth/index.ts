@@ -47,7 +47,7 @@ export const auth = betterAuth({
       // sign-in. Hashing only affects storage: `handleOtpRequest` still gets
       // the plaintext code for the email and the magic link.
       storeOTP: 'hashed',
-      // Back office is invite-only: an OTP never creates a user. Provision the
+      // Admin panel is invite-only: an OTP never creates a user. Provision the
       // first admin with `pnpm create-admin <email>`.
       disableSignUp: true,
     }),

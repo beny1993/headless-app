@@ -31,7 +31,7 @@ describe('requireAdmin', () => {
     );
   });
 
-  it('turns a signed-in customer away from the back office', async () => {
+  it('turns a signed-in customer away from the admin panel', async () => {
     // The whole point of the gate: a valid session is not authorization.
     mocks.getSession.mockResolvedValue(sessionFor('customer'));
 

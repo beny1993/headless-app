@@ -68,7 +68,7 @@ export function SignInForm() {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
-        <CardTitle>{DEFAULT_SITE_NAME} back office</CardTitle>
+        <CardTitle>{DEFAULT_SITE_NAME} admin panel</CardTitle>
         <CardDescription>
           {step === 'email'
             ? 'Enter your email to receive a one-time sign-in code.'

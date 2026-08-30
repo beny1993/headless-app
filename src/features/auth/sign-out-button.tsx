@@ -27,7 +27,7 @@ export function SignOutButton() {
       size="sm"
       onClick={signOut}
       disabled={isLoading}
-      data-umami-event="backoffice-sign-out"
+      data-umami-event="admin-panel-sign-out"
     >
       {isLoading ? 'Signing out…' : 'Sign out'}
     </Button>

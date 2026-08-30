@@ -49,7 +49,7 @@ export class ProductDao {
     return ProductDao.withImages(rows);
   }
 
-  /** Back office listing — includes the products a soft delete hid. */
+  /** Admin panel listing — includes the products a soft delete hid. */
   static async listForAdmin(): Promise<ProductWithImages[]> {
     const rows = await db
       .select()
@@ -90,7 +90,7 @@ export class ProductDao {
 
   /**
    * The only removal path there is: the row stays, the storefront stops seeing
-   * it, the back office still does.
+   * it, the admin panel still does.
    */
   static async softDelete(id: string): Promise<Product | null> {
     const [row] = await db
