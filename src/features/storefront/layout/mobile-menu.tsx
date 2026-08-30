@@ -20,7 +20,15 @@ export function MobileMenu() {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
 
-  const close = () => dialogRef.current?.close();
+  // Closing goes through here, never through `dialogRef.current.close()`
+  // directly: the DOM call and the `open` mirror that drives aria-expanded have
+  // to move together. Relying on the dialog's `close` event to do the second
+  // half looks right but is not dependable — measured not to fire at all in
+  // Chromium here, leaving the toggle stuck at aria-expanded="true".
+  const close = () => {
+    dialogRef.current?.close();
+    setOpen(false);
+  };
 
   return (
     <>
@@ -40,10 +48,16 @@ export function MobileMenu() {
 
       <dialog
         ref={dialogRef}
-        // `open` mirrors the dialog for aria-expanded. The `close` event is the
-        // only reliable source: Escape closes the dialog without touching the
-        // toggle, so tracking it on click alone would desync.
+        // Escape is the one close the UA performs on its own. Focus is trapped
+        // inside the dialog while it is open, so the keydown always lands here.
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') close();
+        }}
+        // Kept as a backstop for any other UA-initiated close; a no-op where
+        // the event does not fire, correct where it does.
         onClose={() => setOpen(false)}
+        // A click whose target is the dialog itself landed on the backdrop —
+        // the panel's own children are never the dialog element.
         onClick={(event) => {
           if (event.target === dialogRef.current) close();
         }}
