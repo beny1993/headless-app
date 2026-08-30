@@ -1,5 +1,11 @@
-import { z } from '@hono/zod-openapi';
-import type { ZodError } from 'zod';
+// `z` comes from `zod`, not from `@hono/zod-openapi`, on purpose. That package
+// ships no `types` condition in its `exports` map, so the `z` it re-exports
+// resolves to `any` — schemas built from it infer as `any`, and every response
+// type below would be a lie the compiler could not catch. Its `z` *is* zod's
+// own `z` object (it patches it in place), so importing the package for its
+// side effect and `z` from zod gives the same runtime value, fully typed.
+import '@hono/zod-openapi';
+import { z, type ZodError } from 'zod';
 
 /** Standard success envelope. `status` is the discriminant clients branch on. */
 export type ApiSuccess<T> = { status: 'success'; data: T };

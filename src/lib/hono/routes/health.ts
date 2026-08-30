@@ -1,4 +1,6 @@
-import { createRoute, z, type RouteHandler } from '@hono/zod-openapi';
+// `z` from `zod`, not from `@hono/zod-openapi` — see the note in ../envelope.ts.
+import { createRoute, type RouteHandler } from '@hono/zod-openapi';
+import { z } from 'zod';
 import { apiSuccess, apiSuccessSchema } from '../envelope';
 
 // Route pattern: always split into a `createRoute` definition and a separate
