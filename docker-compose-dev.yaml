@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: smokey_shop_postgres_container
+    restart: always
+    environment:
+      POSTGRES_USER: ${APP_CONFIG_DATABASE_USERNAME}
+      POSTGRES_PASSWORD: ${APP_CONFIG_DATABASE_PASSWORD}
+      POSTGRES_DB: ${APP_CONFIG_DATABASE_NAME}
+    volumes:
+      - smokey_shop_postgres_data:/var/lib/postgresql/data
+    ports:
+      - ${APP_CONFIG_DATABASE_PORT}:5432
+volumes:
+  smokey_shop_postgres_data:

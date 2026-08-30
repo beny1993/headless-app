@@ -1,0 +1,32 @@
+echo "🔒 Running security check for vulnerabilities..."
+pnpm security:check
+SECURITY_EXIT=$?
+
+if [ $SECURITY_EXIT -ne 0 ]; then
+  echo ""
+  echo "❌ Security check failed! High or critical vulnerabilities detected."
+  echo "Please run 'pnpm audit' to see details and fix vulnerabilities."
+  echo ""
+  echo "If you need to push urgently, you can bypass this check with:"
+  echo "  git push --no-verify"
+  echo ""
+  exit 1
+fi
+
+echo "✅ Security check passed - no high/critical vulnerabilities found"
+
+echo ""
+echo "🏗️  Running production build..."
+pnpm build
+BUILD_EXIT=$?
+
+if [ $BUILD_EXIT -ne 0 ]; then
+  echo ""
+  echo "❌ Build failed. Push aborted."
+  echo "Fix the build error before pushing, or bypass with:"
+  echo "  git push --no-verify"
+  echo ""
+  exit 1
+fi
+
+echo "✅ Build succeeded"
