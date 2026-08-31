@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_PRODUCT_PAGE_SIZE,
   MAX_PRODUCT_PAGE_SIZE,
+  MAX_SEARCH_TERM_LENGTH,
   PET_TYPES,
   PRODUCT_SORTS,
 } from '@/lib/catalog/product-query';
@@ -55,6 +56,17 @@ describe('GET /api/products — query validation', () => {
     ['an empty maximum price', 'maxPrice='],
     ['a whitespace maximum price', 'maxPrice=%20'],
     ['a maximum price of zero, which no product can satisfy', 'maxPrice=0'],
+    // An empty `q` is the parameter a submitted-but-blank search box leaves
+    // behind. The API is the strict side of the contract and says so; the shop
+    // page drops a blank term before it ever gets here.
+    ['an empty search term', 'q='],
+    // The cap is not politeness. Every extra character is more trigrams to
+    // match against every row, and a search box is the cheapest place on the
+    // site to hand a stranger that multiplier.
+    [
+      'a search term one character over the cap',
+      `q=${encodeURIComponent('گ'.repeat(MAX_SEARCH_TERM_LENGTH + 1))}`,
+    ],
   ])('rejects %s', async (_label, query) => {
     const { status, body } = await rejects(query);
 
@@ -105,6 +117,16 @@ describe('GET /api/products — query validation', () => {
     ['an empty minimum price, which is simply no floor', 'minPrice='],
     ['a page at the top of the safe integer range', 'page=9007199254740991'],
     ['an inverted price range', 'minPrice=900000&maxPrice=1'],
+    ['a Persian search term', `q=${encodeURIComponent('غذای خشک')}`],
+    [
+      'a search term typed on an Arabic keyboard',
+      `q=${encodeURIComponent('غذاي خشك')}`,
+    ],
+    ['a one-character search term', `q=${encodeURIComponent('گ')}`],
+    [
+      'a search term exactly at the length cap',
+      `q=${encodeURIComponent('گ'.repeat(MAX_SEARCH_TERM_LENGTH))}`,
+    ],
   ])('accepts %s', async (_label, query) => {
     // Accepted means "past validation": the stubbed db then fails the handler
     // with a 500. Anything but 400 proves the query itself was legal.
@@ -153,6 +175,7 @@ describe('GET /api/products — generated documentation', () => {
       'maxPrice',
       'page',
       'limit',
+      'q',
     ]) {
       expect(params.get(name)?.description ?? '').not.toBe('');
     }
@@ -175,6 +198,10 @@ describe('GET /api/products — generated documentation', () => {
     });
     expect(params.get('pet')?.schema).toMatchObject({
       enum: Object.values(PET_TYPES),
+    });
+    expect(params.get('q')?.schema).toMatchObject({
+      maxLength: MAX_SEARCH_TERM_LENGTH,
+      minLength: 1,
     });
   });
 });
@@ -225,5 +252,23 @@ describe('null bytes in text inputs', () => {
     expect(
       productListQuerySchema.parse({ category: `a${NUL}b` }).category,
     ).toBe('ab');
+  });
+
+  it('strips U+0000 from the search term', async () => {
+    // `q` reaches Postgres as a trigram operand, so it is in exactly the same
+    // class as the slug and the category slug: it inherits the strip rather
+    // than carrying a rule of its own.
+    const { productListQuerySchema } =
+      await import('@/lib/catalog/product-query');
+    expect(productListQuerySchema.parse({ q: `غذا${NUL}` }).q).toBe('غذا');
+  });
+
+  it('leaves a search term of nothing but null bytes as an empty term', async () => {
+    // `.min(1)` runs before the strip, so this passes validation and arrives
+    // empty — which the DAO reads as no search at all, the same answer an
+    // absent `q` gets. An empty listing would be a lie; a full one is honest.
+    const { productListQuerySchema } =
+      await import('@/lib/catalog/product-query');
+    expect(productListQuerySchema.parse({ q: NUL }).q).toBe('');
   });
 });

@@ -527,6 +527,152 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
   });
 });
 
+// The search parameter end to end: the shared schema, the DAO's normalization
+// on both sides, the trigram index, and the same envelope every other listing
+// answers in. The schema's own bounds run without a database in ./catalog.test.ts.
+describe.skipIf(!databaseReachable)('GET /api/products?q=', () => {
+  const createdCategoryIds: string[] = [];
+
+  const searchCatalog = async () => {
+    const [category] = await testDb
+      .insert(categories)
+      .values({
+        title: 'دسته آزمایشی',
+        slug: `test-${faker.string.alphanumeric(10).toLowerCase()}`,
+      })
+      .returning();
+    createdCategoryIds.push(category.id);
+
+    const product = async (overrides: Partial<NewProduct>) => {
+      const token = faker.string.alphanumeric(10).toLowerCase();
+      return ProductDao.create({
+        title: 'محصول آزمایشی',
+        slug: `test-${token}`,
+        sku: `TEST-${token.toUpperCase()}`,
+        price: 100_000,
+        stock: 5,
+        categoryId: category.id,
+        petType: PET_TYPES.CAT,
+        ...overrides,
+      });
+    };
+
+    const [catFood, shampoo] = await Promise.all([
+      product({
+        title: 'غذای خشک پرمیوم گربه بالغ',
+        brand: 'Royal Canin',
+        benefit: 'مناسب گوارش حساس',
+      }),
+      product({
+        title: 'شامپو ضد کک و کنه سگ',
+        brand: 'Beaphar',
+        benefit: 'پوست حساس',
+        petType: PET_TYPES.DOG,
+      }),
+    ]);
+
+    return { category, catFood, shampoo };
+  };
+
+  /** The listing for one query string, scoped to a throwaway category. */
+  const search = async (category: Category, query: string) =>
+    getData<ProductListResponse>(
+      `${API_PATHS.PRODUCTS}?category=${category.slug}&q=${encodeURIComponent(query)}`,
+    );
+
+  afterEach(async () => {
+    if (createdCategoryIds.length === 0) return;
+    const mine = await testDb
+      .select({ id: products.id })
+      .from(products)
+      .where(inArray(products.categoryId, createdCategoryIds));
+    const ids = mine.map((row) => row.id);
+    if (ids.length > 0) {
+      await testDb.delete(products).where(inArray(products.id, ids));
+    }
+    await testDb
+      .delete(categories)
+      .where(inArray(categories.id, createdCategoryIds));
+    createdCategoryIds.length = 0;
+  });
+
+  it('matches a Persian title from a query typed on an Arabic keyboard', async () => {
+    // The acceptance criterion, through the wire: «غذاي خشك» carries the Arabic
+    // yeh and kaf, the stored title the Persian ones.
+    const { category, catFood } = await searchCatalog();
+
+    const list = await search(category, 'غذاي خشك گربه');
+
+    expect(list.items.map((item) => item.id)).toEqual([catFood.id]);
+  });
+
+  it('still matches when the shopper misspells the term', async () => {
+    const { category, catFood } = await searchCatalog();
+
+    const list = await search(category, 'غذای خشک گرب');
+
+    expect(list.items.map((item) => item.id)).toEqual([catFood.id]);
+  });
+
+  it('answers an empty listing for a term nothing resembles', async () => {
+    const { category } = await searchCatalog();
+
+    const list = await search(category, 'قهوه اسپرسو');
+
+    expect(list.items).toEqual([]);
+    expect(list.total).toBe(0);
+    expect(list.totalPages).toBe(0);
+  });
+
+  it('composes with the pet filter', async () => {
+    const { category, shampoo } = await searchCatalog();
+
+    const list = await getData<ProductListResponse>(
+      `${API_PATHS.PRODUCTS}?category=${category.slug}&q=${encodeURIComponent('حساس')}&pet=dog`,
+    );
+
+    expect(list.items.map((item) => item.id)).toEqual([shampoo.id]);
+  });
+
+  it('reports a total and page count that count the search', async () => {
+    const { category } = await searchCatalog();
+
+    const list = await search(category, 'حساس');
+
+    expect(list.total).toBe(2);
+    expect(list.totalPages).toBe(1);
+    expect(list.page).toBe(1);
+  });
+
+  it('pages a search result like any other listing', async () => {
+    const { category } = await searchCatalog();
+
+    const list = await getData<ProductListResponse>(
+      `${API_PATHS.PRODUCTS}?category=${category.slug}&q=${encodeURIComponent('حساس')}&limit=1&page=2`,
+    );
+
+    expect(list.items).toHaveLength(1);
+    expect(list.total).toBe(2);
+    expect(list.totalPages).toBe(2);
+  });
+
+  it('answers an unfiltered listing, not a 500, for a term of only null bytes', async () => {
+    // `.min(1)` passes, the strip empties it, and an empty term is no term —
+    // the same stance the category filter takes.
+    const { category } = await searchCatalog();
+
+    const response = await app.request(
+      `${API_PATHS.PRODUCTS}?category=${category.slug}&q=%00`,
+    );
+    const body = (await response.json()) as {
+      data: { items: unknown[]; total: number };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.data.total).toBe(2);
+  });
+});
+
 // Regression: a null byte in the slug used to reach Postgres, which rejects
 // U+0000 in text parameters - the driver threw and the route answered 500.
 // Stripped at the schema, the lookup now misses like any absent slug.

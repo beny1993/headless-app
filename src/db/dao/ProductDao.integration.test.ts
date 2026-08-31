@@ -12,6 +12,7 @@ import {
   type NewProduct,
 } from '@/db/schema/catalog';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
+import type { ProductInput } from '@/db/dao/ProductDao';
 
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
 
@@ -719,6 +720,418 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       const found = await ProductDao.getBySlug(product.slug);
 
       expect(found?.oldPrice).toBeNull();
+    });
+  });
+
+  // ── Persian search ────────────────────────────────────────────────────────
+  //
+  // Two halves, and they are only correct together: the column is normalized on
+  // write, and the term is normalized on read with the same function. Either one
+  // alone leaves the query and the index disagreeing about which letters exist.
+  //
+  // Every assertion is scoped to a throwaway category, so a search here cannot
+  // pick up a seeded product and the expected row sets stay exact.
+
+  /** The stored text of one product, straight from the column. */
+  const storedSearchText = async (id: string): Promise<string> => {
+    const [row] = await testDb
+      .select({ searchText: products.searchText })
+      .from(products)
+      .where(eq(products.id, id));
+    return row.searchText;
+  };
+
+  /**
+   * Three products with the shape the real catalog has — a Persian title, a
+   * Latin brand, a Persian benefit line — including the ZWNJ that a genuine
+   * Persian title carries.
+   */
+  const makeSearchCatalog = async () => {
+    const category = await makeCategory();
+    const [catFood, toy, shampoo] = await Promise.all([
+      ProductDao.create(
+        makeProduct(category, {
+          title: 'غذای خشک پرمیوم گربه بالغ',
+          brand: 'Royal Canin',
+          benefit: 'مناسب گوارش حساس',
+          petType: PET_TYPES.CAT,
+        }),
+      ),
+      ProductDao.create(
+        makeProduct(category, {
+          // U+200C between «اسباب» and «بازی», as the seed has it.
+          title: 'اسباب‌بازی تعاملی پر و زنگوله',
+          brand: 'Catit',
+          benefit: 'تحریک غریزه شکار',
+          petType: PET_TYPES.CAT,
+        }),
+      ),
+      ProductDao.create(
+        makeProduct(category, {
+          title: 'شامپو ضد کک و کنه سگ',
+          brand: 'Beaphar',
+          benefit: 'پوست حساس',
+          petType: PET_TYPES.DOG,
+        }),
+      ),
+    ]);
+    return { category, catFood, toy, shampoo };
+  };
+
+  /** The ids a search returns, within one throwaway category. */
+  const searchIds = async (
+    categorySlug: string,
+    search: string,
+    extra: Parameters<typeof ProductDao.list>[0] = {},
+  ) => {
+    const { items } = await ProductDao.list({
+      categorySlug,
+      search,
+      ...extra,
+    });
+    return items.map((row) => row.id);
+  };
+
+  describe('search_text — normalized on every write', () => {
+    it('stores the title, brand and benefit as one normalized string', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, {
+          title: 'غذای خشک گربه',
+          brand: 'Royal Canin',
+          benefit: 'گوارش حساس',
+        }),
+      );
+
+      expect(await storedSearchText(product.id)).toBe(
+        'غذای خشک گربه Royal Canin گوارش حساس',
+      );
+    });
+
+    it('normalizes the Arabic letters a supplier feed arrives with', async () => {
+      const category = await makeCategory();
+      // «غذاي خشك» — Arabic yeh and Arabic kaf, as pasted from an Arabic-typed
+      // catalogue. The column has to hold the Persian letters, or a shopper
+      // typing the Persian ones would never reach this row.
+      const product = await ProductDao.create(
+        makeProduct(category, { title: 'غذاي خشك', brand: null }),
+      );
+
+      expect(await storedSearchText(product.id)).toBe('غذای خشک');
+    });
+
+    it('turns the title ZWNJ into a space without touching the title itself', async () => {
+      const category = await makeCategory();
+      const title = 'اسباب‌بازی تعاملی';
+      const product = await ProductDao.create(
+        makeProduct(category, { title, brand: null, benefit: null }),
+      );
+
+      // The source column is the product's name and stays byte-identical; the
+      // search column is the index's business.
+      expect((await ProductDao.getBySlug(product.slug))?.title).toBe(title);
+      expect(await storedSearchText(product.id)).toBe('اسباب بازی تعاملی');
+    });
+
+    it('leaves out a null brand and benefit rather than writing «null»', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, {
+          title: 'غذای خشک',
+          brand: null,
+          benefit: null,
+        }),
+      );
+
+      expect(await storedSearchText(product.id)).toBe('غذای خشک');
+    });
+
+    it('ignores a search_text a caller tries to supply', async () => {
+      // The DAO is the only writer of this column. A caller that could set it
+      // could hide a product from the search, or plant one in every result.
+      const category = await makeCategory();
+      const product = await ProductDao.create({
+        ...makeProduct(category, { title: 'غذای خشک', brand: null }),
+        searchText: 'انتخاب دستی',
+      } as ProductInput);
+
+      expect(await storedSearchText(product.id)).toBe('غذای خشک');
+    });
+
+    it('recomputes when the title changes', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, { title: 'غذای خشک', brand: null }),
+      );
+
+      await ProductDao.update(product.id, { title: 'شامپو ضد كك' });
+
+      expect(await storedSearchText(product.id)).toBe('شامپو ضد کک');
+    });
+
+    it('recomputes when only the brand changes, keeping the title in the text', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, { title: 'غذای خشک', brand: 'Whiskas' }),
+      );
+
+      await ProductDao.update(product.id, { brand: 'Royal Canin' });
+
+      expect(await storedSearchText(product.id)).toBe('غذای خشک Royal Canin');
+    });
+
+    it('drops the brand from the text when the brand is cleared', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, { title: 'غذای خشک', brand: 'Whiskas' }),
+      );
+
+      await ProductDao.update(product.id, { brand: null });
+
+      expect(await storedSearchText(product.id)).toBe('غذای خشک');
+    });
+
+    it('leaves the text alone when the patch touches nothing searchable', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, { title: 'غذای خشک', brand: null }),
+      );
+
+      await ProductDao.update(product.id, { price: 999_000 });
+
+      expect(await storedSearchText(product.id)).toBe('غذای خشک');
+    });
+
+    it('recomputes on the seed path, so a re-run fixes a stale text', async () => {
+      // The update branch of the upsert is what a second `pnpm seed-catalog`
+      // takes. Miss it and a corrected product title never reaches the index.
+      const category = await makeCategory();
+      const input = makeProduct(category, { title: 'غذای خشک', brand: null });
+      const first = await ProductDao.upsertBySku(input);
+
+      const second = await ProductDao.upsertBySku({
+        ...input,
+        title: 'غذاي تر',
+      });
+
+      expect(second.id).toBe(first.id);
+      expect(await storedSearchText(first.id)).toBe('غذای تر');
+    });
+
+    it('is stable across a repeated seed of identical data', async () => {
+      const category = await makeCategory();
+      const input = makeProduct(category, {
+        title: 'اسباب‌بازی تعاملی',
+        brand: 'Catit',
+      });
+
+      const first = await ProductDao.upsertBySku(input);
+      const before = await storedSearchText(first.id);
+      await ProductDao.upsertBySku(input);
+
+      expect(await storedSearchText(first.id)).toBe(before);
+    });
+  });
+
+  describe('list — Persian trigram search', () => {
+    it('matches a Persian title with the exact words', async () => {
+      const { category, catFood } = await makeSearchCatalog();
+
+      expect(await searchIds(category.slug, 'غذای خشک گربه')).toEqual([
+        catFood.id,
+      ]);
+    });
+
+    it('matches a Persian title from a query typed on an Arabic keyboard', async () => {
+      // The story's headline case: «غذاي خشك» with Arabic yeh and Arabic kaf.
+      // Un-normalized this scores 0.40 against the stored title and misses;
+      // normalized on both sides it is the same string.
+      const { category, catFood } = await makeSearchCatalog();
+
+      expect(await searchIds(category.slug, 'غذاي خشك گربه')).toEqual([
+        catFood.id,
+      ]);
+    });
+
+    it('still matches a slightly misspelled query', async () => {
+      const { category, catFood } = await makeSearchCatalog();
+
+      // «گرب» — the last letter of «گربه» dropped, the typo a real shopper makes.
+      expect(await searchIds(category.slug, 'غذای خشک گرب')).toEqual([
+        catFood.id,
+      ]);
+    });
+
+    it('matches through a misspelled Latin brand', async () => {
+      const { category, catFood } = await makeSearchCatalog();
+
+      expect(await searchIds(category.slug, 'royal canim')).toEqual([
+        catFood.id,
+      ]);
+    });
+
+    it('matches a brand whatever case it is typed in', async () => {
+      const { category, catFood } = await makeSearchCatalog();
+
+      expect(await searchIds(category.slug, 'ROYAL CANIN')).toEqual([
+        catFood.id,
+      ]);
+    });
+
+    it('matches the benefit line, not only the title', async () => {
+      const { category, toy } = await makeSearchCatalog();
+
+      expect(await searchIds(category.slug, 'غریزه شکار')).toEqual([toy.id]);
+    });
+
+    it('matches a ZWNJ title whether the shopper types ZWNJ or a space', async () => {
+      const { category, toy } = await makeSearchCatalog();
+
+      expect(await searchIds(category.slug, 'اسباب‌بازی')).toEqual([toy.id]);
+      expect(await searchIds(category.slug, 'اسباب بازی')).toEqual([toy.id]);
+    });
+
+    it('matches a Persian-digit title from an ASCII-digit query', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, {
+          title: 'غذای خشک ۲ کیلوگرمی',
+          brand: null,
+          benefit: null,
+        }),
+      );
+
+      expect(await searchIds(category.slug, 'غذای خشک 2 کیلوگرمی')).toEqual([
+        product.id,
+      ]);
+    });
+
+    it('returns nothing for a term no product resembles', async () => {
+      const { category } = await makeSearchCatalog();
+
+      expect(await searchIds(category.slug, 'قهوه اسپرسو')).toEqual([]);
+    });
+
+    it('returns nothing for Latin nonsense either', async () => {
+      const { category } = await makeSearchCatalog();
+
+      expect(await searchIds(category.slug, 'xyzzy')).toEqual([]);
+    });
+
+    it('reads an empty term as no search at all, not as a search that misses', async () => {
+      // What a term of nothing but null bytes strips down to. An empty catalog
+      // page would be a lie about the shop; the unfiltered listing is honest.
+      const { category } = await makeSearchCatalog();
+
+      const { items, total } = await ProductDao.list({
+        categorySlug: category.slug,
+        search: '',
+      });
+
+      expect(items).toHaveLength(3);
+      expect(total).toBe(3);
+    });
+
+    it('narrows by pet type and search together', async () => {
+      const { category, shampoo } = await makeSearchCatalog();
+
+      expect(
+        await searchIds(category.slug, 'حساس', { petType: PET_TYPES.DOG }),
+      ).toEqual([shampoo.id]);
+    });
+
+    it('narrows by category and search together', async () => {
+      const { category, catFood } = await makeSearchCatalog();
+      const other = await makeCategory();
+      await ProductDao.create(
+        makeProduct(other, { title: 'غذای خشک گربه بالغ', brand: null }),
+      );
+
+      expect(await searchIds(category.slug, 'غذای خشک گربه')).toEqual([
+        catFood.id,
+      ]);
+    });
+
+    it('narrows by price range and search together', async () => {
+      const { category } = await makeSearchCatalog();
+
+      const { items } = await ProductDao.list({
+        categorySlug: category.slug,
+        search: 'حساس',
+        maxPrice: 50_000,
+      });
+
+      expect(items).toEqual([]);
+    });
+
+    it('never returns a soft-deleted product, however well it matches', async () => {
+      const { category, catFood } = await makeSearchCatalog();
+      await ProductDao.softDelete(catFood.id);
+
+      expect(await searchIds(category.slug, 'غذای خشک گربه')).toEqual([]);
+    });
+
+    it('counts the total through the search, not around it', async () => {
+      // A total that ignored the term would draw page links to pages that are
+      // always empty — the pagination leak, with a search box in front of it.
+      const { category } = await makeSearchCatalog();
+
+      const { items, total } = await ProductDao.list({
+        categorySlug: category.slug,
+        search: 'حساس',
+      });
+
+      expect(items).toHaveLength(2);
+      expect(total).toBe(2);
+    });
+
+    it('pages a search result without repeating a product', async () => {
+      const { category } = await makeSearchCatalog();
+
+      const first = await ProductDao.list({
+        categorySlug: category.slug,
+        search: 'حساس',
+        sort: 'price-asc',
+        page: 1,
+        limit: 1,
+      });
+      const second = await ProductDao.list({
+        categorySlug: category.slug,
+        search: 'حساس',
+        sort: 'price-asc',
+        page: 2,
+        limit: 1,
+      });
+
+      expect(first.items).toHaveLength(1);
+      expect(second.items).toHaveLength(1);
+      expect(first.items[0].id).not.toBe(second.items[0].id);
+      expect(first.total).toBe(2);
+    });
+
+    it('sorts a search result the way the listing is asked to sort', async () => {
+      const category = await makeCategory();
+      const dear = await ProductDao.create(
+        makeProduct(category, {
+          title: 'غذای خشک گربه',
+          brand: null,
+          price: 300_000,
+        }),
+      );
+      const cheap = await ProductDao.create(
+        makeProduct(category, {
+          title: 'غذای خشک سگ',
+          brand: null,
+          price: 90_000,
+        }),
+      );
+
+      expect(
+        await searchIds(category.slug, 'غذای خشک', { sort: 'price-asc' }),
+      ).toEqual([cheap.id, dear.id]);
+      expect(
+        await searchIds(category.slug, 'غذای خشک', { sort: 'price-desc' }),
+      ).toEqual([dear.id, cheap.id]);
     });
   });
 

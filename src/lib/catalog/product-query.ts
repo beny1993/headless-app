@@ -38,6 +38,19 @@ export const DEFAULT_PRODUCT_PAGE_SIZE = 12;
 export const MAX_PRODUCT_PAGE_SIZE = 48;
 
 /**
+ * The longest search term the catalog will look at.
+ *
+ * A cap rather than a truncation, for the same reason `limit` is capped: a
+ * 400-character search box entry is a bug or an attack, not a shopper, and
+ * answering it with the first 64 characters hides which one it was. The number
+ * itself is a trigram budget — every character is one more trigram to test
+ * against every row's `search_text`, and the search box is the cheapest lever a
+ * stranger has on the catalog. Sixty-four characters is roughly ten Persian
+ * words, past anything a product search needs.
+ */
+export const MAX_SEARCH_TERM_LENGTH = 64;
+
+/**
  * Postgres rejects U+0000 inside a text parameter, so a null byte reaching a
  * query throws in the `pg` driver — and an unhandled throw answers 500. A
  * visitor-supplied null byte must instead behave as text that matches nothing:
@@ -63,6 +76,27 @@ const stripNullBytes = (value: string) => value.replaceAll('\u0000', '');
  */
 export const productListQueryShape = {
   category: z.string().min(1).transform(stripNullBytes).optional(),
+  /**
+   * The Persian search term, as typed.
+   *
+   * Deliberately *not* normalized here, though a `.transform()` would fit. The
+   * DAO owns that step, because it has to run the very same function over the
+   * stored `search_text` anyway and the two must never diverge — and because a
+   * `q` rewritten on its way through the schema would come back to the shop's
+   * search box as text the shopper did not type, fighting the input on every
+   * keystroke. What travels is what was typed; what matches is normalized on
+   * both sides at the last moment.
+   *
+   * `.min(1)` before the null-byte strip, as for `category` above: a term of
+   * nothing but null bytes therefore arrives empty, and the DAO reads an empty
+   * term as no search at all rather than as one that matches nothing.
+   */
+  q: z
+    .string()
+    .min(1)
+    .max(MAX_SEARCH_TERM_LENGTH)
+    .transform(stripNullBytes)
+    .optional(),
   pet: z.enum([PET_TYPES.CAT, PET_TYPES.DOG]).optional(),
   sort: z
     .enum([

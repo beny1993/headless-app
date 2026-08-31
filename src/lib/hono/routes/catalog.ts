@@ -16,6 +16,7 @@ import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import {
   MAX_PRODUCT_PAGE_SIZE,
+  MAX_SEARCH_TERM_LENGTH,
   PET_TYPES,
   productListQueryShape,
   productSlugSchema,
@@ -125,6 +126,14 @@ const ProductListQuerySchema = z.object({
   }),
   limit: productListQueryShape.limit.meta({
     description: `Page size, at most ${MAX_PRODUCT_PAGE_SIZE}.`,
+  }),
+  q: productListQueryShape.q.meta({
+    description:
+      'Persian search term, matched against the product title, brand and ' +
+      'benefit with a trigram index. Sent as typed: Arabic ي/ك, Persian or ' +
+      'Arabic-Indic digits and ZWNJ are normalized server-side, so a term ' +
+      `typed on an Arabic keyboard matches Persian titles. At most ${MAX_SEARCH_TERM_LENGTH} characters.`,
+    example: 'غذای خشک گربه',
   }),
 });
 
@@ -240,7 +249,7 @@ export const productListRoute = createRoute({
 export const productListHandler: RouteHandler<typeof productListRoute> = async (
   c,
 ) => {
-  const { category, pet, sort, minPrice, maxPrice, page, limit } =
+  const { category, pet, sort, minPrice, maxPrice, page, limit, q } =
     c.req.valid('query');
 
   const { items, total } = await ProductDao.list({
@@ -248,6 +257,7 @@ export const productListHandler: RouteHandler<typeof productListRoute> = async (
     petType: pet,
     minPrice,
     maxPrice,
+    search: q,
     sort,
     page,
     limit,
