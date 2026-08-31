@@ -36,6 +36,14 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 
 ## Conventions
 
+- **Always validate with zod (Benyamin's standing rule, 2026-08-31).** Every
+  external input crosses a zod schema: API params/bodies, page `searchParams`,
+  env access, storage payloads. Shared contracts live in ONE client-safe module
+  that both sides import — derive, never hand-mirror (the pattern:
+  `src/lib/catalog/product-query.ts`, consumed by both the Hono route and
+  `shop-query.ts`; hand-mirroring caused a 500-class drift bug once already).
+  Pages degrade invalid input via `.catch()`; APIs reject with 400.
+
 - **DB access only through DAOs** in `src/db/dao/`. Multi-DAO operations go in
   `src/logic/` (create it when needed) — never in route handlers or components.
   Never write raw SQL. Schema change → `pnpm migration:generate` + review the SQL.
