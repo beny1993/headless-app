@@ -19,14 +19,20 @@ import { formatToman } from '@/lib/format';
  * Two things the design shows are deliberately absent: the star rating
  * (reviews are backlog) and the wishlist heart (backlog) — both cut in the
  * design review's «Omitted in v1» list.
+ *
+ * The `group-data-[view=list]/results:` classes are the shop's list view, and
+ * they are driven entirely by an ancestor (`data-view` on the shop's results
+ * container). No prop, so no caller can regress: the home page has no such
+ * ancestor and renders exactly as before. The group is *named* because this
+ * card already uses an unnamed `group` for its own image hover.
  */
 export function ProductCard({ product }: { product: ProductWithImages }) {
   const outOfStock = product.stock <= 0;
   const imageKey = product.images[0]?.objectKey;
 
   return (
-    <article className="group bg-card relative overflow-hidden rounded-2xl transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:shadow-lg">
-      <div className="bg-secondary relative aspect-square overflow-hidden">
+    <article className="group bg-card relative overflow-hidden rounded-2xl transition-[transform,box-shadow] duration-300 group-data-[view=list]/results:flex group-data-[view=list]/results:items-stretch hover:-translate-y-1 hover:shadow-lg">
+      <div className="bg-secondary relative aspect-square overflow-hidden group-data-[view=list]/results:aspect-auto group-data-[view=list]/results:w-32 group-data-[view=list]/results:shrink-0 sm:group-data-[view=list]/results:w-44">
         {imageKey ? (
           <Image
             // A storage key, not a URL: `products/cat-toy.jpg` is served from
@@ -60,7 +66,7 @@ export function ProductCard({ product }: { product: ProductWithImages }) {
         ) : null}
       </div>
 
-      <div className="p-4">
+      <div className="p-4 group-data-[view=list]/results:flex group-data-[view=list]/results:min-w-0 group-data-[view=list]/results:flex-1 group-data-[view=list]/results:flex-col group-data-[view=list]/results:justify-center">
         {product.brand && (
           <p className="text-muted-foreground mb-1 text-xs">{product.brand}</p>
         )}

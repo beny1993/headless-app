@@ -7,6 +7,12 @@
 // The behaviour of the routes themselves is covered against a real Postgres in
 // ./catalog.integration.test.ts.
 import { describe, expect, it, vi } from 'vitest';
+import {
+  DEFAULT_PRODUCT_PAGE_SIZE,
+  MAX_PRODUCT_PAGE_SIZE,
+  PET_TYPES,
+  PRODUCT_SORTS,
+} from '@/lib/catalog/product-query';
 import { API_PATHS } from '@/lib/constant/paths';
 import type { ApiError } from '@/lib/hono/envelope';
 
@@ -105,5 +111,70 @@ describe('GET /api/products — query validation', () => {
     const { status } = await rejects(query);
 
     expect(status).not.toBe(400);
+  });
+});
+
+// The query schema is built from the shared field shapes in
+// `@/lib/catalog/product-query` and documented here with `.meta()`. Both halves
+// are worth pinning: `.openapi()` cannot be used on those shared fields (zod 4
+// only grafts it onto schemas built after `@hono/zod-openapi` loads, which made
+// the doc depend on module evaluation order), and a silent loss of the
+// descriptions is exactly what this replacement could regress into.
+describe('GET /api/products — generated documentation', () => {
+  const parameters = async () => {
+    const doc = (await (await app.request(API_PATHS.DOC)).json()) as {
+      paths: Record<
+        string,
+        {
+          get: {
+            parameters: {
+              name: string;
+              description?: string;
+              schema: Record<string, unknown>;
+            }[];
+          };
+        }
+      >;
+    };
+
+    return new Map(
+      doc.paths[API_PATHS.PRODUCTS].get.parameters.map((p) => [p.name, p]),
+    );
+  };
+
+  it('describes every query parameter it accepts', async () => {
+    const params = await parameters();
+
+    for (const name of [
+      'category',
+      'pet',
+      'sort',
+      'minPrice',
+      'maxPrice',
+      'page',
+      'limit',
+    ]) {
+      expect(params.get(name)?.description ?? '').not.toBe('');
+    }
+  });
+
+  it('publishes the bounds it actually enforces', async () => {
+    // These come from the shared shape, not from anything written in this file
+    // — if the split ever stops reaching the document, the contract published
+    // to clients would quietly stop matching the one enforced on requests.
+    const params = await parameters();
+
+    expect(params.get('limit')?.schema).toMatchObject({
+      maximum: MAX_PRODUCT_PAGE_SIZE,
+      default: DEFAULT_PRODUCT_PAGE_SIZE,
+      minimum: 1,
+    });
+    expect(params.get('sort')?.schema).toMatchObject({
+      enum: Object.values(PRODUCT_SORTS),
+      default: PRODUCT_SORTS.NEWEST,
+    });
+    expect(params.get('pet')?.schema).toMatchObject({
+      enum: Object.values(PET_TYPES),
+    });
   });
 });
