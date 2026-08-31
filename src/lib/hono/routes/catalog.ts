@@ -13,17 +13,13 @@
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import { z } from 'zod';
 import { CategoryDao } from '@/db/dao/CategoryDao';
+import { ProductDao } from '@/db/dao/ProductDao';
 import {
-  DEFAULT_PRODUCT_PAGE_SIZE,
   MAX_PRODUCT_PAGE_SIZE,
-  ProductDao,
-  PRODUCT_SORTS,
-} from '@/db/dao/ProductDao';
-import {
   PET_TYPES,
-  type Category,
-  type ProductWithImages,
-} from '@/db/schema/catalog';
+  productListQueryShape,
+} from '@/lib/catalog/product-query';
+import { type Category, type ProductWithImages } from '@/db/schema/catalog';
 import {
   apiError,
   apiErrorSchema,
@@ -88,58 +84,47 @@ const ProductListSchema = z
   })
   .openapi('ProductList');
 
+/**
+ * The validation lives in `@/lib/catalog/product-query`; this adds the
+ * documentation. Splitting them is what lets the storefront's `/shop` parser
+ * derive its own leniency from these exact field schemas — it is a client
+ * module, so it cannot import this file, and a second hand-written copy of the
+ * bounds is precisely the drift the split removes. Only descriptions are
+ * spelled out here; no bound, enum or default is restated.
+ *
+ * `.meta()`, not `.openapi()`, and that is load-bearing. `.openapi()` is
+ * grafted on by `@hono/zod-openapi` when it is imported, and zod 4 hands the
+ * method to newly built schemas only — a schema constructed before that import
+ * never gets one, however early the import appears in this file. The shared
+ * fields are built in another module, so whether they had `.openapi()` came
+ * down to module evaluation order, which flipped between the unit and
+ * integration suites (`TypeError: …openapi is not a function`). `.meta()` is
+ * native zod, present on every schema whenever it was built, and the OpenAPI
+ * generator reads it — the doc below is asserted in ./catalog.test.ts.
+ */
 const ProductListQuerySchema = z.object({
-  category: z.string().min(1).optional().openapi({
+  category: productListQueryShape.category.meta({
     description: 'Category slug, as returned by GET /api/categories.',
     example: 'dry-food',
   }),
-  pet: z
-    .enum([PET_TYPES.CAT, PET_TYPES.DOG])
-    .optional()
-    .openapi({ description: 'Restrict to one pet type.' }),
-  sort: z
-    .enum([
-      PRODUCT_SORTS.NEWEST,
-      PRODUCT_SORTS.PRICE_ASC,
-      PRODUCT_SORTS.PRICE_DESC,
-    ])
-    .default(PRODUCT_SORTS.NEWEST)
-    .openapi({ description: 'Ordering. Defaults to newest first.' }),
-  // Zero is a real floor — "no lower bound" — so `nonnegative`, and an empty
-  // `?minPrice=` coercing to it is the same harmless no-op.
-  minPrice: z.coerce
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .openapi({ description: 'Inclusive lower bound, integer Toman.' }),
-  // `positive`, not `nonnegative`, and the asymmetry is deliberate. `price > 0`
-  // is a CHECK constraint, so `maxPrice=0` cannot match a single product — and
-  // `z.coerce.number()` reads `Number('')` as 0, which made the `?maxPrice=` an
-  // empty filter field leaves behind answer with an empty shop under a perfectly
-  // good 200. Rejecting the bound that can only ever match nothing turns that
-  // silent emptiness into the 400 it always was.
-  maxPrice: z.coerce
-    .number()
-    .int()
-    .positive()
-    .optional()
-    .openapi({ description: 'Inclusive upper bound, integer Toman.' }),
-  page: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .default(1)
-    .openapi({ description: 'One-based page number.' }),
-  // Capped rather than clamped: a request for 500 products is a bug in the
-  // caller, and answering it with 48 hides that bug behind a plausible page.
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(MAX_PRODUCT_PAGE_SIZE)
-    .default(DEFAULT_PRODUCT_PAGE_SIZE)
-    .openapi({ description: `Page size, at most ${MAX_PRODUCT_PAGE_SIZE}.` }),
+  pet: productListQueryShape.pet.meta({
+    description: 'Restrict to one pet type.',
+  }),
+  sort: productListQueryShape.sort.meta({
+    description: 'Ordering. Defaults to newest first.',
+  }),
+  minPrice: productListQueryShape.minPrice.meta({
+    description: 'Inclusive lower bound, integer Toman.',
+  }),
+  maxPrice: productListQueryShape.maxPrice.meta({
+    description: 'Inclusive upper bound, integer Toman.',
+  }),
+  page: productListQueryShape.page.meta({
+    description: 'One-based page number.',
+  }),
+  limit: productListQueryShape.limit.meta({
+    description: `Page size, at most ${MAX_PRODUCT_PAGE_SIZE}.`,
+  }),
 });
 
 const ProductSlugParamSchema = z.object({

@@ -19,6 +19,12 @@ import {
 } from 'drizzle-orm';
 import { db } from '@/db';
 import {
+  DEFAULT_PRODUCT_PAGE_SIZE,
+  MAX_PRODUCT_PAGE_SIZE,
+  PRODUCT_SORTS,
+  type ProductSort,
+} from '@/lib/catalog/product-query';
+import {
   categories,
   productImages,
   products,
@@ -32,14 +38,17 @@ import {
 /** What a caller supplies; the database owns the id and both timestamps. */
 export type ProductInput = Omit<NewProduct, 'id' | 'createdAt' | 'updatedAt'>;
 
-/** The orderings the storefront offers. Never compare against bare strings. */
-export const PRODUCT_SORTS = {
-  NEWEST: 'newest',
-  PRICE_ASC: 'price-asc',
-  PRICE_DESC: 'price-desc',
-} as const;
-
-export type ProductSort = (typeof PRODUCT_SORTS)[keyof typeof PRODUCT_SORTS];
+// The orderings and the page-size numbers are defined in
+// `@/lib/catalog/product-query` together with the query schema that enforces
+// them, because the storefront's URL parser is a client module and importing
+// this file would put `pg` in the browser bundle. Re-exported so the API route
+// and the seed keep importing them from here — one definition, one alias.
+export {
+  PRODUCT_SORTS,
+  DEFAULT_PRODUCT_PAGE_SIZE,
+  MAX_PRODUCT_PAGE_SIZE,
+  type ProductSort,
+};
 
 /**
  * Every ordering ends in `sku`, which is unique. Without that tiebreak Postgres
@@ -51,10 +60,6 @@ const ORDER_BY: Record<ProductSort, SQL[]> = {
   [PRODUCT_SORTS.PRICE_ASC]: [asc(products.price), asc(products.sku)],
   [PRODUCT_SORTS.PRICE_DESC]: [desc(products.price), asc(products.sku)],
 };
-
-/** Page size when the caller names none, and the ceiling the API enforces. */
-export const DEFAULT_PRODUCT_PAGE_SIZE = 12;
-export const MAX_PRODUCT_PAGE_SIZE = 48;
 
 export type ProductFilters = {
   categorySlug?: string;

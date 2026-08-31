@@ -15,15 +15,24 @@
 //     never a 500 and never a redirect loop. A bad value is dropped and the
 //     next interaction writes the clean URL back.
 //
-// Imports here are type-only on purpose. This module is imported by a client
-// component, so a value import of the DAO would drag `pg` into the browser
-// bundle — but `typeof DEFAULT_PRODUCT_PAGE_SIZE` still fails `pnpm type-check`
-// if the API's numbers move, which is the whole point of the aliases below.
-import type {
-  DEFAULT_PRODUCT_PAGE_SIZE,
-  MAX_PRODUCT_PAGE_SIZE,
-} from '@/db/dao/ProductDao';
-import type { ProductListQuery } from '@/lib/hono/routes/catalog';
+// The bounds, the enums and the defaults are not written here — they are the
+// catalog API's, imported from `@/lib/catalog/product-query` and reused field
+// by field. That module holds the same zod schemas `GET /api/products`
+// validates with, and it is deliberately free of drizzle and `pg` so this file
+// can import them as *values*: a client component pulls this module into the
+// browser bundle, and importing the DAO or the route directly fails
+// `next build` with `pg` in a client chunk.
+//
+// The consequence worth stating: there is no second copy of "at most 48", "one
+// based", "integer Toman" to drift. Change a bound in the API and this parser
+// changes with it.
+import { z } from 'zod';
+import {
+  PET_TYPES,
+  PRODUCT_SORTS,
+  productListQueryShape,
+  type ProductListQuery,
+} from '@/lib/catalog/product-query';
 import { PATHS } from '@/lib/constant/paths';
 
 /** Borrowed from the catalog API's query schema, never restated. */
@@ -49,47 +58,68 @@ export type ShopQuery = {
 export type ShopSearchParams =
   URLSearchParams | Record<string, string | string[] | undefined>;
 
-// The literals are re-declared rather than imported as values (that would ship
-// the schema and the DAO to the browser), and then pinned to the API's own
-// types so a rename or a new ordering breaks the build here instead of
-// producing links that silently filter nothing.
-const SORTS = [
-  'newest',
-  'price-asc',
-  'price-desc',
-] as const satisfies readonly ShopSort[];
-const PETS = ['cat', 'dog'] as const satisfies readonly ShopPet[];
+/**
+ * One API field, read the way `/shop` has to read it: an invalid value gets
+ * exactly the answer an absent value gets.
+ *
+ * That fallback is not a number written down here — it is whatever the API's
+ * own field produces from `undefined`, so `sort` falls back to the API's
+ * default ordering, `limit` to the API's page size, and an optional filter to
+ * nothing at all. The page's contract («a bad parameter reads as absent») and
+ * the API's contract therefore cannot disagree by construction.
+ */
+const asAbsentWhenInvalid = <T>(field: z.ZodType<T>) =>
+  field.catch(field.parse(undefined));
 
-type Assert<T extends true> = T;
-type Covers<Listed, All> = [Exclude<All, Listed>] extends [never]
-  ? true
-  : false;
-type _AllSortsListed = Assert<Covers<(typeof SORTS)[number], ShopSort>>;
-type _AllPetsListed = Assert<Covers<(typeof PETS)[number], ShopPet>>;
+/**
+ * The API's query schema with every field made forgiving. `/shop` must render
+ * for any URL a stale bookmark produces, so it never throws — where the API
+ * answers 400, the page answers with the default listing.
+ */
+const shopQuerySchema = z.object({
+  category: asAbsentWhenInvalid(productListQueryShape.category),
+  pet: asAbsentWhenInvalid(productListQueryShape.pet),
+  minPrice: asAbsentWhenInvalid(productListQueryShape.minPrice),
+  maxPrice: asAbsentWhenInvalid(productListQueryShape.maxPrice),
+  sort: asAbsentWhenInvalid(productListQueryShape.sort),
+  page: asAbsentWhenInvalid(productListQueryShape.page),
+  limit: asAbsentWhenInvalid(productListQueryShape.limit),
+});
 
-const DEFAULT_LIMIT: typeof DEFAULT_PRODUCT_PAGE_SIZE = 12;
-const MAX_LIMIT: typeof MAX_PRODUCT_PAGE_SIZE = 48;
+/**
+ * What `/shop` with no query means — and what `buildShopHref` leaves out.
+ * Read out of the schema rather than typed out again, so the shop's idea of
+ * "no filters" is the API's idea of "no filters".
+ */
+export const DEFAULT_SHOP_QUERY: ShopQuery = shopQuerySchema.parse({});
 
-/** What `/shop` with no query means — and what `buildShopHref` leaves out. */
-export const DEFAULT_SHOP_QUERY: ShopQuery = {
-  sort: 'newest',
-  page: 1,
-  limit: DEFAULT_LIMIT,
+// The label maps are keyed by the API's own unions, which is what makes them
+// exhaustive: add an ordering to the catalog API and this file stops compiling
+// until it has Persian copy, rather than quietly offering one option fewer.
+const SORT_LABELS: Record<ShopSort, string> = {
+  newest: 'جدیدترین',
+  'price-asc': 'ارزان‌ترین',
+  'price-desc': 'گران‌ترین',
+};
+
+const PET_LABELS: Record<ShopPet, string> = {
+  cat: 'گربه',
+  dog: 'سگ',
 };
 
 /** The sort control's options: the API's orderings with their Persian labels. */
 export const SHOP_SORT_OPTIONS: readonly { value: ShopSort; label: string }[] =
-  [
-    { value: 'newest', label: 'جدیدترین' },
-    { value: 'price-asc', label: 'ارزان‌ترین' },
-    { value: 'price-desc', label: 'گران‌ترین' },
-  ];
+  Object.values(PRODUCT_SORTS).map((value) => ({
+    value,
+    label: SORT_LABELS[value],
+  }));
 
 /** The pet filter's options. Same two the catalog's `pet_type` enum has. */
-export const SHOP_PET_OPTIONS: readonly { value: ShopPet; label: string }[] = [
-  { value: 'cat', label: 'گربه' },
-  { value: 'dog', label: 'سگ' },
-];
+export const SHOP_PET_OPTIONS: readonly { value: ShopPet; label: string }[] =
+  Object.values(PET_TYPES).map((value) => ({
+    value,
+    label: PET_LABELS[value],
+  }));
 
 /**
  * First value wins for a repeated parameter, which is what
@@ -109,66 +139,28 @@ function readText(params: ShopSearchParams, key: string): string | undefined {
 }
 
 /**
- * A whole number inside `[min, max]`, or `undefined` for everything else —
- * blank, fractional, negative, `NaN`, `Infinity`, Persian digits, over the cap.
- *
- * Over-cap is dropped rather than clamped, deliberately: the API rejects
- * `limit=500` instead of answering with 48, because answering hides the
- * caller's bug behind a plausible-looking page. Falling back to the default is
- * the same refusal in a form a page can still render.
- *
- * `isSafeInteger`, not `isInteger`, and that is load-bearing rather than
- * fussy. `Number.isInteger(1e20)` is `true`, so `?page=1e20` used to parse and
- * reach Postgres as `OFFSET 1.2e+21` — past `bigint`, a failed query and a 500
- * on a page whose whole contract is that it never 500s. Prices go the same way
- * (`price` is a `bigint` column) and `1e21` does not even stringify as digits.
- * Above 2^53 the value is a lie anyway: `9007199254740993` parses as
- * `…92`. Zod 4's `.int()` draws the line in the same place, so this keeps the
- * page's tolerance no looser than the API contract it mirrors.
- */
-function readInt(
-  params: ShopSearchParams,
-  key: string,
-  { min, max }: { min: number; max?: number },
-): number | undefined {
-  const raw = readParam(params, key)?.trim();
-  if (!raw) return undefined;
-
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value)) return undefined;
-  if (value < min) return undefined;
-  if (max !== undefined && value > max) return undefined;
-
-  return value;
-}
-
-const isOneOf = <T extends string>(
-  options: readonly T[],
-  value: string | undefined,
-): value is T => options.includes(value as T);
-
-/**
  * A request's query string as shop state. Total: every input maps to a
  * renderable page, and parameters this page does not own are ignored so
  * campaign and analytics links keep working.
+ *
+ * The only thing done to a value before the API's schema sees it is the
+ * `readText` above: pick one value, trim it, and treat blank as absent. That
+ * last part is the page's own rule, not a bound — `z.coerce.number()` reads
+ * `''` as 0, which would turn the empty price field a shopper just cleared
+ * into a real filter. Everything after it — the enums, the integer and
+ * safe-range checks, the price floors, the page-size cap, the defaults — is
+ * the API's schema doing its own job.
  */
 export function parseShopQuery(params: ShopSearchParams): ShopQuery {
-  const pet = readText(params, 'pet');
-  const sort = readText(params, 'sort');
-
-  return {
+  return shopQuerySchema.parse({
     category: readText(params, 'category'),
-    pet: isOneOf(PETS, pet) ? pet : undefined,
-    // Zero is a real floor, so `min: 0` — while a zero *ceiling* can only ever
-    // match nothing (`price > 0` is a CHECK constraint), so `min: 1` there.
-    minPrice: readInt(params, 'minPrice', { min: 0 }),
-    maxPrice: readInt(params, 'maxPrice', { min: 1 }),
-    sort: isOneOf(SORTS, sort) ? sort : DEFAULT_SHOP_QUERY.sort,
-    page: readInt(params, 'page', { min: 1 }) ?? DEFAULT_SHOP_QUERY.page,
-    limit:
-      readInt(params, 'limit', { min: 1, max: MAX_LIMIT }) ??
-      DEFAULT_SHOP_QUERY.limit,
-  };
+    pet: readText(params, 'pet'),
+    minPrice: readText(params, 'minPrice'),
+    maxPrice: readText(params, 'maxPrice'),
+    sort: readText(params, 'sort'),
+    page: readText(params, 'page'),
+    limit: readText(params, 'limit'),
+  });
 }
 
 /**

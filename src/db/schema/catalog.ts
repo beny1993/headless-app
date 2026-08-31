@@ -18,14 +18,14 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { PET_TYPES, type PetType } from '@/lib/catalog/product-query';
 
-/** The `pet_type` column's domain. Never compare against bare strings. */
-export const PET_TYPES = {
-  CAT: 'cat',
-  DOG: 'dog',
-} as const;
-
-export type PetType = (typeof PET_TYPES)[keyof typeof PET_TYPES];
+// The `pet_type` domain is defined in `@/lib/catalog/product-query`, not here:
+// the storefront's URL parser is a client module and cannot import this file
+// (it would put drizzle in the browser bundle), so the values live where both
+// sides can reach them and this column is built from them. Re-exported so every
+// existing importer of the schema keeps working — one definition, one alias.
+export { PET_TYPES, type PetType };
 
 export const petTypeEnum = pgEnum('pet_type', [PET_TYPES.CAT, PET_TYPES.DOG]);
 

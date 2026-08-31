@@ -9,6 +9,11 @@ import {
   updateShopQuery,
   type ShopQuery,
 } from '@/features/storefront/shop/shop-query';
+import {
+  DEFAULT_PRODUCT_PAGE_SIZE,
+  MAX_PRODUCT_PAGE_SIZE,
+  productListQuerySchema,
+} from '@/lib/catalog/product-query';
 
 /** `buildShopHref` returns a path; parsing it back needs its query half. */
 const hrefParams = (href: string) =>
@@ -489,5 +494,60 @@ describe('shopPageWindow', () => {
   it('honours a caller-chosen window size', () => {
     expect(shopPageWindow(5, 10, 3)).toEqual([4, 5, 6]);
     expect(shopPageWindow(5, 10, 1)).toEqual([5]);
+  });
+});
+
+// The page and the API must not be able to disagree about what a query means.
+// They no longer can by construction — `parseShopQuery` is built from the very
+// field schemas `GET /api/products` validates with — and these tests are what
+// keeps that true: move a bound in `@/lib/catalog/product-query` without the
+// page following, and they fail here rather than drifting silently into a shop
+// that accepts what the API rejects.
+describe('agreement with the catalog API', () => {
+  it("draws the page-size cap at exactly the API's own number", () => {
+    expect(parseShopQuery({ limit: String(MAX_PRODUCT_PAGE_SIZE) }).limit).toBe(
+      MAX_PRODUCT_PAGE_SIZE,
+    );
+    expect(
+      parseShopQuery({ limit: String(MAX_PRODUCT_PAGE_SIZE + 1) }).limit,
+    ).toBe(DEFAULT_PRODUCT_PAGE_SIZE);
+  });
+
+  it('means by «no query» whatever the API means by it', () => {
+    // Not just the page size: the default ordering and first page too. This is
+    // the one assertion that would catch a new API default nobody ported.
+    expect(DEFAULT_SHOP_QUERY).toEqual(productListQuerySchema.parse({}));
+    expect(DEFAULT_SHOP_QUERY.limit).toBe(DEFAULT_PRODUCT_PAGE_SIZE);
+  });
+
+  it.each([
+    { category: 'dry-food' },
+    { pet: 'cat' },
+    { pet: 'dog', sort: 'price-asc' },
+    { minPrice: '0' },
+    { minPrice: '90000', maxPrice: '250000' },
+    { sort: 'price-desc', page: '4' },
+    { limit: String(MAX_PRODUCT_PAGE_SIZE) },
+    { page: String(Number.MAX_SAFE_INTEGER) },
+  ])('parses %o exactly as the API does', (raw) => {
+    // Whatever the API accepts, the page reads identically — same value, same
+    // defaults filled in. (Empty strings are the one deliberate exception and
+    // are covered above: the API coerces `?minPrice=` to 0, the page treats a
+    // cleared field as absent.)
+    expect(productListQuerySchema.safeParse(raw).success).toBe(true);
+    expect(parseShopQuery(raw)).toEqual(productListQuerySchema.parse(raw));
+  });
+
+  it.each([
+    { pet: 'lizard' },
+    { sort: 'cheapest' },
+    { page: '0' },
+    { page: '1e20' },
+    { limit: String(MAX_PRODUCT_PAGE_SIZE + 1) },
+    { minPrice: '-1' },
+    { maxPrice: '0' },
+  ])('falls back to the default where the API answers 400: %o', (raw) => {
+    expect(productListQuerySchema.safeParse(raw).success).toBe(false);
+    expect(parseShopQuery(raw)).toEqual(DEFAULT_SHOP_QUERY);
   });
 });
