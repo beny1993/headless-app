@@ -41,6 +41,24 @@ describe('quiz options', () => {
       expect(slugs).toContain(option.category);
     }
   });
+
+  it('maps each need to its intended category, not merely a real one', () => {
+    // Pinning the whole table, because "the slug exists" is too weak: swapping
+    // «مفاصل» from supplements to dry-food leaves every other assertion green
+    // and ships a button that quietly lands on the wrong shelf. Three of these
+    // six are also asserted through `quizFilters` below; the other three had
+    // no coverage at all.
+    expect(
+      Object.fromEntries(QUIZ_NEEDS.map((o) => [o.label, o.category])),
+    ).toEqual({
+      'پوست و مو': 'supplements',
+      گوارش: 'wet-food',
+      مفاصل: 'supplements',
+      'کنترل وزن': 'dry-food',
+      سرگرمی: 'toys',
+      آرامش: 'supplements',
+    });
+  });
 });
 
 describe('quizFilters', () => {
