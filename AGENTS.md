@@ -149,8 +149,11 @@ Four rules those two encode:
   against the original defect is worth nothing — both escapes here were already
   "covered". Run the revert, watch it fail, restore.
 - **Assert React's errors through `onRecoverableError`**, not a `console.error`
-  spy: React 19 routes recoverable hydration errors to `reportError`, which
-  happy-dom defines, so the spy silently observes nothing.
+  spy. React 19 hands a recoverable error to `reportError` where the environment
+  defines it and to `console.error` only otherwise. happy-dom does not define
+  `reportError` today, so a spy happens to work — and goes silently blind the
+  day happy-dom adds it, or the test runs anywhere that already has it. The
+  explicit callback does not depend on that fallback.
 - **Fake only the timers the component uses**
   (`vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })`). The full set
   hijacks React's own scheduling and is where flakiness comes from.
