@@ -155,7 +155,7 @@ export function CartDrawer({ className }: { className?: string }) {
                   className="hover:bg-secondary w-full rounded-xl py-3 text-sm font-semibold transition-colors"
                   data-umami-event="cart-continue-shopping"
                 >
-                  ادامه خرید
+                  بازگشت به فروشگاه
                 </button>
               </div>
             </>
