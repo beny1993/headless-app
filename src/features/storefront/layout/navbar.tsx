@@ -13,9 +13,10 @@ const iconButton =
  *
  * Two deliberate omissions from the design: the wishlist heart (wishlist is
  * backlog) and the «مجله» link (no magazine exists). The prototype's
- * transparent-over-dark-hero treatment is also left out — it only reads
- * correctly against the home hero, which story 6 ports; until then white nav
- * text on a cream page would be invisible. Ships solid.
+ * transparent-over-dark-hero treatment is also left out for good: it only
+ * reads on the home hero, and a bar that turns white-on-cream on every other
+ * page — or on the way back up a scrolled home page — is worth more than the
+ * one screen it flatters. The home hero sits below the bar instead.
  *
  * A server component: only the mobile menu and the cart drawer — which owns
  * the cart button and its badge — need client state.
