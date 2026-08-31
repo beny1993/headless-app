@@ -4,6 +4,15 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 import { apiError, formatZodIssues } from './envelope';
 
 /**
+ * The envelope's `message` is what a client shows a customer — `api-client.ts`
+ * rethrows it as the error a component renders — so it is Persian, like every
+ * other string the site displays. `errors` is the other half of the split:
+ * field paths and Zod's own text, for whoever is reading the response in a
+ * console, and it stays English like the rest of the identifiers.
+ */
+export const INVALID_INPUT_MESSAGE = 'ورودی نامعتبر است';
+
+/**
  * Factory for all API sub-routers. Installs a `defaultHook` so request-validation
  * failures return the standard `{ status: 'error', message, errors }` envelope at
  * HTTP 400 instead of Hono's built-in `{ success: false, error }` shape.
@@ -21,7 +30,7 @@ export const createRouter = <E extends Env = Env>() =>
     defaultHook: (result, c) => {
       if (!result.success) {
         return c.json(
-          apiError('Validation failed', formatZodIssues(result.error)),
+          apiError(INVALID_INPUT_MESSAGE, formatZodIssues(result.error)),
           400,
         );
       }

@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { API_PATHS } from '@/lib/constant/paths';
+import { API_PATHS, API_PRODUCT_DETAIL_TEMPLATE } from '@/lib/constant/paths';
 import { app } from './index';
+
+// The app reaches the catalog routes, which reach the DAOs: importing it now
+// imports `@/db`, which throws when APP_CONFIG_DATABASE_URL is unset. Nothing
+// here calls a route that queries, so a stub is enough to keep this suite
+// database-free — the catalog routes are exercised for real in
+// ./routes/catalog.integration.test.ts.
+vi.mock('@/db', () => ({ db: {} }));
 
 // Smoke test for the Next ↔ Hono bridge: the app must mount under /api and
 // answer through the standard envelope.
@@ -22,6 +29,41 @@ describe('hono app', () => {
     const doc = (await response.json()) as { paths: Record<string, unknown> };
     // Paths carry the /api base path — proof the app is mounted, not just built.
     expect(Object.keys(doc.paths)).toContain(API_PATHS.HEALTH);
+  });
+
+  it('documents every catalog route in the OpenAPI document', async () => {
+    // Scalar renders from this document: a route missing here is a route the
+    // storefront stories have to reverse-engineer from the handler.
+    const response = await app.request(API_PATHS.DOC);
+
+    const doc = (await response.json()) as { paths: Record<string, unknown> };
+    expect(Object.keys(doc.paths)).toEqual(
+      expect.arrayContaining([
+        API_PATHS.CATEGORIES,
+        API_PATHS.PRODUCTS,
+        API_PRODUCT_DETAIL_TEMPLATE,
+      ]),
+    );
+  });
+
+  it('describes the product list query parameters in the document', async () => {
+    const response = await app.request(API_PATHS.DOC);
+
+    const doc = (await response.json()) as {
+      paths: Record<string, { get: { parameters?: { name: string }[] } }>;
+    };
+    const names = (doc.paths[API_PATHS.PRODUCTS].get.parameters ?? []).map(
+      (parameter) => parameter.name,
+    );
+    expect(names.sort()).toEqual([
+      'category',
+      'limit',
+      'maxPrice',
+      'minPrice',
+      'page',
+      'pet',
+      'sort',
+    ]);
   });
 
   it('serves the Scalar reference page outside production', async () => {

@@ -97,8 +97,10 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
   });
 
   it('files products under the categories the storefront filters on', async () => {
-    const dryFood = await ProductDao.list({ categorySlug: 'dry-food' });
-    const dogs = await ProductDao.list({
+    const { items: dryFood } = await ProductDao.list({
+      categorySlug: 'dry-food',
+    });
+    const { items: dogs } = await ProductDao.list({
       categorySlug: 'dry-food',
       petType: 'dog',
     });
