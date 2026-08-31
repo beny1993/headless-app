@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -39,11 +40,19 @@ type Params = { params: Promise<{ slug: string }> };
  * `getBySlug` filters `is_active` itself, so a soft-deleted product arrives
  * here as `null` too — inactive stays indistinguishable from missing on this
  * side of the wire exactly as it is on the API's.
+ *
+ * Wrapped in React's `cache` because `generateMetadata` and the page component
+ * both need the same product: Next memoizes `fetch` across the two for free,
+ * but this reads through a DAO, and without the wrapper one page view runs the
+ * product query and its images query twice on two connections (measured). The
+ * cache is per-request, so it never serves one visitor's product to the next.
  */
-async function findProduct(slug: string): Promise<ProductWithImages | null> {
-  const parsed = productSlugSchema.safeParse(slug);
-  return parsed.success ? ProductDao.getBySlug(parsed.data) : null;
-}
+const findProduct = cache(
+  async (slug: string): Promise<ProductWithImages | null> => {
+    const parsed = productSlugSchema.safeParse(slug);
+    return parsed.success ? ProductDao.getBySlug(parsed.data) : null;
+  },
+);
 
 /**
  * No title at all when the product is missing, rather than a placeholder one:
