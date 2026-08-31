@@ -526,3 +526,23 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
     });
   });
 });
+
+// Regression: a null byte in the slug used to reach Postgres, which rejects
+// U+0000 in text parameters - the driver threw and the route answered 500.
+// Stripped at the schema, the lookup now misses like any absent slug.
+describe('GET /api/products/{slug} - null byte regression', () => {
+  it('answers 404, not 500, for a slug carrying a null byte', async () => {
+    const response = await app.request('/api/products/abc%00def');
+    expect(response.status).toBe(404);
+  });
+
+  it('answers an empty listing, not 500, for a category carrying one', async () => {
+    const response = await app.request('/api/products?category=abc%00def');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { items: unknown[]; total: number };
+    };
+    expect(body.data.items).toEqual([]);
+    expect(body.data.total).toBe(0);
+  });
+});

@@ -202,3 +202,28 @@ describe('GET /api/products/{slug} — generated documentation', () => {
     );
   });
 });
+
+// A null byte is the one character Postgres refuses inside a text parameter -
+// the driver throws and an unhandled throw answers 500. The schemas strip it,
+// so such input reads as text that simply matches nothing (404 for a slug, an
+// empty listing for a filter) instead of a server error. Pure schema tests
+// here; the end-to-end 404 lives in ./catalog.integration.test.ts.
+// NUL is built with String.fromCharCode so no literal control byte sits in
+// this source file.
+const NUL = String.fromCharCode(0);
+
+describe('null bytes in text inputs', () => {
+  it('strips U+0000 from a slug so the lookup misses instead of throwing', async () => {
+    const { productSlugSchema } = await import('@/lib/catalog/product-query');
+    expect(productSlugSchema.parse(`abc${NUL}def`)).toBe('abcdef');
+    expect(productSlugSchema.parse(NUL)).toBe('');
+  });
+
+  it('strips U+0000 from the category filter', async () => {
+    const { productListQuerySchema } =
+      await import('@/lib/catalog/product-query');
+    expect(
+      productListQuerySchema.parse({ category: `a${NUL}b` }).category,
+    ).toBe('ab');
+  });
+});
