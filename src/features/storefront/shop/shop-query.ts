@@ -116,6 +116,15 @@ function readText(params: ShopSearchParams, key: string): string | undefined {
  * `limit=500` instead of answering with 48, because answering hides the
  * caller's bug behind a plausible-looking page. Falling back to the default is
  * the same refusal in a form a page can still render.
+ *
+ * `isSafeInteger`, not `isInteger`, and that is load-bearing rather than
+ * fussy. `Number.isInteger(1e20)` is `true`, so `?page=1e20` used to parse and
+ * reach Postgres as `OFFSET 1.2e+21` — past `bigint`, a failed query and a 500
+ * on a page whose whole contract is that it never 500s. Prices go the same way
+ * (`price` is a `bigint` column) and `1e21` does not even stringify as digits.
+ * Above 2^53 the value is a lie anyway: `9007199254740993` parses as
+ * `…92`. Zod 4's `.int()` draws the line in the same place, so this keeps the
+ * page's tolerance no looser than the API contract it mirrors.
  */
 function readInt(
   params: ShopSearchParams,
@@ -126,7 +135,7 @@ function readInt(
   if (!raw) return undefined;
 
   const value = Number(raw);
-  if (!Number.isInteger(value)) return undefined;
+  if (!Number.isSafeInteger(value)) return undefined;
   if (value < min) return undefined;
   if (max !== undefined && value > max) return undefined;
 

@@ -207,6 +207,55 @@ describe('parseShopQuery', () => {
     });
   });
 
+  // Every numeric parameter ends up in a Postgres `bigint` — `page` as the
+  // `OFFSET` multiplied by the limit, the bounds compared against the `price`
+  // column. `Number.isInteger(1e20)` is `true`, so these used to parse, reach
+  // the DAO and fail the query: `?page=1e20` was a 500 on the one page whose
+  // documented contract is that no URL can 500 it. Above 2^53 the number is
+  // not even itself any more, so the only honest answer is "not a number I
+  // accept" — the same line Zod 4's `.int()` draws for the API.
+  describe('numbers too large to be real', () => {
+    it('drops an exponent-notation page instead of 500ing on the offset', () => {
+      expect(parseShopQuery({ page: '1e20' }).page).toBe(
+        DEFAULT_SHOP_QUERY.page,
+      );
+      expect(parseShopQuery({ page: '1e21' }).page).toBe(
+        DEFAULT_SHOP_QUERY.page,
+      );
+    });
+
+    it('drops a page written out past the safe range', () => {
+      expect(parseShopQuery({ page: '100000000000000000000' }).page).toBe(
+        DEFAULT_SHOP_QUERY.page,
+      );
+    });
+
+    it('drops price bounds past what a bigint column can hold', () => {
+      expect(
+        parseShopQuery({ minPrice: '100000000000000000000' }).minPrice,
+      ).toBeUndefined();
+      // Stringifies as `1e+21`, which is not even valid bigint input syntax.
+      expect(parseShopQuery({ maxPrice: '1e21' }).maxPrice).toBeUndefined();
+    });
+
+    it('drops a value that would silently lose precision', () => {
+      // `Number('9007199254740993')` is 9007199254740992 — answering with a
+      // bound the shopper did not ask for is worse than answering with none.
+      expect(
+        parseShopQuery({ minPrice: '9007199254740993' }).minPrice,
+      ).toBeUndefined();
+    });
+
+    it('still keeps the largest value that survives the round trip', () => {
+      expect(parseShopQuery({ page: '9007199254740991' }).page).toBe(
+        Number.MAX_SAFE_INTEGER,
+      );
+      expect(parseShopQuery({ minPrice: '9007199254740991' }).minPrice).toBe(
+        Number.MAX_SAFE_INTEGER,
+      );
+    });
+  });
+
   describe('repeated parameters', () => {
     it('takes the first value, as URLSearchParams.get does', () => {
       expect(parseShopQuery({ pet: ['cat', 'dog'] }).pet).toBe('cat');
