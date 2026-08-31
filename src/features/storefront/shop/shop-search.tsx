@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { buildShopHref, updateShopQuery, type ShopQuery } from './shop-query';
+import { MAX_SEARCH_TERM_LENGTH } from '@/lib/catalog/product-query';
 import { cn } from '@/lib/utils';
 
 /**
@@ -104,6 +105,13 @@ export function ShopSearch({ query }: { query: ShopQuery }) {
           value={term}
           onChange={(event) => setTerm(event.target.value)}
           placeholder="جستجو بین محصولات…"
+          // The API's own cap, enforced by the browser so the box can never
+          // hold a term the page would then throw away. Without it the two
+          // halves of this component turn on each other: an over-long term is
+          // pushed, `/shop` degrades an invalid parameter to an absent one, and
+          // the re-sync above — correctly seeing a URL that disagrees with what
+          // it last pushed — wipes what the shopper is still typing.
+          maxLength={MAX_SEARCH_TERM_LENGTH}
           // `type="search"` brings the browser's own clear button, and clearing
           // it fires `change` like any other edit — so the box empties, the
           // debounce runs, and the URL loses its `q`.
