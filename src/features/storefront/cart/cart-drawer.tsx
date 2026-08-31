@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils';
  */
 export function CartDrawer({ className }: { className?: string }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
 
   // The server has no cart, so the first paint is a hidden badge and the real
@@ -97,6 +98,7 @@ export function CartDrawer({ className }: { className?: string }) {
               سبد خرید (<span className="nums">{formatNumber(count)}</span>)
             </p>
             <button
+              ref={closeButtonRef}
               type="button"
               onClick={close}
               className="hover:bg-secondary flex size-10 items-center justify-center rounded-full transition-colors"
@@ -113,7 +115,16 @@ export function CartDrawer({ className }: { className?: string }) {
             <>
               <div className="flex-1 space-y-4 overflow-y-auto p-5">
                 {lines.map((line) => (
-                  <CartLineRow key={line.productId} line={line} />
+                  <CartLineRow
+                    key={line.productId}
+                    line={line}
+                    // A removed row takes the button that was clicked with it,
+                    // and the browser parks focus on <body> — outside the
+                    // dialog, where Tab restarts from the top and the Escape
+                    // handler below no longer receives the keydown. Hand focus
+                    // to the one control that is always here.
+                    onRemoved={() => closeButtonRef.current?.focus()}
+                  />
                 ))}
               </div>
 
@@ -179,7 +190,13 @@ function EmptyCart({ onNavigate }: { onNavigate: () => void }) {
   );
 }
 
-function CartLineRow({ line }: { line: CartLine }) {
+function CartLineRow({
+  line,
+  onRemoved,
+}: {
+  line: CartLine;
+  onRemoved: () => void;
+}) {
   const atMax = line.qty >= MAX_LINE_QTY;
 
   return (
@@ -222,7 +239,10 @@ function CartLineRow({ line }: { line: CartLine }) {
         )}
         <button
           type="button"
-          onClick={() => removeFromCart(line.productId)}
+          onClick={() => {
+            removeFromCart(line.productId);
+            onRemoved();
+          }}
           className="text-destructive -mx-1 mt-1.5 flex items-center gap-1 px-1 py-1.5 text-xs hover:underline"
           aria-label={`حذف ${line.title} از سبد خرید`}
           data-umami-event="cart-line-remove"
@@ -234,9 +254,16 @@ function CartLineRow({ line }: { line: CartLine }) {
       <div className="flex flex-col items-center gap-1">
         <button
           type="button"
-          onClick={() => setLineQty(line.productId, line.qty + 1)}
-          disabled={atMax}
-          className="bg-primary text-primary-foreground flex size-10 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => {
+            if (!atMax) setLineQty(line.productId, line.qty + 1);
+          }}
+          // `aria-disabled`, not `disabled`: the cap is reached by pressing
+          // this very button, and a `disabled` attribute lands on the element
+          // that currently has focus — the browser then drops focus to <body>,
+          // outside the dialog. Announced the same, still focusable, inert
+          // through the guard above.
+          aria-disabled={atMax}
+          className="bg-primary text-primary-foreground flex size-10 items-center justify-center rounded-full transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
           aria-label={`افزایش تعداد ${line.title}`}
           data-umami-event="cart-line-increase"
         >
@@ -249,7 +276,11 @@ function CartLineRow({ line }: { line: CartLine }) {
           type="button"
           // At one this removes the line, which is the design's behaviour —
           // the «حذف» button above is the discoverable way to do the same.
-          onClick={() => setLineQty(line.productId, line.qty - 1)}
+          // Removing takes this button with it, so focus has to be handed on.
+          onClick={() => {
+            setLineQty(line.productId, line.qty - 1);
+            if (line.qty <= 1) onRemoved();
+          }}
           className="border-border hover:bg-secondary flex size-10 items-center justify-center rounded-full border transition-colors"
           aria-label={`کاهش تعداد ${line.title}`}
           data-umami-event="cart-line-decrease"
