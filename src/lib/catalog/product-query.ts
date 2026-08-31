@@ -84,3 +84,21 @@ export const productListQueryShape = {
 export const productListQuerySchema = z.object(productListQueryShape);
 
 export type ProductListQuery = z.infer<typeof productListQuerySchema>;
+
+/**
+ * One product's identifier in a URL, for `GET /api/products/{slug}` and for the
+ * storefront's `/product/[slug]` page — the two places a visitor-supplied slug
+ * crosses into the catalog.
+ *
+ * Here rather than in the route for the same reason as everything above it: the
+ * page is app code that must not import the Hono router, and a second
+ * hand-written `z.string().min(1)` on the page is precisely the mirror the
+ * always-zod rule forbids. The API rejects a failure with 400; the page degrades
+ * it to its 404, because a page has no envelope to complain through.
+ *
+ * No charset rule on purpose. Only `products.slug` decides what exists, and a
+ * slug shaped unlike our own must answer "no such product", not "bad request" —
+ * the two are the same answer to a visitor and one of them leaks that the
+ * catalog cares.
+ */
+export const productSlugSchema = z.string().min(1);

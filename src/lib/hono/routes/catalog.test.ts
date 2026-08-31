@@ -13,7 +13,7 @@ import {
   PET_TYPES,
   PRODUCT_SORTS,
 } from '@/lib/catalog/product-query';
-import { API_PATHS } from '@/lib/constant/paths';
+import { API_PATHS, API_PRODUCT_DETAIL_TEMPLATE } from '@/lib/constant/paths';
 import type { ApiError } from '@/lib/hono/envelope';
 
 vi.mock('@/db', () => ({ db: {} }));
@@ -176,5 +176,29 @@ describe('GET /api/products — generated documentation', () => {
     expect(params.get('pet')?.schema).toMatchObject({
       enum: Object.values(PET_TYPES),
     });
+  });
+});
+
+// The detail route's path parameter is derived from `productSlugSchema`, which
+// the storefront's product page validates the same visitor input with. The
+// derivation goes through `.meta()` for the reason above, and a `.meta()` the
+// generator stops reading would drop the parameter from the document without
+// failing a single request test.
+describe('GET /api/products/{slug} — generated documentation', () => {
+  it('documents the slug path parameter, bounds included', async () => {
+    const doc = (await (await app.request(API_PATHS.DOC)).json()) as {
+      paths: Record<string, { get: { parameters: Record<string, unknown>[] } }>;
+    };
+
+    expect(
+      doc.paths[API_PRODUCT_DETAIL_TEMPLATE].get.parameters,
+    ).toContainEqual(
+      expect.objectContaining({
+        name: 'slug',
+        in: 'path',
+        required: true,
+        schema: expect.objectContaining({ type: 'string', minLength: 1 }),
+      }),
+    );
   });
 });
