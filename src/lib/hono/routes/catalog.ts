@@ -105,16 +105,24 @@ const ProductListQuerySchema = z.object({
     ])
     .default(PRODUCT_SORTS.NEWEST)
     .openapi({ description: 'Ordering. Defaults to newest first.' }),
+  // Zero is a real floor — "no lower bound" — so `nonnegative`, and an empty
+  // `?minPrice=` coercing to it is the same harmless no-op.
   minPrice: z.coerce
     .number()
     .int()
     .nonnegative()
     .optional()
     .openapi({ description: 'Inclusive lower bound, integer Toman.' }),
+  // `positive`, not `nonnegative`, and the asymmetry is deliberate. `price > 0`
+  // is a CHECK constraint, so `maxPrice=0` cannot match a single product — and
+  // `z.coerce.number()` reads `Number('')` as 0, which made the `?maxPrice=` an
+  // empty filter field leaves behind answer with an empty shop under a perfectly
+  // good 200. Rejecting the bound that can only ever match nothing turns that
+  // silent emptiness into the 400 it always was.
   maxPrice: z.coerce
     .number()
     .int()
-    .nonnegative()
+    .positive()
     .optional()
     .openapi({ description: 'Inclusive upper bound, integer Toman.' }),
   page: z.coerce
