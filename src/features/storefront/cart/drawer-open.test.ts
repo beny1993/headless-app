@@ -49,6 +49,48 @@ describe('the cart drawer open signal', () => {
     unsubscribeSecond();
   });
 
+  // The point of a listener set rather than a single slot: nothing here caps
+  // the number of mounted drawers, so every live one has to be told. Without
+  // this, notifying only the first subscriber passes every other test in the
+  // file.
+  it('notifies every live subscriber', () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const unsubscribeFirst = subscribeToCartDrawer(first);
+    const unsubscribeSecond = subscribeToCartDrawer(second);
+
+    openCartDrawer();
+
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
+    unsubscribeFirst();
+    unsubscribeSecond();
+  });
+
+  // One call notifies the drawers subscribed when it started, and no others.
+  // A `Set` iterated live would hand a listener added mid-notify to the same
+  // pass — a drawer that resubscribes while opening would then open twice.
+  it('does not notify a listener subscribed during the same open', () => {
+    const late = vi.fn();
+    let unsubscribeLate = () => {};
+    const resubscribing = vi.fn(() => {
+      unsubscribeLate = subscribeToCartDrawer(late);
+    });
+    const unsubscribe = subscribeToCartDrawer(resubscribing);
+
+    openCartDrawer();
+
+    expect(resubscribing).toHaveBeenCalledTimes(1);
+    expect(late).not.toHaveBeenCalled();
+
+    // It is subscribed, just not for the pass that added it: the next open
+    // reaches it.
+    unsubscribe();
+    openCartDrawer();
+    expect(late).toHaveBeenCalledTimes(1);
+    unsubscribeLate();
+  });
+
   // The page renders its add button whether or not a drawer is mounted; a
   // shopper pressing it must never meet an exception because of that.
   it('is a no-op when no drawer is listening', () => {

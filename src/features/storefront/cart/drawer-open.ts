@@ -22,8 +22,12 @@ const listeners = new Set<() => void>();
 
 /** Opens the cart drawer, if one is mounted. Safe to call during SSR. */
 export function openCartDrawer(): void {
-  // Copied before iterating: a listener that unsubscribes while being notified
-  // would otherwise mutate the set mid-iteration.
+  // Copied before iterating so one call notifies exactly the drawers that were
+  // subscribed when it started. Unsubscribing mid-notify would be safe without
+  // the copy — deleting from a `Set` being iterated is well-defined and the
+  // remaining listeners still run — but *subscribing* mid-notify is not: a live
+  // `Set` hands the newly added listener to the same pass, so a drawer that
+  // resubscribed while opening would be opened twice, or forever.
   for (const listener of [...listeners]) listener();
 }
 
