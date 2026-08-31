@@ -13,7 +13,7 @@ import {
   PET_TYPES,
   PRODUCT_SORTS,
 } from '@/lib/catalog/product-query';
-import { API_PATHS } from '@/lib/constant/paths';
+import { API_PATHS, API_PRODUCT_DETAIL_TEMPLATE } from '@/lib/constant/paths';
 import type { ApiError } from '@/lib/hono/envelope';
 
 vi.mock('@/db', () => ({ db: {} }));
@@ -176,5 +176,54 @@ describe('GET /api/products — generated documentation', () => {
     expect(params.get('pet')?.schema).toMatchObject({
       enum: Object.values(PET_TYPES),
     });
+  });
+});
+
+// The detail route's path parameter is derived from `productSlugSchema`, which
+// the storefront's product page validates the same visitor input with. The
+// derivation goes through `.meta()` for the reason above, and a `.meta()` the
+// generator stops reading would drop the parameter from the document without
+// failing a single request test.
+describe('GET /api/products/{slug} — generated documentation', () => {
+  it('documents the slug path parameter, bounds included', async () => {
+    const doc = (await (await app.request(API_PATHS.DOC)).json()) as {
+      paths: Record<string, { get: { parameters: Record<string, unknown>[] } }>;
+    };
+
+    expect(
+      doc.paths[API_PRODUCT_DETAIL_TEMPLATE].get.parameters,
+    ).toContainEqual(
+      expect.objectContaining({
+        name: 'slug',
+        in: 'path',
+        required: true,
+        schema: expect.objectContaining({ type: 'string', minLength: 1 }),
+      }),
+    );
+  });
+});
+
+// A null byte is the one character Postgres refuses inside a text parameter -
+// the driver throws and an unhandled throw answers 500. The schemas strip it,
+// so such input reads as text that simply matches nothing (404 for a slug, an
+// empty listing for a filter) instead of a server error. Pure schema tests
+// here; the end-to-end 404 lives in ./catalog.integration.test.ts.
+// NUL is built with String.fromCharCode so no literal control byte sits in
+// this source file.
+const NUL = String.fromCharCode(0);
+
+describe('null bytes in text inputs', () => {
+  it('strips U+0000 from a slug so the lookup misses instead of throwing', async () => {
+    const { productSlugSchema } = await import('@/lib/catalog/product-query');
+    expect(productSlugSchema.parse(`abc${NUL}def`)).toBe('abcdef');
+    expect(productSlugSchema.parse(NUL)).toBe('');
+  });
+
+  it('strips U+0000 from the category filter', async () => {
+    const { productListQuerySchema } =
+      await import('@/lib/catalog/product-query');
+    expect(
+      productListQuerySchema.parse({ category: `a${NUL}b` }).category,
+    ).toBe('ab');
   });
 });

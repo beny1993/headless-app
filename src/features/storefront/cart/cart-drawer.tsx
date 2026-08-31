@@ -1,8 +1,15 @@
 'use client';
 
-import { useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import Link from 'next/link';
 import { Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react';
+import { subscribeToCartDrawer } from './drawer-open';
 import {
   MAX_LINE_QTY,
   cartCount,
@@ -51,14 +58,26 @@ export function CartDrawer({ className }: { className?: string }) {
     setOpen(false);
   };
 
+  // Both halves, always — the DOM call and the `open` mirror — for the same
+  // reason `close` does them together. Stable identity so the subscription
+  // below is set up once rather than on every cart change.
+  const show = useCallback(() => {
+    // `showModal()` on an already-open dialog throws InvalidStateError, and
+    // that is reachable: adding to the cart while the drawer is open.
+    if (!dialogRef.current?.open) dialogRef.current?.showModal();
+    setOpen(true);
+  }, []);
+
+  // Opening from elsewhere on the site — the product page's add button, which
+  // is in a different branch of the tree entirely. See ./drawer-open.ts for
+  // why that is a listener and not a context or a window global.
+  useEffect(() => subscribeToCartDrawer(show), [show]);
+
   return (
     <>
       <button
         type="button"
-        onClick={() => {
-          dialogRef.current?.showModal();
-          setOpen(true);
-        }}
+        onClick={show}
         className={cn('relative', className)}
         aria-label={`سبد خرید (${formatNumber(count)} کالا)`}
         aria-expanded={open}

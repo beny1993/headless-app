@@ -18,6 +18,7 @@ import {
   MAX_PRODUCT_PAGE_SIZE,
   PET_TYPES,
   productListQueryShape,
+  productSlugSchema,
 } from '@/lib/catalog/product-query';
 import { type Category, type ProductWithImages } from '@/db/schema/catalog';
 import {
@@ -127,11 +128,17 @@ const ProductListQuerySchema = z.object({
   }),
 });
 
+/**
+ * Derived from the shared slug schema, not restated — the storefront's product
+ * page validates the same visitor input with the same schema. `.meta()` rather
+ * than `.openapi()` for the reason spelled out above `ProductListQuerySchema`:
+ * a schema built in another module may not carry `.openapi()` at all.
+ */
 const ProductSlugParamSchema = z.object({
-  slug: z
-    .string()
-    .min(1)
-    .openapi({ param: { name: 'slug', in: 'path' }, example: 'cat-dry-food' }),
+  slug: productSlugSchema.meta({
+    param: { name: 'slug', in: 'path' },
+    example: 'cat-dry-food',
+  }),
 });
 
 /** The catalog payloads the storefront renders. Import these, don't restate them. */

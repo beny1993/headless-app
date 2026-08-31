@@ -526,3 +526,28 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
     });
   });
 });
+
+// Regression: a null byte in the slug used to reach Postgres, which rejects
+// U+0000 in text parameters - the driver threw and the route answered 500.
+// Stripped at the schema, the lookup now misses like any absent slug.
+//
+// Guarded like every suite in this file: `app` comes from `importWithDb`, which
+// hands back `{}` when there is no database, so an unguarded block here fails
+// `pnpm test` on a machine with no Docker instead of skipping. The schema-level
+// half of this regression runs without a database in ./catalog.test.ts.
+describe.skipIf(!databaseReachable)('null bytes in text inputs', () => {
+  it('answers 404, not 500, for a slug carrying a null byte', async () => {
+    const response = await app.request('/api/products/abc%00def');
+    expect(response.status).toBe(404);
+  });
+
+  it('answers an empty listing, not 500, for a category carrying one', async () => {
+    const response = await app.request('/api/products?category=abc%00def');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { items: unknown[]; total: number };
+    };
+    expect(body.data.items).toEqual([]);
+    expect(body.data.total).toBe(0);
+  });
+});

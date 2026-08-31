@@ -38,6 +38,22 @@ export const DEFAULT_PRODUCT_PAGE_SIZE = 12;
 export const MAX_PRODUCT_PAGE_SIZE = 48;
 
 /**
+ * Postgres rejects U+0000 inside a text parameter, so a null byte reaching a
+ * query throws in the `pg` driver — and an unhandled throw answers 500. A
+ * visitor-supplied null byte must instead behave as text that matches nothing:
+ * stripped here, the lookup simply misses and answers like any other absent
+ * row (404 for a slug, an empty listing for a filter). Stripping rather than
+ * rejecting preserves the no-charset-rule stance on `productSlugSchema` below.
+ *
+ * It runs after `.min(1)`, so a value made of nothing but null bytes passes the
+ * length check and strips to `''`. Both fields stay safe: `''` is ordinary text
+ * to Postgres, so a slug lookup for it misses rather than throwing, and the DAO
+ * reads an empty `categorySlug` as no category filter at all — the unfiltered
+ * listing an absent parameter gets, not the empty one a wrong slug gets.
+ */
+const stripNullBytes = (value: string) => value.replaceAll('\u0000', '');
+
+/**
  * The query's fields, one schema each.
  *
  * Exported as the shape rather than only as the assembled object because both
@@ -46,7 +62,7 @@ export const MAX_PRODUCT_PAGE_SIZE = 48;
  * that a bad value degrades to an absent value instead of throwing.
  */
 export const productListQueryShape = {
-  category: z.string().min(1).optional(),
+  category: z.string().min(1).transform(stripNullBytes).optional(),
   pet: z.enum([PET_TYPES.CAT, PET_TYPES.DOG]).optional(),
   sort: z
     .enum([
@@ -84,3 +100,21 @@ export const productListQueryShape = {
 export const productListQuerySchema = z.object(productListQueryShape);
 
 export type ProductListQuery = z.infer<typeof productListQuerySchema>;
+
+/**
+ * One product's identifier in a URL, for `GET /api/products/{slug}` and for the
+ * storefront's `/product/[slug]` page — the two places a visitor-supplied slug
+ * crosses into the catalog.
+ *
+ * Here rather than in the route for the same reason as everything above it: the
+ * page is app code that must not import the Hono router, and a second
+ * hand-written `z.string().min(1)` on the page is precisely the mirror the
+ * always-zod rule forbids. The API rejects a failure with 400; the page degrades
+ * it to its 404, because a page has no envelope to complain through.
+ *
+ * No charset rule on purpose. Only `products.slug` decides what exists, and a
+ * slug shaped unlike our own must answer "no such product", not "bad request" —
+ * the two are the same answer to a visitor and one of them leaks that the
+ * catalog cares.
+ */
+export const productSlugSchema = z.string().min(1).transform(stripNullBytes);
