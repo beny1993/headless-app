@@ -113,7 +113,16 @@ export function addLine(
   input: CartLineInput,
   qty = 1,
 ): CartLine[] {
-  if (qty < 1) return [...lines];
+  // `NaN < 1` is false, so a plain `qty < 1` lets `Number(<empty field>)`
+  // through and puts a NaN quantity in the cart, where `cartCount` and
+  // `BigInt` both blow up at render time.
+  if (!Number.isFinite(qty) || qty < 1) return [...lines];
+  // The same guard the stored cart is read through: a line that could not
+  // survive a reload must not be shown before one either. A fractional or
+  // out-of-safe-range price passes silently into the cart and then throws in
+  // `lineTotal`/`formatToman`, which is the one thing this module promises
+  // not to do.
+  if (!isCartLine({ ...input, qty: 1 })) return [...lines];
 
   const existing = lines.find((line) => line.productId === input.productId);
   if (!existing) return [...lines, { ...input, qty: clampQty(qty) }];
@@ -131,6 +140,10 @@ export function setQty(
   productId: string,
   qty: number,
 ): CartLine[] {
+  // A quantity that is not a number at all is a caller bug, not an intent to
+  // remove: dropping the line there would turn a stray `Number('')` into
+  // silent data loss. Nothing changes instead.
+  if (!Number.isFinite(qty)) return [...lines];
   if (qty < 1) return removeLine(lines, productId);
 
   return lines.map((line) =>

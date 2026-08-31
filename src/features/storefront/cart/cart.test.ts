@@ -148,6 +148,34 @@ describe('addLine', () => {
     expect(addLine([line(TOY, 1)], DRY_FOOD, -2)).toEqual([line(TOY, 1)]);
   });
 
+  // `NaN < 1` is false, so the non-positive guard alone lets a NaN through.
+  // A NaN quantity is not a wrong number on screen, it is a crash: `cartCount`
+  // returns NaN, and both `formatNumber` and `BigInt` throw on it.
+  it('ignores a quantity that is not a finite number', () => {
+    for (const qty of [Number.NaN, Number.POSITIVE_INFINITY, -Infinity]) {
+      expect(addLine([line(TOY, 1)], DRY_FOOD, qty)).toEqual([line(TOY, 1)]);
+    }
+  });
+
+  // The write path has to reject exactly what `parseCart` rejects, or a line
+  // renders once, throws in `formatToman`, and is gone after a reload.
+  it('refuses a product whose price is not a whole positive Toman amount', () => {
+    for (const unitPrice of [1999.5, 0, -500]) {
+      expect(addLine([], { ...DRY_FOOD, unitPrice })).toEqual([]);
+    }
+  });
+
+  it('refuses a product priced beyond the safe integer range', () => {
+    const unitPrice = Number.MAX_SAFE_INTEGER + 2;
+
+    expect(addLine([], { ...DRY_FOOD, unitPrice })).toEqual([]);
+  });
+
+  it('refuses a product missing an identifying field', () => {
+    expect(addLine([], { ...DRY_FOOD, title: '' })).toEqual([]);
+    expect(addLine([], { ...DRY_FOOD, sku: '' })).toEqual([]);
+  });
+
   it('appends after the products already in the cart', () => {
     const lines = addLine([line(DRY_FOOD, 1)], TOY);
 
@@ -199,6 +227,17 @@ describe('setQty', () => {
     expect(setQty([line(DRY_FOOD, 1)], DRY_FOOD.productId, 2.9)[0]?.qty).toBe(
       2,
     );
+  });
+
+  // Not treated as "below one, so remove": a stray `Number('')` from a caller
+  // must not silently empty a shopper's line. It also must not be stored — a
+  // NaN quantity throws in `cartCount` and `BigInt` on the next render.
+  it('leaves the line alone for a quantity that is not a finite number', () => {
+    const before = [line(DRY_FOOD, 3)];
+
+    for (const qty of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(setQty(before, DRY_FOOD.productId, qty)).toEqual(before);
+    }
   });
 
   it('leaves the cart untouched for an unknown product', () => {
