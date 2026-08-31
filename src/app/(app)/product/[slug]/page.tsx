@@ -45,11 +45,17 @@ async function findProduct(slug: string): Promise<ProductWithImages | null> {
   return parsed.success ? ProductDao.getBySlug(parsed.data) : null;
 }
 
+/**
+ * No title at all when the product is missing, rather than a placeholder one:
+ * this route is about to render the 404 page, and `not-found.tsx` sets «صفحه
+ * پیدا نشد» itself. A fallback here would win over it and label a 404 as a
+ * product page in the tab and in every link preview of it.
+ */
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
   const product = await findProduct(slug);
 
-  return { title: product?.title ?? 'محصول' };
+  return product ? { title: product.title } : {};
 }
 
 export default async function ProductDetailPage({ params }: Params) {

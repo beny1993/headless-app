@@ -252,12 +252,14 @@ describe.skipIf(!databaseReachable)('the product page', () => {
       });
     });
 
-    it('titles the document generically for a missing product', async () => {
+    // The 404 page owns the title here. Anything this route returns would win
+    // over it and label the not-found page as a product.
+    it('claims no title for a missing product', async () => {
       const metadata = await page.generateMetadata({
         params: Promise.resolve({ slug: 'nothing-here-at-all' }),
       });
 
-      expect(metadata.title).toBeTruthy();
+      expect(metadata.title).toBeUndefined();
     });
   });
 });
