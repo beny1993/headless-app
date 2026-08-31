@@ -6,6 +6,7 @@ export const PATHS = {
   SHOP: '/shop',
   ABOUT: '/about',
   ACCOUNT: '/account',
+  CHECKOUT: '/checkout',
 } as const;
 
 export const AUTH_PATHS = {
