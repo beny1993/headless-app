@@ -1,0 +1,76 @@
+import Image from 'next/image';
+import Link from 'next/link';
+import { ChevronLeft } from 'lucide-react';
+import { CATEGORY_IMAGES } from './content';
+import { shopPath } from '@/lib/constant/paths';
+
+export type CategoryTile = { title: string; slug: string };
+
+/**
+ * The category strip. Titles and slugs come from the database, so a category
+ * added in the admin panel appears here without a code change; only the
+ * photography is bundled, and a category with no photo falls back to a plain
+ * surface rather than a broken image.
+ *
+ * Real `<Link>`s, not clickable `<div>`s (design review) — keyboard-reachable,
+ * cmd-clickable, and crawlable.
+ */
+export function CategoriesSection({
+  categories,
+}: {
+  categories: CategoryTile[];
+}) {
+  if (categories.length === 0) return null;
+
+  return (
+    <section className="py-24">
+      <div className="mx-auto max-w-7xl px-4 sm:px-8">
+        <div className="mb-12 flex items-end justify-between gap-4">
+          <Link
+            href={shopPath()}
+            className="text-accent-strong flex items-center gap-1 text-sm font-medium hover:underline"
+            data-umami-event="home-categories-all-click"
+          >
+            {/* In RTL the "forward" chevron points left. */}
+            <ChevronLeft size={14} aria-hidden="true" />
+            همه دسته‌بندی‌ها
+          </Link>
+          <h2 className="text-4xl font-black">فروشگاه</h2>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+          {categories.map((category, index) => {
+            const image = CATEGORY_IMAGES[category.slug];
+            // The first and fourth tiles run tall, as in the design's mosaic.
+            const tall = index === 0 || index === 3;
+
+            return (
+              <Link
+                key={category.slug}
+                href={shopPath({ category: category.slug })}
+                className={`group bg-secondary relative block min-h-40 overflow-hidden rounded-2xl ${
+                  tall ? 'row-span-2' : ''
+                }`}
+                data-umami-event="home-category-click"
+              >
+                {image && (
+                  <Image
+                    src={image}
+                    alt=""
+                    fill
+                    sizes="(min-width: 768px) 33vw, 50vw"
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                )}
+                <div className="absolute inset-0 bg-black/40 transition-colors group-hover:bg-black/30" />
+                <h3 className="absolute end-4 bottom-4 text-xl font-black text-white">
+                  {category.title}
+                </h3>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
