@@ -8,6 +8,7 @@ import {
   cartCount,
   cartTotal,
   getCart,
+  getServerCart,
   lineTotal,
   removeFromCart,
   setLineQty,
@@ -35,10 +36,10 @@ export function CartDrawer({ className }: { className?: string }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
 
-  // The server has no cart, so `getCart` serves as the server snapshot too: it
-  // returns the same frozen empty cart there, the badge renders hidden, and
-  // hydration fills in the real count. Reference stability is the store's job.
-  const lines = useSyncExternalStore(subscribe, getCart, getCart);
+  // The server has no cart, so the first paint is a hidden badge and the real
+  // one arrives on the render right after hydration. `getServerCart` is a
+  // separate function on purpose — see its comment.
+  const lines = useSyncExternalStore(subscribe, getCart, getServerCart);
   const count = cartCount(lines);
 
   // The DOM call and the `open` mirror that drives aria-expanded must move

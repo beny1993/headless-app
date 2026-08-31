@@ -193,6 +193,20 @@ export function getCart(): readonly CartLine[] {
   return cache;
 }
 
+/**
+ * The cart React hydrates from — always empty, deliberately.
+ *
+ * `getCart` cannot serve this role even though it is empty on the server:
+ * React calls the server snapshot a second time *on the client*, for the
+ * hydrating render, and there `window` and a populated localStorage both
+ * exist. A returning shopper would hydrate a badge the server never rendered,
+ * which React rejects as a hydration failure. The stored cart arrives on the
+ * re-render immediately after.
+ */
+export function getServerCart(): readonly CartLine[] {
+  return EMPTY;
+}
+
 function commit(next: readonly CartLine[]) {
   // In-memory first, storage second: when the write is refused the shopper
   // still gets a cart for this session instead of a dead button.

@@ -360,6 +360,25 @@ describe('the stored cart', () => {
     expect(cart.getCart()).not.toBe(before);
   });
 
+  // React calls `getServerSnapshot` twice: once on the server, and again on
+  // the client for the hydrating render — where `window` and a populated
+  // localStorage both exist. Returning the stored cart there paints a badge
+  // the server's HTML does not have, which is a hydration failure, so this
+  // snapshot must stay empty no matter what is in storage.
+  it('hydrates from an empty cart even when storage already holds lines', async () => {
+    const cart = await freshCart();
+    cart.addToCart(DRY_FOOD, 2);
+
+    expect(cart.getServerCart()).toEqual([]);
+    expect(cart.getCart()).toHaveLength(1);
+  });
+
+  it('gives React the same empty cart to hydrate from every time', async () => {
+    const cart = await freshCart();
+
+    expect(cart.getServerCart()).toBe(cart.getServerCart());
+  });
+
   it('keeps working when storage refuses to write', async () => {
     const cart = await freshCart();
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
