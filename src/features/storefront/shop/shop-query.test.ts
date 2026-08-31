@@ -12,6 +12,7 @@ import {
 import {
   DEFAULT_PRODUCT_PAGE_SIZE,
   MAX_PRODUCT_PAGE_SIZE,
+  MAX_SEARCH_TERM_LENGTH,
   productListQuerySchema,
 } from '@/lib/catalog/product-query';
 
@@ -51,7 +52,11 @@ describe('parseShopQuery', () => {
     // Marketing and analytics links carry their own params; they must not
     // change what the shop renders, and must not be an error either.
     expect(
-      parseShopQuery({ utm_source: 'telegram', q: 'گربه', view: 'list' }),
+      parseShopQuery({
+        utm_source: 'telegram',
+        ref: 'instagram',
+        view: 'list',
+      }),
     ).toEqual(DEFAULT_SHOP_QUERY);
   });
 
@@ -74,6 +79,41 @@ describe('parseShopQuery', () => {
 
     it('trims surrounding whitespace', () => {
       expect(parseShopQuery({ category: ' toys ' }).category).toBe('toys');
+    });
+  });
+
+  describe('search term', () => {
+    it('keeps a Persian term', () => {
+      expect(parseShopQuery({ q: 'غذای خشک' }).q).toBe('غذای خشک');
+    });
+
+    it('keeps the term exactly as typed, Arabic letters included', () => {
+      // The URL carries what the shopper typed; normalization happens in the
+      // DAO, against a column normalized by the same function. A term rewritten
+      // here would come back to the search box as text nobody typed.
+      expect(parseShopQuery({ q: 'غذاي خشك' }).q).toBe('غذاي خشك');
+    });
+
+    it('reads a blank term as no search', () => {
+      expect(parseShopQuery({ q: '   ' }).q).toBeUndefined();
+      expect(parseShopQuery({ q: '' }).q).toBeUndefined();
+    });
+
+    it('trims the term', () => {
+      expect(parseShopQuery({ q: '  گربه  ' }).q).toBe('گربه');
+    });
+
+    it('drops a term past the cap rather than truncating it', () => {
+      // The house rule for every other bound: a value the API would reject
+      // reads as an absent one, and the next interaction writes a clean URL.
+      expect(
+        parseShopQuery({ q: 'گ'.repeat(MAX_SEARCH_TERM_LENGTH + 1) }).q,
+      ).toBeUndefined();
+    });
+
+    it('keeps a term exactly at the cap', () => {
+      const term = 'گ'.repeat(MAX_SEARCH_TERM_LENGTH);
+      expect(parseShopQuery({ q: term }).q).toBe(term);
     });
   });
 
@@ -308,6 +348,30 @@ describe('buildShopHref', () => {
     );
   });
 
+  it('writes the search term first, ahead of the filters', () => {
+    expect(
+      buildShopHref({
+        ...DEFAULT_SHOP_QUERY,
+        q: 'گربه',
+        category: 'dry-food',
+      }),
+    ).toBe(`/shop?q=${encodeURIComponent('گربه')}&category=dry-food`);
+  });
+
+  it('encodes a multi-word term the way URLSearchParams does', () => {
+    // `+` for the space, not `%20` — both are legal and both parse back to a
+    // space, and this is the spelling the round trip above is built on.
+    expect(buildShopHref({ ...DEFAULT_SHOP_QUERY, q: 'غذای خشک' })).toBe(
+      `/shop?q=${encodeURIComponent('غذای').replaceAll('%20', '+')}+${encodeURIComponent('خشک')}`,
+    );
+  });
+
+  it('leaves the term out when there is no search', () => {
+    expect(buildShopHref({ ...DEFAULT_SHOP_QUERY, q: undefined })).toBe(
+      '/shop',
+    );
+  });
+
   it('writes a zero minimum, which is a value and not an absence', () => {
     expect(buildShopHref({ ...DEFAULT_SHOP_QUERY, minPrice: 0 })).toBe(
       '/shop?minPrice=0',
@@ -344,7 +408,14 @@ describe('shop query round trip', () => {
     { ...DEFAULT_SHOP_QUERY, sort: 'price-asc' },
     { ...DEFAULT_SHOP_QUERY, sort: 'price-desc', page: 4 },
     { ...DEFAULT_SHOP_QUERY, limit: 48 },
+    { ...DEFAULT_SHOP_QUERY, q: 'غذای خشک' },
+    // Arabic letters and a ZWNJ have to survive the URL untouched — the term
+    // is normalized where it is matched, not where it is carried.
+    { ...DEFAULT_SHOP_QUERY, q: 'اسباب‌بازی گربه' },
+    { ...DEFAULT_SHOP_QUERY, q: 'غذاي خشك' },
+    { ...DEFAULT_SHOP_QUERY, q: 'گربه', category: 'toys', pet: 'cat', page: 2 },
     {
+      q: 'شامپو',
       category: 'wet-food',
       pet: 'cat',
       minPrice: 10_000,
@@ -397,6 +468,27 @@ describe('updateShopQuery', () => {
 
   it('keeps the page the caller explicitly asks for', () => {
     expect(updateShopQuery(listing, { page: 2 }).page).toBe(2);
+  });
+
+  it('returns to the first page when the search term changes', () => {
+    // Same reason as any other filter: page 5 of «toys» is not page 5 of the
+    // handful of toys that match «زنگوله».
+    expect(updateShopQuery(listing, { q: 'زنگوله' })).toEqual({
+      ...listing,
+      q: 'زنگوله',
+      page: 1,
+    });
+  });
+
+  it('keeps the filters when the search term changes', () => {
+    // Searching inside a category is the point of having both.
+    expect(updateShopQuery(listing, { q: 'زنگوله' }).category).toBe('toys');
+  });
+
+  it('clears the search when the term is patched away', () => {
+    const searching = { ...listing, q: 'زنگوله' };
+
+    expect(updateShopQuery(searching, { q: undefined }).q).toBeUndefined();
   });
 
   it('clears a filter that is patched to undefined', () => {

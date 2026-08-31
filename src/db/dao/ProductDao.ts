@@ -15,6 +15,7 @@ import {
   gte,
   inArray,
   lte,
+  sql,
   type SQL,
 } from 'drizzle-orm';
 import { db } from '@/db';
@@ -24,6 +25,7 @@ import {
   PRODUCT_SORTS,
   type ProductSort,
 } from '@/lib/catalog/product-query';
+import { normalizeSearchText } from '@/lib/catalog/search-text';
 import {
   categories,
   productImages,
@@ -35,8 +37,63 @@ import {
   type ProductWithImages,
 } from '@/db/schema/catalog';
 
-/** What a caller supplies; the database owns the id and both timestamps. */
-export type ProductInput = Omit<NewProduct, 'id' | 'createdAt' | 'updatedAt'>;
+/**
+ * What a caller supplies; the database owns the id and both timestamps, and
+ * this DAO owns `search_text` — it is derived from three fields below, so a
+ * caller that could set it could hide a product from the search or plant one in
+ * every result.
+ */
+export type ProductInput = Omit<
+  NewProduct,
+  'id' | 'createdAt' | 'updatedAt' | 'searchText'
+>;
+
+/** The fields a shopper can find a product by. */
+const SEARCHABLE_FIELDS = ['title', 'brand', 'benefit'] as const;
+
+type SearchableFields = Pick<NewProduct, (typeof SEARCHABLE_FIELDS)[number]>;
+
+/**
+ * A product's searchable text: its title, brand and benefit line as one
+ * normalized string, exactly as `products.search_text` holds it.
+ *
+ * `description` is not in it. Trigram similarity is measured over the whole
+ * stored string, so a paragraph of prose would push the words a shopper
+ * actually types down into the noise of the ones they never would.
+ */
+export const buildProductSearchText = (product: SearchableFields): string =>
+  normalizeSearchText(
+    SEARCHABLE_FIELDS.map((field) => product[field])
+      .filter((part) => part)
+      .join(' '),
+  );
+
+/**
+ * How close a term has to be to count as a match, as
+ * `pg_trgm.word_similarity_threshold`.
+ *
+ * Measured against the seed catalogue rather than guessed. Real queries land
+ * between 0.64 and 1.0 — an exact phrase, a Latin brand with a typo (0.83), a
+ * dropped letter (0.69), a substituted one (0.64). Text that should not match
+ * lands at 0.40 and below — the same query typed with Arabic letters and *not*
+ * normalized scores 0.40, unrelated Persian words 0.17, Latin nonsense 0.
+ * 0.45 sits in that gap. Below about 0.40 a two-letter Persian query starts
+ * matching every word that merely begins with the same letter; above about 0.6
+ * — the extension's own default — a single mistyped character stops matching,
+ * which is precisely the case this story exists to serve.
+ */
+const SEARCH_SIMILARITY_THRESHOLD = '0.45';
+
+/**
+ * The threshold, set for one transaction.
+ *
+ * It has to be a GUC because that is the only thing the `%>` operator reads,
+ * and it has to be the operator rather than a bare `word_similarity(…) >= x`
+ * because only the operator can use the GIN trigram index. `set_config(…,
+ * true)` is transaction-local, so a pooled connection is handed back with the
+ * server default intact.
+ */
+const applySearchThreshold = sql`select set_config('pg_trgm.word_similarity_threshold', ${SEARCH_SIMILARITY_THRESHOLD}, true)`;
 
 // The orderings and the page-size numbers are defined in
 // `@/lib/catalog/product-query` together with the query schema that enforces
@@ -68,6 +125,14 @@ export type ProductFilters = {
   minPrice?: number;
   /** Inclusive, integer Toman. */
   maxPrice?: number;
+  /**
+   * A Persian search term as the shopper typed it — normalization happens
+   * here, not in the caller, because the column it is matched against was
+   * normalized by the same function on write. A term that normalizes to
+   * nothing (blank, or only zero-width characters) is read as no search at
+   * all, the same way an empty `categorySlug` is.
+   */
+  search?: string;
 };
 
 export type ProductListOptions = ProductFilters & {
@@ -79,6 +144,13 @@ export type ProductListOptions = ProductFilters & {
 
 /** One page of products plus the size of the whole filtered result. */
 export type ProductPage = { items: ProductWithImages[]; total: number };
+
+/**
+ * Whatever a query can run on: the pool, or a transaction on one connection of
+ * it. The listing builds the same two queries either way — only a search needs
+ * the transaction, and only because its threshold lives in one.
+ */
+type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export class ProductDao {
   /**
@@ -94,23 +166,36 @@ export class ProductDao {
     limit = DEFAULT_PRODUCT_PAGE_SIZE,
     ...filters
   }: ProductListOptions = {}): Promise<ProductPage> {
-    const where = and(...ProductDao.storefrontWhere(filters));
+    const search = filters.search ? normalizeSearchText(filters.search) : '';
+    const where = and(...ProductDao.storefrontWhere({ ...filters, search }));
 
-    const [rows, [counted]] = await Promise.all([
-      db
+    const pageQuery = (on: Executor) =>
+      on
         .select(getTableColumns(products))
         .from(products)
         .innerJoin(categories, eq(products.categoryId, categories.id))
         .where(where)
         .orderBy(...ORDER_BY[sort])
         .limit(limit)
-        .offset((page - 1) * limit),
-      db
+        .offset((page - 1) * limit);
+
+    const countQuery = (on: Executor) =>
+      on
         .select({ value: count() })
         .from(products)
         .innerJoin(categories, eq(products.categoryId, categories.id))
-        .where(where),
-    ]);
+        .where(where);
+
+    // A search needs its similarity threshold, and that threshold only lives
+    // for a transaction — so the two queries run on one connection, in order,
+    // instead of in parallel. Every other listing keeps the parallel pair: the
+    // shop's own catalogue browsing must not pay for the search box.
+    const [rows, [counted]] = search
+      ? await db.transaction(async (tx) => {
+          await tx.execute(applySearchThreshold);
+          return [await pageQuery(tx), await countQuery(tx)] as const;
+        })
+      : await Promise.all([pageQuery(db), countQuery(db)]);
 
     return { items: await ProductDao.withImages(rows), total: counted.value };
   }
@@ -135,6 +220,18 @@ export class ProductDao {
     }
     if (filters.maxPrice !== undefined) {
       where.push(lte(products.price, filters.maxPrice));
+    }
+    // `%>` rather than `word_similarity(…) >= x`: same meaning, but only the
+    // operator reads the trigram index (`Bitmap Index Scan on
+    // products_search_text_trgm_idx`). The indexed column goes on the left —
+    // `doc %> term` asks whether the *best matching stretch* of the document
+    // resembles the term, which is what a short query against a whole title,
+    // brand and benefit line needs. Whole-term rather than word-by-word on
+    // purpose: measured against the seed catalogue, splitting the term and
+    // requiring every word to clear the bar alone drops a one-letter typo from
+    // 0.69 to 0.29 and fails the misspelling this story promises.
+    if (filters.search) {
+      where.push(sql`${products.searchText} %> ${filters.search}`);
     }
     return where;
   }
@@ -162,20 +259,42 @@ export class ProductDao {
   }
 
   static async create(input: ProductInput): Promise<Product> {
-    const [row] = await db.insert(products).values(input).returning();
+    const [row] = await db
+      .insert(products)
+      // Last, so a caller reaching past `ProductInput` cannot supply its own.
+      .values({ ...input, searchText: buildProductSearchText(input) })
+      .returning();
     return row;
   }
 
+  /**
+   * A patch may name any subset of the fields, so the searchable text can only
+   * be rebuilt from the row as it ends up — the two writes are one transaction
+   * because the first one locks the row, which is what stops a concurrent
+   * update from leaving a title and a search text that describe different
+   * products.
+   */
   static async update(
     id: string,
     patch: Partial<ProductInput>,
   ): Promise<Product | null> {
-    const [row] = await db
-      .update(products)
-      .set(patch)
-      .where(eq(products.id, id))
-      .returning();
-    return row ?? null;
+    return db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(products)
+        .set(patch)
+        .where(eq(products.id, id))
+        .returning();
+
+      if (!row) return null;
+      if (!SEARCHABLE_FIELDS.some((field) => field in patch)) return row;
+
+      const [rewritten] = await tx
+        .update(products)
+        .set({ searchText: buildProductSearchText(row) })
+        .where(eq(products.id, id))
+        .returning();
+      return rewritten;
+    });
   }
 
   /**
@@ -197,9 +316,11 @@ export class ProductDao {
    * resurrect a product somebody removed on purpose.
    */
   static async upsertBySku(input: ProductInput): Promise<Product> {
+    const searchText = buildProductSearchText(input);
+
     const [row] = await db
       .insert(products)
-      .values(input)
+      .values({ ...input, searchText })
       .onConflictDoUpdate({
         target: products.sku,
         set: {
@@ -213,6 +334,10 @@ export class ProductDao {
           stock: input.stock ?? 0,
           categoryId: input.categoryId,
           petType: input.petType,
+          // On the update branch too, or a corrected title in the seed would
+          // never reach the index — the row would keep the text it was first
+          // inserted with, and re-running the seed would look like a no-op.
+          searchText,
         },
       })
       .returning();

@@ -62,6 +62,20 @@ export const products = pgTable(
     description: text('description'),
     /** One-line selling point under the title on the product card. */
     benefit: text('benefit'),
+    /**
+     * The search index's copy of this product: `title`, `brand` and `benefit`
+     * run through `normalizeSearchText` and joined with spaces. Never displayed,
+     * never edited — `ProductDao` is its only writer and recomputes it on every
+     * write, which is what «normalize on write» means here.
+     *
+     * `description` is deliberately left out. It is prose, and trigram
+     * similarity is measured against the whole stored string, so paragraphs of
+     * it would bury the words a shopper actually types.
+     *
+     * Defaults to empty rather than being nullable: a product always has a
+     * searchable text, even if it is nothing, and `''` simply matches no term.
+     */
+    searchText: text('search_text').default('').notNull(),
     /** Integer Toman. */
     price: bigint('price', { mode: 'number' }).notNull(),
     /** Integer Toman; set only to show a struck-through "was" price. */
@@ -90,6 +104,16 @@ export const products = pgTable(
     ),
     index('products_category_id_idx').on(table.categoryId),
     index('products_is_active_idx').on(table.isActive),
+    // Trigram index over the normalized text. GIN rather than GiST: the
+    // storefront only asks «does this row match», never «how close is it», and
+    // GiST's distance ordering is the one thing GIN cannot do. It is a real
+    // index, not decoration — `search_text %> :term` plans as a bitmap index
+    // scan on it. `pg_trgm` and this operator class are created by the same
+    // migration that adds the column.
+    index('products_search_text_trgm_idx').using(
+      'gin',
+      sql`${table.searchText} gin_trgm_ops`,
+    ),
   ],
 );
 

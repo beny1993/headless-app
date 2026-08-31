@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Search } from 'lucide-react';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { ProductCard } from '@/features/storefront/product/product-card';
@@ -10,6 +9,7 @@ import {
 } from '@/features/storefront/shop/shop-filters';
 import { ShopPagination } from '@/features/storefront/shop/shop-pagination';
 import { ShopResults } from '@/features/storefront/shop/shop-results';
+import { ShopSearch } from '@/features/storefront/shop/shop-search';
 import {
   buildShopHref,
   parseShopQuery,
@@ -58,6 +58,7 @@ export default async function ShopPage({
       petType: query.pet,
       minPrice: query.minPrice,
       maxPrice: query.maxPrice,
+      search: query.q,
       sort: query.sort,
       page: query.page,
       limit: query.limit,
@@ -102,7 +103,7 @@ export default async function ShopPage({
       </div>
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-8">
-        <SearchBox />
+        <ShopSearch query={query} />
 
         <div className="mb-6 lg:hidden">
           <ShopFilterSheet
@@ -123,11 +124,17 @@ export default async function ShopPage({
               {items.length === 0 ? (
                 <EmptyState
                   pastLastPage={pastLastPage}
+                  searchTerm={query.q}
                   // Back to the first page *of this filter set* — sending a
                   // shopper who over-shot page 9 to the bare shop would throw
                   // away the filters they were browsing with.
                   firstPageHref={buildShopHref(
                     updateShopQuery(query, { page: 1 }),
+                  )}
+                  // Same reasoning for a search that missed: drop the term the
+                  // shopper mistyped, keep the category and price they chose.
+                  clearSearchHref={buildShopHref(
+                    updateShopQuery(query, { q: undefined }),
                   )}
                 />
               ) : (
@@ -146,53 +153,29 @@ export default async function ShopPage({
 }
 
 /**
- * Rendered, and deliberately inert until [[Story - Persian Product Search]]
- * wires it — that story owns the normalization and the `pg_trgm` index behind
- * it. Disabled rather than hidden because the story asks for it on the page,
- * and the hint says why so it does not read as a bug.
- */
-function SearchBox() {
-  return (
-    <div className="mb-5 max-w-xl">
-      <label htmlFor="shop-search" className="sr-only">
-        جستجو در محصولات
-      </label>
-      <div className="relative">
-        <Search
-          size={16}
-          className="text-muted-foreground pointer-events-none absolute start-4 top-1/2 -translate-y-1/2"
-          aria-hidden="true"
-        />
-        <input
-          id="shop-search"
-          type="search"
-          disabled
-          placeholder="جستجو بین محصولات…"
-          aria-describedby="shop-search-hint"
-          className="bg-secondary border-border w-full rounded-xl border py-3 ps-11 pe-4 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-        />
-      </div>
-      <p id="shop-search-hint" className="text-muted-foreground mt-1.5 text-xs">
-        جستجو به‌زودی فعال می‌شود — فعلاً از فیلترها استفاده کنید.
-      </p>
-    </div>
-  );
-}
-
-/**
- * Two different nothings. A filter set that matches no product is the design's
- * empty state, and its way out is clearing the filters. A page number past the
- * end of the catalog is a URL problem, and its way out is page one — the
- * pagination is still on screen below, so this is a shortcut, not the only
- * exit.
+ * Three different nothings, and each one has its own way out.
+ *
+ * A page number past the end of the catalog is a URL problem, and the way out
+ * is page one. A search that matched nothing is about the *term* — the shopper
+ * needs to see which words were searched for, because a typo is the usual
+ * cause, and the way out is dropping the term while keeping the filters they
+ * chose deliberately. A filter set that matches nothing is the design's
+ * original empty state, cleared by going back to the plain shop.
  */
 function EmptyState({
   pastLastPage,
+  searchTerm,
   firstPageHref,
+  clearSearchHref,
 }: {
   pastLastPage: boolean;
+  /** The term that matched nothing, or undefined when this is not a search. */
+  searchTerm?: string;
   firstPageHref: string;
+  clearSearchHref: string;
 }) {
+  const searchMissed = !pastLastPage && searchTerm !== undefined;
+
   return (
     <div className="bg-secondary/30 flex flex-col items-center justify-center gap-3 rounded-3xl py-24 text-center">
       <span className="text-5xl" aria-hidden="true">
@@ -201,21 +184,42 @@ function EmptyState({
       <p className="text-lg font-bold">
         {pastLastPage
           ? 'این صفحه محصولی ندارد'
-          : 'محصولی با این فیلترها پیدا نشد'}
+          : searchMissed
+            ? // The term is quoted so the shopper can see exactly what was
+              // searched for — «چیزی پیدا نشد» alone hides the typo that caused
+              // it. Persian quotation marks, as everywhere else on the site.
+              `نتیجه‌ای برای «${searchTerm}» پیدا نشد`
+            : 'محصولی با این فیلترها پیدا نشد'}
       </p>
       <p className="text-muted-foreground max-w-sm text-sm">
         {pastLastPage
           ? 'شماره صفحه از آخرین صفحه بیشتر است.'
-          : 'می‌توانی فیلترها را کم کنی و دوباره امتحان کنی.'}
+          : searchMissed
+            ? 'املای عبارت را بررسی کن یا کلمه کوتاه‌تری را امتحان کن.'
+            : 'می‌توانی فیلترها را کم کنی و دوباره امتحان کنی.'}
       </p>
       <Link
-        href={pastLastPage ? firstPageHref : PATHS.SHOP}
+        href={
+          pastLastPage
+            ? firstPageHref
+            : searchMissed
+              ? clearSearchHref
+              : PATHS.SHOP
+        }
         className="bg-accent-strong hover:bg-accent-hover mt-2 rounded-xl px-6 py-3 font-bold text-white transition-colors"
         data-umami-event={
-          pastLastPage ? 'shop-empty-first-page' : 'shop-empty-clear-filters'
+          pastLastPage
+            ? 'shop-empty-first-page'
+            : searchMissed
+              ? 'shop-empty-clear-search'
+              : 'shop-empty-clear-filters'
         }
       >
-        {pastLastPage ? 'بازگشت به صفحه اول' : 'پاک کردن همه فیلترها'}
+        {pastLastPage
+          ? 'بازگشت به صفحه اول'
+          : searchMissed
+            ? 'پاک کردن جستجو'
+            : 'پاک کردن همه فیلترها'}
       </Link>
     </div>
   );

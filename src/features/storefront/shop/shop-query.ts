@@ -41,6 +41,14 @@ export type ShopPet = NonNullable<ProductListQuery['pet']>;
 
 /** The parsed, always-valid shape the page and its controls both work in. */
 export type ShopQuery = {
+  /**
+   * The search term, exactly as the shopper typed it — Arabic letters, ZWNJ
+   * and all. Normalization belongs to the DAO, which applies it to the term and
+   * to the column it is matched against in the same breath; a term normalized
+   * on its way through here would come back to the search box as text nobody
+   * typed and fight the input on every keystroke.
+   */
+  q?: string;
   /** A category *slug*, and at most one — the API takes a single category. */
   category?: string;
   pet?: ShopPet;
@@ -77,6 +85,7 @@ const asAbsentWhenInvalid = <T>(field: z.ZodType<T>) =>
  * answers 400, the page answers with the default listing.
  */
 const shopQuerySchema = z.object({
+  q: asAbsentWhenInvalid(productListQueryShape.q),
   category: asAbsentWhenInvalid(productListQueryShape.category),
   pet: asAbsentWhenInvalid(productListQueryShape.pet),
   minPrice: asAbsentWhenInvalid(productListQueryShape.minPrice),
@@ -158,6 +167,7 @@ function readText(params: ShopSearchParams, key: string): string | undefined {
  */
 export function parseShopQuery(params: ShopSearchParams): ShopQuery {
   return shopQuerySchema.parse({
+    q: readText(params, 'q'),
     category: readText(params, 'category'),
     pet: readText(params, 'pet'),
     minPrice: readText(params, 'minPrice'),
@@ -178,6 +188,8 @@ export function parseShopQuery(params: ShopSearchParams): ShopQuery {
 export function buildShopHref(query: ShopQuery): string {
   const params = new URLSearchParams();
 
+  // First, because it is the thing the shopper asked for; the filters narrow it.
+  if (query.q) params.set('q', query.q);
   if (query.category) params.set('category', query.category);
   if (query.pet) params.set('pet', query.pet);
   // Compared against undefined, not truthiness: `minPrice=0` is a bound the
