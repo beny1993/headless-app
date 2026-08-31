@@ -67,6 +67,31 @@ const config = [
     },
   },
   {
+    // Feature modules get pulled into `'use client'` components, and a *value*
+    // import of the Drizzle schema is the silent way to ship `pgTable` and
+    // `pg-core` — table names, column names, CHECK clauses — to the browser.
+    // A DAO import is not restricted here: it fails loudly (node builtins in a
+    // client bundle) and feature-level server components read DAOs legitimately.
+    // Type imports are erased, so they stay allowed; tests never reach a bundle.
+    files: ['src/features/**/*.ts', 'src/features/**/*.tsx'],
+    ignores: ['src/features/**/*.test.ts', 'src/features/**/*.test.tsx'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/db/schema', '@/db/schema/*'],
+              allowTypeImports: true,
+              message:
+                'Import types only: a value import of the schema drags drizzle into the client bundle. Re-declare the literal, or read the data in a server component and pass it down.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['*.config.js', '*.config.cjs', '*.config.mjs', 'scripts/**/*.mjs'],
     languageOptions: {
       globals: {

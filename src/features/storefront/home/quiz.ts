@@ -4,13 +4,24 @@
 // Entirely client-side and stateless — there is no backend for it, by the
 // story's own acceptance criteria. The answers become a `/shop?…` deep link
 // and nothing else is stored.
-import { PET_TYPES, type PetType } from '@/db/schema/catalog';
+import type { PetType } from '@/db/schema/catalog';
 import type { ShopFilters } from '@/lib/constant/paths';
 
+/**
+ * The pet values are literals rather than `PET_TYPES.CAT` on purpose: this
+ * module is imported by a client component, and a *value* import of the schema
+ * ships all of `pgTable`/`pg-core` to the browser (the eslint rule guards it).
+ * `satisfies` keeps the rename safety — changing the enum's values breaks
+ * `pnpm type-check` here, and `quiz.test.ts` asserts these equal `PET_TYPES`.
+ */
 export const QUIZ_PETS = [
-  { value: PET_TYPES.CAT, label: 'گربه', emoji: '🐱' },
-  { value: PET_TYPES.DOG, label: 'سگ', emoji: '🐶' },
-] as const;
+  { value: 'cat', label: 'گربه', emoji: '🐱' },
+  { value: 'dog', label: 'سگ', emoji: '🐶' },
+] as const satisfies readonly {
+  value: PetType;
+  label: string;
+  emoji: string;
+}[];
 
 /**
  * Asked because the design asks it and the summary sentence reads it back —

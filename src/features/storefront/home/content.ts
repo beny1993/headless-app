@@ -7,7 +7,11 @@
 //
 // Paths are public/ URLs, the same convention `product_images.object_key`
 // follows: `/products/cat-toy.jpg` is `public/products/cat-toy.jpg`.
-import { PET_TYPES, type PetType } from '@/db/schema/catalog';
+// Type-only: this module is imported by client components, and a *value*
+// import of the schema ships `pgTable`/`pg-core` to the browser. The pet
+// literals below are checked against `PetType` by the annotations on
+// `LIFE_MOMENTS`, so a renamed enum value still breaks `pnpm type-check`.
+import type { PetType } from '@/db/schema/catalog';
 
 /**
  * The category strip's photography, by category slug.
@@ -52,35 +56,35 @@ export const LIFE_MOMENTS: readonly LifeMoment[] = [
     desc: 'بهترین تغذیه برای سلامت روزانه',
     image: '/products/cat-dry-food.jpg',
     emoji: '🐱',
-    filters: { category: 'dry-food', pet: PET_TYPES.CAT },
+    filters: { category: 'dry-food', pet: 'cat' },
   },
   {
     title: 'وقت بازی',
     desc: 'سرگرمی هوشمند برای ذهن فعال',
     image: '/products/cat-toy.jpg',
     emoji: '🐱',
-    filters: { category: 'toys', pet: PET_TYPES.CAT },
+    filters: { category: 'toys', pet: 'cat' },
   },
   {
     title: 'وقت تشویق',
     desc: 'پاداش کوچک برای رفتار خوب',
     image: '/products/dog-treats.jpg',
     emoji: '🐶',
-    filters: { category: 'treats', pet: PET_TYPES.DOG },
+    filters: { category: 'treats', pet: 'dog' },
   },
   {
     title: 'مراقبت روزانه',
     desc: 'پوست، مو و بهداشت',
     image: '/products/cat-supplement.jpg',
     emoji: '🐱',
-    filters: { category: 'supplements', pet: PET_TYPES.CAT },
+    filters: { category: 'supplements', pet: 'cat' },
   },
   {
     title: 'وعده‌ی سگ',
     desc: 'انرژی روزانه برای یک سگ فعال',
     image: '/products/dog-dry-food.jpg',
     emoji: '🐶',
-    filters: { category: 'dry-food', pet: PET_TYPES.DOG },
+    filters: { category: 'dry-food', pet: 'dog' },
   },
 ];
 
