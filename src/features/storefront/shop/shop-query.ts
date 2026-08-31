@@ -102,7 +102,12 @@ const SORT_LABELS: Record<ShopSort, string> = {
   'price-desc': 'گران‌ترین',
 };
 
-const PET_LABELS: Record<ShopPet, string> = {
+/**
+ * Exported because the product page's specification rows name the same enum:
+ * one Persian word per `pet_type` value, in one place. Keyed by the union, so
+ * a third pet type stops the build here rather than rendering a bare `cat`.
+ */
+export const PET_LABELS: Record<ShopPet, string> = {
   cat: 'گربه',
   dog: 'سگ',
 };
