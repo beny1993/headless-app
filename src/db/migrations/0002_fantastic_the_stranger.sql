@@ -37,7 +37,7 @@ UPDATE "products" SET "search_text" = btrim(
       -- is what `translate` requires to map rather than delete.
       'ییک01234567890123456789' || repeat(' ', 4)
     ),
-    '\s+', ' ', 'g'
+    '[\s\u00a0]+', ' ', 'g'
   )
 );--> statement-breakpoint
 CREATE INDEX "products_search_text_trgm_idx" ON "products" USING gin ("search_text" gin_trgm_ops);
