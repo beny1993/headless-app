@@ -24,14 +24,22 @@ const DEBOUNCE_MS = 350;
  * or the back button reproduces the search exactly. Nothing about which
  * products match is decided in the browser.
  *
- * Two pieces of local state, and the second one is the whole trick. `term` is
- * what is in the box. `urlTerm` is the term this component last put into the
- * URL. A navigation that agrees with `urlTerm` is one of our own and is
- * ignored; a navigation that disagrees — the back button, a shared link, the
- * cleared-search button in the empty state — is somebody else moving, and the
- * box follows it. Without that distinction the input would fight itself: our
- * own debounced push lands a few hundred milliseconds later, and re-syncing
- * blindly would throw away every character typed in the meantime.
+ * One invariant holds the whole thing together: **re-sync the box only when the
+ * URL changes to a value this component did not push.** The back button, a
+ * shared link and the empty state's clear-search link all move the URL to
+ * something nobody typed here, and the box has to follow them. Our own push
+ * moves it to what is already in the box, and must not touch it — the shopper
+ * keeps typing while the round trip is in flight, and re-syncing on our own
+ * navigation throws those characters away.
+ *
+ * Which takes three pieces of state, and the split between the last two is the
+ * whole trick. `term` is what is in the box. `seenUrl` is the `q` this
+ * component last rendered against — it tracks the prop and nothing else, so it
+ * answers «did the URL move?». `pushed` is the term we asked the router for —
+ * it answers «was that us?». Collapsing the two, as an earlier version did,
+ * makes the first question unanswerable: between the debounce firing and the
+ * response landing, the URL and our intention disagree by construction, and the
+ * box reads its own push as somebody else's navigation.
  *
  * The term travels raw. Normalization (Arabic ي/ك, digits, ZWNJ) happens in the
  * DAO against a column normalized by the same function — doing it here would
@@ -44,16 +52,45 @@ export function ShopSearch({ query }: { query: ShopQuery }) {
 
   const urlValue = query.q ?? '';
   const [term, setTerm] = useState(urlValue);
-  const [urlTerm, setUrlTerm] = useState(urlValue);
+  /** The last `q` this component has actually rendered against. */
+  const [seenUrl, setSeenUrl] = useState(urlValue);
+  /** The last term this component asked the router for. */
+  const [pushed, setPushed] = useState(urlValue);
 
   // Adjusting state during render rather than in an effect, which is React's
   // own answer for "a prop changed and some state derives from it": it settles
   // before the browser paints, so the box never shows the previous search for a
-  // frame. The guard is what makes it terminate.
-  if (urlValue !== urlTerm) {
-    setUrlTerm(urlValue);
-    setTerm(urlValue);
+  // frame.
+  //
+  // The outer test is on `seenUrl`, which only ever takes `urlValue`'s own
+  // value — so it fires when the URL *moves*, terminates on the next render,
+  // and is deaf to anything this component merely intends. That is the whole
+  // repair: an earlier version tested `urlValue` against the term it had just
+  // pushed, which disagree for the entire round trip, so every search wiped the
+  // box to empty the moment the debounce fired and refilled it from the URL a
+  // request later — taking anything typed in between with it.
+  if (urlValue !== seenUrl) {
+    setSeenUrl(urlValue);
+    // The URL moved to something this box did not ask for: the back button, a
+    // shared link, the empty state's clear-search link. Our own push lands here
+    // too, and falls through — leaving whatever has been typed since alone.
+    if (urlValue !== pushed) {
+      setPushed(urlValue);
+      setTerm(urlValue);
+    }
   }
+
+  // What the box holds, reduced to what the URL can actually carry back.
+  //
+  // `/shop` trims `q` before its schema sees it, so a term with a space on
+  // either end never returns as it was sent. Comparing against the raw `term`
+  // would therefore read the shopper's own trailing space as somebody else's
+  // navigation and re-sync the box to the trimmed value — deleting the space
+  // between two words as they type, and with it anything typed while our own
+  // push was still in flight. The same wipe the `maxLength` below prevents,
+  // reached through the trim instead of the cap: what this component compares
+  // and stores has to be the term the URL will hand back, not the keystrokes.
+  const settled = term.trim();
 
   // The URL this box is heading for, built during render because it is a pure
   // function of what is on screen. It is also a plain string, which is what
@@ -64,19 +101,23 @@ export function ShopSearch({ query }: { query: ShopQuery }) {
   // An empty box is no search rather than a search for nothing —
   // `updateShopQuery` drops the parameter and the URL is the plain listing again.
   const nextHref = buildShopHref(
-    updateShopQuery(query, { q: term || undefined }),
+    updateShopQuery(query, { q: settled || undefined }),
   );
 
   const go = useCallback(() => {
-    setUrlTerm(term);
+    // Enter runs this ahead of the debounce and the pending timer still fires
+    // afterwards — without this guard the second run pushes the same href
+    // again and costs the shopper two presses of the back button.
+    if (settled === pushed) return;
+    setPushed(settled);
     startTransition(() => router.push(nextHref));
-  }, [term, nextHref, router]);
+  }, [settled, pushed, nextHref, router]);
 
   useEffect(() => {
-    if (term === urlTerm) return;
+    if (settled === pushed) return;
     const timer = setTimeout(go, DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [term, urlTerm, go]);
+  }, [settled, pushed, go]);
 
   return (
     <form

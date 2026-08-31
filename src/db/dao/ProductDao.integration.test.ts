@@ -1012,6 +1012,29 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       expect(await searchIds(category.slug, 'قهوه اسپرسو')).toEqual([]);
     });
 
+    it('matches wet food on a dry-food term — the recall this threshold buys', async () => {
+      // The deliberate cost of `%>` over a whole term at 0.45, pinned here so it
+      // is a decision rather than a surprise. «غذای خشک» and «غذای مرطوب» share
+      // «غذای», and a word-similarity band loose enough to forgive the typo the
+      // story exists for is also loose enough to reach the neighbouring word.
+      //
+      // It reads as a near miss on a shop page, not as a wrong answer — and the
+      // category and pet filters are the narrowing the shopper actually has. If
+      // this ever needs to be tight instead, it is this number that moves, and
+      // this test is what will say so.
+      const category = await makeCategory();
+      const dry = await ProductDao.create(
+        makeProduct(category, { title: 'غذای خشک گربه', brand: null }),
+      );
+      const wet = await ProductDao.create(
+        makeProduct(category, { title: 'غذای مرطوب گربه', brand: null }),
+      );
+
+      expect((await searchIds(category.slug, 'غذای خشک')).sort()).toEqual(
+        [dry.id, wet.id].sort(),
+      );
+    });
+
     it('returns nothing for Latin nonsense either', async () => {
       const { category } = await makeSearchCatalog();
 
