@@ -1,5 +1,5 @@
 // No database needed: these check the home page's editorial content itself.
-import { access } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -39,6 +39,28 @@ describe('home content images', () => {
       await expect(
         access(join(process.cwd(), 'public', image)),
       ).resolves.toBeUndefined();
+    }
+  });
+
+  it('credits every bundled photo in public/ATTRIBUTIONS.md', async () => {
+    // These are licensed stock photos. The licence is only honoured if the
+    // record exists, and the record is exactly the thing that gets forgotten
+    // when someone drops a new .jpg into public/ — so the check is on the
+    // directory, not on the list above.
+    const attributions = await readFile(
+      join(process.cwd(), 'public', 'ATTRIBUTIONS.md'),
+      'utf8',
+    );
+
+    for (const dir of ['products', 'site']) {
+      const files = await readdir(join(process.cwd(), 'public', dir));
+      for (const file of files.filter((name) =>
+        /\.(jpe?g|png|webp)$/i.test(name),
+      )) {
+        expect(attributions, `${dir}/${file} is not attributed`).toContain(
+          file,
+        );
+      }
     }
   });
 });
