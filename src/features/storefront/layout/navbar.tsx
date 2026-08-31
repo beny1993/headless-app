@@ -1,9 +1,9 @@
 import Link from 'next/link';
-import { Search, ShoppingBag, User } from 'lucide-react';
+import { Search, User } from 'lucide-react';
 import { MobileMenu } from './mobile-menu';
 import { NAV_LINKS } from './nav-links';
+import { CartDrawer } from '@/features/storefront/cart/cart-drawer';
 import { PATHS } from '@/lib/constant/paths';
-import { formatNumber } from '@/lib/format';
 
 const iconButton =
   'flex size-10 items-center justify-center rounded-full text-foreground transition-colors hover:bg-secondary';
@@ -17,7 +17,8 @@ const iconButton =
  * correctly against the home hero, which story 6 ports; until then white nav
  * text on a cream page would be invisible. Ships solid.
  *
- * A server component: only the mobile menu needs client state.
+ * A server component: only the mobile menu and the cart drawer — which owns
+ * the cart button and its badge — need client state.
  */
 export function Navbar() {
   return (
@@ -42,7 +43,7 @@ export function Navbar() {
             >
               <User size={18} aria-hidden="true" />
             </Link>
-            <CartButton />
+            <CartDrawer className={iconButton} />
             <MobileMenu />
           </div>
 
@@ -76,31 +77,5 @@ export function Navbar() {
         </div>
       </div>
     </nav>
-  );
-}
-
-/**
- * The cart affordance and its badge slot.
- *
- * Deliberately inert in this story: [[Story - Cart Drawer and Local Cart]] owns
- * the localStorage cart and the drawer, and wires both the click and a real
- * `count`. The badge markup and its position exist here so that story is a
- * behaviour change, not a layout change.
- */
-function CartButton({ count = 0 }: { count?: number }) {
-  return (
-    <button
-      type="button"
-      className={`relative ${iconButton}`}
-      aria-label={`سبد خرید (${formatNumber(count)} کالا)`}
-      data-umami-event="nav-cart-open"
-    >
-      <ShoppingBag size={18} aria-hidden="true" />
-      {count > 0 && (
-        <span className="bg-accent-strong absolute end-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white">
-          {formatNumber(count)}
-        </span>
-      )}
-    </button>
   );
 }

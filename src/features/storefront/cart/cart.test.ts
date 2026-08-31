@@ -33,7 +33,10 @@ const TOY: CartLineInput = {
   unitPrice: 185_000,
 };
 
-const line = (input: CartLineInput, qty: number): CartLine => ({ ...input, qty });
+const line = (input: CartLineInput, qty: number): CartLine => ({
+  ...input,
+  qty,
+});
 
 describe('parseCart', () => {
   it('reads back a cart written by a previous session', () => {
@@ -162,14 +165,22 @@ describe('addLine', () => {
 
 describe('setQty', () => {
   it('sets the quantity of the matching line', () => {
-    const lines = setQty([line(DRY_FOOD, 1), line(TOY, 1)], DRY_FOOD.productId, 4);
+    const lines = setQty(
+      [line(DRY_FOOD, 1), line(TOY, 1)],
+      DRY_FOOD.productId,
+      4,
+    );
 
     expect(lines[0]?.qty).toBe(4);
     expect(lines[1]?.qty).toBe(1);
   });
 
   it('removes the line when the quantity drops to zero', () => {
-    const lines = setQty([line(DRY_FOOD, 1), line(TOY, 2)], DRY_FOOD.productId, 0);
+    const lines = setQty(
+      [line(DRY_FOOD, 1), line(TOY, 2)],
+      DRY_FOOD.productId,
+      0,
+    );
 
     expect(lines).toEqual([line(TOY, 2)]);
   });
@@ -185,7 +196,9 @@ describe('setQty', () => {
   });
 
   it('truncates a fractional quantity', () => {
-    expect(setQty([line(DRY_FOOD, 1)], DRY_FOOD.productId, 2.9)[0]?.qty).toBe(2);
+    expect(setQty([line(DRY_FOOD, 1)], DRY_FOOD.productId, 2.9)[0]?.qty).toBe(
+      2,
+    );
   });
 
   it('leaves the cart untouched for an unknown product', () => {
