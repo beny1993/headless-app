@@ -118,6 +118,55 @@ green build. Bring it up with
 `docker compose --file docker-compose-dev.yaml up --wait`. CI must provide
 Postgres and set the variable, or it never exercises these suites at all.
 
+### Component tests
+
+Harness: **`@testing-library/react` on the happy-dom environment vitest already
+runs** — no second config, no browser mode, no `jsdom`. A `.test.tsx` next to
+the component is picked up by `pnpm test` like any other suite. `user-event` and
+`jest-dom` are deliberately absent: `fireEvent` plus `expect(input.value)` says
+the same thing with two fewer dependencies. Browser mode was rejected as the
+wrong size — it buys real layout and a real `<dialog>` at the cost of a browser
+download in every CI run, and neither escape below needed either.
+
+A client component MUST get one when its correctness lives in **wiring rather
+than in a function**, i.e. no unit test can reach it:
+
+- **Hydration-sensitive wiring** — anything whose first client render has to
+  reproduce what the server sent. `useSyncExternalStore`'s server snapshot is
+  the type case: `getServerCart`'s own unit test passes against the bug,
+  because both candidates return an empty array and only the *choice* is wrong.
+- **State-sync mechanisms** — state derived from a prop that this component
+  itself causes to change. The window where intention and prop disagree is
+  where the bug lives, and it exists only at runtime.
+- **URL-resync logic** — a control that writes the URL and reads it back.
+  Debounces, in-flight navigation, Enter racing a timer.
+
+Copy the pattern from `src/features/storefront/cart/cart-drawer.test.tsx`
+(hydration) and `src/features/storefront/shop/shop-search.test.tsx` (resync).
+Four rules those two encode:
+
+- **Verify the pin by reverting the bug.** A component test that still passes
+  against the original defect is worth nothing — both escapes here were already
+  "covered". Run the revert, watch it fail, restore.
+- **Assert React's errors through `onRecoverableError`**, not a `console.error`
+  spy: React 19 routes recoverable hydration errors to `reportError`, which
+  happy-dom defines, so the spy silently observes nothing.
+- **Fake only the timers the component uses**
+  (`vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })`). The full set
+  hijacks React's own scheduling and is where flakiness comes from.
+- **Mock at the module edge, never the logic under test.** `next/navigation`'s
+  `useRouter().push` is a recorder; the test then re-renders with the real
+  `parseShopQuery` of the pushed href, so the resync runs for real.
+
+Still browser-verified at review/QA, not here: anything visual or platform —
+RTL layout and logical properties, Persian font rendering, the native
+`<dialog>`'s focus trap, Escape, backdrop and top-layer stacking (happy-dom
+implements `<dialog>` only partly — keep assertions off `showModal()`), the
+`body:has(dialog[open])` scroll lock, and real navigation.
+
+No blanket retrofit: components without one of the three properties above are
+covered by their pure modules' unit tests plus browser verification.
+
 ## Quality gates — all must pass before a story is done
 
 ```bash
