@@ -54,10 +54,12 @@ const VALUES = [
 /**
  * The hero.
  *
- * `min-h-[70vh]` where the prototype has a fixed `h-[70vh]`: the headline is
- * three lines at 375px and a fixed height would clip it under
- * `overflow-hidden`. The prototype's own `pt-20` is gone — the storefront
- * layout already offsets the fixed navbar.
+ * `min-h-[70vh]` where the prototype has a fixed `h-[70vh]`. Measured, the
+ * hero's content is 279px at 375px wide, so a fixed 70vh only starts clipping
+ * under `overflow-hidden` below a ~400px-tall viewport — no phone in portrait.
+ * `min-h` is kept anyway because it costs nothing and the copy here is the kind
+ * that grows. The prototype's own `pt-20` is gone — the storefront layout
+ * already offsets the fixed navbar.
  *
  * White text lands on `--ink` with the photo at 40% plus a gradient, which is
  * what keeps the copy at a predictable contrast ratio instead of floating over
@@ -104,7 +106,7 @@ function AboutStory() {
           <div className="relative h-96 overflow-hidden rounded-3xl">
             <Image
               src={STORY_IMAGE}
-              alt="اسموکی روی مبل"
+              alt="اسموکی، گربه‌ای سیاه‌وسفید با چشمان سبز"
               fill
               sizes="(min-width: 768px) 50vw, 100vw"
               className="object-cover"
@@ -190,7 +192,15 @@ function AboutValues() {
   );
 }
 
-/** The closing call to action. The prototype's button navigated to the shop. */
+/**
+ * The closing call to action. The prototype's button navigated to the shop.
+ *
+ * This is the only interactive element in the app that sits on an
+ * `--accent-strong` surface, and the global focus ring is `--ring` (#C9623F) —
+ * 1.26:1 against that fill, i.e. invisible, failing WCAG 2.2 SC 1.4.11. The
+ * outline is white here (4.99:1) instead; every other button in the app is on
+ * a light or `--ink` surface where the default ring still measures fine.
+ */
 function AboutCta() {
   return (
     <section className="bg-accent-strong px-4 py-24 text-center">
@@ -199,7 +209,7 @@ function AboutCta() {
       </h2>
       <Link
         href={shopPath()}
-        className="text-accent-strong mt-4 inline-block rounded-xl bg-white px-8 py-4 font-bold transition-colors hover:bg-white/90"
+        className="text-accent-strong mt-4 inline-block rounded-xl bg-white px-8 py-4 font-bold transition-colors hover:bg-white/90 focus-visible:outline-white"
         data-umami-event="about-cta-shop-click"
       >
         کشف محصولات
