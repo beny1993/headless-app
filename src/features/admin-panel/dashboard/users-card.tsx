@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { formatJalali, toPersianDigits } from '@/lib/format';
 
 // Server component demonstrating the page → DAO → DB read chain.
 export async function UsersCard() {
@@ -16,7 +17,9 @@ export async function UsersCard() {
     <Card>
       <CardHeader>
         <CardTitle>Users</CardTitle>
-        <CardDescription>
+        {/* English operator copy inside the RTL admin shell: pin it LTR so the
+            code snippet and dashes don't bidi-reorder. */}
+        <CardDescription dir="ltr">
           Everyone with an account — customers sign themselves up by phone OTP.
           Grant admin with <code>pnpm create-admin &lt;phone&gt;</code>.
         </CardDescription>
@@ -41,12 +44,10 @@ export async function UsersCard() {
                   {/* The phone, not the derived `…@phone.smokey.invalid`
                       address, which identifies nobody. */}
                   <td className="py-2" dir="ltr">
-                    {toLocalIranPhone(user.phoneNumber ?? '')}
+                    {toPersianDigits(toLocalIranPhone(user.phoneNumber ?? ''))}
                   </td>
                   <td className="py-2">{user.role}</td>
-                  <td className="py-2">
-                    {user.createdAt.toISOString().slice(0, 10)}
-                  </td>
+                  <td className="py-2">{formatJalali(user.createdAt)}</td>
                 </tr>
               ))}
             </tbody>
