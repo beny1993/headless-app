@@ -1,9 +1,9 @@
 // Iranian mobile numbers, reduced to one canonical form.
 //
 // **Nothing in this file may import drizzle, `pg` or `@hono/zod-openapi`** — the
-// login form is a client component and imports the schema below, so anything
-// reachable from here ends up in the browser bundle. Same rule, same reason, as
-// `src/lib/catalog/product-query.ts`.
+// login form is a client component and normalizes through here, so anything
+// reachable from this file ends up in the browser bundle. Same rule, same
+// reason, as `src/lib/catalog/product-query.ts`.
 //
 // ## Canonical form: `+989121234567`
 //
@@ -14,7 +14,6 @@
 // normalizing on the way in, is how one human ends up with two accounts:
 // `09121234567` and `+989121234567` are different strings, and a unique index
 // cannot see that they are the same person.
-import * as z from 'zod';
 import { normalizeSearchText } from '@/lib/catalog/search-text';
 
 /**
@@ -106,23 +105,6 @@ export function normalizeIranPhone(input: string): string | null {
 export function isCanonicalIranPhone(value: unknown): value is string {
   return typeof value === 'string' && normalizeIranPhone(value) === value;
 }
-
-/**
- * The zod boundary every external phone input crosses — the login form, the
- * API, `pnpm create-admin`. Parses *to* the canonical form, so a caller that
- * has parsed cannot then send the raw string by accident.
- */
-export const iranMobileSchema = z
-  .string({ error: INVALID_PHONE_MESSAGE })
-  .max(MAX_PHONE_INPUT_LENGTH, { error: INVALID_PHONE_MESSAGE })
-  .transform((value, ctx) => {
-    const canonical = normalizeIranPhone(value);
-    if (canonical === null) {
-      ctx.addIssue({ code: 'custom', message: INVALID_PHONE_MESSAGE });
-      return z.NEVER;
-    }
-    return canonical;
-  });
 
 /**
  * The stand-in address for a phone-only account.

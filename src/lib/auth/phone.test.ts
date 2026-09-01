@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   CANONICAL_PHONE_EXAMPLE,
-  iranMobileSchema,
   isCanonicalIranPhone,
   normalizeIranPhone,
+  tempEmailForPhone,
   toLocalIranPhone,
 } from './phone';
 
@@ -118,32 +118,6 @@ describe('normalizeIranPhone', () => {
   });
 });
 
-describe('iranMobileSchema', () => {
-  it('parses a loose shape into the canonical form', () => {
-    expect(iranMobileSchema.parse('0912 123 4567')).toBe(CANONICAL);
-  });
-
-  it('parses Persian digits into the canonical form', () => {
-    expect(iranMobileSchema.parse('۰۹۱۲۱۲۳۴۵۶۷')).toBe(CANONICAL);
-  });
-
-  it('rejects a landline with a Persian message', () => {
-    const result = iranMobileSchema.safeParse('02112345678');
-    expect(result.success).toBe(false);
-    expect(result.error?.issues[0]?.message).toContain('موبایل');
-  });
-
-  it('rejects a non-string without throwing', () => {
-    expect(iranMobileSchema.safeParse(989121234567).success).toBe(false);
-    expect(iranMobileSchema.safeParse(null).success).toBe(false);
-    expect(iranMobileSchema.safeParse(undefined).success).toBe(false);
-  });
-
-  it('caps input length before normalization runs', () => {
-    expect(iranMobileSchema.safeParse('9'.repeat(1000)).success).toBe(false);
-  });
-});
-
 describe('isCanonicalIranPhone', () => {
   it('accepts the canonical form', () => {
     expect(isCanonicalIranPhone(CANONICAL)).toBe(true);
@@ -184,5 +158,26 @@ describe('toLocalIranPhone', () => {
   it('leaves anything non-canonical alone rather than inventing a shape', () => {
     expect(toLocalIranPhone('09121234567')).toBe('09121234567');
     expect(toLocalIranPhone('')).toBe('');
+  });
+});
+
+describe('tempEmailForPhone', () => {
+  it('derives the address a phone-only account is filed under', () => {
+    expect(tempEmailForPhone(CANONICAL)).toBe(
+      '989121234567@phone.smokey.invalid',
+    );
+  });
+
+  it('uses a TLD that can never resolve', () => {
+    // RFC 2606 reserves `.invalid`. A real-looking domain here would make some
+    // future mailer deliverable to an address nobody owns.
+    expect(tempEmailForPhone(CANONICAL).endsWith('.invalid')).toBe(true);
+  });
+
+  it('gives different numbers different addresses', () => {
+    // `email` is unique, so a collision would merge two people into one account.
+    expect(tempEmailForPhone('+989121234567')).not.toBe(
+      tempEmailForPhone('+989121234568'),
+    );
   });
 });
