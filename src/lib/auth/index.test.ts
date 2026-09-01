@@ -45,9 +45,8 @@ describe('phone number plugin', () => {
     // Keeping both would leave every customer reachable at a derived
     // `<phone>@phone.smokey.invalid` address whose sign-in code prints to the
     // server console in development.
-    expect(options.plugins?.some((plugin) => plugin.id === 'email-otp')).toBe(
-      false,
-    );
+    const ids = options.plugins?.map((plugin) => String(plugin.id)) ?? [];
+    expect(ids).not.toContain('email-otp');
   });
 
   it('never enables password authentication', () => {

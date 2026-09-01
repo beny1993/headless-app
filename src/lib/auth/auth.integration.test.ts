@@ -80,8 +80,8 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
    */
   const sentCode = () => {
     const printed = log.mock.calls
-      .map((call) => call.join(' '))
-      .filter((line) => line.includes('[sms:console]'));
+      .map((call: unknown[]) => call.join(' '))
+      .filter((line: string) => line.includes('[sms:console]'));
     const message = printed.at(-1)?.split(' :: ').at(-1);
     return message?.match(/(\d{6})/)?.[1] ?? null;
   };
@@ -107,7 +107,7 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
       // The console driver is the shipped default until a provider is chosen,
       // and this is the property QA and local development depend on.
       const { phone, code } = await requestCode();
-      const printed = log.mock.calls.map((call) => call.join(' ')).join('\n');
+      const printed = log.mock.calls.map((call: unknown[]) => call.join(' ')).join('\n');
 
       expect(printed).toContain('[sms:console]');
       expect(printed).toContain(phone);

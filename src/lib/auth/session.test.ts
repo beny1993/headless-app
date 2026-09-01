@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AUTH_PATHS, PATHS } from '@/lib/constant/paths';
+import { PATHS, PROTECTED_PATHS } from '@/lib/constant/paths';
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -23,11 +23,21 @@ const sessionFor = (role: string) => ({
 describe('requireAdmin', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('sends a signed-out visitor to sign-in', async () => {
+  it('sends a signed-out visitor to the login page', async () => {
     mocks.getSession.mockResolvedValue(null);
 
     await expect(requireAdmin()).rejects.toThrow(
-      `REDIRECT:${AUTH_PATHS.SIGNIN}`,
+      `REDIRECT:${PATHS.LOGIN}?next=`,
+    );
+  });
+
+  it('remembers the admin panel as where to return to', async () => {
+    // Otherwise signing in drops the admin on the storefront and they have to
+    // navigate back — every time, since the session is what expired.
+    mocks.getSession.mockResolvedValue(null);
+
+    await expect(requireAdmin()).rejects.toThrow(
+      `REDIRECT:${PATHS.LOGIN}?next=${encodeURIComponent(PROTECTED_PATHS.INDEX)}`,
     );
   });
 

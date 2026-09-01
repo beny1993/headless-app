@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { authClient } from '@/lib/auth/client';
-import { AUTH_PATHS } from '@/lib/constant/paths';
+import { PATHS } from '@/lib/constant/paths';
 import { Button } from '@/components/ui/button';
 
 export function SignOutButton() {
@@ -14,7 +14,7 @@ export function SignOutButton() {
     setIsLoading(true);
     try {
       await authClient.signOut();
-      router.push(AUTH_PATHS.SIGNIN);
+      router.push(PATHS.HOME);
       router.refresh();
     } finally {
       setIsLoading(false);
