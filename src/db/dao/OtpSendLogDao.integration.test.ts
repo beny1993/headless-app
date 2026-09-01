@@ -26,8 +26,7 @@ describe.skipIf(!databaseReachable)('OtpSendLogDao', () => {
     phones.length = 0;
   });
 
-  const secondsAgo = (seconds: number) =>
-    new Date(Date.now() - seconds * 1000);
+  const secondsAgo = (seconds: number) => new Date(Date.now() - seconds * 1000);
 
   it('reports no sends for a number that has never asked for a code', async () => {
     expect(await OtpSendLogDao.sentAtSince(phone(), secondsAgo(3600))).toEqual(
@@ -52,9 +51,9 @@ describe.skipIf(!databaseReachable)('OtpSendLogDao', () => {
     await OtpSendLogDao.record(number);
     await OtpSendLogDao.record(number);
 
-    expect(await OtpSendLogDao.sentAtSince(number, secondsAgo(3600))).toHaveLength(
-      3,
-    );
+    expect(
+      await OtpSendLogDao.sentAtSince(number, secondsAgo(3600)),
+    ).toHaveLength(3);
   });
 
   it('never leaks one number’s sends into another’s budget', async () => {
@@ -102,13 +101,15 @@ describe.skipIf(!databaseReachable)('OtpSendLogDao', () => {
 
     // Nothing is older than "an hour ago" yet, so this must delete nothing.
     await OtpSendLogDao.prune(secondsAgo(3600));
-    expect(await OtpSendLogDao.sentAtSince(number, secondsAgo(3600))).toHaveLength(
-      1,
-    );
+    expect(
+      await OtpSendLogDao.sentAtSince(number, secondsAgo(3600)),
+    ).toHaveLength(1);
 
     // A cutoff in the future covers the row just written.
     await OtpSendLogDao.prune(new Date(Date.now() + 60_000));
-    expect(await OtpSendLogDao.sentAtSince(number, secondsAgo(3600))).toEqual([]);
+    expect(await OtpSendLogDao.sentAtSince(number, secondsAgo(3600))).toEqual(
+      [],
+    );
   });
 
   it('accepts a number that has no user account', async () => {

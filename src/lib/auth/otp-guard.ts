@@ -3,10 +3,7 @@
 // denial into the 429 the login screen renders.
 import { APIError } from 'better-auth/api';
 import { OtpSendLogDao } from '@/db/dao/OtpSendLogDao';
-import {
-  evaluateOtpThrottle,
-  OTP_SEND_WINDOW_SECONDS,
-} from './otp-throttle';
+import { evaluateOtpThrottle, OTP_SEND_WINDOW_SECONDS } from './otp-throttle';
 
 const windowStart = (now: Date) =>
   new Date(now.getTime() - OTP_SEND_WINDOW_SECONDS * 1000);

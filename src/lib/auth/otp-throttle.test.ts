@@ -125,7 +125,10 @@ describe('evaluateOtpThrottle', () => {
     it('denies when the newest send is in the future', () => {
       // A clock stepping backwards, or a row written by a host running ahead.
       // Allowing here would hand out an unlimited budget for the skew's length.
-      const result = evaluateOtpThrottle([new Date(NOW.getTime() + 60_000)], NOW);
+      const result = evaluateOtpThrottle(
+        [new Date(NOW.getTime() + 60_000)],
+        NOW,
+      );
 
       expect(result.allowed).toBe(false);
       expect(result.retryAfterSeconds).toBeGreaterThanOrEqual(1);

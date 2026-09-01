@@ -27,9 +27,9 @@ export function SignOutButton() {
       size="sm"
       onClick={signOut}
       disabled={isLoading}
-      data-umami-event="admin-panel-sign-out"
+      data-umami-event="account-sign-out"
     >
-      {isLoading ? 'Signing out…' : 'Sign out'}
+      {isLoading ? 'در حال خروج…' : 'خروج از حساب'}
     </Button>
   );
 }

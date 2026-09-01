@@ -7,7 +7,15 @@
 // the driver's server log, exactly as a developer or QA does locally.
 import { faker } from '@faker-js/faker';
 import { eq, inArray, like } from 'drizzle-orm';
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import {
   otpSendLog,
   rateLimits,
@@ -25,7 +33,8 @@ const VERIFY = '/phone-number/verify';
 
 /** A private range nothing else in the suite uses, so buckets never collide. */
 let ipCounter = 0;
-const freshIp = () => `10.99.${Math.floor(ipCounter / 250)}.${(ipCounter++ % 250) + 1}`;
+const freshIp = () =>
+  `10.99.${Math.floor(ipCounter / 250)}.${(ipCounter++ % 250) + 1}`;
 
 describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
   const phones: string[] = [];
@@ -107,7 +116,9 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
       // The console driver is the shipped default until a provider is chosen,
       // and this is the property QA and local development depend on.
       const { phone, code } = await requestCode();
-      const printed = log.mock.calls.map((call: unknown[]) => call.join(' ')).join('\n');
+      const printed = log.mock.calls
+        .map((call: unknown[]) => call.join(' '))
+        .join('\n');
 
       expect(printed).toContain('[sms:console]');
       expect(printed).toContain(phone);
@@ -225,7 +236,9 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
         .select()
         .from(users)
         .where(eq(users.phoneNumber, phone));
-      expect(user!.email).toBe(`${phone.replace('+', '')}@phone.smokey.invalid`);
+      expect(user!.email).toBe(
+        `${phone.replace('+', '')}@phone.smokey.invalid`,
+      );
     });
 
     it('signs a returning customer into the same account', async () => {
@@ -351,11 +364,14 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
       ['Persian digits', '۰۹۱۲۱۲۳۴۵۶۷'],
       ['country code without the plus', '989121234567'],
       ['spaces inside the number', '+98 912 123 4567'],
-    ])('refuses to send a code to a number written as %s', async (_l, input) => {
-      const response = await post(SEND, { phoneNumber: input });
+    ])(
+      'refuses to send a code to a number written as %s',
+      async (_l, input) => {
+        const response = await post(SEND, { phoneNumber: input });
 
-      expect(response.status).toBe(400);
-    });
+        expect(response.status).toBe(400);
+      },
+    );
 
     it('refuses to verify against a non-canonical number', async () => {
       const response = await post(VERIFY, {
@@ -530,10 +546,12 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
       // The account row itself is what `sign-in/phone-number` verifies against.
       expect(user!.role).toBe('customer');
       expect(
-        (await post('/sign-in/phone-number', {
-          phoneNumber: phone,
-          password: 'anything-at-all',
-        })).status,
+        (
+          await post('/sign-in/phone-number', {
+            phoneNumber: phone,
+            password: 'anything-at-all',
+          })
+        ).status,
       ).toBe(404);
     });
   });

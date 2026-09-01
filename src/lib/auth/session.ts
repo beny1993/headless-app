@@ -9,6 +9,20 @@ export const getSession = async () =>
   auth.api.getSession({ headers: await headers() });
 
 /**
+ * Server-component gate for pages that belong to one customer.
+ *
+ * Sends a signed-out visitor to `/login`, remembering where they were headed so
+ * the code they are about to request lands them back on it. A session is all
+ * this checks — the page itself is still responsible for scoping every read to
+ * `session.user.id` and never to an id from the URL.
+ */
+export const requireSession = async (returnTo: string) => {
+  const session = await getSession();
+  if (!session?.user) redirect(loginPath(returnTo));
+  return session;
+};
+
+/**
  * Server-component gate for the admin panel. Redirects to sign-in when there is
  * no session, and to the storefront when the session is not an admin's.
  *
