@@ -1,16 +1,34 @@
 import type { Metadata } from 'next';
+import {
+  AboutCta,
+  AboutHero,
+  AboutProcess,
+  AboutStory,
+  AboutValues,
+} from '@/features/storefront/about/about-sections';
 
-export const metadata: Metadata = { title: 'درباره ما' };
+export const metadata: Metadata = {
+  title: 'درباره ما',
+  description:
+    'داستان اسموکی و فرآیندی که هر محصول پیش از رسیدن به فروشگاه از آن می‌گذرد.',
+};
 
-// Placeholder so the navigation has a real destination instead of a 404.
-// The real page is ported from `design/` by its own story.
-export default function Page() {
+/**
+ * «درباره ما», ported from `design/src/app/App.tsx`.
+ *
+ * Unlike the home and shop pages this one reads nothing from the database, so
+ * it keeps the default rendering and is prerendered at build time: there is
+ * nothing here that can go stale between deploys, and `next build` needs no
+ * Postgres to produce it.
+ */
+export default function AboutPage() {
   return (
-    <main className="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
-      <h1 className="text-3xl font-black">درباره ما</h1>
-      <p className="text-muted-foreground mt-3">
-        صفحه درباره ما در استوری مربوط به خودش ساخته می‌شود.
-      </p>
+    <main>
+      <AboutHero />
+      <AboutStory />
+      <AboutProcess />
+      <AboutValues />
+      <AboutCta />
     </main>
   );
 }
