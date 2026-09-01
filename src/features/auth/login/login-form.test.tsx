@@ -221,6 +221,45 @@ describe('step two: the code', () => {
     expect(codeBoxes()[1]!.value).toBe('');
   });
 
+  it('keeps every digit when they arrive faster than React re-renders', async () => {
+    // Found in the browser, not here: typing the six digits at speed left only
+    // the first one in place. Each `onChange` read `code` from its own closure,
+    // so six events batched into one render all saw the same empty string and
+    // overwrote each other.
+    //
+    // This fires all six inside a single `act`, which is what batching does —
+    // the one-`act`-per-keystroke helper above flushes React between digits and
+    // cannot see the bug.
+    await arrive();
+
+    await act(async () => {
+      for (const [index, digit] of [...'482913'].entries()) {
+        fireEvent.change(codeBoxes()[index]!, { target: { value: digit } });
+      }
+    });
+
+    expect(
+      codeBoxes()
+        .map((box) => box.value)
+        .join(''),
+    ).toBe('482913');
+    expect(verify).toHaveBeenCalledWith({
+      phoneNumber: '+989121234567',
+      code: '482913',
+    });
+  });
+
+  it('fills a box the shopper goes back to, out of order', async () => {
+    await arrive();
+
+    await act(async () => {
+      fireEvent.change(codeBoxes()[3]!, { target: { value: '9' } });
+    });
+
+    expect(codeBoxes()[3]!.value).toBe('9');
+    expect(codeBoxes()[0]!.value).toBe('');
+  });
+
   it('verifies on its own once the sixth digit lands', async () => {
     await arrive();
 

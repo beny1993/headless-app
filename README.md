@@ -14,7 +14,7 @@ cp .env.example .env                # fill APP_CONFIG_AUTH_SECRET (openssl rand 
 pnpm install
 pnpm app:dev                        # dev Postgres + Next on http://localhost:3000
 pnpm migration:migrate              # first run, second terminal
-pnpm create-admin you@example.com   # provision an admin
+pnpm create-admin 09121234567       # provision (or promote) an admin by phone
 ```
 
 | URL | What |

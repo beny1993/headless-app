@@ -1,4 +1,5 @@
 import { UserDao } from '@/db/dao/UserDao';
+import { toLocalIranPhone } from '@/lib/auth/phone';
 import {
   Card,
   CardContent,
@@ -14,10 +15,10 @@ export async function UsersCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Back-office users</CardTitle>
+        <CardTitle>Users</CardTitle>
         <CardDescription>
-          Provision users with <code>pnpm create-admin &lt;email&gt;</code> —
-          sign-in is invite-only.
+          Everyone with an account — customers sign themselves up by phone OTP.
+          Grant admin with <code>pnpm create-admin &lt;phone&gt;</code>.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -28,7 +29,7 @@ export async function UsersCard() {
             <thead>
               <tr className="text-muted-foreground border-b">
                 <th className="py-2 font-medium">Name</th>
-                <th className="py-2 font-medium">Email</th>
+                <th className="py-2 font-medium">Phone</th>
                 <th className="py-2 font-medium">Role</th>
                 <th className="py-2 font-medium">Created</th>
               </tr>
@@ -37,7 +38,11 @@ export async function UsersCard() {
               {users.map((user) => (
                 <tr key={user.id} className="border-b last:border-0">
                   <td className="py-2">{user.name}</td>
-                  <td className="py-2">{user.email}</td>
+                  {/* The phone, not the derived `…@phone.smokey.invalid`
+                      address, which identifies nobody. */}
+                  <td className="py-2" dir="ltr">
+                    {toLocalIranPhone(user.phoneNumber ?? '')}
+                  </td>
                   <td className="py-2">{user.role}</td>
                   <td className="py-2">
                     {user.createdAt.toISOString().slice(0, 10)}

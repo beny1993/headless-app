@@ -65,6 +65,9 @@ const messageForStatus = (status: number | undefined, fallback: string) => {
 
 type Step = 'phone' | 'code';
 
+/** Six empty boxes. A fresh array each time — this is mutated in place below. */
+const emptyCode = () => Array.from({ length: CODE_LENGTH }, () => '');
+
 /**
  * The storefront's only sign-in: a phone number, then the six digits texted to
  * it. Ported from the prototype's `LoginPage`.
@@ -81,12 +84,26 @@ export function LoginForm({ next }: { next: string }) {
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
   const [sentTo, setSentTo] = useState('');
-  const [code, setCode] = useState('');
+  const [digits, setDigits] = useState<string[]>(emptyCode);
   const [error, setError] = useState<string | undefined>();
   const [isBusy, setIsBusy] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
 
   const boxes = useRef<(HTMLInputElement | null)[]>([]);
+  // The code as the boxes currently hold it, readable synchronously. Two
+  // keystrokes landing in one React batch both read `digits` from their own
+  // closure, so the second would overwrite the first; a ref is updated the
+  // moment the event runs and composes correctly.
+  const entered = useRef<string[]>(emptyCode());
+
+  const code = digits.join('');
+  const isComplete = !digits.includes('');
+
+  /** Writes both halves, so the ref never lags the render. */
+  const putCode = (next: string[]) => {
+    entered.current = next;
+    setDigits(next);
+  };
 
   // One `setTimeout` a second, not an interval: it restarts cleanly whenever a
   // resend puts a new number on the clock, and it is the only timer this
@@ -129,7 +146,7 @@ export function LoginForm({ next }: { next: string }) {
       return;
     }
     if (await sendCode(canonical)) {
-      setCode('');
+      putCode(emptyCode());
       setStep('code');
     }
   };
@@ -145,7 +162,7 @@ export function LoginForm({ next }: { next: string }) {
       });
       if (response.error) {
         setError(messageForStatus(response.error.status, MESSAGES.wrongCode));
-        setCode('');
+        putCode(emptyCode());
         boxes.current[0]?.focus();
         return;
       }
@@ -165,29 +182,29 @@ export function LoginForm({ next }: { next: string }) {
     const digit = digitsOnly(raw).slice(-1);
     if (!digit) return;
 
-    const next = code.padEnd(CODE_LENGTH, ' ').split('');
+    const next = [...entered.current];
     next[index] = digit;
-    const updated = next.join('').trimEnd();
-    setCode(updated);
+    putCode(next);
     setError(undefined);
 
     if (index < CODE_LENGTH - 1) boxes.current[index + 1]?.focus();
-    if (updated.length === CODE_LENGTH) void verify(updated);
+    // Only when every box is filled — a shopper who clicks back to fix the
+    // third digit must not trigger a verification against five digits and a gap.
+    if (!next.includes('')) void verify(next.join(''));
   };
 
   const onBoxKeyDown = (index: number, event: React.KeyboardEvent) => {
-    if (event.key === 'Backspace' && !code[index]) {
-      event.preventDefault();
-      const previous = Math.max(0, index - 1);
-      setCode(code.slice(0, previous));
-      boxes.current[previous]?.focus();
-      return;
-    }
-    if (event.key === 'Backspace') {
-      event.preventDefault();
-      setCode(code.slice(0, index));
-      setError(undefined);
-    }
+    if (event.key !== 'Backspace') return;
+    event.preventDefault();
+
+    // An empty box sends the cursor back a place and clears that one instead,
+    // which is what every code input does and what the thumb expects.
+    const target = entered.current[index] ? index : Math.max(0, index - 1);
+    const next = [...entered.current];
+    next[target] = '';
+    putCode(next);
+    setError(undefined);
+    boxes.current[target]?.focus();
   };
 
   /** A whole code arriving at once — pasted, or filled from the SMS. */
@@ -198,15 +215,18 @@ export function LoginForm({ next }: { next: string }) {
     );
     if (!pasted) return;
     event.preventDefault();
-    setCode(pasted);
+
+    const next = emptyCode();
+    for (const [index, digit] of [...pasted].entries()) next[index] = digit;
+    putCode(next);
     setError(undefined);
     boxes.current[Math.min(pasted.length, CODE_LENGTH - 1)]?.focus();
-    if (pasted.length === CODE_LENGTH) void verify(pasted);
+    if (!next.includes('')) void verify(next.join(''));
   };
 
   const resend = async () => {
     if (secondsLeft > 0) return;
-    setCode('');
+    putCode(emptyCode());
     await sendCode(sentTo);
   };
 
@@ -314,7 +334,7 @@ export function LoginForm({ next }: { next: string }) {
                   onClick={() => {
                     setStep('phone');
                     setError(undefined);
-                    setCode('');
+                    putCode(emptyCode());
                   }}
                   className="text-accent-strong focus-visible:ring-ring rounded hover:underline focus-visible:ring-2 focus-visible:outline-none"
                   data-umami-event="login-edit-phone"
@@ -336,7 +356,7 @@ export function LoginForm({ next }: { next: string }) {
                     inputMode="numeric"
                     autoComplete={index === 0 ? 'one-time-code' : 'off'}
                     maxLength={1}
-                    value={code[index] ?? ''}
+                    value={digits[index] ?? ''}
                     aria-label={`رقم ${formatNumber(index + 1)} از کد تایید`}
                     aria-invalid={Boolean(error)}
                     onChange={(event) => putDigit(index, event.target.value)}
@@ -364,7 +384,7 @@ export function LoginForm({ next }: { next: string }) {
               <button
                 type="button"
                 onClick={() => verify(code)}
-                disabled={code.length < CODE_LENGTH || isBusy}
+                disabled={!isComplete || isBusy}
                 className="bg-accent-strong hover:bg-accent-hover focus-visible:ring-ring disabled:bg-muted disabled:text-muted-foreground mt-6 w-full rounded-xl py-3.5 font-bold text-white transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed"
                 data-umami-event="login-verify-code"
               >
