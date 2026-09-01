@@ -101,6 +101,16 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 
 ## Testing standard
 
+- **Control characters are constructed, never typed (Benyamin, 2026-09-01).**
+  When source must reference a control or invisible character (NUL, NBSP, ZWNJ
+  as a *target* rather than Persian text, bidi controls), never place the
+  literal byte in the file — tooling and reviews cannot see it, and generation
+  tools have repeatedly emitted the raw byte where an escape was intended.
+  Construct it instead: `'\u0000'` escapes in TS, `String.fromCharCode(0)` in
+  tests, `chr(160)` in SQL probes, `U&`-escapes or ARE `\uXXXX` in migrations —
+  then byte-verify the file (`cat -v`, `od -c`, or a high-byte grep) before
+  committing. Persian content itself is of course written normally.
+
 Every non-trivial function ships with unit tests covering all its aspects: happy
 path, edge cases (empty/zero/max, Persian text, boundaries), error paths, invalid
 input. Money, order-state and authz logic get exhaustive branch coverage — every
