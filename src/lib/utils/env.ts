@@ -3,6 +3,11 @@ export enum VARS {
 
   APP_CONFIG_AUTH_SECRET = 'APP_CONFIG_AUTH_SECRET',
 
+  // Which SMS driver `src/lib/sms` dispatches through. `console` (the default)
+  // writes codes to the server log instead of sending them — the mock the
+  // project ships with until Kavenegar or SMS.ir is picked.
+  APP_CONFIG_SMS_PROVIDER = 'APP_CONFIG_SMS_PROVIDER',
+
   APP_CONFIG_EMAIL_ENABLED = 'APP_CONFIG_EMAIL_ENABLED',
   APP_CONFIG_SMTP_SERVER = 'APP_CONFIG_SMTP_SERVER',
   APP_CONFIG_SMTP_PORT = 'APP_CONFIG_SMTP_PORT',
