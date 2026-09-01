@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CANONICAL_PHONE_EXAMPLE,
   iranMobileSchema,
+  isCanonicalIranPhone,
   normalizeIranPhone,
   toLocalIranPhone,
 } from './phone';
@@ -140,6 +141,38 @@ describe('iranMobileSchema', () => {
 
   it('caps input length before normalization runs', () => {
     expect(iranMobileSchema.safeParse('9'.repeat(1000)).success).toBe(false);
+  });
+});
+
+describe('isCanonicalIranPhone', () => {
+  it('accepts the canonical form', () => {
+    expect(isCanonicalIranPhone(CANONICAL)).toBe(true);
+  });
+
+  it.each([
+    ['national with leading zero', '09121234567'],
+    ['national without leading zero', '9121234567'],
+    ['country code without the plus', '989121234567'],
+    ['international access prefix', '00989121234567'],
+    ['canonical digits with a space', '+98 912 123 4567'],
+    ['Persian digits', '۰۹۱۲۱۲۳۴۵۶۷'],
+  ])('rejects a valid number written as %s', (_label, input) => {
+    // Every one of these normalizes to a real number — and every one of them
+    // would become a *second* account if the API accepted it verbatim.
+    expect(normalizeIranPhone(input)).not.toBeNull();
+    expect(isCanonicalIranPhone(input)).toBe(false);
+  });
+
+  it('rejects a number that is not Iranian at all', () => {
+    expect(isCanonicalIranPhone('+14155552671')).toBe(false);
+  });
+
+  it('rejects non-strings without throwing', () => {
+    expect(isCanonicalIranPhone(undefined)).toBe(false);
+    expect(isCanonicalIranPhone(null)).toBe(false);
+    expect(isCanonicalIranPhone(989121234567)).toBe(false);
+    expect(isCanonicalIranPhone({ phoneNumber: CANONICAL })).toBe(false);
+    expect(isCanonicalIranPhone([CANONICAL])).toBe(false);
   });
 });
 

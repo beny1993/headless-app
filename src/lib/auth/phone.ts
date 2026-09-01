@@ -95,6 +95,19 @@ export function normalizeIranPhone(input: string): string | null {
 }
 
 /**
+ * Is this already exactly the canonical form?
+ *
+ * The auth API accepts nothing else. Normalizing server-side instead would look
+ * friendlier and be wrong: Better Auth stores the string the request carried, so
+ * `09121234567` and `+989121234567` would become two users for one human, under
+ * a unique index that cannot tell they are the same person. Normalization is the
+ * *client's* job (and `pnpm create-admin`'s); the boundary only checks.
+ */
+export function isCanonicalIranPhone(value: unknown): value is string {
+  return typeof value === 'string' && normalizeIranPhone(value) === value;
+}
+
+/**
  * The zod boundary every external phone input crosses — the login form, the
  * API, `pnpm create-admin`. Parses *to* the canonical form, so a caller that
  * has parsed cannot then send the raw string by accident.
@@ -110,6 +123,21 @@ export const iranMobileSchema = z
     }
     return canonical;
   });
+
+/**
+ * The stand-in address for a phone-only account.
+ *
+ * Better Auth requires an email for every user and the column is `notNull
+ * unique`; customers who sign in by SMS have none. `.invalid` is the TLD
+ * RFC 2606 reserves for exactly this — it can never resolve, so no mailer can
+ * be talked into delivering to an address nobody owns.
+ *
+ * Shared by the plugin's `getTempEmail` and `pnpm create-admin`: two
+ * derivations that drifted apart would let one person hold two accounts.
+ */
+export function tempEmailForPhone(phoneNumber: string): string {
+  return `${phoneNumber.replace('+', '')}@phone.smokey.invalid`;
+}
 
 /**
  * Canonical storage → the `09…` form Iranians read and dial. Display only;

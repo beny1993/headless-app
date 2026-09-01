@@ -14,6 +14,22 @@ export class UserDao {
     return rows[0] ?? null;
   }
 
+  /**
+   * Looks a customer up by phone number.
+   *
+   * `phone` must already be canonical (`+989xxxxxxxxx`) — this does not
+   * normalize, deliberately: a lookup that quietly accepts `09121234567` would
+   * hide the fact that the *write* path stores whatever it was given.
+   */
+  static async findByPhone(phone: string): Promise<User | null> {
+    const rows = await db
+      .select()
+      .from(users)
+      .where(eq(users.phoneNumber, phone))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   static async list(): Promise<User[]> {
     return db.select().from(users).orderBy(asc(users.createdAt));
   }
@@ -23,6 +39,8 @@ export class UserDao {
     email: string;
     name: string;
     role?: Role;
+    phoneNumber?: string;
+    phoneNumberVerified?: boolean;
   }): Promise<User> {
     const [row] = await db
       .insert(users)
@@ -32,7 +50,23 @@ export class UserDao {
         name: input.name,
         emailVerified: true,
         role: input.role ?? ROLES.CUSTOMER,
+        phoneNumber: input.phoneNumber,
+        phoneNumberVerified: input.phoneNumberVerified ?? false,
       })
+      .returning();
+    return row;
+  }
+
+  /**
+   * Changes one user's role. Only `pnpm create-admin` calls this — there is no
+   * API path to it, and there must not be one: a role is granted off-line, by
+   * someone with a shell, never by anything a request can reach.
+   */
+  static async setRole(id: string, role: Role): Promise<User> {
+    const [row] = await db
+      .update(users)
+      .set({ role })
+      .where(eq(users.id, id))
       .returning();
     return row;
   }
