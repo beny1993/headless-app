@@ -33,4 +33,5 @@ admin upload (`Story - Admin Product Management`).
 | `community-baron.jpg` | https://unsplash.com/photos/photo-1568640347023-a616a30bc3bd |
 | `community-luna.jpg` | https://unsplash.com/photos/photo-1514888286974-6c03e2ca1dba |
 | `community-misha.jpg` | https://unsplash.com/photos/photo-1606214174585-fe31582dc6ee |
+| `hero-about.jpg` | https://unsplash.com/photos/photo-1516750105099-4b8a83e217ee |
 | `hero-home.jpg` | https://unsplash.com/photos/photo-1518020382113-a7e8fc38eac9 |
