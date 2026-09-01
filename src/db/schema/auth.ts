@@ -144,8 +144,10 @@ export const otpSendLog = pgTable(
  * The scaffold's carry-item: the default memory store is per-process, so on a
  * PaaS it resets on every redeploy and, behind more than one instance, gives an
  * attacker one full budget per instance. Column names must stay as the adapter
- * spells its fields (`key`, `count`, `lastRequest`) — a mismatch here does not
- * error, it just leaves `storage: 'database'` with no model to write to.
+ * spells its fields (`key`, `count`, `lastRequest`): on a mismatch the drizzle
+ * adapter throws — `The field "key" does not exist in the schema for the model
+ * "rateLimit"` on the read the limiter does first — from `onRequest`, which
+ * fails every auth endpoint rather than quietly disabling the limiter.
  */
 export const rateLimits = pgTable('rate_limit', {
   id: text('id').primaryKey(),

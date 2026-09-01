@@ -20,7 +20,7 @@ pnpm create-admin 09121234567       # provision (or promote) an admin by phone
 | URL | What |
 | --- | --- |
 | `http://localhost:3000` | Storefront |
-| `http://localhost:3000/admin-panel` | Admin panel (email OTP, invite-only) |
+| `http://localhost:3000/admin-panel` | Admin panel (sign in at `/login` by phone OTP; admin granted by `pnpm create-admin`) |
 | `http://localhost:3000/api/reference` | Interactive API docs (non-production) |
 
 `design/` holds the vendored design prototype the front-end ports from —

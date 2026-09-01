@@ -35,8 +35,10 @@ try {
   console.log(said[outcome]);
   process.exit(0);
 } catch (error) {
-  // Almost always a phone number that is not an Iranian mobile. The zod message
-  // is the Persian one the login form shows, which is the right thing to read.
+  // Almost always a phone number that is not an Iranian mobile.
+  // `provisionAdminByPhone` throws a plain English `Error` for exactly this
+  // audience — a terminal, not the login screen — and its message says what to
+  // type instead.
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 }

@@ -1,4 +1,10 @@
-// Per-phone throttling for OTP sends.
+// The OTP send policy: how long a code is, how often one may be asked for.
+//
+// Client-safe on purpose — **nothing here may import drizzle, `pg` or
+// `@hono/zod-openapi`**. The login form renders one box per digit and the auth
+// config tells the plugin how many to generate; both read the same constant
+// from here rather than each stating `6`, because two statements of one number
+// drift and the failure is a form that can never submit a valid code.
 //
 // Better Auth's own limiter is keyed by IP (verified in its source: the bucket
 // key is `${ip}|${path}`), which does not bound the two things that actually
@@ -10,6 +16,12 @@
 // The decision is a pure function of the send log and the clock so that every
 // boundary is testable without a database or a fake timer; `assertOtpSendAllowed`
 // in ./otp-guard.ts is the thin part that talks to Postgres.
+
+/**
+ * Digits in a sign-in code. Read by the plugin's `otpLength` and by the login
+ * form, which renders one box per digit and submits when they are all filled.
+ */
+export const OTP_CODE_LENGTH = 6;
 
 /** No second code inside this many seconds of the last one. */
 export const OTP_RESEND_COOLDOWN_SECONDS = 90;

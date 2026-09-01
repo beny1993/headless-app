@@ -80,6 +80,32 @@ describe('getSmsSender', () => {
     expect(() => getSmsSender()).toThrow();
   });
 
+  it.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty'])(
+    'refuses %j, which is inherited from Object.prototype and not a driver',
+    (inherited) => {
+      // The driver table is an object literal, so a plain lookup would resolve
+      // these to functions, pass the "is there a driver?" check, and "send"
+      // every code into the void — the exact silent failure the throw exists
+      // to prevent, reachable from a typo in an env file.
+      vi.stubEnv('APP_CONFIG_SMS_PROVIDER', inherited);
+      expect(() => getSmsSender()).toThrow(new RegExp(inherited));
+    },
+  );
+
+  it('trims a padded provider name', () => {
+    // `APP_CONFIG_SMS_PROVIDER=console ` is an easy paste into a PaaS env
+    // field, and an untrimmed value would throw on every send.
+    vi.stubEnv('APP_CONFIG_SMS_PROVIDER', '  console  ');
+    expect(getSmsSender()).toBe(consoleSmsDriver);
+  });
+
+  it('treats a whitespace-only setting as unset', () => {
+    // Distinct from the padded case above: here there is no name left after
+    // trimming, so it is the fallback to the default that has to catch it.
+    vi.stubEnv('APP_CONFIG_SMS_PROVIDER', '   ');
+    expect(getSmsSender()).toBe(consoleSmsDriver);
+  });
+
   it('lists console among the providers it knows', () => {
     expect(SMS_PROVIDERS).toContain('console');
   });

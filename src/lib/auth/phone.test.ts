@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CANONICAL_PHONE_EXAMPLE,
   isCanonicalIranPhone,
+  MAX_PHONE_INPUT_LENGTH,
   normalizeIranPhone,
   tempEmailForPhone,
   toLocalIranPhone,
@@ -110,6 +111,26 @@ describe('normalizeIranPhone', () => {
 
     it('rejects a very long string without walking off into a slow path', () => {
       expect(normalizeIranPhone('9'.repeat(10_000))).toBeNull();
+    });
+
+    describe('the length cap is a rule, not just a shortcut', () => {
+      // 10 000 digits above are rejected on shape too, so that case passes with
+      // or without the cap. Separators are what tell the two apart: padding a
+      // real number past the cap leaves something that *would* normalize.
+      const padded = (pad: number) =>
+        `${'('.repeat(pad)}09121234567${')'.repeat(pad)}`;
+
+      it('accepts a padded number that still fits', () => {
+        const input = padded(10);
+        expect(input).toHaveLength(MAX_PHONE_INPUT_LENGTH - 1);
+        expect(normalizeIranPhone(input)).toBe(CANONICAL);
+      });
+
+      it('rejects the same number once the padding passes the cap', () => {
+        const input = padded(13);
+        expect(input.length).toBeGreaterThan(MAX_PHONE_INPUT_LENGTH);
+        expect(normalizeIranPhone(input)).toBeNull();
+      });
     });
   });
 

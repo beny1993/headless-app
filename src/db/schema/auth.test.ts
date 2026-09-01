@@ -68,7 +68,9 @@ describe('otp_send_log', () => {
 describe('rate_limit', () => {
   it('carries the three columns Better Auth writes', () => {
     // Names must match the adapter's field names (`key`, `count`,
-    // `lastRequest`) or `storage: "database"` silently has no model.
+    // `lastRequest`). On a mismatch the drizzle adapter throws from
+    // `onRequest` — loudly, failing every auth endpoint — which is why this
+    // assertion is about keeping the build honest, not about a silent failure.
     const columns = Object.keys(getTableColumns(rateLimits));
     expect(columns).toEqual(
       expect.arrayContaining(['key', 'count', 'lastRequest']),

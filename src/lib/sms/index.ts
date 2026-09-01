@@ -60,9 +60,15 @@ export function getSmsSender(): SmsSender {
     false,
     DEFAULT_PROVIDER,
   );
-  const provider = (configured || DEFAULT_PROVIDER) as SmsProvider;
+  // `||` not `??`: an empty value (`APP_CONFIG_SMS_PROVIDER=` left in a `.env`)
+  // is an unset one, and `??` would hand `''` through as a provider name.
+  const provider = (configured.trim() || DEFAULT_PROVIDER) as SmsProvider;
 
-  const driver = DRIVERS[provider];
+  // `Object.hasOwn`, not a truthiness check on the lookup: `DRIVERS` is an
+  // object literal, so `constructor`/`toString`/`valueOf` would otherwise
+  // resolve to inherited functions, pass as drivers, and "send" every code
+  // into the void — the exact silent failure this throw exists to prevent.
+  const driver = Object.hasOwn(DRIVERS, provider) ? DRIVERS[provider] : null;
   if (!driver) {
     throw new Error(
       `${VARS.APP_CONFIG_SMS_PROVIDER}="${provider}" has no driver. ` +

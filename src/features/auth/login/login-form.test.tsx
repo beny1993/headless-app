@@ -8,7 +8,7 @@
 // the navigation. `normalizeIranPhone` and the countdown run for real, because
 // they are the two things most worth pinning — a request carrying `0912…`
 // instead of `+98912…` would silently open a second account for one person.
-import { act } from 'react';
+import { act, StrictMode } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoginForm } from './login-form';
@@ -486,5 +486,254 @@ describe('the resend countdown', () => {
 
     expect(codeBoxes()).toHaveLength(6);
     expect(alert()?.textContent).toContain('صبر');
+  });
+});
+
+describe('a whole code arriving in one box', () => {
+  // The bug this pins: `onChange` was treated as always-one-character and kept
+  // only the last digit of whatever arrived. An OTP autofill — the iOS/Android
+  // "from Messages" suggestion, a password manager — delivers the whole code to
+  // a single box as a change event and never fires `paste`, so six digits
+  // became one, on the exact platform an SMS code is for.
+  const arrive = async () => {
+    renderForm();
+    await requestCodeFor('09121234567');
+  };
+
+  const codeValue = () =>
+    codeBoxes()
+      .map((box) => box.value)
+      .join('');
+
+  it('spreads an autofilled code across the boxes', async () => {
+    await arrive();
+
+    await act(async () => {
+      fireEvent.change(codeBoxes()[0]!, { target: { value: '482913' } });
+    });
+
+    expect(codeValue()).toBe('482913');
+  });
+
+  it('verifies with the whole autofilled code, not one digit of it', async () => {
+    await arrive();
+
+    await act(async () => {
+      fireEvent.change(codeBoxes()[0]!, { target: { value: '482913' } });
+    });
+
+    expect(verify).toHaveBeenCalledWith({
+      phoneNumber: '+989121234567',
+      code: '482913',
+    });
+  });
+
+  it('folds Persian digits from an autofill like any other input', async () => {
+    await arrive();
+
+    await act(async () => {
+      fireEvent.change(codeBoxes()[0]!, { target: { value: '۴۸۲۹۱۳' } });
+    });
+
+    expect(codeValue()).toBe('482913');
+  });
+
+  it('never writes past the last box', async () => {
+    await arrive();
+
+    await act(async () => {
+      fireEvent.change(codeBoxes()[4]!, { target: { value: '482913' } });
+    });
+
+    // Two boxes left from index four, so two digits land and no more.
+    expect(codeValue()).toBe('48');
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it('still takes a single keystroke one box at a time', async () => {
+    await arrive();
+    await typeCode('4829');
+
+    expect(codeValue()).toBe('4829');
+  });
+});
+
+describe('when the server itself fails', () => {
+  // A 5xx is not the shopper's mistake. Telling them their phone number is
+  // invalid — a number this form validated before sending — sends them off to
+  // retype something that was already correct.
+  it('does not blame the phone number for a failed send', async () => {
+    renderForm();
+    sendOtp.mockResolvedValue(failure(500));
+
+    await requestCodeFor('09121234567');
+
+    expect(alert()?.textContent).toContain('ارتباط با سرور');
+    expect(alert()?.textContent).not.toContain('معتبر نیست');
+  });
+
+  it('does not blame the code for a failed verification', async () => {
+    renderForm();
+    await requestCodeFor('09121234567');
+    verify.mockResolvedValue(failure(503));
+
+    await typeCode('482913');
+
+    expect(alert()?.textContent).toContain('ارتباط با سرور');
+  });
+
+  it('still calls a genuine 400 on the phone number what it is', async () => {
+    renderForm();
+    sendOtp.mockResolvedValue(failure(400));
+
+    await requestCodeFor('09121234567');
+
+    expect(alert()?.textContent).toContain('معتبر نیست');
+  });
+});
+
+describe('focus follows the step', () => {
+  // Changing step swaps the whole form out. Without an explicit move, focus
+  // falls to <body>: a keyboard user tabs from the top of the document to
+  // reach the field that just appeared, and a screen-reader user is told
+  // nothing happened at all. This is the site's only sign-in.
+  it('puts the caret in the first code box once a code is sent', async () => {
+    renderForm();
+
+    await requestCodeFor('09121234567');
+
+    expect(document.activeElement).toBe(codeBoxes()[0]);
+  });
+
+  it('returns focus to the phone field on «ویرایش شماره»', async () => {
+    renderForm();
+    await requestCodeFor('09121234567');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /ویرایش شماره/ }));
+    });
+
+    expect(document.activeElement).toBe(phoneBox());
+  });
+
+  it('does not steal focus on first render', async () => {
+    // A login page that grabs focus on load scrolls the viewport out from
+    // under a shopper who is still reading.
+    renderForm();
+
+    expect(document.activeElement).toBe(document.body);
+  });
+});
+
+describe('the code boxes name the error that invalidated them', () => {
+  it('points every box at the alert instead of just saying "invalid"', async () => {
+    renderForm();
+    await requestCodeFor('09121234567');
+    verify.mockResolvedValue(failure(400));
+
+    await typeCode('482913');
+
+    const described = codeBoxes()[0]!.getAttribute('aria-describedby');
+    expect(described).toBeTruthy();
+    expect(document.getElementById(described!)?.textContent).toContain(
+      'صحیح نیست',
+    );
+    for (const box of codeBoxes()) {
+      expect(box.getAttribute('aria-invalid')).toBe('true');
+      expect(box.getAttribute('aria-describedby')).toBe(described);
+    }
+  });
+
+  it('drops the association once there is no error to point at', async () => {
+    renderForm();
+    await requestCodeFor('09121234567');
+
+    expect(codeBoxes()[0]!.getAttribute('aria-describedby')).toBeNull();
+  });
+});
+
+describe('focus, under StrictMode', () => {
+  // `next dev` runs the App Router in StrictMode, which double-invokes mount
+  // effects. A `useRef(false)` "have I run before" flag survives between the
+  // two passes, so the second pass sees the flag the first one set and treats
+  // the mount as a step change — focusing the phone field on page load, in the
+  // one environment where it would be noticed. Comparing the previous step
+  // instead is idempotent. The plain-render test above cannot see this.
+  it('still does not steal focus on load when effects run twice', () => {
+    render(
+      <StrictMode>
+        <LoginForm next="/" />
+      </StrictMode>,
+    );
+
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('still moves to the code boxes on a real step change', async () => {
+    render(
+      <StrictMode>
+        <LoginForm next="/" />
+      </StrictMode>,
+    );
+
+    await requestCodeFor('09121234567');
+
+    expect(document.activeElement).toBe(codeBoxes()[0]);
+  });
+});
+
+describe('resending a code', () => {
+  // The countdown chains a fresh timeout per render, so it has to be advanced
+  // a second at a time — one big jump fires only the first link.
+  const tick = async (seconds: number) => {
+    for (let second = 0; second < seconds; second++) {
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+      });
+    }
+  };
+
+  it('puts focus back on the boxes the shopper now has to fill', async () => {
+    // The pressed button is replaced by the countdown, so without this focus
+    // drops to <body> — the same failure the step effect exists to prevent.
+    renderForm();
+    await requestCodeFor('09121234567');
+    await tick(RESEND_SECONDS);
+
+    const button = screen.getByRole('button', { name: /ارسال دوباره/ });
+    // A real click focuses what it presses; `fireEvent` does not, and without
+    // this the caret is still sitting in box one from the step change and the
+    // assertion below passes no matter what the component does.
+    button.focus();
+    expect(document.activeElement).toBe(button);
+
+    await act(async () => {
+      fireEvent.click(button);
+    });
+
+    expect(document.activeElement).toBe(codeBoxes()[0]);
+  });
+
+  it('starts a countdown from the wait the server reports on a 429', async () => {
+    // Otherwise, once the hourly cap is what refused, the countdown has long
+    // expired and the button sits enabled — every click repeats the same
+    // error with no hint that the wait is now minutes, not seconds. The
+    // server computes the exact figure; ignoring it is what leaves a shopper
+    // hammering a control that cannot succeed.
+    renderForm();
+    await requestCodeFor('09121234567');
+    await tick(RESEND_SECONDS);
+    sendOtp.mockResolvedValue({
+      data: null,
+      error: { status: 429, retryAfterSeconds: 300 },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /ارسال دوباره/ }));
+    });
+
+    expect(screen.queryByRole('button', { name: /ارسال دوباره/ })).toBeNull();
+    // Five minutes, in the countdown's own format — minutes are not padded.
+    expect(screen.getByText('۵:۰۰')).toBeDefined();
   });
 });

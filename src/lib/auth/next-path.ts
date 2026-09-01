@@ -6,8 +6,10 @@
 // a destination is a path on this site or it is the home page. There is no
 // allowlist of external hosts to get wrong later.
 //
-// **Nothing in this file may import drizzle, `pg` or `@hono/zod-openapi`**: the
-// login form is a client component and imports it.
+// **Nothing in this file may import drizzle, `pg` or `@hono/zod-openapi`**:
+// `loginPath` is one import away from client components (it is what the login
+// page's `?next=` round-trip is built on), and a server-only dependency here
+// would only be discovered as a broken build.
 import * as z from 'zod';
 import { PATHS } from '@/lib/constant/paths';
 
@@ -55,6 +57,17 @@ export function safeNextPath(value: unknown): string {
   // Second character decides origin: `//` and `/\` both leave this site.
   const second = value[1];
   if (second === '/' || second === '\\') return PATHS.HOME;
+
+  // The login page is never a destination to come back to. Beyond being
+  // pointless, it strands the form: `router.push` to the route it is already
+  // on does not unmount it, so the shopper is left signed in behind a submit
+  // button that stays disabled. Compared on the path alone, so `?next=` and
+  // fragments cannot smuggle it past — and `/loginsomething` is a different
+  // route, which is why this is not a `startsWith` on the bare prefix.
+  const path = value.split(/[?#]/)[0]!;
+  if (path === PATHS.LOGIN || path.startsWith(`${PATHS.LOGIN}/`)) {
+    return PATHS.HOME;
+  }
 
   return value;
 }

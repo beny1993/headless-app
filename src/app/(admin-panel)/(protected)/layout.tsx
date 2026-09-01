@@ -29,7 +29,7 @@ export default async function ProtectedLayout({
             <span className="text-muted-foreground text-sm" dir="ltr">
               {toLocalIranPhone(session.user.phoneNumber ?? '')}
             </span>
-            <SignOutButton />
+            <SignOutButton page="admin-panel" />
           </div>
         </div>
       </header>

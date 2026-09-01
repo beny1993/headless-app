@@ -17,6 +17,7 @@ import {
   vi,
 } from 'vitest';
 import {
+  accounts,
   otpSendLog,
   rateLimits,
   sessions,
@@ -511,8 +512,11 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
     });
 
     it('keeps its buckets in the database, not in this process', () => {
-      // Proves the `rateLimit` model is registered on the adapter: without it
-      // the limiter writes nowhere and nothing above would have 429'd.
+      // Proves the buckets really landed in Postgres rather than in this
+      // process's memory — the storage choice the scaffold's security review
+      // asked for, since a per-process store resets on redeploy and hands out
+      // one budget per instance behind a load balancer. (An unregistered model
+      // would not get this far: the adapter throws from `onRequest`.)
       return expect(
         testDb.select().from(rateLimits).where(like(rateLimits.key, '10.99.%')),
       ).resolves.not.toEqual([]);
@@ -543,16 +547,59 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
         .select()
         .from(users)
         .where(eq(users.phoneNumber, phone));
-      // The account row itself is what `sign-in/phone-number` verifies against.
       expect(user!.role).toBe('customer');
-      expect(
-        (
-          await post('/sign-in/phone-number', {
-            phoneNumber: phone,
-            password: 'anything-at-all',
-          })
-        ).status,
-      ).toBe(404);
+
+      // The `account` row is what `sign-in/phone-number` verifies against, so
+      // it is the thing to assert on: a phone sign-up must create no credential
+      // at all. Checking only that the endpoint 404s would keep passing if a
+      // future upgrade started minting one.
+      const credentials = await testDb
+        .select()
+        .from(accounts)
+        .where(eq(accounts.userId, user!.id));
+      expect(credentials).toEqual([]);
+    });
+  });
+
+  describe('one number, one identity', () => {
+    // `user.email` is derived from the phone number and the column is unique,
+    // so the two are one identity — but only the sign-up path maintains that.
+    // Every endpoint that could move `phone_number` while leaving `email`
+    // behind has to be shut, or the vacated number can never sign up again:
+    // its derived address is still held by the row that walked away from it.
+
+    it('refuses a verify that carries updatePhoneNumber, session or not', async () => {
+      // Rejected in `hooks.before`, which runs ahead of the endpoint — so the
+      // phone-change branch is unreachable whether or not a session is
+      // attached, and a blocked attempt costs the caller nothing: the OTP is
+      // not consumed and the account is untouched. Asserting it without a
+      // cookie is the stronger statement, not a weaker one.
+      const { phone, code } = await requestCode();
+      const response = await post(VERIFY, {
+        phoneNumber: phone,
+        code,
+        updatePhoneNumber: true,
+      });
+
+      expect(response.status).toBe(400);
+
+      // The code survived the refusal: the same one still signs in.
+      expect((await post(VERIFY, { phoneNumber: phone, code })).status).toBe(
+        200,
+      );
+      const [user] = await testDb
+        .select()
+        .from(users)
+        .where(eq(users.phoneNumber, phone));
+      expect(user!.phoneNumber).toBe(phone);
+    });
+
+    it('does not expose /update-user, which can null a phone number', async () => {
+      // The plugin guards phone edits with `phoneNumber !== null`, so a null
+      // walks through and strands the derived email on a row with no number.
+      const response = await post('/update-user', { phoneNumber: null });
+
+      expect(response.status).toBe(404);
     });
   });
 });

@@ -103,7 +103,7 @@ describe('phone number plugin', () => {
   });
 });
 
-describe('password endpoints', () => {
+describe('disabled endpoints', () => {
   it.each([
     '/sign-in/phone-number',
     '/phone-number/request-password-reset',
@@ -113,6 +113,13 @@ describe('password endpoints', () => {
     // creates a credential account, which would turn `sign-in/phone-number`
     // into a working password login.
     expect(options.disabledPaths).toContain(path);
+  });
+
+  it('/update-user is disabled — it can null a phone number', () => {
+    // The plugin's own guard skips a null (`phoneNumber !== null`), so this
+    // endpoint could strip the number off an account while leaving the email
+    // derived from it, which the unique index then makes permanent.
+    expect(options.disabledPaths).toContain('/update-user');
   });
 });
 
@@ -144,6 +151,7 @@ describe('sessions', () => {
 });
 
 // The `rateLimit` model registration cannot be read back off the adapter — it
-// is an opaque function — and a missing model does not throw, it just writes
-// nowhere. `auth.integration.test.ts` proves it by counting rows in
-// `rate_limit` after driving the real endpoint.
+// is an opaque function. `auth.integration.test.ts` proves it by counting rows
+// in `rate_limit` after driving the real endpoint. (A missing model does not
+// fail quietly: the drizzle adapter throws `The model "rateLimit" was not found
+// in the schema object`. It just cannot be asserted from here.)

@@ -20,8 +20,9 @@ const nextConfig: NextConfig = {
       headers: [
         { key: 'X-Content-Type-Options', value: 'nosniff' },
         { key: 'X-Frame-Options', value: 'DENY' },
-        // The back-office magic link carries the sign-in OTP in its query
-        // string; this keeps that URL out of the Referer sent to third parties.
+        // Keeps paths and query strings out of the Referer sent to third
+        // parties — `/login?next=…` says where a shopper was headed, and an
+        // order or payment-result URL says what they bought.
         { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
       ],
     },

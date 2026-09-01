@@ -5,29 +5,38 @@ import {
 } from './otp-throttle';
 
 const mocks = vi.hoisted(() => ({
-  sentAtSince: vi.fn(),
-  record: vi.fn(),
+  decideAndRecord: vi.fn(),
   prune: vi.fn(),
 }));
 
 vi.mock('@/db/dao/OtpSendLogDao', () => ({
   OtpSendLogDao: {
-    sentAtSince: mocks.sentAtSince,
-    record: mocks.record,
+    decideAndRecord: mocks.decideAndRecord,
     prune: mocks.prune,
   },
 }));
 
-const { assertOtpSendAllowed, recordOtpSend } = await import('./otp-guard');
+const { assertOtpSendAllowed } = await import('./otp-guard');
 
 const PHONE = '+989121234567';
 const secondsAgo = (seconds: number) => new Date(Date.now() - seconds * 1000);
 
+/**
+ * Stand in for the DAO's atomic step by running the caller's own `decide`
+ * against `sends`. The real `evaluateOtpThrottle` therefore still decides —
+ * only the transaction and the lock are faked, which is what
+ * `OtpSendLogDao.integration.test.ts` covers against live Postgres instead.
+ */
+const logHolding = (sends: Date[]) =>
+  mocks.decideAndRecord.mockImplementation(
+    async (_phone: string, _since: Date, decide: (rows: Date[]) => unknown) =>
+      decide(sends),
+  );
+
 describe('assertOtpSendAllowed', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.sentAtSince.mockResolvedValue([]);
-    mocks.record.mockResolvedValue(undefined);
+    logHolding([]);
     mocks.prune.mockResolvedValue(undefined);
   });
 
@@ -35,23 +44,31 @@ describe('assertOtpSendAllowed', () => {
     await expect(assertOtpSendAllowed(PHONE)).resolves.toBeUndefined();
   });
 
-  it('asks the log only about this number', async () => {
+  it('decides and records in one call — never a read followed by a write', async () => {
+    // The split version was a check-then-act race: a concurrent burst all read
+    // the same empty log and all sent. Keeping this on one DAO call is what
+    // makes the lock in `decideAndRecord` cover both halves.
     await assertOtpSendAllowed(PHONE);
 
-    expect(mocks.sentAtSince).toHaveBeenCalledWith(PHONE, expect.any(Date));
+    expect(mocks.decideAndRecord).toHaveBeenCalledTimes(1);
+    expect(mocks.decideAndRecord).toHaveBeenCalledWith(
+      PHONE,
+      expect.any(Date),
+      expect.any(Function),
+    );
   });
 
-  it('only fetches the window the cap is counted over', async () => {
+  it('only considers the window the cap is counted over', async () => {
     await assertOtpSendAllowed(PHONE);
 
-    const [, since] = mocks.sentAtSince.mock.calls[0]!;
+    const [, since] = mocks.decideAndRecord.mock.calls[0]!;
     const windowSeconds = (Date.now() - (since as Date).getTime()) / 1000;
     expect(windowSeconds).toBeGreaterThanOrEqual(3595);
     expect(windowSeconds).toBeLessThanOrEqual(3605);
   });
 
   it('rejects a resend inside the cooldown with 429', async () => {
-    mocks.sentAtSince.mockResolvedValue([secondsAgo(5)]);
+    logHolding([secondsAgo(5)]);
 
     await expect(assertOtpSendAllowed(PHONE)).rejects.toMatchObject({
       status: 'TOO_MANY_REQUESTS',
@@ -59,7 +76,7 @@ describe('assertOtpSendAllowed', () => {
   });
 
   it('rejects once the hourly cap is reached', async () => {
-    mocks.sentAtSince.mockResolvedValue(
+    logHolding(
       Array.from({ length: OTP_HOURLY_SEND_LIMIT }, (_, i) =>
         secondsAgo(120 + i * 300),
       ),
@@ -71,7 +88,7 @@ describe('assertOtpSendAllowed', () => {
   });
 
   it('tells the caller how long to wait', async () => {
-    mocks.sentAtSince.mockResolvedValue([secondsAgo(10)]);
+    logHolding([secondsAgo(10)]);
 
     await expect(assertOtpSendAllowed(PHONE)).rejects.toMatchObject({
       body: { retryAfterSeconds: expect.any(Number) },
@@ -79,7 +96,7 @@ describe('assertOtpSendAllowed', () => {
   });
 
   it('answers in Persian — the message reaches the login screen', async () => {
-    mocks.sentAtSince.mockResolvedValue([secondsAgo(10)]);
+    logHolding([secondsAgo(10)]);
 
     await expect(assertOtpSendAllowed(PHONE)).rejects.toMatchObject({
       body: { message: expect.stringMatching(/[؀-ۿ]/) },
@@ -87,62 +104,44 @@ describe('assertOtpSendAllowed', () => {
   });
 
   it('allows the resend once the cooldown has passed', async () => {
-    mocks.sentAtSince.mockResolvedValue([
-      secondsAgo(OTP_RESEND_COOLDOWN_SECONDS + 1),
-    ]);
+    logHolding([secondsAgo(OTP_RESEND_COOLDOWN_SECONDS + 1)]);
 
     await expect(assertOtpSendAllowed(PHONE)).resolves.toBeUndefined();
   });
 
-  it('denies when the log cannot be read', async () => {
+  it('propagates a failure to read the log rather than allowing the send', async () => {
     // Fail closed: an unreadable send log means the throttle is blind, and a
-    // blind throttle that allows is an open SMS bill.
-    mocks.sentAtSince.mockRejectedValue(new Error('connection refused'));
+    // blind throttle that allows is an open SMS bill. The failure travels as
+    // the original error, not a 429 — this is a broken database, not a
+    // shopper who asked too often.
+    mocks.decideAndRecord.mockRejectedValue(new Error('connection refused'));
 
-    await expect(assertOtpSendAllowed(PHONE)).rejects.toThrow();
+    await expect(assertOtpSendAllowed(PHONE)).rejects.toThrow(
+      'connection refused',
+    );
   });
 
-  it('writes nothing — deciding is not sending', async () => {
+  it('prunes rows no window can still reach once a send is allowed', async () => {
     await assertOtpSendAllowed(PHONE);
-
-    expect(mocks.record).not.toHaveBeenCalled();
-  });
-});
-
-describe('recordOtpSend', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.record.mockResolvedValue(undefined);
-    mocks.prune.mockResolvedValue(undefined);
-  });
-
-  it('logs the send against the number', async () => {
-    await recordOtpSend(PHONE);
-
-    expect(mocks.record).toHaveBeenCalledWith(PHONE);
-  });
-
-  it('prunes rows that no window can still reach', async () => {
-    await recordOtpSend(PHONE);
 
     expect(mocks.prune).toHaveBeenCalledWith(expect.any(Date));
     const cutoff = mocks.prune.mock.calls[0]![0] as Date;
     expect(cutoff.getTime()).toBeLessThan(Date.now());
   });
 
-  it('still records when pruning fails', async () => {
+  it('does not prune when it refused — nothing was written', async () => {
+    logHolding([secondsAgo(5)]);
+
+    await expect(assertOtpSendAllowed(PHONE)).rejects.toThrow();
+    expect(mocks.prune).not.toHaveBeenCalled();
+  });
+
+  it('still lets the send through when pruning fails', async () => {
     // Housekeeping must never cost a shopper their login.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     mocks.prune.mockRejectedValue(new Error('deadlock detected'));
 
-    await expect(recordOtpSend(PHONE)).resolves.toBeUndefined();
-    expect(mocks.record).toHaveBeenCalledWith(PHONE);
+    await expect(assertOtpSendAllowed(PHONE)).resolves.toBeUndefined();
     warn.mockRestore();
-  });
-
-  it('propagates a failure to record — an uncounted send is a hole', async () => {
-    mocks.record.mockRejectedValue(new Error('connection refused'));
-
-    await expect(recordOtpSend(PHONE)).rejects.toThrow();
   });
 });

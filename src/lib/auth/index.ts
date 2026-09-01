@@ -13,7 +13,8 @@ import {
 } from '@/db/schema/auth';
 import { sendOtpSms } from '@/lib/sms';
 import { getAppBaseUrl, getEnvVariable, VARS } from '@/lib/utils/env';
-import { assertOtpSendAllowed, recordOtpSend } from './otp-guard';
+import { assertOtpSendAllowed } from './otp-guard';
+import { OTP_CODE_LENGTH } from './otp-throttle';
 import {
   INVALID_PHONE_MESSAGE,
   isCanonicalIranPhone,
@@ -25,21 +26,35 @@ const SEND_OTP_PATH = '/phone-number/send-otp';
 const VERIFY_PATH = '/phone-number/verify';
 
 /**
- * Endpoints the phone-number plugin ships that this project must not expose.
+ * Endpoints Better Auth ships that this project must not expose.
  *
- * Customers have no passwords — that is the story's first acceptance criterion —
- * but the plugin registers three password endpoints regardless.
+ * The three password paths: customers have no passwords — that is the story's
+ * first acceptance criterion — but the plugin registers them regardless.
  * `/phone-number/reset-password` is the sharp one: it *creates* a credential
  * account with a password of the caller's choosing, which would then make
  * `/sign-in/phone-number` a working password login. It is not reachable today
  * (no `sendPasswordResetOTP` is configured, so the reset code is generated and
  * never delivered), but "unreachable because of a callback we happen not to
  * have set" is not a security boundary. A 404 is.
+ *
+ * `/update-user` is here for a different reason: it can *break* an account
+ * permanently. This app derives `user.email` from the phone number
+ * (`tempEmailForPhone`) and the column is `notNull unique`, so the two are one
+ * identity — but only the create path maintains that. The plugin guards phone
+ * edits with `ctx.body.phoneNumber !== null` (see its `hooks.before` matcher),
+ * which means a body of `{"phoneNumber": null}` walks straight through: the
+ * plugin's own schema marks `phoneNumberVerified` `input: false` but leaves
+ * `phoneNumber` writable. The row keeps `…@phone.smokey.invalid` while losing
+ * the number that derived it, and the next sign-in from that number takes the
+ * sign-up path and dies on the unique email index — the number can never sign
+ * in again, and `pnpm create-admin` hits the same wall. Nothing in this app
+ * updates a profile through Better Auth, so the whole endpoint is a 404.
  */
-const PASSWORD_PATHS = [
+const DISABLED_PATHS = [
   '/sign-in/phone-number',
   '/phone-number/request-password-reset',
   '/phone-number/reset-password',
+  '/update-user',
 ];
 
 export const auth = betterAuth({
@@ -90,12 +105,29 @@ export const auth = betterAuth({
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path !== SEND_OTP_PATH && ctx.path !== VERIFY_PATH) return;
 
-      const phone = (ctx.body as { phoneNumber?: unknown } | undefined)
-        ?.phoneNumber;
+      const body = ctx.body as
+        { phoneNumber?: unknown; updatePhoneNumber?: unknown } | undefined;
+
+      const phone = body?.phoneNumber;
       if (!isCanonicalIranPhone(phone)) {
         throw new APIError('BAD_REQUEST', {
           message: INVALID_PHONE_MESSAGE,
           code: 'INVALID_PHONE_NUMBER',
+        });
+      }
+
+      // `/phone-number/verify` doubles as an authenticated phone-change
+      // endpoint when the body carries `updatePhoneNumber`. That branch moves
+      // `phone_number` and leaves `email` on the *old* number's derivation,
+      // breaking the one-identity invariant `tempEmailForPhone` rests on and
+      // stranding the vacated number — its next owner cannot ever sign up,
+      // because the unique email index still holds their address. This app has
+      // no change-your-number story; the honest answer is a 400. (The endpoint
+      // cannot go in `DISABLED_PATHS`: it is the login path too.)
+      if (ctx.path === VERIFY_PATH && body?.updatePhoneNumber) {
+        throw new APIError('BAD_REQUEST', {
+          message: 'تغییر شماره موبایل ممکن نیست.',
+          code: 'PHONE_NUMBER_CANNOT_BE_UPDATED',
         });
       }
 
@@ -118,23 +150,41 @@ export const auth = betterAuth({
       [VERIFY_PATH]: { window: 60, max: 10 },
     },
   },
-  disabledPaths: PASSWORD_PATHS,
+  disabledPaths: DISABLED_PATHS,
   plugins: [
     phoneNumber({
-      sendOTP: async ({ phoneNumber: phone, code }) => {
-        // The throttle already passed in `hooks.before`. Record first: a send
-        // that is not counted is a hole in the budget, and a text message that
-        // goes out uncounted is worse than one that is counted and then fails.
-        await recordOtpSend(phone);
-        await sendOtpSms(phone, code);
-      },
+      // The throttle already passed *and counted this send* in `hooks.before`,
+      // atomically — see `assertOtpSendAllowed`. Nothing to do here but send.
+      sendOTP: async ({ phoneNumber: phone, code }) => sendOtpSms(phone, code),
       // Two minutes. Long enough for a slow SMS route, short enough that the
-      // window in which a code sits in the database is small — see the security
-      // note on storage below.
+      // window in which a code sits in the database is small.
+      //
+      // That window matters because **the code is stored in clear text**, and
+      // this project cannot change that. The scaffold's `emailOTP` had
+      // `storeOTP: 'hashed'`; `PhoneNumberOptions` has no equivalent — the
+      // plugin writes `${code}:${attempts}` into `verification.value`
+      // verbatim. The only hook that could hash it is `verifyOTP`, which
+      // *replaces* the plugin's expiry check, attempt budget and atomic
+      // single-use consume, i.e. re-implementing the whole security-critical
+      // lifecycle to shrink a ≤120s at-rest window. Two minutes is the
+      // compensating control, and it is the reason this is 120 and not the
+      // plugin's default 300.
+      //
+      // Consequence to weigh at review: a read of `verification` (a backup,
+      // drizzle-studio, a future SQL bug) yields a live sign-in code, and
+      // since `pnpm create-admin` promotes a phone account, that includes
+      // admins. Revisit on the next Better Auth upgrade.
       expiresIn: 120,
-      otpLength: 6,
-      // Three wrong codes and the plugin deletes the code entirely: the fourth
-      // attempt gets a 403 against a code that no longer exists.
+      otpLength: OTP_CODE_LENGTH,
+      // Three wrong guesses, then the fourth request is refused.
+      //
+      // The plugin counts in the stored value (`${code}:${attempts}`): a wrong
+      // guess consumes the row and writes it back with the counter raised, so
+      // after three the code is still there as `${code}:3`. It is the *fourth*
+      // request that peeks the counter, deletes the row and answers 403 — not
+      // the third. The distinction is load-bearing: were the row already gone,
+      // the fourth would find nothing and answer 400, and the login form's
+      // `status === 403 → «تعداد تلاش‌ها زیاد شد»` branch would be dead code.
       allowedAttempts: 3,
       // Canonical form only, never normalize-on-arrival. See ./phone.ts.
       phoneNumberValidator: isCanonicalIranPhone,
@@ -153,8 +203,10 @@ export const auth = betterAuth({
       account: accounts,
       session: sessions,
       verification: verificationTokens,
-      // Without this the adapter has no model for `storage: 'database'` and
-      // the rate limiter quietly writes nowhere.
+      // Required for `storage: 'database'`. Without it the drizzle adapter
+      // throws `The model "rateLimit" was not found in the schema object` on
+      // the first rate-limited request — loudly, not silently, since the
+      // limiter runs in `onRequest` ahead of every auth endpoint.
       rateLimit: rateLimits,
     },
   }),

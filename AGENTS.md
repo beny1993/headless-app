@@ -212,9 +212,10 @@ pnpm create-admin 09121234567       # grant admin to a phone number
 ```
 
 `http://localhost:3000` storefront · `/admin-panel` admin panel ·
-`/api/reference` interactive API docs (non-production only). Back-office sign-in
-prints the OTP and a magic link to the server console in development — no SMTP
-needed. Other commands: `pnpm dev:email` (email preview), `pnpm drizzle-studio`,
+`/api/reference` interactive API docs (non-production only). Sign-in is `/login`
+for customers and admins alike; the console SMS driver prints the one-time code
+to the server log, so no SMS account is needed locally.
+Other commands: `pnpm dev:email` (email preview), `pnpm drizzle-studio`,
 `pnpm migration:reset-dev` (nuke volumes, re-migrate), `pnpm --dir design dev`
 (design prototype).
 

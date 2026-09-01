@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PATHS } from '@/lib/constant/paths';
-import { nextPathSchema, safeNextPath } from './next-path';
+import { loginPath, nextPathSchema, safeNextPath } from './next-path';
 
 describe('safeNextPath', () => {
   describe('keeps a genuine destination on this site', () => {
@@ -94,5 +94,43 @@ describe('nextPathSchema', () => {
     // outcome than a login page that ignores it.
     expect(nextPathSchema.parse('https://evil.example')).toBe(PATHS.HOME);
     expect(nextPathSchema.parse(undefined)).toBe(PATHS.HOME);
+  });
+});
+
+describe('the login page is not a destination', () => {
+  // Coming back to `/login` after signing in is pointless, and it strands the
+  // form: pushing the route it is already on does not unmount it, so the
+  // shopper ends up signed in behind a permanently disabled button.
+  it.each(['/login', '/login?next=%2Faccount', '/login#top', '/login/'])(
+    'sends %j home instead',
+    (value) => {
+      expect(safeNextPath(value)).toBe(PATHS.HOME);
+    },
+  );
+
+  it('still allows a different route that merely starts with the same letters', () => {
+    expect(safeNextPath('/loginhelp')).toBe('/loginhelp');
+  });
+
+  it('drops the ?next= entirely when the target is the login page', () => {
+    expect(loginPath('/login')).toBe(PATHS.LOGIN);
+  });
+});
+
+describe('padding is refused, not trimmed away', () => {
+  // The rule the module states: "Reject rather than trim — a value that needed
+  // trimming was crafted." A trailing space is the case that isolates it; a
+  // leading one is already caught by the leading-slash rule, and a tab or
+  // newline by the control-character rule.
+  it('refuses a trailing space rather than quietly trimming it', () => {
+    expect(safeNextPath('/account ')).toBe(PATHS.HOME);
+  });
+
+  it('refuses a leading space', () => {
+    expect(safeNextPath(' /account')).toBe(PATHS.HOME);
+  });
+
+  it('accepts the same path without the padding', () => {
+    expect(safeNextPath('/account')).toBe('/account');
   });
 });

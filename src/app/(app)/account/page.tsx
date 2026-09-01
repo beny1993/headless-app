@@ -35,7 +35,7 @@ export default async function Page() {
         می‌شود.
       </p>
       <div className="mt-8">
-        <SignOutButton />
+        <SignOutButton page="account" />
       </div>
     </main>
   );

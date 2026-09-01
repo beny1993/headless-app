@@ -32,9 +32,9 @@ export async function provisionAdminByPhone(
   rawPhone: string,
   name?: string,
 ): Promise<AdminProvisionResult> {
-  // A plain Error, not the zod one: this surfaces in a terminal, where a
-  // serialized issue array is noise and the Persian UI copy is the wrong
-  // audience. Whoever ran the command needs to know what to type instead.
+  // A plain English Error, not the Persian `INVALID_PHONE_MESSAGE` the login
+  // form shows: this surfaces in a terminal, which is the wrong audience for UI
+  // copy. Whoever ran the command needs to know what to type instead.
   const phoneNumber = normalizeIranPhone(rawPhone);
   if (phoneNumber === null) {
     throw new Error(

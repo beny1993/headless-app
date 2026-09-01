@@ -17,23 +17,28 @@ import {
   normalizeIranPhone,
   toLocalIranPhone,
 } from '@/lib/auth/phone';
+import {
+  OTP_CODE_LENGTH,
+  OTP_RESEND_COOLDOWN_SECONDS,
+  OTP_SEND_WINDOW_SECONDS,
+} from '@/lib/auth/otp-throttle';
 import { normalizeSearchText } from '@/lib/catalog/search-text';
 import { PATHS } from '@/lib/constant/paths';
 import { formatNumber, toPersianDigits } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-/** Digits in a code. Must match `otpLength` in `src/lib/auth/index.ts`. */
-const CODE_LENGTH = 6;
+/** Digits in a code — the same constant the server generates against. */
+const CODE_LENGTH = OTP_CODE_LENGTH;
 
 /**
  * How long before «ارسال دوباره کد» comes back.
  *
- * Deliberately longer than the server's 90-second cooldown
- * (`OTP_RESEND_COOLDOWN_SECONDS`): a button that appears before the server will
+ * Derived from the server's cooldown rather than restated, so it stays longer
+ * than it if that ever moves: a button that appears before the server will
  * accept it is a button that reliably fails. Erring the other way costs half a
  * minute of waiting and nothing else.
  */
-const RESEND_SECONDS = 120;
+const RESEND_SECONDS = OTP_RESEND_COOLDOWN_SECONDS + 30;
 
 const MESSAGES = {
   wrongCode: 'کد وارد شده صحیح نیست یا منقضی شده است.',
@@ -60,6 +65,11 @@ const formatCountdown = (totalSeconds: number) => {
 const messageForStatus = (status: number | undefined, fallback: string) => {
   if (status === 429) return MESSAGES.throttled;
   if (status === 403) return MESSAGES.tooManyAttempts;
+  // A server fault is not the shopper's mistake. Without this, a database blip
+  // on send tells someone their phone number is invalid — a number this form
+  // already validated before it sent anything — and on verify it tells them
+  // their code is wrong and wipes the boxes they just filled.
+  if (status !== undefined && status >= 500) return MESSAGES.offline;
   return status ? fallback : MESSAGES.offline;
 };
 
@@ -90,6 +100,7 @@ export function LoginForm({ next }: { next: string }) {
   const [secondsLeft, setSecondsLeft] = useState(0);
 
   const boxes = useRef<(HTMLInputElement | null)[]>([]);
+  const phoneField = useRef<HTMLInputElement>(null);
   // The code as the boxes currently hold it, readable synchronously. Two
   // keystrokes landing in one React batch both read `digits` from their own
   // closure, so the second would overwrite the first; a ref is updated the
@@ -114,6 +125,27 @@ export function LoginForm({ next }: { next: string }) {
     return () => clearTimeout(timer);
   }, [secondsLeft]);
 
+  // Changing step swaps the whole form out, and the control that was focused
+  // goes with it — focus lands on `<body>`, so a keyboard user tabs from the
+  // top of the document and a screen-reader user is told nothing happened.
+  // Deliberately not on first render: a login page that grabs focus on load
+  // scrolls the viewport out from under a shopper who is still reading.
+  //
+  // Compares against the previous step rather than flagging "have I run
+  // before". A `useRef(false)` flag looks equivalent and is not: StrictMode
+  // double-invokes mount effects in `next dev` and the ref survives between
+  // the two passes, so the second pass reads the flag the first one set and
+  // focuses the field on load — the exact behaviour this avoids, in the only
+  // environment where anyone would notice it. Comparing values is idempotent.
+  const shownStep = useRef(step);
+  useEffect(() => {
+    if (shownStep.current === step) return;
+    shownStep.current = step;
+
+    if (step === 'code') boxes.current[0]?.focus();
+    else phoneField.current?.focus();
+  }, [step]);
+
   const sendCode = async (phoneNumber: string) => {
     setIsBusy(true);
     setError(undefined);
@@ -123,6 +155,24 @@ export function LoginForm({ next }: { next: string }) {
         setError(
           messageForStatus(response.error.status, INVALID_PHONE_MESSAGE),
         );
+        // A refusal carries how long to wait; honour it. The cooldown case
+        // already has a countdown running, but the hourly cap arrives long
+        // after it expired — without this the button stays enabled and every
+        // press repeats the same message with no hint that the wait is now
+        // minutes. Bounded by the window the cap is counted over, so a wrong
+        // figure cannot strand the form for longer than the rule itself.
+        const { retryAfterSeconds } = response.error as {
+          retryAfterSeconds?: unknown;
+        };
+        if (
+          response.error.status === 429 &&
+          typeof retryAfterSeconds === 'number' &&
+          retryAfterSeconds > 0
+        ) {
+          setSecondsLeft(
+            Math.min(Math.ceil(retryAfterSeconds), OTP_SEND_WINDOW_SECONDS),
+          );
+        }
         return false;
       }
       setSentTo(phoneNumber);
@@ -164,34 +214,59 @@ export function LoginForm({ next }: { next: string }) {
         setError(messageForStatus(response.error.status, MESSAGES.wrongCode));
         putCode(emptyCode());
         boxes.current[0]?.focus();
+        setIsBusy(false);
         return;
       }
       router.push(next);
       // The navbar and every server component read the session, so the tree
       // has to be re-fetched rather than just navigated.
       router.refresh();
+      // Deliberately still busy on the way out — no `finally` here. Navigation
+      // is not instant and the boxes are still full, so re-enabling the button
+      // lets a second click re-submit a code the server has already consumed:
+      // the shopper watches a successful login turn into "wrong code" as the
+      // page unmounts.
     } catch {
       setError(MESSAGES.offline);
-    } finally {
       setIsBusy(false);
     }
   };
 
-  /** Writes one digit into position `index` and moves on. */
-  const putDigit = (index: number, raw: string) => {
-    const digit = digitsOnly(raw).slice(-1);
-    if (!digit) return;
+  /**
+   * Writes a run of digits into the boxes from `index` on, moves focus to
+   * where typing should continue, and verifies once every box is filled.
+   *
+   * `base` is what the run is written onto: the code as it stands for a
+   * keystroke, six empty boxes for a paste — a pasted code replaces what was
+   * there rather than merging into it.
+   */
+  const fillFrom = (index: number, raw: string, base: string[]) => {
+    const digits = digitsOnly(raw).slice(0, CODE_LENGTH - index);
+    if (!digits) return;
 
-    const next = [...entered.current];
-    next[index] = digit;
+    const next = [...base];
+    for (const [offset, digit] of [...digits].entries()) {
+      next[index + offset] = digit;
+    }
     putCode(next);
     setError(undefined);
 
-    if (index < CODE_LENGTH - 1) boxes.current[index + 1]?.focus();
+    boxes.current[Math.min(index + digits.length, CODE_LENGTH - 1)]?.focus();
     // Only when every box is filled — a shopper who clicks back to fix the
     // third digit must not trigger a verification against five digits and a gap.
     if (!next.includes('')) void verify(next.join(''));
   };
+
+  /**
+   * One box's `change`. Usually one character, but **not always**: an OTP
+   * autofill — the iOS/Android "from Messages" suggestion, a password manager
+   * — hands the whole code to a single box as a change event, never a paste,
+   * and `maxLength` does not apply to a programmatic fill. Taking one digit of
+   * the six there would drop five of them on the exact platform SMS codes
+   * exist for, so a run is the general case and a keystroke is the short one.
+   */
+  const putDigit = (index: number, raw: string) =>
+    fillFrom(index, raw, entered.current);
 
   const onBoxKeyDown = (index: number, event: React.KeyboardEvent) => {
     if (event.key !== 'Backspace') return;
@@ -207,27 +282,29 @@ export function LoginForm({ next }: { next: string }) {
     boxes.current[target]?.focus();
   };
 
-  /** A whole code arriving at once — pasted, or filled from the SMS. */
+  /**
+   * A whole code arriving at once. Always fills from the first box, whichever
+   * box it was dropped on: someone pasting six digits means them as the code,
+   * not as a suffix starting wherever the caret happened to be.
+   */
   const onPaste = (event: React.ClipboardEvent) => {
-    const pasted = digitsOnly(event.clipboardData.getData('text')).slice(
-      0,
-      CODE_LENGTH,
-    );
-    if (!pasted) return;
+    const pasted = event.clipboardData.getData('text');
+    if (!digitsOnly(pasted)) return;
     event.preventDefault();
 
-    const next = emptyCode();
-    for (const [index, digit] of [...pasted].entries()) next[index] = digit;
-    putCode(next);
-    setError(undefined);
-    boxes.current[Math.min(pasted.length, CODE_LENGTH - 1)]?.focus();
-    if (!next.includes('')) void verify(next.join(''));
+    fillFrom(0, pasted, emptyCode());
   };
 
   const resend = async () => {
     if (secondsLeft > 0) return;
     putCode(emptyCode());
-    await sendCode(sentTo);
+    if (await sendCode(sentTo)) {
+      // A successful resend swaps the button the shopper just pressed for the
+      // countdown, so focus would land on `<body>` — the same drop the step
+      // effect exists to prevent, one control down. The boxes they now have to
+      // fill are where it belongs.
+      boxes.current[0]?.focus();
+    }
   };
 
   const errorId = `${fieldId}-error`;
@@ -274,9 +351,11 @@ export function LoginForm({ next }: { next: string }) {
                   autoComplete="tel"
                   dir="ltr"
                   placeholder="0912 123 4567"
+                  ref={phoneField}
                   value={phone}
                   aria-invalid={Boolean(error)}
                   aria-describedby={error ? errorId : hintId}
+                  data-umami-event="login-phone-type"
                   onChange={(event) => {
                     setPhone(event.target.value);
                     setError(undefined);
@@ -359,6 +438,15 @@ export function LoginForm({ next }: { next: string }) {
                     value={digits[index] ?? ''}
                     aria-label={`رقم ${formatNumber(index + 1)} از کد تایید`}
                     aria-invalid={Boolean(error)}
+                    // Without this the boxes announce "invalid" six times and
+                    // never say why: `role="alert"` speaks once, on insertion,
+                    // and a shopper tabbing back through afterwards has no way
+                    // to reach the reason.
+                    aria-describedby={error ? errorId : undefined}
+                    // One shared event name, not six: the useful signal is
+                    // "someone started entering a code", and six numbered
+                    // events would only split that number into noise.
+                    data-umami-event="login-code-type"
                     onChange={(event) => putDigit(index, event.target.value)}
                     onKeyDown={(event) => onBoxKeyDown(index, event)}
                     onPaste={onPaste}
@@ -374,6 +462,7 @@ export function LoginForm({ next }: { next: string }) {
 
               {error ? (
                 <p
+                  id={errorId}
                   role="alert"
                   className="text-destructive mt-3 flex items-center justify-center gap-1 text-xs"
                 >
