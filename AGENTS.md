@@ -24,14 +24,14 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | Path | What |
 | --- | --- |
 | `src/app/(app)/` | Public storefront (own root layout + `globals.css`) |
-| `src/app/(admin)/` | Admin panel: `auth/(public)` sign-in, `(protected)` pages behind `requireAdmin()` |
+| `src/app/(admin-panel)/` | Admin panel: `(protected)` pages behind `requireAdmin()`. Sign-in is the storefront's `/login` — there is one login for the whole site |
 | `src/app/api/[[...route]]/` | Hono catch-all; Better Auth at `src/app/api/auth/[...all]/` |
 | `src/db/schema/`, `src/db/dao/`, `src/db/migrations/` | Drizzle schema, DAOs, generated migrations |
 | `src/lib/hono/` | API app, router factory, response envelope, routes |
 | `src/lib/auth/`, `src/lib/email/`, `src/lib/utils/env.ts` | Better Auth, mailer, env accessor |
 | `src/features/<area>/<feature>/` | Feature components; route files stay thin |
 | `design/` | **Canonical design reference** — vendored Figma prototype (own deps, own `pnpm dev` on :5173). FE stories port from it. Never imported by the app. |
-| `scripts/create-admin.ts` | Provision an admin (`pnpm create-admin <email> [name]`) |
+| `scripts/create-admin.ts` | Grant admin by phone (`pnpm create-admin <phone> [name]`) — creates or promotes |
 | `src/db/seed/`, `scripts/seed-catalog.ts` | Demo catalog seed (`pnpm seed-catalog`), idempotent; its images live in `public/products/` |
 
 ## Conventions
@@ -89,10 +89,18 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   validates at order creation.
 - **Authz**: admin pages go through `requireAdmin()` (`src/lib/auth/session.ts`)
   — a session alone is never authorization, since customers get sessions too.
-  Admin API routes need the same check server-side; there is no admin API yet.
-  Every customer-facing read/write is owner-scoped. `role` defaults to
-  `customer` (`ROLES` in `src/db/schema/auth.ts`) — admin is granted only by
-  `pnpm create-admin`.
+  Admin API routes mount `requireAdmin` from `src/lib/hono/middleware/auth.ts`
+  (401 without a session, 403 without the role); there is no admin API yet.
+  Every customer-facing read/write is owner-scoped — take the id from
+  `c.get('user')`, never from the URL or the body. `role` defaults to
+  `customer` (`ROLES` in `src/db/schema/auth.ts`), is `input: false` everywhere
+  a request can reach it, and is granted only by `pnpm create-admin`.
+- **Auth is phone OTP, and only phone OTP.** Customers have no passwords and
+  neither do admins; the plugin's password endpoints are in `disabledPaths`.
+  Phone numbers are stored canonically as `+989xxxxxxxxx`
+  (`src/lib/auth/phone.ts`) and the API accepts **nothing else** — clients
+  normalize before sending, or one person ends up with two accounts. Any
+  `?next=`-style redirect target goes through `safeNextPath`.
 - **Persian search text** is normalized on write (ي→ی, ك→ک, ZWNJ) + `pg_trgm`.
 - **Local-first**: everything must run locally with no third-party signup — SMS
   uses a console driver, uploads use local storage behind the storage interface.
@@ -200,13 +208,14 @@ pnpm install
 pnpm app:dev                        # dev Postgres (Docker) + Next on :3000
 pnpm migration:migrate              # first run, in a second terminal
 pnpm seed-catalog                   # demo categories + products (safe to re-run)
-pnpm create-admin you@example.com   # provision an admin
+pnpm create-admin 09121234567       # grant admin to a phone number
 ```
 
 `http://localhost:3000` storefront · `/admin-panel` admin panel ·
-`/api/reference` interactive API docs (non-production only). Back-office sign-in
-prints the OTP and a magic link to the server console in development — no SMTP
-needed. Other commands: `pnpm dev:email` (email preview), `pnpm drizzle-studio`,
+`/api/reference` interactive API docs (non-production only). Sign-in is `/login`
+for customers and admins alike; the console SMS driver prints the one-time code
+to the server log, so no SMS account is needed locally.
+Other commands: `pnpm dev:email` (email preview), `pnpm drizzle-studio`,
 `pnpm migration:reset-dev` (nuke volumes, re-migrate), `pnpm --dir design dev`
 (design prototype).
 

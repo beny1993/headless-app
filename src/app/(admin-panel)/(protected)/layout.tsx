@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { DEFAULT_SITE_NAME } from '@/constants';
+import { toLocalIranPhone } from '@/lib/auth/phone';
 import { requireAdmin } from '@/lib/auth/session';
 import { PROTECTED_PATHS } from '@/lib/constant/paths';
 import { SignOutButton } from '@/features/auth/sign-out-button';
@@ -23,10 +24,12 @@ export default async function ProtectedLayout({
             {DEFAULT_SITE_NAME} · Admin panel
           </Link>
           <div className="flex items-center gap-4">
-            <span className="text-muted-foreground text-sm">
-              {session.user.email}
+            {/* The phone number, not the derived `…@phone.smokey.invalid`
+                address, which is a placeholder nobody would recognize. */}
+            <span className="text-muted-foreground text-sm" dir="ltr">
+              {toLocalIranPhone(session.user.phoneNumber ?? '')}
             </span>
-            <SignOutButton />
+            <SignOutButton page="admin-panel" />
           </div>
         </div>
       </header>

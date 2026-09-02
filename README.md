@@ -14,13 +14,13 @@ cp .env.example .env                # fill APP_CONFIG_AUTH_SECRET (openssl rand 
 pnpm install
 pnpm app:dev                        # dev Postgres + Next on http://localhost:3000
 pnpm migration:migrate              # first run, second terminal
-pnpm create-admin you@example.com   # provision an admin
+pnpm create-admin 09121234567       # provision (or promote) an admin by phone
 ```
 
 | URL | What |
 | --- | --- |
 | `http://localhost:3000` | Storefront |
-| `http://localhost:3000/admin-panel` | Admin panel (email OTP, invite-only) |
+| `http://localhost:3000/admin-panel` | Admin panel (sign in at `/login` by phone OTP; admin granted by `pnpm create-admin`) |
 | `http://localhost:3000/api/reference` | Interactive API docs (non-production) |
 
 `design/` holds the vendored design prototype the front-end ports from —

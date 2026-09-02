@@ -22,6 +22,13 @@
       "when": 1788199516114,
       "tag": "0002_fantastic_the_stranger",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788263793164,
+      "tag": "0003_known_lyja",
+      "breakpoints": true
     }
   ]
 }

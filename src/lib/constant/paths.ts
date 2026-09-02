@@ -12,6 +12,7 @@ export const PATHS = {
   ABOUT: '/about',
   ACCOUNT: '/account',
   CHECKOUT: '/checkout',
+  LOGIN: '/login',
 } as const;
 
 /** The storefront's product page for one product: `/product/cat-dry-food`. */
@@ -45,11 +46,6 @@ export function shopPath(filters: ShopFilters = {}): string {
   const search = query.toString();
   return search ? `${PATHS.SHOP}?${search}` : PATHS.SHOP;
 }
-
-export const AUTH_PATHS = {
-  SIGNIN: '/auth/signin',
-  MAGIC: '/auth/magic',
-} as const;
 
 export const PROTECTED_PATHS = {
   INDEX: '/admin-panel',
