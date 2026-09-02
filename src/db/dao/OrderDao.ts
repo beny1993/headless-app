@@ -2,7 +2,7 @@
 // orchestration (a transition's CAS plus its restock / COD-payment side effects)
 // lives in src/logic/orders/state-machine.ts, which composes these methods.
 // Never write raw SQL — the CAS below is the query builder, not a string.
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, count, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import {
   orderItems,
@@ -12,7 +12,7 @@ import {
   type OrderItem,
   type OrderWithItems,
 } from '@/db/schema/orders';
-import type { OrderStatus } from '@/lib/orders/order-status';
+import { ORDER_STATUSES, type OrderStatus } from '@/lib/orders/order-status';
 
 /**
  * A transaction on one connection of the pool. It carries `rollback()`, which
@@ -123,6 +123,26 @@ export class OrderDao {
       .where(and(eq(orders.id, id), eq(orders.status, from)))
       .returning();
     return row ?? null;
+  }
+
+  /**
+   * How many `pending_payment` orders `userId` currently holds — the input to
+   * checkout's interim open-order cap. Only `pending_payment` counts: it is the
+   * one state whose reserved stock has no release path until the Zarinpal
+   * expiry/reconcile job exists, so it is the only state the cap must bound. COD
+   * enters at `processing` (a releasable state) and is deliberately excluded.
+   */
+  static async countOpenForUser(userId: string): Promise<number> {
+    const [row] = await db
+      .select({ value: count() })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.userId, userId),
+          eq(orders.status, ORDER_STATUSES.PENDING_PAYMENT),
+        ),
+      );
+    return row.value;
   }
 
   /** An order's line items, oldest first. Used for display and for restock. */

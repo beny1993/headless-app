@@ -1,13 +1,15 @@
 // Needs a live database — see src/db/test-db.ts. The authority-uniqueness and
 // amount constraints are enforced by Postgres, so they can only be proven here.
 import { afterEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { PAYMENT_METHODS, PAYMENT_STATUSES } from '@/lib/orders/order-status';
 import { databaseReachable, importWithDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
-import type { OrderWithItems } from '@/db/schema/orders';
+import { payments, type OrderWithItems } from '@/db/schema/orders';
 
 const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
 const { PaymentDao } = await importWithDb(() => import('@/db/dao/PaymentDao'));
+const { db } = await importWithDb(() => import('@/db'));
 
 describe.skipIf(!databaseReachable)('PaymentDao', () => {
   const fx = new OrderFixtures();
@@ -131,6 +133,35 @@ describe.skipIf(!databaseReachable)('PaymentDao', () => {
     });
 
     expect(await PaymentDao.listByOrder(order.id)).toHaveLength(2);
+  });
+
+  it('lists attempts oldest first, deterministically', async () => {
+    const order = await orderFor();
+    // Insertion order and createdAt order are made to DISAGREE: the row created
+    // second is back-dated to be the older attempt. A read without ORDER BY
+    // returns heap/insertion order and fails; the createdAt-asc order must win.
+    const first = await PaymentDao.create({
+      orderId: order.id,
+      method: PAYMENT_METHODS.ZARINPAL,
+      amount: order.total,
+      authority: `A-${crypto.randomUUID()}`,
+    });
+    const second = await PaymentDao.create({
+      orderId: order.id,
+      method: PAYMENT_METHODS.ZARINPAL,
+      amount: order.total,
+      authority: `A-${crypto.randomUUID()}`,
+    });
+    await db
+      .update(payments)
+      .set({ createdAt: new Date(first.createdAt.getTime() - 60_000) })
+      .where(eq(payments.id, second.id));
+
+    const ids = (await PaymentDao.listByOrder(order.id)).map((p) => p.id);
+    expect(ids).toEqual([second.id, first.id]);
+    // Stable across requests — the property the customer-facing read needs.
+    const again = (await PaymentDao.listByOrder(order.id)).map((p) => p.id);
+    expect(again).toEqual([second.id, first.id]);
   });
 
   it('rejects a negative amount but allows zero (a fully-discounted order)', async () => {

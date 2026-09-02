@@ -1,7 +1,7 @@
 // All Drizzle DB access goes through DAOs like this one. `markCodPaid` is the
 // only write the state machine composes; the rest serve checkout (story 14) and
 // the Zarinpal verify callback (story 15).
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import type { Executor, Tx } from '@/db/dao/OrderDao';
 import { payments, type NewPayment, type Payment } from '@/db/schema/orders';
@@ -40,9 +40,18 @@ export class PaymentDao {
     return row ?? null;
   }
 
-  /** Every payment attempt on an order, for admin and support. */
+  /**
+   * Every payment attempt on an order, oldest first — for admin, support, and
+   * the customer-facing `payments[]` of GET /api/orders/:id. Deterministic
+   * ordering matters once Zarinpal retries create more than one row per order
+   * (story 15): without it the read flips between requests.
+   */
   static async listByOrder(orderId: string): Promise<Payment[]> {
-    return db.select().from(payments).where(eq(payments.orderId, orderId));
+    return db
+      .select()
+      .from(payments)
+      .where(eq(payments.orderId, orderId))
+      .orderBy(asc(payments.createdAt), asc(payments.id));
   }
 
   /**

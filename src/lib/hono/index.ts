@@ -1,8 +1,9 @@
 import { Scalar } from '@scalar/hono-api-reference';
+import type { Env } from 'hono';
 import { DEFAULT_SITE_NAME } from '@/constants';
 import { getEnvVariable, VARS } from '@/lib/utils/env';
 import { apiErrorHandler, createRouter } from './create-router';
-import { requireAdmin } from './middleware/auth';
+import { requireAdmin, requireAuth, type AuthedEnv } from './middleware/auth';
 import {
   categoryListHandler,
   categoryListRoute,
@@ -11,7 +12,9 @@ import {
   productListHandler,
   productListRoute,
 } from './routes/catalog';
+import { checkoutHandler, checkoutRoute } from './routes/checkout';
 import { healthHandler, healthRoute } from './routes/health';
+import { orderDetailHandler, orderDetailRoute } from './routes/orders';
 import {
   shippingRateUpdateHandler,
   shippingRateUpdateRoute,
@@ -44,6 +47,22 @@ app.openapi(productDetailRoute, productDetailHandler);
 app.openapi(shippingRatesRoute, shippingRatesHandler);
 app.use('/shipping/rates/:provinceId', requireAdmin);
 app.openapi(shippingRateUpdateRoute, shippingRateUpdateHandler);
+
+// Authenticated customer routes — create an order, and read your own orders. They
+// live on a dedicated sub-router typed with the session user (so `c.get('user')`
+// is typed in the handlers) built from the shared `createRouter` factory (so the
+// validation defaultHook still returns the standard error envelope). `requireAuth`
+// is mounted per exact path — never `app.use('*')`, which would leak onto the
+// public catalog/shipping routes when the sub-router merges into the parent — and
+// registered before each route so the guard runs first, authorizing before the
+// body is parsed. Every read inside is owner-scoped by the session id, never the
+// URL (see ./routes/orders.ts and src/logic/checkout/get-order.ts).
+const authed = createRouter<Env & AuthedEnv>();
+authed.use('/checkout', requireAuth);
+authed.use('/orders/:id', requireAuth);
+authed.openapi(checkoutRoute, checkoutHandler);
+authed.openapi(orderDetailRoute, orderDetailHandler);
+app.route('/', authed);
 
 // OpenAPI document + interactive reference — never expose in production.
 if (getEnvVariable(VARS.NODE_ENV, false, '') !== 'production') {

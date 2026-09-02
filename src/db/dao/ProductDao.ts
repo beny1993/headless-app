@@ -311,6 +311,24 @@ export class ProductDao {
   }
 
   /**
+   * Loads products by id, **including soft-deleted ones**. Checkout (story 14)
+   * composes this: it loads each ordered line fresh to reject a missing or
+   * inactive product before it reserves any stock, and an active-only read could
+   * never surface the `isActive: false` it must reject on. Every other read here
+   * filters `is_active` — this is the one that must not, so it is named for the
+   * one caller that needs the whole row.
+   *
+   * Takes an `Executor` so checkout can read inside its transaction. An empty id
+   * list short-circuits — `inArray(col, [])` is an always-false clause worth no
+   * round-trip. Order is not guaranteed; callers key by id, they do not rely on
+   * position.
+   */
+  static async getByIds(executor: Executor, ids: string[]): Promise<Product[]> {
+    if (ids.length === 0) return [];
+    return executor.select().from(products).where(inArray(products.id, ids));
+  }
+
+  /**
    * The oversell guard, as one atomic statement:
    * `UPDATE products SET stock = stock - qty WHERE id = ? AND stock >= qty
    * RETURNING`. Two checkouts racing for the last unit cannot both win —
