@@ -2,6 +2,7 @@ import { Scalar } from '@scalar/hono-api-reference';
 import { DEFAULT_SITE_NAME } from '@/constants';
 import { getEnvVariable, VARS } from '@/lib/utils/env';
 import { apiErrorHandler, createRouter } from './create-router';
+import { requireAdmin } from './middleware/auth';
 import {
   categoryListHandler,
   categoryListRoute,
@@ -11,6 +12,12 @@ import {
   productListRoute,
 } from './routes/catalog';
 import { healthHandler, healthRoute } from './routes/health';
+import {
+  shippingRateUpdateHandler,
+  shippingRateUpdateRoute,
+  shippingRatesHandler,
+  shippingRatesRoute,
+} from './routes/shipping';
 
 // Create the main OpenAPI Hono app, bridged into Next at
 // src/app/api/[[...route]]/route.ts. Register new sub-routers with
@@ -27,6 +34,16 @@ app.openapi(healthRoute, healthHandler);
 app.openapi(categoryListRoute, categoryListHandler);
 app.openapi(productListRoute, productListHandler);
 app.openapi(productDetailRoute, productDetailHandler);
+
+// Province shipping rates. The listing and the ?province= fee preview are public
+// (checkout shows the fee before the customer signs in); the rate update is
+// admin-only. `requireAdmin` is mounted on the `{provinceId}` sub-path so it
+// guards the PUT without touching the public GET at `/shipping/rates`, and is
+// registered before the route so it runs first — authorize before parsing the
+// body.
+app.openapi(shippingRatesRoute, shippingRatesHandler);
+app.use('/shipping/rates/:provinceId', requireAdmin);
+app.openapi(shippingRateUpdateRoute, shippingRateUpdateHandler);
 
 // OpenAPI document + interactive reference — never expose in production.
 if (getEnvVariable(VARS.NODE_ENV, false, '') !== 'production') {
