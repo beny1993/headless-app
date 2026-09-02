@@ -58,7 +58,16 @@ export const API_PATHS = {
   CATEGORIES: '/api/categories',
   PRODUCTS: '/api/products',
   SHIPPING_RATES: '/api/shipping/rates',
+  CHECKOUT: '/api/checkout',
+  ORDERS: '/api/orders',
 } as const;
+
+/** `/api/orders/{id}` — the OpenAPI template for the owner-scoped order read. */
+export const API_ORDER_DETAIL_TEMPLATE = `${API_PATHS.ORDERS}/{id}`;
+
+/** The owner-scoped order-detail path for one order. */
+export const apiOrderPath = (id: string) =>
+  `${API_PATHS.ORDERS}/${encodeURIComponent(id)}`;
 
 /** `/api/shipping/rates/{provinceId}` — the OpenAPI template for the admin update. */
 export const API_SHIPPING_RATE_TEMPLATE = `${API_PATHS.SHIPPING_RATES}/{provinceId}`;
