@@ -5,9 +5,11 @@
 // status codes — and it is the half that actually matters: a page gate is a
 // convenience for a browser, while the API is what an attacker calls directly.
 //
-// No admin route exists yet. When one lands (`Story - Admin Product
-// Management`, `Story - Admin Orders and Dashboard`), it mounts `requireAdmin`
-// and inherits the tests next to this file.
+// `requireAdmin` guards `PUT /api/shipping/rates/{provinceId}` — mounted with
+// `app.use(path, requireAdmin)` before the route in `src/lib/hono/index.ts`, so
+// the guard runs first. Later admin routes (`Story - Admin Product Management`,
+// `Story - Admin Orders and Dashboard`) mount it the same way and inherit the
+// tests next to this file.
 import type { Env, MiddlewareHandler } from 'hono';
 import { ROLES, type Role } from '@/db/schema/auth';
 import { isAuthenticatedUser } from '@/lib/auth';
