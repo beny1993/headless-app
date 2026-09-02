@@ -90,6 +90,31 @@ describe.skipIf(!databaseReachable)('PaymentDao', () => {
     expect(b.authority).toBeNull();
   });
 
+  it('rejects a second COD row on the same order — the at-most-one-COD anchor', async () => {
+    // The COD twin of the authority idempotency: without the partial unique
+    // index a checkout bug or double-submit could plant a second COD row, and
+    // markCodPaid would then match two rows at delivery, throw, and strand the
+    // order undeliverable. The DB refuses the second write instead. (COD has no
+    // authority, so the null-authority column cannot carry this — the many-NULLs
+    // test above is on *different* orders and stays green.)
+    const order = await orderFor();
+    await PaymentDao.create({
+      orderId: order.id,
+      method: PAYMENT_METHODS.COD,
+      amount: order.total,
+    });
+
+    const refused = await refusedBy(() =>
+      PaymentDao.create({
+        orderId: order.id,
+        method: PAYMENT_METHODS.COD,
+        amount: order.total,
+      }),
+    );
+
+    expect(refused).toBe('payments_one_cod_per_order');
+  });
+
   it('lists every attempt on an order', async () => {
     const order = await orderFor();
     await PaymentDao.create({

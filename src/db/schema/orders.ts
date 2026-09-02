@@ -26,6 +26,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import {
@@ -189,6 +190,20 @@ export const payments = pgTable(
     // zero total, and its COD payment row therefore carries a zero amount.
     check('payments_amount_non_negative', sql`${table.amount} >= 0`),
     index('payments_order_id_idx').on(table.orderId),
+    // At most one COD payment row per order — the DB-enforced twin of the
+    // `authority` unique index that anchors Zarinpal idempotency. COD has no
+    // authority, so without this a checkout bug or a double-submit could plant a
+    // second COD row; `markCodPaid` would then match two rows at delivery, throw,
+    // and leave the order permanently undeliverable. This refuses the bad write
+    // instead. Zarinpal attempts are unconstrained here (an order legitimately
+    // retries the gateway), which is why the predicate is `method = 'cod'`.
+    // Assumes a COD order only ever holds the single row created at checkout:
+    // true today (a COD row goes pending → paid and never `failed`). If a
+    // refused-at-door path later adds a failed COD row plus a retry, narrow the
+    // predicate to `method = 'cod' and status = 'pending'`.
+    uniqueIndex('payments_one_cod_per_order')
+      .on(table.orderId)
+      .where(sql`${table.method} = 'cod'`),
   ],
 );
 

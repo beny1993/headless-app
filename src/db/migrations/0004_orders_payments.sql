@@ -66,4 +66,5 @@ ALTER TABLE "payments" ADD CONSTRAINT "payments_order_id_orders_id_fk" FOREIGN K
 CREATE INDEX "order_items_order_id_idx" ON "order_items" USING btree ("order_id");--> statement-breakpoint
 CREATE INDEX "orders_user_id_idx" ON "orders" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "orders_status_idx" ON "orders" USING btree ("status");--> statement-breakpoint
-CREATE INDEX "payments_order_id_idx" ON "payments" USING btree ("order_id");
+CREATE INDEX "payments_order_id_idx" ON "payments" USING btree ("order_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "payments_one_cod_per_order" ON "payments" USING btree ("order_id") WHERE "payments"."method" = 'cod';

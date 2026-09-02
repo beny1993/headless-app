@@ -1,5 +1,5 @@
 {
-  "id": "998358d7-f1a5-4ec5-a18d-d4bc11be13f9",
+  "id": "cda5bdde-850a-4629-a4de-b0ca0713e651",
   "prevId": "3ec31cdc-ca74-4f34-bdc8-657764fd4882",
   "version": "7",
   "dialect": "postgresql",
@@ -1199,6 +1199,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payments_one_cod_per_order": {
+          "name": "payments_one_cod_per_order",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"payments\".\"method\" = 'cod'",
           "concurrently": false,
           "method": "btree",
           "with": {}
