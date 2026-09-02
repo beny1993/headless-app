@@ -1,7 +1,7 @@
 // All Drizzle DB access goes through DAOs like this one. `markCodPaid` is the
 // only write the state machine composes; the rest serve checkout (story 14) and
 // the Zarinpal verify callback (story 15).
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, lt, ne } from 'drizzle-orm';
 import { db } from '@/db';
 import type { Executor, Tx } from '@/db/dao/OrderDao';
 import { payments, type NewPayment, type Payment } from '@/db/schema/orders';
@@ -52,6 +52,90 @@ export class PaymentDao {
       .from(payments)
       .where(eq(payments.orderId, orderId))
       .orderBy(asc(payments.createdAt), asc(payments.id));
+  }
+
+  /**
+   * Every pending Zarinpal attempt whose authority is older than `cutoff` — the
+   * reconcile job's pass-1 worklist. `authority IS NOT NULL` excludes COD rows
+   * (they have no gateway to verify), and the age cutoff keeps a fresh attempt a
+   * shopper may still be completing out of the sweep.
+   */
+  static async listPendingWithAuthorityOlderThan(
+    cutoff: Date,
+  ): Promise<Payment[]> {
+    return db
+      .select()
+      .from(payments)
+      .where(
+        and(
+          eq(payments.status, PAYMENT_STATUSES.PENDING),
+          isNotNull(payments.authority),
+          lt(payments.createdAt, cutoff),
+        ),
+      );
+  }
+
+  /**
+   * Marks a Zarinpal attempt `paid` — the verify path's ONLY writer of
+   * `status = paid` / `paidAt`. Always run inside the same transaction as the
+   * order's `pending_payment → paid` CAS so the two commit together (a lost
+   * order CAS rolls this write back).
+   *
+   * The CAS is `WHERE status <> 'paid'`, deliberately NOT `= 'pending'`: a row
+   * this reconcile once marked `failed` can still be genuinely paid by a later
+   * verify-OK (Zarinpal took the money), and `= 'pending'` would silently drop
+   * that. Idempotent — a second verify on an already-`paid` row matches nothing
+   * and returns `null`.
+   */
+  static async markPaid(
+    tx: Tx,
+    id: string,
+    fields: {
+      refId: string;
+      cardPan: string | null;
+      gatewayResponse: unknown;
+      paidAt: Date;
+    },
+  ): Promise<Payment | null> {
+    const [row] = await tx
+      .update(payments)
+      .set({
+        status: PAYMENT_STATUSES.PAID,
+        refId: fields.refId,
+        cardPan: fields.cardPan,
+        gatewayResponse: fields.gatewayResponse,
+        paidAt: fields.paidAt,
+      })
+      .where(
+        and(eq(payments.id, id), ne(payments.status, PAYMENT_STATUSES.PAID)),
+      )
+      .returning();
+    return row ?? null;
+  }
+
+  /**
+   * Marks a pending attempt `failed` (a NOK callback or a rejected verify). The
+   * CAS is `WHERE status = 'pending'`: it never un-pays a `paid` row and never
+   * re-fails a `failed` one, so a replayed failure is a no-op (`null`). No side
+   * effects, so it takes any `Executor` rather than forcing a transaction.
+   */
+  static async markFailed(
+    executor: Executor,
+    id: string,
+    fields: { failureReason: string; gatewayResponse: unknown },
+  ): Promise<Payment | null> {
+    const [row] = await executor
+      .update(payments)
+      .set({
+        status: PAYMENT_STATUSES.FAILED,
+        failureReason: fields.failureReason,
+        gatewayResponse: fields.gatewayResponse,
+      })
+      .where(
+        and(eq(payments.id, id), eq(payments.status, PAYMENT_STATUSES.PENDING)),
+      )
+      .returning();
+    return row ?? null;
   }
 
   /**
