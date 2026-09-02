@@ -14,7 +14,7 @@
 //   · status comes from initialStatusFor(method), never the client; the COD
 //     payment row is created `pending`; a Zarinpal order gets no payment row yet
 import { eq, inArray } from 'drizzle-orm';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { orders, payments } from '@/db/schema/orders';
 import { products as productsTable } from '@/db/schema/catalog';
 import { provinces, shippingRates } from '@/db/schema/shipping';
@@ -57,6 +57,10 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       provinceIds.length = 0;
     }
   });
+
+  // The mid-transaction tests below spy on ProductDao.getByIds; restore it so a
+  // spy never leaks into the next test.
+  afterEach(() => vi.restoreAllMocks());
 
   /** A throwaway province with a known fee for the checkout to snapshot. */
   const province = async (fee = 50_000) => {
@@ -146,14 +150,28 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       expect(item.qty).toBe(1);
     });
 
-    it('prices a later price edit into the order — re-reads at reservation time', async () => {
-      // The snapshot comes from decrementStock's fresh RETURNING row, so a price
-      // changed after the cart was built is the price the order records.
+    it('snapshots the price from the reservation RETURNING row, not the pre-load', async () => {
+      // Deviation 1's load-bearing claim: the snapshot is decrementStock's fresh
+      // RETURNING row, NOT the getByIds pre-load. The only case that tells the two
+      // apart is a price that changes AFTER the pre-load but BEFORE the row is
+      // reserved — a window a plain "edit before checkout" cannot reach, because
+      // getByIds would already see the new price. Inject exactly there: spy on
+      // getByIds to run the price edit on the pool (autocommit) once the tx has
+      // SELECTed but taken no row lock, then reserve. Pre-load sees 100_000; the
+      // reservation re-reads 150_000, and the snapshot must be the latter.
       const user = await fx.user();
       const category = await fx.category();
       const product = await fx.product(category, { price: 100_000, stock: 5 });
       const prov = await province();
-      await ProductDao.update(product.id, { price: 150_000 });
+
+      const realGetByIds = ProductDao.getByIds;
+      vi.spyOn(ProductDao, 'getByIds').mockImplementation(
+        async (executor, ids) => {
+          const rows = await realGetByIds(executor, ids);
+          await ProductDao.update(product.id, { price: 150_000 });
+          return rows;
+        },
+      );
 
       const order = await createOrder(
         user.id,
@@ -161,6 +179,8 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       );
       fx.remember(order.id);
 
+      // 150_000, not the 100_000 the pre-load saw: snapshotting the pre-load row
+      // instead of the RETURNING row makes this 100_000 and the subtotal 200_000.
       expect(order.items[0].unitPrice).toBe(150_000);
       expect(order.subtotal).toBe(300_000);
     });
@@ -183,6 +203,37 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
         ),
       ).rejects.toMatchObject({ field: 'items.0' });
       expect(await stockOf(product.id)).toBe(5); // untouched
+      expect(await ordersForUser(user.id)).toHaveLength(0);
+    });
+
+    it('rejects a product soft-deleted mid-transaction, rolling the reservation back (TOCTOU recheck)', async () => {
+      // decrementStock deliberately ignores isActive, so a soft-delete that lands
+      // AFTER the pre-load saw the product active but BEFORE (or as) it reserves
+      // is caught only by the post-decrement recheck of the fresh RETURNING row.
+      // Inject the soft-delete in that window via a getByIds spy (pool autocommit;
+      // the tx holds no row lock yet). The recheck must reject and roll back the
+      // decrement — otherwise the reservation stands and stock leaks to 4.
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+
+      const realGetByIds = ProductDao.getByIds;
+      vi.spyOn(ProductDao, 'getByIds').mockImplementation(
+        async (executor, ids) => {
+          const rows = await realGetByIds(executor, ids);
+          await ProductDao.softDelete(product.id); // active at load, gone before reserve
+          return rows;
+        },
+      );
+
+      await expect(
+        createOrder(
+          user.id,
+          buildInput(prov, [{ productId: product.id, qty: 1 }]),
+        ),
+      ).rejects.toMatchObject({ field: 'items.0' });
+      expect(await stockOf(product.id)).toBe(5); // reservation rolled back
       expect(await ordersForUser(user.id)).toHaveLength(0);
     });
 

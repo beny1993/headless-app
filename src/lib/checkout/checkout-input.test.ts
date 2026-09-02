@@ -157,6 +157,27 @@ describe('checkoutInputSchema', () => {
       ).toBe(false);
     });
 
+    it('does not coerce a non-number provinceId — a JSON body must carry a real number', () => {
+      // provinceIdParamSchema is z.coerce (built for the ?province= query string).
+      // In this JSON body a string "5" or a boolean is a malformed client worth a
+      // 400, not something to silently coerce to a valid id.
+      for (const bad of ['5', true, null] as const) {
+        expect(
+          checkoutInputSchema.safeParse({
+            ...validBody(),
+            address: { ...validBody().address, provinceId: bad },
+          }).success,
+        ).toBe(false);
+      }
+      // A genuine number still passes — the imported int4 cap stays authoritative.
+      expect(
+        checkoutInputSchema.safeParse({
+          ...validBody(),
+          address: { ...validBody().address, provinceId: 7 },
+        }).success,
+      ).toBe(true);
+    });
+
     it('rejects a null byte in any text field (would 500 in the pg driver)', () => {
       for (const field of [
         'recipientName',

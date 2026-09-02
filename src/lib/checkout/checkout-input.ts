@@ -81,7 +81,16 @@ const addressSchema = z.object({
   // reopens here. Required on purpose: `orders.province_id` is nullable at the DB
   // but `provinceName`/`shippingFee` are the load-bearing snapshots, so checkout
   // demands a real province.
-  provinceId: provinceIdParamSchema,
+  //
+  // Intersected with `z.number()` because `provinceIdParamSchema` is `z.coerce`
+  // (built for the `?province=` query string, where every value is text). In this
+  // JSON body a real number is what a correct client sends, so a string `"5"` or a
+  // boolean is a bug worth a 400, not something to coerce — the same stance
+  // `shipping-query.ts` takes for its JSON-body fee. `.and()` makes the raw value
+  // clear `z.number()` too (a string never does), while the imported schema stays
+  // the sole authority on the int4 cap — no drift, no re-mirror. (`.pipe()` cannot
+  // express this: a coerced schema's input type is `unknown`, not `number`.)
+  provinceId: z.number().and(provinceIdParamSchema),
   city: boundedText(MAX_CITY),
   postalCode: boundedText(MAX_POSTAL_CODE),
   addressLine: boundedText(MAX_ADDRESS_LINE),
