@@ -13,7 +13,11 @@ import {
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
 } from '@/lib/orders/order-status';
-import { mockDriver, mockLedger } from '@/lib/zarinpal/client';
+import {
+  mockDriver,
+  mockLedger,
+  type ZarinpalClient,
+} from '@/lib/zarinpal/client';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 
@@ -173,6 +177,7 @@ describe.skipIf(!databaseReachable)('reconcilePayments', () => {
       failed: 0,
       refundFlagged: 0,
       expired: 0,
+      errored: 0,
     });
     expect(await orderStatus(order.id)).toBe(ORDER_STATUSES.PROCESSING);
     expect((await paymentRow(cod.id)).status).toBe(PAYMENT_STATUSES.PENDING);
@@ -188,6 +193,7 @@ describe.skipIf(!databaseReachable)('reconcilePayments', () => {
       failed: 0,
       refundFlagged: 0,
       expired: 0,
+      errored: 0,
     });
     expect(await orderStatus(order.id)).toBe(ORDER_STATUSES.PENDING_PAYMENT);
     expect((await paymentRow(payment.id)).status).toBe(
@@ -223,8 +229,41 @@ describe.skipIf(!databaseReachable)('reconcilePayments', () => {
       failed: 0,
       refundFlagged: 0,
       expired: 0,
+      errored: 0,
     });
     expect(await orderStatus(order.id)).toBe(ORDER_STATUSES.FAILED);
     expect(await stockOf(product.id)).toBe(initialStock); // still restocked once
+  });
+
+  it('isolates a throwing verify — one bad row does not block the rest of the sweep', async () => {
+    // The real driver's verify can throw (fetch rejects, or an unparseable body).
+    // Without per-payment isolation that would abort the loop and starve pass 2's
+    // expiry indefinitely — the "flip to the real driver is one env change" bug.
+    const a = await scenario(); // its verify will throw
+    const b = await scenario(); // never paid → should still be expired
+    await agePayment(a.payment.id, 20 * MIN);
+    await agePayment(b.payment.id, 20 * MIN);
+    await ageOrder(b.order.id, 2 * 60 * MIN);
+
+    const throwingFor = (badAuthority: string): ZarinpalClient => ({
+      requestPayment: async () => ({ authority: 'x', redirectUrl: 'x' }),
+      verifyPayment: async ({ authority }) => {
+        if (authority === badAuthority) throw new Error('gateway unreachable');
+        return { ok: false, code: -51, message: 'not paid' };
+      },
+    });
+
+    const result = await reconcilePayments(throwingFor(a.payment.authority!));
+
+    expect(result.errored).toBe(1); // a's verify threw, counted and skipped
+    expect(result.expired).toBe(1); // b was still processed after a threw
+    // a is untouched and stays retryable; its order is not expired (live attempt).
+    expect((await paymentRow(a.payment.id)).status).toBe(
+      PAYMENT_STATUSES.PENDING,
+    );
+    expect(await orderStatus(a.order.id)).toBe(ORDER_STATUSES.PENDING_PAYMENT);
+    // b failed and its order expired + restocked.
+    expect(await orderStatus(b.order.id)).toBe(ORDER_STATUSES.FAILED);
+    expect(await stockOf(b.product.id)).toBe(b.initialStock);
   });
 });

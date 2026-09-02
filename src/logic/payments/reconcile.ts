@@ -40,6 +40,8 @@ export type ReconcileResult = {
   refundFlagged: number;
   /** Abandoned orders expired to `failed` (stock restocked). */
   expired: number;
+  /** Attempts whose verify threw (gateway down / bad response) and were skipped. */
+  errored: number;
 };
 
 /**
@@ -55,18 +57,31 @@ export async function reconcilePayments(
     failed: 0,
     refundFlagged: 0,
     expired: 0,
+    errored: 0,
   };
 
-  // Pass 1 — verify stale pending attempts.
+  // Pass 1 — verify stale pending attempts. Each settle is isolated: a verify
+  // that throws (the real driver's fetch rejects, or the gateway returns an
+  // unparseable body) must NOT abort the sweep, or one bad row would block every
+  // expiry in pass 2 indefinitely. The row stays `pending`, so the next run
+  // retries it. This is what keeps "flip to the real driver" a driver-only change.
   const stale = await PaymentDao.listPendingWithAuthorityOlderThan(
     new Date(now - PAYMENT_STALE_MS),
   );
   for (const payment of stale) {
-    const outcome = await settlePendingPayment(payment, client);
-    if (outcome === 'paid') result.verified += 1;
-    else if (outcome === 'failed') result.failed += 1;
-    else if (outcome === 'refund_flagged') result.refundFlagged += 1;
-    // 'already_paid' — a concurrent callback settled it; nothing to count.
+    try {
+      const outcome = await settlePendingPayment(payment, client);
+      if (outcome === 'paid') result.verified += 1;
+      else if (outcome === 'failed') result.failed += 1;
+      else if (outcome === 'refund_flagged') result.refundFlagged += 1;
+      // 'already_paid' — a concurrent callback settled it; nothing to count.
+    } catch (error) {
+      result.errored += 1;
+      console.error(
+        `[reconcile] verify/settle failed for payment ${payment.id}; left pending for a later run`,
+        error,
+      );
+    }
   }
 
   // Pass 2 — expire abandoned orders. Skip any order that still has a live

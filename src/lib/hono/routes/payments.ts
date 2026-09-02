@@ -122,6 +122,7 @@ const ReconcileResultSchema = z
     failed: z.number().int().nonnegative(),
     refundFlagged: z.number().int().nonnegative(),
     expired: z.number().int().nonnegative(),
+    errored: z.number().int().nonnegative(),
   })
   .openapi('ReconcileResult');
 
@@ -172,7 +173,18 @@ export const paymentCallbackHandler = async (c: Context) => {
   // Unknown authority — nothing to settle and no order to show. Failure page.
   if (!payment) return c.redirect(checkoutFailurePath(), 302);
 
-  await handleCallback(payment, Status, getZarinpalClient());
+  try {
+    await handleCallback(payment, Status, getZarinpalClient());
+  } catch (error) {
+    // A transient gateway/verify error: never hand a browser the 500 JSON
+    // envelope. The attempt stays `pending`, so the reconcile sweep recovers the
+    // money; send the shopper to the order's result page (it reads the order
+    // status, so it shows "still pending / retry").
+    console.error(
+      '[payments] callback settle failed; left for reconcile',
+      error,
+    );
+  }
   // Both success and failure land on the result page for the order; it renders
   // from GET /api/orders/:id, so it shows the real settled status, not the query.
   return c.redirect(checkoutResultPath(payment.orderId), 302);
