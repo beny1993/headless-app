@@ -277,4 +277,50 @@ describe.skipIf(!databaseReachable)('Zarinpal payment routes', () => {
     expect(cbRes.headers.get('location')).toBe(checkoutResultPath(order.id));
     expect(await orderStatus(order.id)).toBe(ORDER_STATUSES.PAID);
   });
+
+  it('mock gateway + mock-complete 404 when the provider is not mock', async () => {
+    // The dev-only pages must not exist on a real (provider=zarinpal) deployment —
+    // the gate is on the provider, not NODE_ENV. getZarinpalProvider only checks
+    // the name is known, so no merchant id is needed to flip it here.
+    vi.stubEnv('APP_CONFIG_ZARINPAL_PROVIDER', 'zarinpal');
+    try {
+      const gw = await app.request(
+        `${API_PATHS.PAYMENT_MOCK_GATEWAY}?authority=whatever`,
+      );
+      expect(gw.status).toBe(404);
+
+      const complete = await app.request(API_PATHS.PAYMENT_MOCK_COMPLETE, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ authority: 'x', action: 'pay' }).toString(),
+      });
+      expect(complete.status).toBe(404);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('mock gateway HTML-escapes the authority — no attribute-breakout XSS', async () => {
+    // Authorities are server-minted so this is defense-in-depth, but a value
+    // interpolated into the hidden-input attribute must never break out of it.
+    const { order } = await zarinpalOrder();
+    const evil = `mock-${crypto.randomUUID()}"><script>alert(1)</script>`;
+    await PaymentDao.create({
+      orderId: order.id,
+      method: PAYMENT_METHODS.ZARINPAL,
+      status: PAYMENT_STATUSES.PENDING,
+      amount: 340_000,
+      authority: evil,
+    });
+
+    const res = await app.request(
+      `${API_PATHS.PAYMENT_MOCK_GATEWAY}?authority=${encodeURIComponent(evil)}`,
+    );
+    const html = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).not.toContain('"><script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
 });

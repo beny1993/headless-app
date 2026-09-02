@@ -4,7 +4,7 @@
 // back-dating createdAt, the existing convention.
 //
 // Needs a live database — see src/db/test-db.ts.
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { orders, payments } from '@/db/schema/orders';
 import { products } from '@/db/schema/catalog';
@@ -32,6 +32,7 @@ const MIN = 60_000;
 describe.skipIf(!databaseReachable)('reconcilePayments', () => {
   const fx = new OrderFixtures();
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fx.cleanup();
     mockLedger.reset(); // module-level state — reset between tests
   });
@@ -265,5 +266,52 @@ describe.skipIf(!databaseReachable)('reconcilePayments', () => {
     // b failed and its order expired + restocked.
     expect(await orderStatus(b.order.id)).toBe(ORDER_STATUSES.FAILED);
     expect(await stockOf(b.product.id)).toBe(b.initialStock);
+  });
+
+  it('isolates a pass-2 InvalidTransition — an order that moved on mid-sweep does not abort the sweep', async () => {
+    // Pass 2's per-order try/catch: if an order left pending_payment between the
+    // worklist query and the expiry CAS (a concurrent callback paid it mid-pass),
+    // its InvalidTransitionError must be swallowed so the rest of pass 2 still
+    // runs. Without the catch, one such order starves every later expiry — the
+    // launch-gate's "one bad row doesn't abort the sweep", for pass 2. Drive it by
+    // injecting an already-moved-on order into pass 2's worklist.
+    const abandoned = await scenario(); // genuinely abandoned → should expire
+    await agePayment(abandoned.payment.id, 20 * MIN);
+    await ageOrder(abandoned.order.id, 2 * 60 * MIN);
+
+    const movedOn = await scenario();
+    // No longer pending_payment (a callback paid it) and no live attempt, so pass 2
+    // reaches the transition and loses the CAS → InvalidTransitionError.
+    await testDb
+      .update(orders)
+      .set({ status: ORDER_STATUSES.PAID })
+      .where(eq(orders.id, movedOn.order.id));
+    await testDb
+      .update(payments)
+      .set({ status: PAYMENT_STATUSES.FAILED })
+      .where(eq(payments.id, movedOn.payment.id));
+
+    const realList = OrderDao.listExpiredPendingPayment.bind(OrderDao);
+    vi.spyOn(OrderDao, 'listExpiredPendingPayment').mockImplementation(
+      async (cutoff) => {
+        const real = await realList(cutoff); // the genuinely-abandoned order
+        const [injected] = await testDb
+          .select()
+          .from(orders)
+          .where(eq(orders.id, movedOn.order.id));
+        return [...real, injected]; // + the order that moved on mid-sweep
+      },
+    );
+
+    // Must NOT throw: the moved-on order's InvalidTransitionError is isolated.
+    const result = await reconcilePayments(mockDriver);
+
+    expect(result.expired).toBe(1); // only the genuinely-abandoned order
+    expect(result.failed).toBe(1); // abandoned's pass-1 verify (ledger empty)
+    expect(result.errored).toBe(0); // the swallowed InvalidTransition is not an error
+    expect(await orderStatus(abandoned.order.id)).toBe(ORDER_STATUSES.FAILED);
+    expect(await stockOf(abandoned.product.id)).toBe(abandoned.initialStock);
+    // The moved-on order is untouched — not expired, not restocked; sweep survived.
+    expect(await orderStatus(movedOn.order.id)).toBe(ORDER_STATUSES.PAID);
   });
 });

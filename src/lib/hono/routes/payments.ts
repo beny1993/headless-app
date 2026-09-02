@@ -195,10 +195,25 @@ export const paymentCallbackHandler = async (c: Context) => {
 // not NODE_ENV: a test deployment runs a production build yet must keep the mock
 // flow, and a real deployment (provider `zarinpal`) makes these 404.
 
+const mockGatewayQuerySchema = z.object({ authority: z.string().min(1) });
+
 const mockCompleteBodySchema = z.object({
   authority: z.string().min(1),
   action: z.enum(['pay', 'fail', 'abandon']),
 });
+
+// Escape at the render boundary so a caller can never forget it. The authority
+// is a server-minted DB value today (mock `mock-…`, or Zarinpal's alphanumeric),
+// so this is defense-in-depth — but interpolating any value into HTML unescaped
+// is exactly the injection the standing "validate/escape at trust boundaries"
+// rule exists to refuse, and the amount already goes through formatToman.
+const escapeHtml = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
 const mockGatewayPage = (authority: string, amount: number): string => `
 <!doctype html>
@@ -223,7 +238,7 @@ const mockGatewayPage = (authority: string, amount: number): string => `
     <p class="note">این صفحه جای درگاه واقعی زرین‌پال را در حالت آزمایشی می‌گیرد.</p>
     <p>مبلغ قابل پرداخت: <span class="amount">${formatToman(amount)}</span></p>
     <form method="post" action="${API_PATHS.PAYMENT_MOCK_COMPLETE}">
-      <input type="hidden" name="authority" value="${authority}" />
+      <input type="hidden" name="authority" value="${escapeHtml(authority)}" />
       <button class="pay" name="action" value="pay" type="submit">پرداخت موفق</button>
       <button class="fail" name="action" value="fail" type="submit">لغو / پرداخت ناموفق</button>
       <button class="abandon" name="action" value="abandon" type="submit">رها کردن (بستن مرورگر)</button>
@@ -243,11 +258,11 @@ const mockAbandonPage = (): string => `
 
 export const mockGatewayHandler = async (c: Context) => {
   if (getZarinpalProvider() !== 'mock') return c.notFound();
-  const authority = c.req.query('authority');
-  if (!authority) return c.redirect(checkoutFailurePath(), 302);
-  const payment = await PaymentDao.getByAuthority(authority);
+  const parsed = mockGatewayQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) return c.redirect(checkoutFailurePath(), 302);
+  const payment = await PaymentDao.getByAuthority(parsed.data.authority);
   if (!payment) return c.redirect(checkoutFailurePath(), 302);
-  return c.html(mockGatewayPage(authority, payment.amount));
+  return c.html(mockGatewayPage(parsed.data.authority, payment.amount));
 };
 
 export const mockCompleteHandler = async (c: Context) => {
