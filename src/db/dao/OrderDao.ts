@@ -15,14 +15,23 @@ import {
 import type { OrderStatus } from '@/lib/orders/order-status';
 
 /**
- * Whatever a write can run on: the pool, or a transaction on one connection of
- * it. Checkout (story 14) reserves stock, inserts the order and its items, and
- * inserts the payment row in one transaction, so every method it composes takes
- * one of these. Shared from here so `PaymentDao`, `ProductDao` and the state
- * machine speak the same type.
+ * A transaction on one connection of the pool. It carries `rollback()`, which
+ * the pool does not — so a parameter typed `Tx` structurally rejects the bare
+ * `db`. The status CAS and its side effects must commit together, so the methods
+ * that perform them (`casStatus`, `markCodPaid`, `transitionOrder`) take a `Tx`,
+ * never an `Executor`: passing the pool there is a compile error, not a silent
+ * run of each statement in its own autocommit.
  */
-export type Executor =
-  typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Whatever a write can run on: the pool, or a transaction. Checkout (story 14)
+ * composes several writes in one transaction, but each is also correct on its
+ * own connection — so the writes that don't *require* a shared transaction
+ * (`create`, `PaymentDao.create`, `decrementStock`, `restock`, reads) take this
+ * wider type. Shared from here so the DAOs and the state machine speak one type.
+ */
+export type Executor = typeof db | Tx;
 
 /** One line of an order at creation time — the snapshot the item will keep. */
 export type OrderItemInput = {
@@ -47,17 +56,18 @@ export type OrderInput = Omit<
 
 export class OrderDao {
   /**
-   * Inserts an order and its line items atomically. Pass `executor` to compose
-   * this into a larger transaction (checkout also decrements stock and inserts
-   * the payment row in the same one); omit it and the two inserts run in their
+   * Inserts an order and its line items atomically. Pass a transaction to
+   * compose this into a larger one (checkout also decrements stock and inserts
+   * the payment row in the same `tx`); omit it and the two inserts run in their
    * own transaction so a standalone create can never leave an order with no
-   * items.
+   * items. The param is `Tx`, not `Executor`: composing on the bare pool would
+   * defeat the atomicity, so it cannot type-check.
    */
   static async create(
     { items, ...order }: OrderInput,
-    executor?: Executor,
+    tx?: Tx,
   ): Promise<OrderWithItems> {
-    const run = async (tx: Executor): Promise<OrderWithItems> => {
+    const run = async (tx: Tx): Promise<OrderWithItems> => {
       const [created] = await tx.insert(orders).values(order).returning();
       const createdItems = await tx
         .insert(orderItems)
@@ -66,7 +76,7 @@ export class OrderDao {
       return { ...created, items: createdItems };
     };
 
-    return executor ? run(executor) : db.transaction(run);
+    return tx ? run(tx) : db.transaction(run);
   }
 
   /** Order display / admin read: the order with its snapshotted line items. */
@@ -102,12 +112,12 @@ export class OrderDao {
    * change and the restock / payment flip commit together or not at all.
    */
   static async casStatus(
-    executor: Executor,
+    tx: Tx,
     id: string,
     from: OrderStatus,
     to: OrderStatus,
   ): Promise<Order | null> {
-    const [row] = await executor
+    const [row] = await tx
       .update(orders)
       .set({ status: to })
       .where(and(eq(orders.id, id), eq(orders.status, from)))

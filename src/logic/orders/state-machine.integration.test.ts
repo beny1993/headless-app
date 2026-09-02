@@ -9,6 +9,7 @@ import {
   ORDER_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
+  type OrderStatus,
 } from '@/lib/orders/order-status';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
@@ -25,10 +26,8 @@ describe.skipIf(!databaseReachable)('transitionOrder', () => {
   afterEach(() => fx.cleanup());
 
   /** Runs one transition in its own transaction, as a real caller would. */
-  const move = (id: string, from: string, to: string) =>
-    testDb.transaction((tx) =>
-      transitionOrder(tx, id, from as never, to as never),
-    );
+  const move = (id: string, from: OrderStatus, to: OrderStatus) =>
+    testDb.transaction((tx) => transitionOrder(tx, id, from, to));
 
   const statusOf = async (id: string) => {
     const [row] = await testDb

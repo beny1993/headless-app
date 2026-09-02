@@ -3,7 +3,7 @@
 // the Zarinpal verify callback (story 15).
 import { and, eq } from 'drizzle-orm';
 import { db } from '@/db';
-import type { Executor } from '@/db/dao/OrderDao';
+import type { Executor, Tx } from '@/db/dao/OrderDao';
 import { payments, type NewPayment, type Payment } from '@/db/schema/orders';
 import { PAYMENT_METHODS, PAYMENT_STATUSES } from '@/lib/orders/order-status';
 
@@ -55,11 +55,8 @@ export class PaymentDao {
    * order reaching `delivered` with no pending COD payment is data corruption,
    * not a no-op, and must roll the transition back rather than pass silently.
    */
-  static async markCodPaid(
-    executor: Executor,
-    orderId: string,
-  ): Promise<Payment> {
-    const rows = await executor
+  static async markCodPaid(tx: Tx, orderId: string): Promise<Payment> {
+    const rows = await tx
       .update(payments)
       .set({ status: PAYMENT_STATUSES.PAID, paidAt: new Date() })
       .where(

@@ -9,7 +9,7 @@
 // it marks the payment row paid and CASes `pending_payment → paid` in one
 // transaction, and if the CAS loses (a second verify already won), the payment
 // write rolls back with it.
-import type { Executor } from '@/db/dao/OrderDao';
+import type { Tx } from '@/db/dao/OrderDao';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { PaymentDao } from '@/db/dao/PaymentDao';
 import { ProductDao } from '@/db/dao/ProductDao';
@@ -54,7 +54,7 @@ export class InvalidTransitionError extends Error {
  *   · into `delivered` for a COD order — flip the pending COD payment to `paid`.
  */
 export const transitionOrder = async (
-  tx: Executor,
+  tx: Tx,
   orderId: string,
   from: OrderStatus,
   to: OrderStatus,
