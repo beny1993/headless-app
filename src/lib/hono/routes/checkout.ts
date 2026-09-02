@@ -74,8 +74,8 @@ export const checkoutRoute = createRoute({
     401: errorResponse('No session'),
     422: errorResponse(
       'A valid body the server refused — unavailable product, insufficient ' +
-        'stock, unknown province, or an unsupported discount code; errors[] ' +
-        'names the offending line/field',
+        'stock, unknown province, too many open (unpaid) orders, or an ' +
+        'unsupported discount code; errors[] names the offending line/field',
     ),
   },
 });

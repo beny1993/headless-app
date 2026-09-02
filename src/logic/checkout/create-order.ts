@@ -18,6 +18,7 @@ import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
 import type { OrderWithItems } from '@/db/schema/orders';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 import {
+  ORDER_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
   initialStatusFor,
@@ -47,8 +48,26 @@ export class CheckoutError extends Error {
 const PRODUCT_UNAVAILABLE = 'محصول انتخابی دیگر در دسترس نیست.';
 const INVALID_PROVINCE = 'استان انتخاب‌شده نامعتبر است.';
 const DISCOUNT_UNSUPPORTED = 'کد تخفیف فعلاً پشتیبانی نمی‌شود.';
+const TOO_MANY_OPEN_ORDERS =
+  'تعداد سفارش‌های در انتظار پرداختِ شما به حد مجاز رسیده است؛ لطفاً یکی را کامل یا لغو کنید.';
 const insufficientStock = (title: string) =>
   `موجودی «${title}» برای تعداد درخواستی کافی نیست.`;
+
+/**
+ * Interim per-user cap on concurrent `pending_payment` orders (2026-09-02).
+ *
+ * A Zarinpal checkout reserves stock into a `pending_payment` order, and until
+ * the abandoned-order expiry/reconcile job exists that stock has no release path
+ * — so one phone-verified account could loop `POST /api/checkout` and permanently
+ * zero the catalog (denial of inventory). This cap makes a pre-production / test
+ * deploy safe in the meantime. The REAL fix — expiry + restock — arrives with
+ * `Story - Zarinpal Payment Integration` (build order 15) and SUPERSEDES this cap
+ * (raise or drop it once expiry exists — Benyamin's call at that point).
+ *
+ * N is generous (a real shopper rarely has >1 unpaid online order at once) yet
+ * caps abuse; tune it here.
+ */
+export const MAX_OPEN_ORDERS = 5;
 
 /** Ascending productId — the deterministic lock order the design mandates. */
 const byProductId = (a: { productId: string }, b: { productId: string }) =>
@@ -62,12 +81,13 @@ const byProductId = (a: { productId: string }, b: { productId: string }) =>
  *
  *  1. Look up the shipping fee by province (fail-fast, before the transaction:
  *     an unknown province reserves nothing).
- *  2. Reject a discount code — reserved for [[Story - Discount Codes]].
- *  3. In one transaction, per line **in productId order** (deadlock symmetry with
+ *  2. Enforce the interim open-order cap (Zarinpal only — see `MAX_OPEN_ORDERS`).
+ *  3. Reject a discount code — reserved for [[Story - Discount Codes]].
+ *  4. In one transaction, per line **in productId order** (deadlock symmetry with
  *     the restock path): reject a missing or inactive product, then run the atomic
  *     oversell guard; a 0-row decrement is out-of-stock. Snapshot title/sku/price
  *     from the guard's fresh RETURNING row.
- *  4. Compute integer-Toman totals server-side, insert the order + item snapshots,
+ *  5. Compute integer-Toman totals server-side, insert the order + item snapshots,
  *     and (COD only) a `pending` payment row. Any line failing throws, and the
  *     transaction rolls the whole order — and every earlier reservation — back.
  */
@@ -81,7 +101,24 @@ export const createOrder = async (
   const rate = await ShippingRateDao.getByProvinceId(input.address.provinceId);
   if (!rate) throw new CheckoutError('address.provinceId', INVALID_PROVINCE);
 
-  // 2. Discounts are not wired yet; any code 422s rather than being ignored.
+  // 2. Interim open-order cap (fail-fast, before the transaction). Only orders
+  // that WOULD enter `pending_payment` are gated — the one state whose reserved
+  // stock has no release path yet — so a COD checkout (→ `processing`) is never
+  // blocked and never counted. See `MAX_OPEN_ORDERS`.
+  // ponytail: the count→create window is non-atomic, so a concurrent burst from
+  // one user can land a few over N; a sequential loop is hard-capped, which is
+  // what the anti-abuse guard needs. A hard invariant is the expiry/reconcile
+  // story's job (build order 15), which supersedes this cap.
+  if (
+    initialStatusFor(input.paymentMethod) === ORDER_STATUSES.PENDING_PAYMENT
+  ) {
+    const openOrders = await OrderDao.countOpenForUser(userId);
+    if (openOrders >= MAX_OPEN_ORDERS) {
+      throw new CheckoutError('paymentMethod', TOO_MANY_OPEN_ORDERS);
+    }
+  }
+
+  // 3. Discounts are not wired yet; any code 422s rather than being ignored.
   if (input.discountCode !== undefined) {
     throw new CheckoutError('discountCode', DISCOUNT_UNSUPPORTED);
   }

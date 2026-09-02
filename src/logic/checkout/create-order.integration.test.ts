@@ -22,14 +22,16 @@ import {
   ORDER_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
+  type OrderStatus,
 } from '@/lib/orders/order-status';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 
-const { createOrder, CheckoutError } = await importWithDb(
+const { createOrder, CheckoutError, MAX_OPEN_ORDERS } = await importWithDb(
   () => import('@/logic/checkout/create-order'),
 );
+const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
 const { transitionOrder } = await importWithDb(
   () => import('@/logic/orders/state-machine'),
 );
@@ -463,6 +465,112 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       );
 
       expect(await stockOf(product.id)).toBe(5); // restored
+    });
+  });
+
+  describe('interim open-order cap', () => {
+    // Seed N orders in `status` directly (no stock decrement, no checkout) so the
+    // one createOrder call under test is unambiguously the guarded one.
+    const seedOrders = async (
+      user: Parameters<OrderFixtures['buildOrder']>[0],
+      product: Parameters<OrderFixtures['buildOrder']>[1][number]['product'],
+      n: number,
+      status: OrderStatus = ORDER_STATUSES.PENDING_PAYMENT,
+    ) => {
+      for (let i = 0; i < n; i++) {
+        const order = await OrderDao.create(
+          fx.buildOrder(user, [{ product }], { status }),
+        );
+        fx.remember(order.id);
+      }
+    };
+
+    it('rejects a pending_payment (Zarinpal) checkout once the user is at the cap', async () => {
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+      await seedOrders(user, product, MAX_OPEN_ORDERS);
+
+      const error = await createOrder(
+        user.id,
+        buildInput(prov, [{ productId: product.id, qty: 1 }], {
+          paymentMethod: PAYMENT_METHODS.ZARINPAL,
+        }),
+      ).catch((e) => e);
+
+      expect(error).toBeInstanceOf(CheckoutError);
+      expect(error.field).toBe('paymentMethod');
+      expect(error.message).toMatch(/[؀-ۿ]/); // Persian, customer-facing
+      // Nothing reserved, no order created: the guard is pre-transaction.
+      expect(await stockOf(product.id)).toBe(5);
+      expect(await ordersForUser(user.id)).toHaveLength(MAX_OPEN_ORDERS);
+    });
+
+    it('allows a Zarinpal checkout while the user is under the cap', async () => {
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+      await seedOrders(user, product, MAX_OPEN_ORDERS - 1);
+
+      const order = await createOrder(
+        user.id,
+        buildInput(prov, [{ productId: product.id, qty: 1 }], {
+          paymentMethod: PAYMENT_METHODS.ZARINPAL,
+        }),
+      );
+      fx.remember(order.id);
+
+      expect(order.status).toBe(ORDER_STATUSES.PENDING_PAYMENT);
+      expect(await ordersForUser(user.id)).toHaveLength(MAX_OPEN_ORDERS);
+    });
+
+    it('ignores non-open orders — a paid/delivered/cancelled backlog does not count', async () => {
+      // Well over the cap in count, but none are pending_payment. A guard that
+      // counted all statuses (the wrong filter) would reject this checkout.
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+      const backlog = [
+        ORDER_STATUSES.PAID,
+        ORDER_STATUSES.PROCESSING,
+        ORDER_STATUSES.SHIPPED,
+        ORDER_STATUSES.DELIVERED,
+        ORDER_STATUSES.CANCELLED,
+        ORDER_STATUSES.FAILED,
+      ];
+      expect(backlog.length).toBeGreaterThan(MAX_OPEN_ORDERS);
+      for (const status of backlog) await seedOrders(user, product, 1, status);
+
+      const order = await createOrder(
+        user.id,
+        buildInput(prov, [{ productId: product.id, qty: 1 }], {
+          paymentMethod: PAYMENT_METHODS.ZARINPAL,
+        }),
+      );
+      fx.remember(order.id);
+
+      expect(order.status).toBe(ORDER_STATUSES.PENDING_PAYMENT);
+    });
+
+    it('never blocks a COD checkout, even at the cap (COD enters at processing)', async () => {
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+      await seedOrders(user, product, MAX_OPEN_ORDERS);
+
+      const order = await createOrder(
+        user.id,
+        buildInput(prov, [{ productId: product.id, qty: 1 }], {
+          paymentMethod: PAYMENT_METHODS.COD,
+        }),
+      );
+      fx.remember(order.id);
+
+      expect(order.status).toBe(ORDER_STATUSES.PROCESSING);
     });
   });
 
