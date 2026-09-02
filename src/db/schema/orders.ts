@@ -35,6 +35,7 @@ import {
   PAYMENT_STATUS_VALUES,
 } from '@/lib/orders/order-status';
 import { products } from '@/db/schema/catalog';
+import { provinces } from '@/db/schema/shipping';
 import { users } from '@/db/schema/auth';
 
 export const orderStatusEnum = pgEnum('order_status', ORDER_STATUS_VALUES);
@@ -86,14 +87,18 @@ export const orders = pgTable(
     /** The applied code, as text — a snapshot, never an FK to `discount_codes`. */
     discountCode: text('discount_code'),
     /**
-     * Province reference. Deliberately a plain nullable `integer` with **no FK
-     * yet**: the `provinces` table is owned by the *Province Shipping Rates*
-     * story (build order 13, which lands after this one), and that story adds
-     * the foreign key. `provinceName` below is the load-bearing snapshot; with
-     * `shippingFee` it satisfies the "province shipping fee snapshotted on the
-     * order" non-negotiable without a join.
+     * Province reference — an FK to `provinces` (added by *Province Shipping
+     * Rates*, build order 13). Kept **nullable** on purpose: `provinceName`
+     * below is the load-bearing snapshot, so forcing NOT NULL would only couple
+     * every order insert to a matching provinces row for no display benefit.
+     * `restrict` protects order history — a province with orders cannot be
+     * deleted. With `shippingFee` and `provinceName` this satisfies the
+     * "province shipping fee snapshotted on the order" non-negotiable without a
+     * join back to `shipping_rates`.
      */
-    provinceId: integer('province_id'),
+    provinceId: integer('province_id').references(() => provinces.id, {
+      onDelete: 'restrict',
+    }),
     /** Snapshot of the province's display name at order time. */
     provinceName: text('province_name').notNull(),
     recipientName: text('recipient_name').notNull(),

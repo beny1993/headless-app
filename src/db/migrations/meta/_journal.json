@@ -36,6 +36,13 @@
       "when": 1788348883832,
       "tag": "0004_orders_payments",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788354152709,
+      "tag": "0005_province_shipping",
+      "breakpoints": true
     }
   ]
 }

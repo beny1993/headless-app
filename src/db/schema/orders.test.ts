@@ -102,21 +102,26 @@ describe('orders schema', () => {
     expect(orders.discountCode.notNull).toBe(false);
   });
 
-  it('leaves province_id an FK-less nullable integer (provinces lands later)', () => {
-    // The provinces table is owned by the Province Shipping Rates story (build
-    // order 13). Until it exists there can be no FK; province_name carries the
-    // snapshot. This asserts the deliberate deviation stays deliberate.
+  it('references its province with restrict but leaves the column nullable', () => {
+    // The provinces table (Province Shipping Rates, build order 13) now exists,
+    // so province_id is a real FK. It stays nullable on purpose: province_name
+    // is the load-bearing snapshot, and forcing NOT NULL would couple every
+    // order insert to a matching provinces row. `restrict` protects order
+    // history — a province with orders cannot be deleted.
     expect(orders.provinceId.notNull).toBe(false);
     expect(orders.provinceId.getSQLType()).toBe('integer');
     expect(orders.provinceName.notNull).toBe(true);
-    const cols = fkTargets(orders).map((fk) => fk.column);
-    expect(cols).not.toContain('province_id');
+    expect(fkTargets(orders)).toContainEqual({
+      column: 'province_id',
+      onDelete: 'restrict',
+    });
   });
 
   it('references the customer with restrict — an order outlives account cleanup', () => {
-    expect(fkTargets(orders)).toEqual([
-      { column: 'user_id', onDelete: 'restrict' },
-    ]);
+    expect(fkTargets(orders)).toContainEqual({
+      column: 'user_id',
+      onDelete: 'restrict',
+    });
   });
 
   it('cascades line items with their order but restricts the product delete', () => {
