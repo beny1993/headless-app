@@ -6,8 +6,9 @@
 //
 // **Nothing here may import drizzle, `pg` or `@hono/zod-openapi`** — the reason
 // the file lives on the `@/lib` side. Plain zod is safe in a browser bundle; the
-// DAO and the route are not. The route decorates these with OpenAPI descriptions
-// via `.meta()` (never `.openapi()`; see the note in `@/lib/hono/routes/catalog.ts`).
+// DAO and the route are not. The route uses this schema as the request body
+// directly (inlined in the OpenAPI doc); it builds its own response schemas with
+// `.openapi()` there — plain zod here stays browser-safe.
 //
 // This schema is a trust boundary doing three security jobs at once:
 //   · **Mass-assignment gate** — it names ONLY `items[].productId/qty`, `address`

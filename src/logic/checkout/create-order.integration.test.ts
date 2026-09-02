@@ -30,6 +30,9 @@ import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 const { createOrder, CheckoutError } = await importWithDb(
   () => import('@/logic/checkout/create-order'),
 );
+const { transitionOrder } = await importWithDb(
+  () => import('@/logic/orders/state-machine'),
+);
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
 const { ShippingRateDao } = await importWithDb(
   () => import('@/db/dao/ShippingRateDao'),
@@ -343,33 +346,72 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
     });
 
     it('rolls the whole order back when a later line fails, restoring earlier stock', async () => {
-      // Lines are reserved in productId order. Make the product whose id sorts
-      // LAST the short one, so an earlier line is reserved before the failure
-      // hits — the only arrangement that proves the rollback restores it.
+      // Lines are reserved in productId order. Both products start well-stocked;
+      // AFTER sorting by id we starve the one that sorts LAST, so the first line
+      // is really reserved before the second fails — the only arrangement that
+      // exercises rollback (making the short one up front would fail before
+      // anything was reserved and pass trivially).
       const user = await fx.user();
       const category = await fx.category();
-      let a = await fx.product(category, { stock: 10 });
-      let b = await fx.product(category, { stock: 1 });
-      // Ensure `b` (the short one, qty 2 > stock 1) sorts after `a`.
-      if (a.id > b.id) [a, b] = [b, a];
-      const good = a.id < b.id ? a : b; // sorts first, gets reserved
-      const short = a.id < b.id ? b : a; // sorts last, fails
+      const p1 = await fx.product(category, { stock: 10 });
+      const p2 = await fx.product(category, { stock: 10 });
+      const [good, short] = [p1, p2].sort((x, y) => (x.id < y.id ? -1 : 1));
+      await ProductDao.update(short.id, { stock: 1 });
       const prov = await province();
 
       await expect(
         createOrder(
           user.id,
+          // `short` is placed FIRST in the request but sorts LAST by id, so its
+          // request index (0) differs from its reservation/sorted index (1):
+          // `good` is reserved first, then `short` fails.
           buildInput(prov, [
-            { productId: good.id, qty: 3 },
-            { productId: short.id, qty: 2 },
+            { productId: short.id, qty: 2 }, // request index 0 — fails (stock 1)
+            { productId: good.id, qty: 3 }, // request index 1 — reserved first
           ]),
         ),
-      ).rejects.toBeInstanceOf(CheckoutError);
+        // `items.0`, the request index of `short`, NOT `items.1` its sorted
+        // index: this pins that the error names the line the CLIENT sent and
+        // catches a regression to the productId-sorted index.
+      ).rejects.toMatchObject({ field: 'items.0' });
 
-      // The earlier line's reservation was rolled back with the failed order.
-      expect(await stockOf(good.id)).toBe(good.stock);
-      expect(await stockOf(short.id)).toBe(short.stock);
+      // The earlier-reserved line was rolled back with the failed order.
+      expect(await stockOf(good.id)).toBe(10);
+      expect(await stockOf(short.id)).toBe(1);
       expect(await ordersForUser(user.id)).toHaveLength(0);
+    });
+  });
+
+  describe('stock restore on cancel (AC 5)', () => {
+    it('restores the stock a checkout reserved when the order is later cancelled', async () => {
+      // End-to-end: checkout reserves through the order's item snapshots, and a
+      // cancel of the pending_payment order must return exactly that. Proves the
+      // item rows checkout writes drive the state machine's restock — the schema
+      // story's own suite tests transitionOrder in isolation; this pins the seam.
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+
+      const order = await createOrder(
+        user.id,
+        buildInput(prov, [{ productId: product.id, qty: 2 }], {
+          paymentMethod: PAYMENT_METHODS.ZARINPAL,
+        }),
+      );
+      fx.remember(order.id);
+      expect(await stockOf(product.id)).toBe(3); // reserved
+
+      await testDb.transaction((tx) =>
+        transitionOrder(
+          tx,
+          order.id,
+          ORDER_STATUSES.PENDING_PAYMENT,
+          ORDER_STATUSES.CANCELLED,
+        ),
+      );
+
+      expect(await stockOf(product.id)).toBe(5); // restored
     });
   });
 

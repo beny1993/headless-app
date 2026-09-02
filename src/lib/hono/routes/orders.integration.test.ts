@@ -96,6 +96,14 @@ describe.skipIf(!databaseReachable)('GET /api/orders/:id', () => {
     expect((await get('not-a-uuid')).status).toBe(400);
   });
 
+  it('401s an unauthenticated non-uuid id — auth runs before param parsing', async () => {
+    mocks.getSession.mockResolvedValue(null);
+
+    // Not 400: requireAuth is mounted ahead of the route, so a stranger never
+    // reaches validation. Pins the guard-before-parse ordering.
+    expect((await get('not-a-uuid')).status).toBe(401);
+  });
+
   it('never leaks a payment row’s gateway secrets', async () => {
     const { user, order } = await seedOrder();
     asUser(user.id);
