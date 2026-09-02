@@ -83,6 +83,50 @@ describe.skipIf(!databaseReachable)('OrderDao', () => {
     expect(await OrderDao.getById(crypto.randomUUID())).toBeNull();
   });
 
+  describe('countOpenForUser (interim open-order cap)', () => {
+    it('counts only pending_payment orders, and only for the given user', async () => {
+      const { user, product } = await setup();
+      const other = await fx.user();
+
+      // This user: two open (pending_payment) orders, plus one of every other
+      // state — none of the others may count toward the cap.
+      const mine = [
+        ORDER_STATUSES.PENDING_PAYMENT,
+        ORDER_STATUSES.PENDING_PAYMENT,
+        ORDER_STATUSES.PAID,
+        ORDER_STATUSES.PROCESSING,
+        ORDER_STATUSES.SHIPPED,
+        ORDER_STATUSES.DELIVERED,
+        ORDER_STATUSES.CANCELLED,
+        ORDER_STATUSES.FAILED,
+      ];
+      for (const status of mine) {
+        const o = await OrderDao.create(
+          fx.buildOrder(user, [{ product }], { status }),
+        );
+        fx.remember(o.id);
+      }
+
+      // Another user's open order must not leak into this user's count.
+      const theirs = await OrderDao.create(
+        fx.buildOrder(other, [{ product }], {
+          status: ORDER_STATUSES.PENDING_PAYMENT,
+        }),
+      );
+      fx.remember(theirs.id);
+
+      // 2, not 8: drop the status filter and this is 8; drop the userId filter
+      // and it is 3.
+      expect(await OrderDao.countOpenForUser(user.id)).toBe(2);
+      expect(await OrderDao.countOpenForUser(other.id)).toBe(1);
+    });
+
+    it('returns 0 for a user with no open orders', async () => {
+      const user = await fx.user();
+      expect(await OrderDao.countOpenForUser(user.id)).toBe(0);
+    });
+  });
+
   it('round-trips a billion-Toman total through bigint mode:number', async () => {
     const { user, product } = await setup();
     const total = 1_000_000_000;
