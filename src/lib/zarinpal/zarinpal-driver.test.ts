@@ -156,5 +156,66 @@ describe('real Zarinpal driver', () => {
         message: 'session is not valid',
       });
     });
+
+    // A structured verify `data` code Zarinpal returns ABOUT this transaction is
+    // definitive: 100/101 → paid, anything else → not paid. It must map to
+    // ok:false (→ markFailed), never throw — else a genuine non-payment would
+    // stay pending forever and its order would never expire.
+    it('maps a structured non-100/101 data code to a definitive ok:false', async () => {
+      stubFetch({ data: { code: -51 }, errors: [] });
+
+      const result = await createZarinpalDriver().verifyPayment({
+        amountToman: 1000,
+        authority: 'A',
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        code: -51,
+        message: expect.any(String),
+      });
+    });
+
+    // The money-safety pin (security review, "failed is terminal for reconcile"):
+    // an INDETERMINATE verify response — neither a structured verify `data` code
+    // nor a recognized `errors` block — means we cannot tell whether the money
+    // moved. It MUST throw, so settlePendingPayment leaves the row `pending` and
+    // the reconcile sweep re-verifies it, instead of markFailed-ing a possibly-paid
+    // attempt off pass 1's pending-only worklist for good (money silently stranded).
+    it('THROWS on a both-empty envelope rather than reporting a definitive failure', async () => {
+      // A Zarinpal-shaped but content-free response (e.g. a truncated body).
+      stubFetch({ data: [], errors: [] });
+
+      await expect(
+        createZarinpalDriver().verifyPayment({
+          amountToman: 1000,
+          authority: 'A',
+        }),
+      ).rejects.toThrow();
+    });
+
+    it('THROWS on a foreign JSON body (a fronting-proxy / gateway outage)', async () => {
+      // What a CDN or load balancer returns during a Zarinpal outage — parseable
+      // JSON, but not Zarinpal's envelope. Indeterminate, so: retry, never fail.
+      stubFetch({ message: 'Service Unavailable' });
+
+      await expect(
+        createZarinpalDriver().verifyPayment({
+          amountToman: 1000,
+          authority: 'A',
+        }),
+      ).rejects.toThrow();
+    });
+
+    it('the throw carries no merchant id', async () => {
+      stubFetch({ data: [], errors: [] });
+
+      await expect(
+        createZarinpalDriver().verifyPayment({
+          amountToman: 1000,
+          authority: 'A',
+        }),
+      ).rejects.not.toThrow(new RegExp(MERCHANT));
+    });
   });
 });

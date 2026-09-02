@@ -234,10 +234,36 @@ export const createZarinpalDriver = (): ZarinpalClient => {
           alreadyVerified: data.data.code === 101,
         };
       }
-      const fromData = data.success
-        ? { code: data.data.code, message: 'verify not successful' }
-        : readErrors(envelope.errors);
-      return { ok: false, ...fromData };
+      // Only a DEFINITIVE answer may become `ok: false`, because the caller
+      // (settlePendingPayment) turns that into `markFailed`, and reconcile pass 1
+      // lists only `pending` rows — a row marked `failed` is never re-verified, so
+      // marking a possibly-paid attempt failed strands the money with no retry.
+      // Definitive = Zarinpal spoke about THIS transaction, in a shape we know:
+      //   · a structured verify `data` with a code (100/101 handled above), or
+      //   · a parseable `errors` block.
+      if (data.success) {
+        return {
+          ok: false,
+          code: data.data.code,
+          message: 'verify not successful',
+        };
+      }
+      const errors = errorsSchema.safeParse(envelope.errors);
+      if (errors.success) {
+        return {
+          ok: false,
+          code: errors.data.code,
+          message: errors.data.message,
+        };
+      }
+      // Neither shape: the response is INDETERMINATE (a gateway/proxy outage body,
+      // a truncated payload, or an envelope shape Zarinpal changed under us). We
+      // cannot tell whether the money moved, so THROW — settlePendingPayment leaves
+      // the row `pending` and the next reconcile sweep re-verifies it, rather than
+      // failing it off the worklist for good. (No merchant id in the message.)
+      throw new Error(
+        'Zarinpal verify returned an unrecognized response; left pending for retry',
+      );
     },
   };
 };
