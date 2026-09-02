@@ -311,6 +311,62 @@ export class ProductDao {
   }
 
   /**
+   * The oversell guard, as one atomic statement:
+   * `UPDATE products SET stock = stock - qty WHERE id = ? AND stock >= qty
+   * RETURNING`. Two checkouts racing for the last unit cannot both win —
+   * Postgres serializes the row's update and re-checks `stock >= qty` against the
+   * committed row, not a stale read, so the loser matches no row. Returns the
+   * updated product, or `null` when stock was insufficient (or the id unknown);
+   * the caller turns that `null` into an out-of-stock answer, not an order it
+   * cannot fill. The `products_stock_non_negative` CHECK is the backstop under
+   * this — see the catalog schema.
+   *
+   * `executor` runs it inside checkout's transaction, so a later failure there
+   * releases the reserved stock by rollback. `qty` must be a positive integer: a
+   * zero or negative qty makes `stock >= qty` trivially true and would *raise*
+   * stock, so it is rejected outright.
+   */
+  static async decrementStock(
+    executor: Executor,
+    id: string,
+    qty: number,
+  ): Promise<Product | null> {
+    if (!Number.isInteger(qty) || qty <= 0) {
+      throw new Error(
+        `decrementStock requires a positive integer qty, got ${qty}`,
+      );
+    }
+    const [row] = await executor
+      .update(products)
+      .set({ stock: sql`${products.stock} - ${qty}` })
+      .where(and(eq(products.id, id), gte(products.stock, qty)))
+      .returning();
+    return row ?? null;
+  }
+
+  /**
+   * Returns reserved stock to a product — the side effect of cancelling or
+   * failing an order: `UPDATE products SET stock = stock + qty WHERE id = ?`.
+   * Runs inside the transition's transaction so restock and the status change
+   * commit together. Returns the updated product, or `null` for an unknown id.
+   */
+  static async restock(
+    executor: Executor,
+    id: string,
+    qty: number,
+  ): Promise<Product | null> {
+    if (!Number.isInteger(qty) || qty <= 0) {
+      throw new Error(`restock requires a positive integer qty, got ${qty}`);
+    }
+    const [row] = await executor
+      .update(products)
+      .set({ stock: sql`${products.stock} + ${qty}` })
+      .where(eq(products.id, id))
+      .returning();
+    return row ?? null;
+  }
+
+  /**
    * Insert-or-update by sku, which is what makes the seed re-runnable.
    * `isActive` is deliberately absent from the update: re-seeding must not
    * resurrect a product somebody removed on purpose.
