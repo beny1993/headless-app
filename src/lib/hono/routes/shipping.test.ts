@@ -46,6 +46,10 @@ describe('GET /api/shipping/rates — query validation (public)', () => {
     ['a negative province', 'province=-1'],
     ['a fractional province', 'province=1.5'],
     ['a province past the safe-integer range', 'province=1e30'],
+    // Between int4's max and 2^53: `.int()` admits it, but the id columns are
+    // int4, so without the schema's `.max` it reaches Postgres and 500s (22003)
+    // instead of answering the unknown-province 400. Regression for that gap.
+    ['a province one past the int4 range', 'province=2147483648'],
     // A null byte must never reach Postgres as text (it would throw a 500);
     // coercion rejects it as a bad number first.
     ['a province carrying a null byte', 'province=%00'],

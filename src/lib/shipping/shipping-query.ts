@@ -12,20 +12,34 @@
 // `@/lib/hono/routes/catalog.ts`).
 import { z } from 'zod';
 
+/** Postgres `integer` (int4) upper bound — the id columns' real ceiling. */
+const INT4_MAX = 2_147_483_647;
+
 /**
  * The `?province=` query value and the checkout body's `address.provinceId`: a
  * province's numeric id.
  *
- * `z.coerce` because a query string arrives as text; `.int()` (zod 4 caps it at
- * `Number.MAX_SAFE_INTEGER`) keeps `?province=1e30` from reaching Postgres as an
- * id no `integer` can hold; `.positive()` because identity ids start at 1. This
- * is also the whole of the null-byte story for this endpoint: a numeric id can
- * never carry a meaningful U+0000, and coercion turns any such input into NaN/0,
- * both rejected here — so, unlike the catalog's text params, there is no null
- * byte or Persian-normalization step to run, and nothing reaches the driver as
- * text that could throw a 500.
+ * `z.coerce` because a query string arrives as text; `.int().positive()` because
+ * identity ids start at 1. `.max(INT4_MAX)` is load-bearing, not cosmetic: the
+ * `provinces.id` / `shipping_rates.province_id` columns are int4, but `.int()`
+ * alone admits anything up to `Number.MAX_SAFE_INTEGER`. Without the cap an id
+ * in the gap — e.g. `?province=2147483648` — passes validation and reaches
+ * Postgres as a bound parameter it infers as int4 from the `id = $1` context,
+ * which errors out of range (22003) and surfaces as a 500, not the 400 an
+ * unknown province must get. `.int()` stops `1e30`; the cap stops everything
+ * between int4 and 2^53. Both the public GET and the admin PUT inherit it.
+ *
+ * This is also the whole of the null-byte story for this endpoint: a numeric id
+ * can never carry a meaningful U+0000, and coercion turns any such input into
+ * NaN/0, both rejected here — so, unlike the catalog's text params, there is no
+ * null byte or Persian-normalization step to run, and nothing reaches the driver
+ * as text that could throw a 500.
  */
-export const provinceIdParamSchema = z.coerce.number().int().positive();
+export const provinceIdParamSchema = z.coerce
+  .number()
+  .int()
+  .positive()
+  .max(INT4_MAX);
 
 /**
  * The admin rate-update fee: integer Toman, zero allowed.
