@@ -33,6 +33,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `design/` | **Canonical design reference** — vendored Figma prototype (own deps, own `pnpm dev` on :5173). FE stories port from it. Never imported by the app. |
 | `scripts/create-admin.ts` | Grant admin by phone (`pnpm create-admin <phone> [name]`) — creates or promotes |
 | `src/db/seed/`, `scripts/seed-catalog.ts` | Demo catalog seed (`pnpm seed-catalog`), idempotent; its images live in `public/products/` |
+| `scripts/seed-shipping.ts` | Seed all 31 provinces + placeholder shipping rates (`pnpm seed-shipping`), idempotent (upserts by name, never resets a tuned fee) |
 
 ## Conventions
 
@@ -90,7 +91,9 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 - **Authz**: admin pages go through `requireAdmin()` (`src/lib/auth/session.ts`)
   — a session alone is never authorization, since customers get sessions too.
   Admin API routes mount `requireAdmin` from `src/lib/hono/middleware/auth.ts`
-  (401 without a session, 403 without the role); there is no admin API yet.
+  (401 without a session, 403 without the role); mount it with `app.use(path,
+  requireAdmin)` **before** the route so the guard runs first (the reference is
+  `PUT /api/shipping/rates/{provinceId}` in `src/lib/hono/index.ts`).
   Every customer-facing read/write is owner-scoped — take the id from
   `c.get('user')`, never from the URL or the body. `role` defaults to
   `customer` (`ROLES` in `src/db/schema/auth.ts`), is `input: false` everywhere
@@ -208,6 +211,7 @@ pnpm install
 pnpm app:dev                        # dev Postgres (Docker) + Next on :3000
 pnpm migration:migrate              # first run, in a second terminal
 pnpm seed-catalog                   # demo categories + products (safe to re-run)
+pnpm seed-shipping                  # 31 provinces + shipping rates (safe to re-run)
 pnpm create-admin 09121234567       # grant admin to a phone number
 ```
 

@@ -57,7 +57,15 @@ export const API_PATHS = {
   HEALTH: '/api/health',
   CATEGORIES: '/api/categories',
   PRODUCTS: '/api/products',
+  SHIPPING_RATES: '/api/shipping/rates',
 } as const;
+
+/** `/api/shipping/rates/{provinceId}` — the OpenAPI template for the admin update. */
+export const API_SHIPPING_RATE_TEMPLATE = `${API_PATHS.SHIPPING_RATES}/{provinceId}`;
+
+/** The admin rate-update path for one province. */
+export const apiShippingRatePath = (provinceId: number) =>
+  `${API_PATHS.SHIPPING_RATES}/${provinceId}`;
 
 /** `/api/products/{slug}` — the OpenAPI template, as it appears in the doc. */
 export const API_PRODUCT_DETAIL_TEMPLATE = `${API_PATHS.PRODUCTS}/{slug}`;
