@@ -69,7 +69,19 @@ export const transitionOrder = async (
   }
 
   if (to === ORDER_STATUSES.CANCELLED || to === ORDER_STATUSES.FAILED) {
-    const items = await OrderDao.getItems(tx, orderId);
+    // Restock in productId order: two orders that share products, cancelled
+    // concurrently, then take the product-row locks in the same order and cannot
+    // deadlock (Postgres would abort one with 40P01). getItems is createdAt-
+    // ordered for display, which gives no such cross-order guarantee, so sort a
+    // copy here by the one key every order agrees on.
+    // ponytail: this covers the single-order cancels this story ships; a future
+    // batch-cancel that restocks many orders in one tx must sort the *combined*
+    // item set by productId for the same reason.
+    const items = (await OrderDao.getItems(tx, orderId))
+      .slice()
+      .sort((a, b) =>
+        a.productId < b.productId ? -1 : a.productId > b.productId ? 1 : 0,
+      );
     for (const item of items) {
       await ProductDao.restock(tx, item.productId, item.qty);
     }

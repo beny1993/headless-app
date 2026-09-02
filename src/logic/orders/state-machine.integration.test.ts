@@ -108,6 +108,37 @@ describe.skipIf(!databaseReachable)('transitionOrder', () => {
     expect(await stockOf(product.id)).toBe(10); // returned
   });
 
+  it('restocks every line item of a multi-product order, not just the first', async () => {
+    // Pins the loop over *all* items (and the productId-ordered restock path):
+    // a cancel that restocked only the first line would leave every other
+    // product of the order permanently short. Two distinct products, so the
+    // sort has more than one element to order.
+    const user = await fx.user();
+    const category = await fx.category();
+    const p1 = await fx.product(category, { stock: 10 });
+    const p2 = await fx.product(category, { stock: 5 });
+    await ProductDao.decrementStock(testDb, p1.id, 2);
+    await ProductDao.decrementStock(testDb, p2.id, 1);
+    const order = await OrderDao.create(
+      fx.buildOrder(user, [
+        { product: p1, qty: 2 },
+        { product: p2, qty: 1 },
+      ]),
+    );
+    fx.remember(order.id);
+    expect(await stockOf(p1.id)).toBe(8);
+    expect(await stockOf(p2.id)).toBe(4);
+
+    await move(
+      order.id,
+      ORDER_STATUSES.PENDING_PAYMENT,
+      ORDER_STATUSES.CANCELLED,
+    );
+
+    expect(await stockOf(p1.id)).toBe(10);
+    expect(await stockOf(p2.id)).toBe(5);
+  });
+
   it('restocks when failed', async () => {
     const { order, product } = await pendingOrder(4, 10);
     expect(await stockOf(product.id)).toBe(6);
@@ -172,6 +203,43 @@ describe.skipIf(!databaseReachable)('transitionOrder', () => {
     expect(await statusOf(order.id)).toBe(ORDER_STATUSES.DELIVERED);
   });
 
+  it('leaves a Zarinpal order paid on delivery — the COD flip must not fire', async () => {
+    // The COD flip is guarded on paymentMethod === cod. A paid Zarinpal order
+    // walking paid -> processing -> shipped -> delivered must not touch payments:
+    // its row was already settled at verify, and markCodPaid would find no
+    // pending COD row and roll the whole delivery back. Without this case the
+    // guard could be dropped (always flip) and every other test still pass.
+    const user = await fx.user();
+    const category = await fx.category();
+    const product = await fx.product(category, { stock: 10 });
+    await ProductDao.decrementStock(testDb, product.id, 1);
+    const order = await OrderDao.create(
+      fx.buildOrder(user, [{ product, qty: 1 }], {
+        status: ORDER_STATUSES.PAID,
+        paymentMethod: PAYMENT_METHODS.ZARINPAL,
+      }),
+    );
+    fx.remember(order.id);
+    // The Zarinpal payment row, already paid at verify (story 15).
+    await PaymentDao.create({
+      orderId: order.id,
+      method: PAYMENT_METHODS.ZARINPAL,
+      status: PAYMENT_STATUSES.PAID,
+      amount: order.total,
+      authority: `A-${crypto.randomUUID()}`,
+      paidAt: new Date(),
+    });
+
+    await move(order.id, ORDER_STATUSES.PAID, ORDER_STATUSES.PROCESSING);
+    await move(order.id, ORDER_STATUSES.PROCESSING, ORDER_STATUSES.SHIPPED);
+    await move(order.id, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED);
+
+    expect(await statusOf(order.id)).toBe(ORDER_STATUSES.DELIVERED);
+    const [payment] = await PaymentDao.listByOrder(order.id);
+    expect(payment.status).toBe(PAYMENT_STATUSES.PAID); // untouched, still paid
+    expect(payment.method).toBe(PAYMENT_METHODS.ZARINPAL);
+  });
+
   it('rolls the whole delivery back when the COD payment row is missing', async () => {
     // A COD order reaching delivered with no pending COD payment is corruption;
     // markCodPaid throws, and the status change must roll back with it.
@@ -189,7 +257,7 @@ describe.skipIf(!databaseReachable)('transitionOrder', () => {
 
     await expect(
       move(order.id, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/exactly one pending COD payment/);
     expect(await statusOf(order.id)).toBe(ORDER_STATUSES.SHIPPED); // rolled back
   });
 
