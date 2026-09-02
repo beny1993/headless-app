@@ -20,6 +20,24 @@ export const productPath = (slug: string) =>
   `${PATHS.PRODUCT}/${encodeURIComponent(slug)}`;
 
 /**
+ * The checkout result page for one order — where the Zarinpal callback lands the
+ * browser after a payment attempt (success or failure). The page renders from
+ * `GET /api/orders/:id`, not from the callback's query params, so it always shows
+ * the order's real settled status. The FE page itself is a later story; this
+ * helper and the callback's 302 are all this story wires.
+ */
+export const checkoutResultPath = (orderId: string) =>
+  `${PATHS.CHECKOUT}/result/${encodeURIComponent(orderId)}`;
+
+/**
+ * The generic payment-failure page — where the callback lands when it cannot tie
+ * the redirect to an order (unknown/absent authority, or a malformed callback
+ * query), so there is no order id to show a result for. Distinct path from
+ * `checkoutResultPath` so the two never collide. FE page is a later story.
+ */
+export const checkoutFailurePath = () => `${PATHS.CHECKOUT}/failed`;
+
+/**
  * The shop's filter query, borrowed from the catalog API's own query schema
  * rather than restated.
  *
@@ -60,6 +78,15 @@ export const API_PATHS = {
   SHIPPING_RATES: '/api/shipping/rates',
   CHECKOUT: '/api/checkout',
   ORDERS: '/api/orders',
+  // Zarinpal payment endpoints. `request` starts a payment (auth), `callback` is
+  // the unauthenticated gateway redirect target, `reconcile` is the admin-run
+  // expiry/verify sweep. `mockGateway`/`mockComplete` back the dev-only mock
+  // gateway page and only respond when the provider is `mock`.
+  PAYMENT_REQUEST: '/api/payments/zarinpal/request',
+  PAYMENT_CALLBACK: '/api/payments/zarinpal/callback',
+  PAYMENT_RECONCILE: '/api/payments/zarinpal/reconcile',
+  PAYMENT_MOCK_GATEWAY: '/api/payments/zarinpal/mock-gateway',
+  PAYMENT_MOCK_COMPLETE: '/api/payments/zarinpal/mock-complete',
 } as const;
 
 /** `/api/orders/{id}` — the OpenAPI template for the owner-scoped order read. */

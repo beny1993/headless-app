@@ -8,6 +8,16 @@ export enum VARS {
   // project ships with until Kavenegar or SMS.ir is picked.
   APP_CONFIG_SMS_PROVIDER = 'APP_CONFIG_SMS_PROVIDER',
 
+  // Which Zarinpal driver `src/lib/zarinpal` dispatches through. `mock` (the
+  // default) simulates the whole request/redirect/callback/verify flow locally
+  // with no gateway account — the shipped default. The real `zarinpal` v4 HTTP
+  // driver is present but inert until this names it AND the merchant id is set.
+  APP_CONFIG_ZARINPAL_PROVIDER = 'APP_CONFIG_ZARINPAL_PROVIDER',
+  // Zarinpal merchant id — required only when the provider is `zarinpal`.
+  APP_CONFIG_ZARINPAL_MERCHANT_ID = 'APP_CONFIG_ZARINPAL_MERCHANT_ID',
+  // `true` routes the real driver at Zarinpal's sandbox host instead of live.
+  APP_CONFIG_ZARINPAL_SANDBOX = 'APP_CONFIG_ZARINPAL_SANDBOX',
+
   APP_CONFIG_EMAIL_ENABLED = 'APP_CONFIG_EMAIL_ENABLED',
   APP_CONFIG_SMTP_SERVER = 'APP_CONFIG_SMTP_SERVER',
   APP_CONFIG_SMTP_PORT = 'APP_CONFIG_SMTP_PORT',
