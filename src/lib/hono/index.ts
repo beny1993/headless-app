@@ -16,6 +16,15 @@ import { checkoutHandler, checkoutRoute } from './routes/checkout';
 import { healthHandler, healthRoute } from './routes/health';
 import { orderDetailHandler, orderDetailRoute } from './routes/orders';
 import {
+  mockCompleteHandler,
+  mockGatewayHandler,
+  paymentCallbackHandler,
+  paymentRequestHandler,
+  paymentRequestRoute,
+  reconcileHandler,
+  reconcileRoute,
+} from './routes/payments';
+import {
   shippingRateUpdateHandler,
   shippingRateUpdateRoute,
   shippingRatesHandler,
@@ -48,6 +57,18 @@ app.openapi(shippingRatesRoute, shippingRatesHandler);
 app.use('/shipping/rates/:provinceId', requireAdmin);
 app.openapi(shippingRateUpdateRoute, shippingRateUpdateHandler);
 
+// Zarinpal payments. The callback is unauthenticated by design (a browser
+// redirect from the gateway; it settles only via the stored authority + amount +
+// CAS — see ./routes/payments.ts). The mock-gateway/complete routes back the
+// dev-only mock gateway and 404 unless the provider is `mock`. Reconcile is
+// admin-only: `requireAdmin` is mounted before the route so the guard runs first.
+// The auth'd request endpoint is on the `authed` sub-router below.
+app.get('/payments/zarinpal/callback', paymentCallbackHandler);
+app.get('/payments/zarinpal/mock-gateway', mockGatewayHandler);
+app.post('/payments/zarinpal/mock-complete', mockCompleteHandler);
+app.use('/payments/zarinpal/reconcile', requireAdmin);
+app.openapi(reconcileRoute, reconcileHandler);
+
 // Authenticated customer routes — create an order, and read your own orders. They
 // live on a dedicated sub-router typed with the session user (so `c.get('user')`
 // is typed in the handlers) built from the shared `createRouter` factory (so the
@@ -60,8 +81,10 @@ app.openapi(shippingRateUpdateRoute, shippingRateUpdateHandler);
 const authed = createRouter<Env & AuthedEnv>();
 authed.use('/checkout', requireAuth);
 authed.use('/orders/:id', requireAuth);
+authed.use('/payments/zarinpal/request', requireAuth);
 authed.openapi(checkoutRoute, checkoutHandler);
 authed.openapi(orderDetailRoute, orderDetailHandler);
+authed.openapi(paymentRequestRoute, paymentRequestHandler);
 app.route('/', authed);
 
 // OpenAPI document + interactive reference — never expose in production.
