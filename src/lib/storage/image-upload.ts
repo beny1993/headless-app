@@ -1,0 +1,89 @@
+// The upload trust boundary, expressed once and shared by the API route (which
+// enforces it) and the admin form (which uses the same accept list and size cap
+// so a file the browser lets through is one the server will too). Deliberately
+// client-safe: no `fs`, no `@/db`, no driver import, so the form can pull the
+// constants without dragging Node built-ins into the browser bundle.
+//
+// The rule the security pass leans on: what a file *is* comes from its bytes,
+// never from the client's declared `Content-Type` or its filename. `sniffImageType`
+// is the only thing that decides the type, and `objectKeyFor` derives the stored
+// key from that sniffed type — so a `.php` renamed to `.jpg`, or a `text/html`
+// with an image extension, is rejected, and the key we persist can never carry an
+// attacker-chosen extension.
+
+/** The image content types the shop accepts, mapped to the extension we store. */
+export const IMAGE_EXTENSIONS = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+} as const;
+
+export type AcceptedImageType = keyof typeof IMAGE_EXTENSIONS;
+
+/** For the form's `accept` attribute and the reject message. */
+export const ACCEPTED_IMAGE_TYPES = Object.keys(
+  IMAGE_EXTENSIONS,
+) as AcceptedImageType[];
+
+/**
+ * Two megabytes, the ceiling the design's upload hint promises («تا ۲ مگابایت»).
+ * The route mounts `bodyLimit` at this number so an oversize body is refused
+ * before it is ever buffered into memory, and re-checks the read length as a
+ * backstop.
+ */
+export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
+
+/**
+ * The one path segment every stored image key begins with. It is both the URL
+ * namespace (`/uploads/…`, served by `src/app/uploads/[...key]/route.ts`) and
+ * the local driver's storage root, so a key is `uploads/<uuid>.<ext>` and the
+ * file that backs it is `<root>/<uuid>.<ext>`.
+ */
+export const UPLOAD_KEY_PREFIX = 'uploads';
+
+/**
+ * The filename half of a stored upload key: a v4 uuid and one of our extensions,
+ * nothing else. The route validates the requested key against this before it
+ * touches the filesystem, so a traversal segment (`..`, a slash, a leading dot)
+ * or any other shape is a 404, not a file read. Seed keys like
+ * `products/cat-dry-food.jpg` deliberately do not match — they are served from
+ * `public/`, never through the uploads route.
+ */
+export const UPLOAD_FILENAME_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp)$/;
+
+const startsWith = (bytes: Uint8Array, signature: number[]): boolean =>
+  signature.every((byte, index) => bytes[index] === byte);
+
+// ASCII for "RIFF" (bytes 0–3) and "WEBP" (bytes 8–11) in a RIFF container.
+const RIFF = [0x52, 0x49, 0x46, 0x46];
+const WEBP = [0x57, 0x45, 0x42, 0x50];
+
+/**
+ * The image type a file actually is, read from its leading bytes — or `null`
+ * when the bytes are not one of the three we accept. This is the authority on
+ * type; the caller's declared content-type is never trusted.
+ */
+export function sniffImageType(bytes: Uint8Array): AcceptedImageType | null {
+  // JPEG: FF D8 FF. PNG: 89 50 4E 47 0D 0A 1A 0A.
+  if (startsWith(bytes, [0xff, 0xd8, 0xff])) return 'image/jpeg';
+  if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
+    return 'image/png';
+  }
+  // WEBP is a RIFF container tagged "WEBP" at offset 8; both markers are
+  // required so a plain WAV/AVI RIFF file is not mistaken for an image.
+  if (startsWith(bytes, RIFF) && WEBP.every((b, i) => bytes[i + 8] === b)) {
+    return 'image/webp';
+  }
+  return null;
+}
+
+/**
+ * A fresh storage key for an image of the given (sniffed) type:
+ * `uploads/<uuid>.<ext>`. The uuid is generated here, on the server, so nothing
+ * the client sent — filename, path, extension — reaches the stored key. That is
+ * what makes a path-traversal key impossible to produce.
+ */
+export function objectKeyFor(type: AcceptedImageType): string {
+  return `${UPLOAD_KEY_PREFIX}/${crypto.randomUUID()}.${IMAGE_EXTENSIONS[type]}`;
+}
