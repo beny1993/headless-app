@@ -22,6 +22,7 @@ import {
   type CartLineInput,
 } from '@/features/storefront/cart/cart';
 import { ApiRequestError } from '@/lib/api-client';
+import { API_PATHS } from '@/lib/constant/paths';
 
 const { push, replace } = vi.hoisted(() => ({
   push: vi.fn<(href: string) => void>(),
@@ -160,6 +161,78 @@ describe('the checkout submit state machine', () => {
     expect(push).toHaveBeenCalledWith('/checkout/result/order-123');
     // Only the checkout create ran — COD makes no payment-request call.
     expect(postData).toHaveBeenCalledTimes(1);
+    // The now-empty cart must NOT bounce the shopper to the shop — the status
+    // guard keeps the empty-cart redirect off while we are navigating to the
+    // result. (Revert the `status === 'idle'` guard and this fails.)
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('lands on the result page when the Zarinpal request fails after the order is created', async () => {
+    // The checkout create succeeds (order exists, pending_payment) but starting
+    // the gateway fails — the shopper must not be stranded on a cleared cart.
+    postData
+      .mockResolvedValueOnce({
+        orderId: 'order-777',
+        orderNo: 10_047,
+        status: 'pending_payment',
+        subtotal: 370_000,
+        shippingFee: 40_000,
+        discount: 0,
+        total: 410_000,
+      })
+      .mockRejectedValueOnce(new ApiRequestError(500, 'خطای درگاه'));
+    advanceToPayment();
+    // Zarinpal is the default method — leave it selected.
+
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expect(getCart()).toHaveLength(0); // cleared on the checkout 2xx
+    expect(postData).toHaveBeenCalledTimes(2);
+    expect(postData.mock.calls[1][0]).toBe(API_PATHS.PAYMENT_REQUEST);
+    expect(postData.mock.calls[1][1]).toEqual({ orderId: 'order-777' });
+    expect(push).toHaveBeenCalledWith('/checkout/result/order-777');
+  });
+
+  it('redirects to the Zarinpal gateway on a successful payment request', async () => {
+    const assign = vi
+      .spyOn(window.location, 'assign')
+      .mockImplementation(() => undefined);
+    postData
+      .mockResolvedValueOnce({
+        orderId: 'order-888',
+        orderNo: 10_048,
+        status: 'pending_payment',
+        subtotal: 100_000,
+        shippingFee: 40_000,
+        discount: 0,
+        total: 140_000,
+      })
+      .mockResolvedValueOnce({
+        redirectUrl: 'https://gateway.example/pay/abc',
+      });
+    advanceToPayment();
+
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expect(getCart()).toHaveLength(0);
+    expect(postData.mock.calls[1][0]).toBe(API_PATHS.PAYMENT_REQUEST);
+    expect(assign).toHaveBeenCalledWith('https://gateway.example/pay/abc');
+    expect(push).not.toHaveBeenCalled(); // went to the gateway, not the result
+    assign.mockRestore();
+  });
+
+  it('redirects an empty cart to the shop', () => {
+    // Back-button to /checkout after an order cleared the cart: no page to sit
+    // on, and no accidental second order.
+    cleanup();
+    clearCart();
+    render(<CheckoutForm rates={RATES} defaultName="" defaultPhone="" />);
+
+    expect(replace).toHaveBeenCalledWith('/shop');
   });
 
   it('surfaces a server error with no field mapping in the top-level alert', async () => {

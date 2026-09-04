@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { XCircle } from 'lucide-react';
 import { PATHS, shopPath } from '@/lib/constant/paths';
+import { toPersianDigits } from '@/lib/format';
 
 export const metadata: Metadata = { title: 'پرداخت ناموفق' };
 
@@ -49,7 +50,7 @@ export default function Page() {
           <p className="text-muted-foreground mt-6 text-xs">
             شماره پشتیبانی:{' '}
             <span dir="ltr" className="nums">
-              ۰۲۱-۱۲۳۴۵۶۷
+              {toPersianDigits('021-1234567')}
             </span>{' '}
             — هر روز ۹ تا ۱۸
           </p>
