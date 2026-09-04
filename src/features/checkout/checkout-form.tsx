@@ -241,7 +241,14 @@ export function CheckoutForm({
       inFlight.current = false;
       setStatus('idle');
 
-      if (error instanceof ApiRequestError && error.status === 422) {
+      // 422 (server refused a well-formed body) and 400 (body failed the zod
+      // schema) both carry `field: message` errors — map either to its input.
+      // Anything with no matching field (e.g. a missing-Idempotency-Key 400)
+      // falls through to the top-level alert below via `unmapped`.
+      if (
+        error instanceof ApiRequestError &&
+        (error.status === 422 || error.status === 400)
+      ) {
         const { fields, unmapped } = parseFieldErrors(error.errors);
         setFieldErrors(fields);
         // Field errors on an input show inline; `items.*` (a cart line) and any

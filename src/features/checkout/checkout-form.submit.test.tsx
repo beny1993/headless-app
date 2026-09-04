@@ -135,6 +135,33 @@ describe('the checkout submit state machine', () => {
     expect(secondKey).toBe(firstKey);
   });
 
+  it('maps a 400 per-field error inline and jumps back to its step', async () => {
+    // A body-schema 400 (e.g. an over-length field) carries the same
+    // `field: message` shape as a 422; the form must render it on the input and
+    // jump to that step, not dump a generic message in the top alert. Revert the
+    // `|| error.status === 400` guard and this fails (the city field — on step 2
+    // — is never shown, so getByLabelText below throws).
+    postData.mockRejectedValue(
+      new ApiRequestError(400, 'ورودی نامعتبر است', [
+        'address.city: مقدار واردشده بیش از حد طولانی است.',
+      ]),
+    );
+    advanceToPayment(); // lands on the payment step (step 3)
+
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    // Jumped back to step 2 (the city field is on screen again)…
+    expect(screen.getByLabelText('شهر')).toBeTruthy();
+    // …with the server's Persian message rendered inline on the field…
+    expect(
+      screen.getByText('مقدار واردشده بیش از حد طولانی است.'),
+    ).toBeTruthy();
+    // …and the cart kept (nothing was created).
+    expect(getCart()).toHaveLength(1);
+  });
+
   it('clears the local cart and navigates to the result page on a COD success', async () => {
     postData.mockResolvedValue({
       orderId: 'order-123',
