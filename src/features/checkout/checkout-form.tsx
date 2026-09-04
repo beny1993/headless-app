@@ -29,10 +29,11 @@ import { ApiRequestError, postData } from '@/lib/api-client';
 import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 import { API_PATHS, PATHS, checkoutResultPath } from '@/lib/constant/paths';
+import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
 import type { CheckoutResultResponse } from '@/lib/hono/routes/checkout';
 import type { ShippingRateResponse } from '@/lib/hono/routes/shipping';
 import { PAYMENT_METHODS, type PaymentMethod } from '@/lib/orders/order-status';
-import { toPersianDigits } from '@/lib/format';
+import { toAsciiDigits, toPersianDigits } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 /** idle → submitting → redirecting. The button disables off `idle`. */
@@ -56,12 +57,6 @@ const STEP_OF_FIELD: Record<string, number> = {
 /** `items.*` / `discountCode` (and anything unlisted) live on the last step. */
 const stepOfField = (path: string) => STEP_OF_FIELD[path] ?? 3;
 
-/** Persian/Arabic-Indic digits → ASCII, so a postal code stores canonically. */
-const toAsciiDigits = (value: string) =>
-  value
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
-    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
-
 /**
  * The ported checkout wizard: customer info → delivery address (province drives
  * the fee estimate) → payment method → submit.
@@ -73,18 +68,22 @@ const toAsciiDigits = (value: string) =>
  * OTP round trip mid-checkout returns with it intact. On a created order the cart
  * is cleared immediately, before any gateway redirect.
  *
- * `rates` and the prefilled name/phone come from the server page; the form
- * validates the shape it sends against the shared `CheckoutInput` type so it
- * cannot drift from the route.
+ * `rates`, the prefilled name/phone and any `savedAddresses` come from the server
+ * page; the form validates the shape it sends against the shared `CheckoutInput`
+ * type so it cannot drift from the route. Saved addresses power a "select a saved
+ * address" prefill and a "save this address" option — both pure conveniences: the
+ * order still snapshots whatever address is in the fields at submit, untouched.
  */
 export function CheckoutForm({
   rates,
   defaultName,
   defaultPhone,
+  savedAddresses = [],
 }: {
   rates: ShippingRateResponse[];
   defaultName: string;
   defaultPhone: string;
+  savedAddresses?: AddressResponse[];
 }) {
   const router = useRouter();
   const fieldId = useId();
@@ -114,6 +113,9 @@ export function CheckoutForm({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [topError, setTopError] = useState<string | undefined>();
   const [status, setStatus] = useState<Status>('idle');
+  // "Save this address" — a best-effort write after the order is created; a
+  // failure never blocks the redirect (see `submit`).
+  const [saveAddress, setSaveAddress] = useState(false);
 
   // The authoritative double-submit guard: set synchronously, so a second click
   // in the same tick returns before `postData` runs — the disabled button is
@@ -155,6 +157,23 @@ export function CheckoutForm({
       delete next[path];
       return next;
     });
+
+  /**
+   * Fill every address field from a saved address. A saved address is a
+   * `CheckoutAddressInput` plus an id/title, so this is a field-for-field copy —
+   * the shared contract is what makes it one. Clears any errors on the fields it
+   * touches; leaves "save this address" off (the address is already saved).
+   */
+  const applySavedAddress = (address: AddressResponse) => {
+    setRecipientName(address.recipientName);
+    setRecipientPhone(address.recipientPhone);
+    setProvinceId(String(address.provinceId));
+    setCity(address.city);
+    setPostalCode(address.postalCode);
+    setAddressLine(address.addressLine);
+    setSaveAddress(false);
+    setFieldErrors({});
+  };
 
   /** Client-side gate for advancing a step — the server stays authoritative. */
   const validateStep = (which: number): boolean => {
@@ -219,6 +238,17 @@ export function CheckoutForm({
       clearCart();
       idempotencyKey.current = null; // consumed; a fresh checkout is a fresh key
       setStatus('redirecting');
+
+      // Best-effort "save this address": the order already snapshotted the
+      // address, so this only adds it to the address book. Swallowed on failure
+      // (e.g. the per-user cap) — it must never block or fail the redirect below.
+      if (saveAddress) {
+        try {
+          await postData<AddressResponse>(API_PATHS.ME_ADDRESSES, body.address);
+        } catch {
+          // intentionally ignored — checkout succeeded; saving is a convenience
+        }
+      }
 
       if (paymentMethod === PAYMENT_METHODS.ZARINPAL) {
         try {
@@ -357,6 +387,40 @@ export function CheckoutForm({
                 <p className="text-muted-foreground mb-5 text-sm">
                   از حساب کاربری‌ات پیش‌فرض شده — در صورت نیاز ویرایش کن.
                 </p>
+                {savedAddresses.length > 0 && (
+                  <div>
+                    <label
+                      htmlFor={`${fieldId}-saved`}
+                      className="mb-1.5 block text-sm font-medium"
+                    >
+                      انتخاب از آدرس‌های ذخیره‌شده
+                    </label>
+                    <select
+                      id={`${fieldId}-saved`}
+                      defaultValue=""
+                      onChange={(event) => {
+                        const address =
+                          savedAddresses[Number(event.target.value)];
+                        if (address) applySavedAddress(address);
+                      }}
+                      className="bg-secondary focus-visible:border-accent-strong border-border h-12 w-full rounded-xl border px-4 transition-colors outline-none focus-visible:ring-2"
+                      data-umami-event="checkout-saved-address-select"
+                    >
+                      <option value="" disabled>
+                        یک آدرس ذخیره‌شده را انتخاب کن
+                      </option>
+                      {savedAddresses.map((address, index) => (
+                        <option key={address.id} value={index}>
+                          {address.title ? `${address.title} — ` : ''}
+                          {address.provinceName} · {address.city}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-muted-foreground mt-1.5 text-xs">
+                      فیلدهای آدرس با انتخاب پر می‌شوند و قابل ویرایش‌اند.
+                    </p>
+                  </div>
+                )}
                 <TextField
                   id={`${fieldId}-name`}
                   label="نام و نام خانوادگی گیرنده"
@@ -510,6 +574,17 @@ export function CheckoutForm({
                   dir="ltr"
                   umami="checkout-postal-code"
                 />
+
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={saveAddress}
+                    onChange={(event) => setSaveAddress(event.target.checked)}
+                    className="accent-accent-strong size-4"
+                    data-umami-event="checkout-save-address"
+                  />
+                  این آدرس را در حساب کاربری‌ام ذخیره کن
+                </label>
               </div>
             )}
 

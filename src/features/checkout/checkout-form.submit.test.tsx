@@ -49,7 +49,7 @@ const CAT_TOY: CartLineInput = {
 };
 
 /** Fills the three steps with valid input and lands on the payment step. */
-function advanceToPayment() {
+function advanceToPayment({ saveAddress = false } = {}) {
   fireEvent.change(screen.getByLabelText('نام و نام خانوادگی گیرنده'), {
     target: { value: 'سارا محمدی' },
   });
@@ -68,6 +68,9 @@ function advanceToPayment() {
   fireEvent.change(screen.getByLabelText('کد پستی'), {
     target: { value: '1234567890' },
   });
+  if (saveAddress) {
+    fireEvent.click(screen.getByLabelText(/این آدرس را در حساب کاربری‌ام/));
+  }
   fireEvent.click(screen.getByRole('button', { name: 'ادامه' }));
 }
 
@@ -260,6 +263,69 @@ describe('the checkout submit state machine', () => {
     render(<CheckoutForm rates={RATES} defaultName="" defaultPhone="" />);
 
     expect(replace).toHaveBeenCalledWith('/shop');
+  });
+
+  it('saves the address to the account when opted in, then still navigates', async () => {
+    // COD: create resolves, then the best-effort address save resolves too.
+    postData.mockResolvedValue({
+      orderId: 'order-555',
+      orderNo: 10_050,
+      status: 'processing',
+      subtotal: 370_000,
+      shippingFee: 40_000,
+      discount: 0,
+      total: 410_000,
+    });
+    advanceToPayment({ saveAddress: true });
+    fireEvent.click(screen.getByRole('radio', { name: /پرداخت در محل/ }));
+
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    // The save fired against the owner-scoped addresses route, carrying the same
+    // address the order snapshotted. (Revert the `if (saveAddress)` block and no
+    // such call exists — this fails.)
+    const saveCall = postData.mock.calls.find(
+      (call) => call[0] === API_PATHS.ME_ADDRESSES,
+    );
+    expect(saveCall).toBeTruthy();
+    expect(saveCall![1]).toMatchObject({
+      recipientName: 'سارا محمدی',
+      provinceId: 1,
+      city: 'تهران',
+      postalCode: '1234567890',
+    });
+    // …and the shopper still lands on the result page.
+    expect(push).toHaveBeenCalledWith('/checkout/result/order-555');
+  });
+
+  it('never lets a failed address save block or fail the redirect', async () => {
+    // The order is created (COD), but the best-effort save is rejected (e.g. the
+    // per-user cap). The redirect must happen anyway. Revert the try/catch around
+    // the save and this throws out of submit, leaving `push` uncalled.
+    postData
+      .mockResolvedValueOnce({
+        orderId: 'order-556',
+        orderNo: 10_051,
+        status: 'processing',
+        subtotal: 370_000,
+        shippingFee: 40_000,
+        discount: 0,
+        total: 410_000,
+      })
+      .mockRejectedValueOnce(
+        new ApiRequestError(422, 'به سقف تعداد آدرس‌ها رسیده‌ای.'),
+      );
+    advanceToPayment({ saveAddress: true });
+    fireEvent.click(screen.getByRole('radio', { name: /پرداخت در محل/ }));
+
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expect(getCart()).toHaveLength(0); // order succeeded, cart cleared
+    expect(push).toHaveBeenCalledWith('/checkout/result/order-556');
   });
 
   it('surfaces a server error with no field mapping in the top-level alert', async () => {
