@@ -66,7 +66,9 @@ export function AccountView({
             <span aria-hidden="true">👤</span>
           </div>
           <div>
-            <p className="text-xl font-bold">{name || 'حساب کاربری'}</p>
+            <p className="text-xl font-bold">
+              {name ? toPersianDigits(name) : 'حساب کاربری'}
+            </p>
             <p className="text-muted-foreground text-sm" dir="ltr">
               {toPersianDigits(phone)}
             </p>
@@ -185,7 +187,7 @@ function ProfileTab({ name, phone }: { name: string; phone: string }) {
           <p className="text-muted-foreground mb-1.5 text-sm font-medium">
             نام و نام خانوادگی
           </p>
-          <p className="font-medium">{name || '—'}</p>
+          <p className="font-medium">{name ? toPersianDigits(name) : '—'}</p>
         </div>
         <div>
           <p className="text-muted-foreground mb-1.5 text-sm font-medium">

@@ -1,7 +1,7 @@
 // Pure schema behaviour — no database. The null byte is constructed with
 // `String.fromCharCode(0)`, never typed (the project's control-character rule).
 import { describe, expect, it } from 'vitest';
-import { PET_GENDERS, petInputSchema } from '@/lib/account/pet';
+import { PET_GENDERS, isHttpsUrl, petInputSchema } from '@/lib/account/pet';
 import { PET_TYPES } from '@/lib/catalog/product-query';
 
 const NUL = String.fromCharCode(0);
@@ -98,6 +98,26 @@ describe('petInputSchema', () => {
         expect(
           petInputSchema.safeParse({ ...valid(), photoUrl: bad }).success,
         ).toBe(false);
+      }
+    });
+  });
+
+  describe('isHttpsUrl (render-time guard, defense in depth)', () => {
+    it('is true only for a real https URL', () => {
+      expect(isHttpsUrl('https://cdn.example.com/x.jpg')).toBe(true);
+    });
+
+    it('is false for a non-https scheme, garbage, or nullish', () => {
+      for (const bad of [
+        'http://cdn.example.com/x.jpg',
+        'javascript:alert(1)',
+        'data:image/png;base64,iVBOR',
+        'not a url',
+        '',
+        null,
+        undefined,
+      ]) {
+        expect(isHttpsUrl(bad)).toBe(false);
       }
     });
   });

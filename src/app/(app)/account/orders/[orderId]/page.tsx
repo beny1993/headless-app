@@ -12,7 +12,7 @@ import { requireSession } from '@/lib/auth/session';
 import { resultView } from '@/lib/checkout/result-view';
 import { accountOrderPath, PATHS } from '@/lib/constant/paths';
 import { formatJalali, toPersianDigits } from '@/lib/format';
-import { PAYMENT_METHODS } from '@/lib/orders/order-status';
+import { PAYMENT_METHODS, PAYMENT_STATUSES } from '@/lib/orders/order-status';
 import {
   orderStatusBadge,
   paymentStatusBadge,
@@ -62,7 +62,8 @@ export default async function Page({
   // A representative payment for the status line: a settled one if there is one,
   // else the most recent attempt. COD before delivery has a single pending row.
   const payment =
-    order.payments.find((p) => p.status === 'paid') ?? order.payments.at(-1);
+    order.payments.find((p) => p.status === PAYMENT_STATUSES.PAID) ??
+    order.payments.at(-1);
 
   return (
     <main className="min-h-screen pt-4">
