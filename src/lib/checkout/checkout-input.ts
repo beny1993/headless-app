@@ -62,10 +62,14 @@ const boundedText = (max: number) =>
   z
     .string()
     .trim()
-    .min(1)
-    .max(max)
+    .min(1, { message: 'این فیلد را وارد کن.' })
+    // Persian, digit-free on purpose: the message is surfaced verbatim in the
+    // checkout form (via `formatZodIssues` → `parseFieldErrors`), so it must be
+    // Persian to satisfy the per-field-error AC, and a raw `${max}` would be an
+    // ASCII numeral on an RTL page — against the Persian-digit rule.
+    .max(max, { message: 'مقدار واردشده بیش از حد طولانی است.' })
     .refine((value) => !value.includes('\u0000'), {
-      message: 'must not contain a null byte',
+      message: 'مقدار واردشده نامعتبر است.',
     });
 
 const cartLineSchema = z.object({

@@ -106,6 +106,18 @@ export const orders = pgTable(
     city: text('city').notNull(),
     postalCode: text('postal_code').notNull(),
     addressLine: text('address_line').notNull(),
+    /**
+     * The client's idempotency key for the checkout attempt that created this
+     * order — a UUID the FE mints once per checkout session and reuses across
+     * retries (`Idempotency-Key` header on `POST /api/checkout`). Paired with the
+     * partial unique index below, it makes order creation idempotent: a
+     * double-submit or a concurrent retry with the same key returns the one order
+     * instead of a second one (a second `processing` COD order is a second
+     * fulfillment). Nullable because COD/Zarinpal orders created before this
+     * existed carry none, and a direct `OrderDao.create` (seed, fixtures) need
+     * not supply one — Postgres lets a partial-unique column hold many NULLs.
+     */
+    idempotencyKey: uuid('idempotency_key'),
     createdAt,
     updatedAt,
   },
@@ -121,6 +133,17 @@ export const orders = pgTable(
     check('orders_total_non_negative', sql`${table.total} >= 0`),
     index('orders_user_id_idx').on(table.userId),
     index('orders_status_idx').on(table.status),
+    // Idempotent order creation: at most one order per (user, idempotency key).
+    // Partial on `IS NOT NULL` so the many orders that carry no key (COD/Zarinpal
+    // predating this, seed/fixture inserts) are not forced to collide on a shared
+    // NULL. The name is fixed so `createOrder` can recognise this exact
+    // constraint on a 23505 and answer with the already-created order rather than
+    // a 500 — see the note there. Checkout inserts the key in the SAME
+    // transaction as the stock decrement, so a losing concurrent insert rolls its
+    // reservation back with the aborted transaction.
+    uniqueIndex('orders_user_idempotency_key_unique')
+      .on(table.userId, table.idempotencyKey)
+      .where(sql`${table.idempotencyKey} IS NOT NULL`),
   ],
 );
 

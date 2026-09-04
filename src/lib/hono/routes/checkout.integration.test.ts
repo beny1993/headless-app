@@ -9,6 +9,7 @@
 import { eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { orderItems, orders } from '@/db/schema/orders';
+import { products as productsTable } from '@/db/schema/catalog';
 import { provinces, shippingRates } from '@/db/schema/shipping';
 import { ORDER_STATUSES, PAYMENT_METHODS } from '@/lib/orders/order-status';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
@@ -67,10 +68,21 @@ describe.skipIf(!databaseReachable)('POST /api/checkout', () => {
     return row;
   };
 
-  const post = (body: unknown) =>
+  // A valid Idempotency-Key is required, so the helper sends a fresh random UUID
+  // by default. Pass `null` to omit the header, or a specific string to drive the
+  // missing/invalid-header and replay tests.
+  const post = (
+    body: unknown,
+    idempotencyKey: string | null = crypto.randomUUID(),
+  ) =>
     app.request(API_PATHS.CHECKOUT, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...(idempotencyKey !== null
+          ? { 'Idempotency-Key': idempotencyKey }
+          : {}),
+      },
       body: JSON.stringify(body),
     });
 
@@ -228,6 +240,69 @@ describe.skipIf(!databaseReachable)('POST /api/checkout', () => {
     );
 
     expect(response.status).toBe(400);
+  });
+
+  it('400s when the Idempotency-Key header is missing', async () => {
+    const user = await fx.user();
+    asUser(user.id);
+    const prov = await province();
+    const category = await fx.category();
+    const product = await fx.product(category, { stock: 5 });
+
+    const response = await post(
+      body(prov.provinceId, [{ productId: product.id, qty: 1 }]),
+      null, // no header
+    );
+
+    expect(response.status).toBe(400);
+    expect(await ordersFor(product.id)).toBe(0);
+  });
+
+  it('400s when the Idempotency-Key header is not a uuid', async () => {
+    const user = await fx.user();
+    asUser(user.id);
+    const prov = await province();
+    const category = await fx.category();
+    const product = await fx.product(category, { stock: 5 });
+
+    const response = await post(
+      body(prov.provinceId, [{ productId: product.id, qty: 1 }]),
+      'not-a-uuid',
+    );
+
+    expect(response.status).toBe(400);
+    expect(await ordersFor(product.id)).toBe(0);
+  });
+
+  it('is idempotent — a replay with the same key returns the same order, reserving once', async () => {
+    const user = await fx.user();
+    asUser(user.id);
+    const prov = await province(40_000);
+    const category = await fx.category();
+    const product = await fx.product(category, { price: 100_000, stock: 5 });
+    const key = crypto.randomUUID();
+    const payload = body(prov.provinceId, [{ productId: product.id, qty: 2 }]);
+
+    const first = await post(payload, key);
+    const firstBody = (await first.json()) as ApiResponse<CheckoutResult>;
+    expect(first.status).toBe(200);
+    if (firstBody.status !== 'success') throw new Error(firstBody.message);
+    fx.remember(firstBody.data.orderId);
+
+    // Same key, same everything — a double-submit or a resend.
+    const second = await post(payload, key);
+    const secondBody = (await second.json()) as ApiResponse<CheckoutResult>;
+    expect(second.status).toBe(200);
+    if (secondBody.status !== 'success') throw new Error(secondBody.message);
+
+    // The SAME order, and the stock decremented exactly once (5 - 2 = 3).
+    expect(secondBody.data.orderId).toBe(firstBody.data.orderId);
+    expect(await ordersFor(product.id)).toBe(1);
+    const [row] = await testDb
+      .select({ stock: productsTable.stock })
+      .from(productsTable)
+      .where(eq(productsTable.id, product.id));
+    expect(row.stock).toBe(3);
   });
 
   it('400s a body missing the address', async () => {
