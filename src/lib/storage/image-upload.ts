@@ -26,6 +26,14 @@ export const ACCEPTED_IMAGE_TYPES = Object.keys(
 ) as AcceptedImageType[];
 
 /**
+ * The multipart field the image arrives in. Shared by the upload route (which
+ * reads it) and the admin form (which sets it) — here rather than in the route
+ * module because the form is a client component and must not import the route
+ * (it would drag `pg` into the browser bundle).
+ */
+export const IMAGE_FIELD_NAME = 'file';
+
+/**
  * Two megabytes, the ceiling the design's upload hint promises («تا ۲ مگابایت»).
  * The route mounts `bodyLimit` at this number so an oversize body is refused
  * before it is ever buffered into memory, and re-checks the read length as a

@@ -22,7 +22,7 @@ import type { Product } from '@/db/schema/catalog';
 import { productInputSchema } from '@/lib/catalog/product-input';
 import { PET_TYPES } from '@/lib/catalog/product-query';
 import { replaceProductImage } from '@/logic/admin/product-images';
-import { sniffImageType } from '@/lib/storage/image-upload';
+import { IMAGE_FIELD_NAME, sniffImageType } from '@/lib/storage/image-upload';
 import {
   apiError,
   apiErrorSchema,
@@ -43,9 +43,6 @@ export const INVALID_IMAGE_MESSAGE =
   'فقط تصویر JPEG، PNG یا WEBP پذیرفته می‌شود.';
 /** The uploaded file is larger than the allowed size. */
 export const IMAGE_TOO_LARGE_MESSAGE = 'حجم تصویر بیش از حد مجاز است.';
-
-/** The multipart field the image arrives in. */
-export const IMAGE_FIELD_NAME = 'file';
 
 /**
  * The admin view of a product — the full row the form round-trips, including
@@ -72,8 +69,11 @@ const AdminProductSchema = z
   })
   .openapi('AdminProduct');
 
+/** The admin product payload — what create/update/delete return. */
+export type AdminProductResponse = z.infer<typeof AdminProductSchema>;
+
 /** Project a DAO row to the admin response — drops `searchText`, ISO the dates. */
-const toAdminProduct = (p: Product): z.infer<typeof AdminProductSchema> => ({
+const toAdminProduct = (p: Product): AdminProductResponse => ({
   id: p.id,
   title: p.title,
   slug: p.slug,

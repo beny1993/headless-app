@@ -68,7 +68,15 @@ export function shopPath(filters: ShopFilters = {}): string {
 
 export const PROTECTED_PATHS = {
   INDEX: '/admin-panel',
+  PRODUCTS: '/admin-panel/products',
 } as const;
+
+/** The admin "new product" form page. */
+export const adminNewProductPath = () => `${PROTECTED_PATHS.PRODUCTS}/new`;
+
+/** The admin edit-product form page for one product, by id. */
+export const adminEditProductPath = (id: string) =>
+  `${PROTECTED_PATHS.PRODUCTS}/${encodeURIComponent(id)}`;
 
 export const API_PATHS = {
   DOC: '/api/doc',
