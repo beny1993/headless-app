@@ -74,6 +74,31 @@ const byProductId = (a: { productId: string }, b: { productId: string }) =>
   a.productId < b.productId ? -1 : a.productId > b.productId ? 1 : 0;
 
 /**
+ * The partial unique index that anchors idempotent order creation
+ * (`src/db/schema/orders.ts`). A 23505 naming exactly this constraint means a
+ * concurrent request with the same `(userId, idempotencyKey)` won the race — not
+ * any other uniqueness failure — so `createOrder` returns that order rather than
+ * a 500.
+ */
+const IDEMPOTENCY_CONSTRAINT = 'orders_user_idempotency_key_unique';
+
+/**
+ * Whether `error` is a Postgres unique-violation (23505) on `constraint`.
+ *
+ * node-postgres raises a `DatabaseError` carrying `code`/`constraint`; drizzle
+ * may re-wrap it, so the original is checked at `.cause` too. Matching the
+ * constraint name (not just the 23505 code) keeps this from mistaking an
+ * unrelated unique conflict — a future one added to `orders` — for an
+ * idempotency hit.
+ */
+const isUniqueViolation = (error: unknown, constraint: string): boolean =>
+  [error, (error as { cause?: unknown })?.cause].some((candidate) => {
+    const pgError = candidate as
+      { code?: string; constraint?: string } | null | undefined;
+    return pgError?.code === '23505' && pgError?.constraint === constraint;
+  });
+
+/**
  * Creates an order for `userId` from a validated checkout body.
  *
  * `userId` comes from the authenticated session at the call site, NEVER from the
@@ -94,7 +119,24 @@ const byProductId = (a: { productId: string }, b: { productId: string }) =>
 export const createOrder = async (
   userId: string,
   input: CheckoutInput,
+  idempotencyKey?: string,
 ): Promise<OrderWithItems> => {
+  // 0. Idempotent-replay fast path. A retry (double-submit, a resend of the same
+  // checkout) carries the key the first attempt did; if that order already
+  // exists, return it before doing ANY work. This is a correctness requirement,
+  // not just an optimization: without it a replay of an order that took the last
+  // unit would 422 on the stock guard, and a replay of a Zarinpal order that put
+  // the user at the open-order cap would 422 on the cap — instead of returning
+  // the order the first attempt created. The concurrent race that slips past this
+  // (two requests both finding nothing here) is caught at the insert below.
+  if (idempotencyKey) {
+    const existing = await OrderDao.getByUserAndIdempotencyKey(
+      userId,
+      idempotencyKey,
+    );
+    if (existing) return existing;
+  }
+
   // 1. Shipping fee, server-side. `getByProvinceId` has no range guard of its
   // own; the body schema's `provinceIdParamSchema` already bounded the id, so a
   // miss here is a well-formed-but-unknown province → 422.
@@ -129,106 +171,126 @@ export const createOrder = async (
     .map((line, index) => ({ ...line, index }))
     .sort(byProductId);
 
-  return db.transaction(async (tx) => {
-    const loaded = await ProductDao.getByIds(
-      tx,
-      lines.map((line) => line.productId),
-    );
-    const byId = new Map(loaded.map((product) => [product.id, product]));
-
-    const items: OrderItemInput[] = [];
-    let subtotal = 0;
-
-    for (const line of lines) {
-      const field = `items.${line.index}`;
-      const product = byId.get(line.productId);
-      // Missing or soft-deleted: reject before reserving. `decrementStock`
-      // deliberately does not check `isActive`, so this is the gate that keeps a
-      // soft-deleted product out of an order.
-      if (!product || !product.isActive) {
-        throw new CheckoutError(field, PRODUCT_UNAVAILABLE);
-      }
-
-      const reserved = await ProductDao.decrementStock(
+  try {
+    return await db.transaction(async (tx) => {
+      const loaded = await ProductDao.getByIds(
         tx,
-        line.productId,
-        line.qty,
+        lines.map((line) => line.productId),
       );
-      // 0 rows: the atomic `stock >= qty` guard did not match — out of stock.
-      if (!reserved) {
-        throw new CheckoutError(field, insufficientStock(product.title));
+      const byId = new Map(loaded.map((product) => [product.id, product]));
+
+      const items: OrderItemInput[] = [];
+      let subtotal = 0;
+
+      for (const line of lines) {
+        const field = `items.${line.index}`;
+        const product = byId.get(line.productId);
+        // Missing or soft-deleted: reject before reserving. `decrementStock`
+        // deliberately does not check `isActive`, so this is the gate that keeps
+        // a soft-deleted product out of an order.
+        if (!product || !product.isActive) {
+          throw new CheckoutError(field, PRODUCT_UNAVAILABLE);
+        }
+
+        const reserved = await ProductDao.decrementStock(
+          tx,
+          line.productId,
+          line.qty,
+        );
+        // 0 rows: the atomic `stock >= qty` guard did not match — out of stock.
+        if (!reserved) {
+          throw new CheckoutError(field, insufficientStock(product.title));
+        }
+        // A soft-delete that landed between the load and the decrement: the
+        // guard ignores `isActive`, so re-check the fresh row and roll back if
+        // the product was deactivated mid-flight (closes the TOCTOU window).
+        if (!reserved.isActive) {
+          throw new CheckoutError(field, PRODUCT_UNAVAILABLE);
+        }
+
+        // Snapshot from the guard's RETURNING row, not the pre-load: under READ
+        // COMMITTED the UPDATE re-reads the latest committed row when it locks,
+        // so this price/title/sku is current even if the cart was built earlier.
+        items.push({
+          productId: reserved.id,
+          title: reserved.title,
+          sku: reserved.sku,
+          unitPrice: reserved.price,
+          qty: line.qty,
+        });
+        subtotal += reserved.price * line.qty;
       }
-      // A soft-delete that landed between the load and the decrement: the guard
-      // ignores `isActive`, so re-check the fresh row and roll back if the
-      // product was deactivated mid-flight (closes the TOCTOU window).
-      if (!reserved.isActive) {
-        throw new CheckoutError(field, PRODUCT_UNAVAILABLE);
+
+      const shippingFee = rate.fee;
+      const discount = 0; // until Story - Discount Codes
+      const total = subtotal + shippingFee - discount;
+
+      // Overflow backstop. The schema bounds qty and the line count, but not
+      // qty × price — a corrupt near-2^53 price would otherwise be stored as a
+      // rounded bigint. An impossible-data invariant, not client-fixable input,
+      // so a plain Error (→ 500) that rolls the transaction back, not a
+      // CheckoutError.
+      if (!Number.isSafeInteger(subtotal) || !Number.isSafeInteger(total)) {
+        throw new Error(
+          `checkout total exceeded the safe-integer range (subtotal=${subtotal}, total=${total})`,
+        );
       }
 
-      // Snapshot from the guard's RETURNING row, not the pre-load: under READ
-      // COMMITTED the UPDATE re-reads the latest committed row when it locks, so
-      // this price/title/sku is current even if the cart was built earlier.
-      items.push({
-        productId: reserved.id,
-        title: reserved.title,
-        sku: reserved.sku,
-        unitPrice: reserved.price,
-        qty: line.qty,
-      });
-      subtotal += reserved.price * line.qty;
-    }
-
-    const shippingFee = rate.fee;
-    const discount = 0; // until Story - Discount Codes
-    const total = subtotal + shippingFee - discount;
-
-    // Overflow backstop. The schema bounds qty and the line count, but not
-    // qty × price — a corrupt near-2^53 price would otherwise be stored as a
-    // rounded bigint. An impossible-data invariant, not client-fixable input, so
-    // a plain Error (→ 500) that rolls the transaction back, not a CheckoutError.
-    if (!Number.isSafeInteger(subtotal) || !Number.isSafeInteger(total)) {
-      throw new Error(
-        `checkout total exceeded the safe-integer range (subtotal=${subtotal}, total=${total})`,
-      );
-    }
-
-    const order = await OrderDao.create(
-      {
-        userId,
-        status: initialStatusFor(input.paymentMethod),
-        paymentMethod: input.paymentMethod,
-        subtotal,
-        shippingFee,
-        discount,
-        total,
-        discountCode: null,
-        provinceId: rate.provinceId,
-        provinceName: rate.name,
-        recipientName: input.address.recipientName,
-        recipientPhone: input.address.recipientPhone,
-        city: input.address.city,
-        postalCode: input.address.postalCode,
-        addressLine: input.address.addressLine,
-        items,
-      },
-      tx,
-    );
-
-    // COD gets its single `pending` row now; it flips to `paid` only via
-    // transitionOrder on delivery. Zarinpal creates its row at payment-request
-    // time (story 15), keyed by the gateway authority — none here.
-    if (input.paymentMethod === PAYMENT_METHODS.COD) {
-      await PaymentDao.create(
+      const order = await OrderDao.create(
         {
-          orderId: order.id,
-          method: PAYMENT_METHODS.COD,
-          status: PAYMENT_STATUSES.PENDING,
-          amount: total,
+          userId,
+          status: initialStatusFor(input.paymentMethod),
+          paymentMethod: input.paymentMethod,
+          subtotal,
+          shippingFee,
+          discount,
+          total,
+          discountCode: null,
+          provinceId: rate.provinceId,
+          provinceName: rate.name,
+          recipientName: input.address.recipientName,
+          recipientPhone: input.address.recipientPhone,
+          city: input.address.city,
+          postalCode: input.address.postalCode,
+          addressLine: input.address.addressLine,
+          // The idempotency anchor. Written in the SAME transaction as the stock
+          // decrement above, so a losing concurrent insert with the same key
+          // trips the partial unique index and rolls its reservation back.
+          idempotencyKey: idempotencyKey ?? null,
+          items,
         },
         tx,
       );
-    }
 
-    return order;
-  });
+      // COD gets its single `pending` row now; it flips to `paid` only via
+      // transitionOrder on delivery. Zarinpal creates its row at payment-request
+      // time (story 15), keyed by the gateway authority — none here.
+      if (input.paymentMethod === PAYMENT_METHODS.COD) {
+        await PaymentDao.create(
+          {
+            orderId: order.id,
+            method: PAYMENT_METHODS.COD,
+            status: PAYMENT_STATUSES.PENDING,
+            amount: total,
+          },
+          tx,
+        );
+      }
+
+      return order;
+    });
+  } catch (error) {
+    // A concurrent request with the same key won the race: its insert committed
+    // first, so this transaction's insert tripped the partial unique index and
+    // rolled back (releasing every reservation it made in the same tx). Re-read
+    // the winner and return it — the double-submit sees one order, charged once.
+    if (idempotencyKey && isUniqueViolation(error, IDEMPOTENCY_CONSTRAINT)) {
+      const existing = await OrderDao.getByUserAndIdempotencyKey(
+        userId,
+        idempotencyKey,
+      );
+      if (existing) return existing;
+    }
+    throw error;
+  }
 };

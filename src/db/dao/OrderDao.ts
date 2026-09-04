@@ -90,6 +90,30 @@ export class OrderDao {
     return { ...order, items: await OrderDao.getItems(db, id) };
   }
 
+  /**
+   * The order a `userId` created under `idempotencyKey`, or `null`. Checkout's
+   * idempotency lookup: the fast path a retry hits before doing any work, and the
+   * re-fetch after a losing concurrent insert trips the partial unique index. The
+   * `(user_id, idempotency_key)` pair is unique, so this returns at most one.
+   */
+  static async getByUserAndIdempotencyKey(
+    userId: string,
+    idempotencyKey: string,
+  ): Promise<OrderWithItems | null> {
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.userId, userId),
+          eq(orders.idempotencyKey, idempotencyKey),
+        ),
+      )
+      .limit(1);
+    if (!order) return null;
+    return { ...order, items: await OrderDao.getItems(db, order.id) };
+  }
+
   /** Lookup by the human-readable order number — the id support is handed. */
   static async getByOrderNo(orderNo: number): Promise<OrderWithItems | null> {
     const [order] = await db

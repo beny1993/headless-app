@@ -1,0 +1,2 @@
+ALTER TABLE "orders" ADD COLUMN "idempotency_key" uuid;--> statement-breakpoint
+CREATE UNIQUE INDEX "orders_user_idempotency_key_unique" ON "orders" USING btree ("user_id","idempotency_key") WHERE "orders"."idempotency_key" IS NOT NULL;

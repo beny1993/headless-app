@@ -24,8 +24,21 @@ import {
   apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
+  formatZodIssues,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
+
+/**
+ * The `Idempotency-Key` request header: a UUID the FE mints once per checkout
+ * attempt and reuses across retries. Required — the only client is our own
+ * checkout form, and a dropped key is a client bug that must not silently create
+ * a second order, so it is a 400, not a best-effort degrade. `createOrder` uses
+ * it to make order creation idempotent (see the note there).
+ */
+const IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key';
+const idempotencyKeySchema = z.uuid();
+const INVALID_IDEMPOTENCY_KEY =
+  'سرصفحهٔ Idempotency-Key باید یک UUID معتبر باشد.';
 
 const CheckoutResultSchema = z
   .object({
@@ -70,7 +83,10 @@ export const checkoutRoute = createRoute({
       },
       description: 'The created order, with server-authoritative totals',
     },
-    400: errorResponse('Malformed body — failed schema validation'),
+    400: errorResponse(
+      'Malformed body (failed schema validation) or a missing/invalid ' +
+        'Idempotency-Key header (must be a UUID)',
+    ),
     401: errorResponse('No session'),
     422: errorResponse(
       'A valid body the server refused — unavailable product, insufficient ' +
@@ -87,8 +103,22 @@ export const checkoutHandler: RouteHandler<
   const input = c.req.valid('json');
   const user = c.get('user');
 
+  // Validate the idempotency key at the trust boundary (standing zod rule): a
+  // missing or non-UUID header is a 400 before any work, never a silent second
+  // order. Read manually rather than through the OpenAPI request schema to keep
+  // clear of header-name casing quirks — the envelope is the same either way.
+  const parsedKey = idempotencyKeySchema.safeParse(
+    c.req.header(IDEMPOTENCY_KEY_HEADER),
+  );
+  if (!parsedKey.success) {
+    return c.json(
+      apiError(INVALID_IDEMPOTENCY_KEY, formatZodIssues(parsedKey.error)),
+      400,
+    );
+  }
+
   try {
-    const order = await createOrder(user.id, input);
+    const order = await createOrder(user.id, input, parsedKey.data);
     return c.json(
       apiSuccess({
         orderId: order.id,
