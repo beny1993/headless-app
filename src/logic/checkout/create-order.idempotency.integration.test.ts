@@ -23,7 +23,7 @@ import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 
-const { createOrder, MAX_OPEN_ORDERS } = await importWithDb(
+const { createOrder, CheckoutError, MAX_OPEN_ORDERS } = await importWithDb(
   () => import('@/logic/checkout/create-order'),
 );
 const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
@@ -124,6 +124,56 @@ describe.skipIf(!databaseReachable)('createOrder idempotency', () => {
       expect(pays).toHaveLength(1);
       expect(pays[0].method).toBe(PAYMENT_METHODS.COD);
       expect(pays[0].status).toBe(PAYMENT_STATUSES.PENDING);
+    });
+
+    it('the winner takes the last unit and the loser gets a stock error, never a second order or a double decrement', async () => {
+      // The benign edge the design flags: with only ONE unit, the loser's atomic
+      // decrement finds 0 rows and throws an insufficient-stock CheckoutError
+      // BEFORE it can reach the unique index — so the losing branch is the stock
+      // guard, not the 23505 catch (unlike the ample-stock race above, where both
+      // fulfil). What the money invariant demands is asserted deterministically:
+      // exactly ONE order, stock decremented exactly ONCE (never stranded, never
+      // twice), and any losing call fails with a client-fixable CheckoutError on
+      // the offending line — never a 500, never a second reservation.
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { price: 100_000, stock: 1 });
+      const prov = await province(40_000);
+      const k = key();
+      const input = buildInput(prov, [{ productId: product.id, qty: 1 }]);
+
+      const results = await Promise.allSettled([
+        createOrder(user.id, input, k),
+        createOrder(user.id, input, k),
+      ]);
+
+      const created = await ordersForUser(user.id);
+      created.forEach((o) => fx.remember(o.id));
+
+      // The invariant, regardless of how the two calls interleave: one order, one
+      // decrement to zero.
+      expect(created).toHaveLength(1);
+      expect(await stockOf(product.id)).toBe(0);
+
+      // At least the winner returned the created order; every returned order is
+      // that one order (no phantom second id).
+      const fulfilled = results.filter(
+        (r) => r.status === 'fulfilled',
+      ) as PromiseFulfilledResult<{ id: string }>[];
+      expect(fulfilled.length).toBeGreaterThanOrEqual(1);
+      fulfilled.forEach((r) => expect(r.value.id).toBe(created[0].id));
+
+      // Any losing call is a benign, client-fixable stock error on the line —
+      // not a raw 23505, not an unexpected 500.
+      const rejected = results.filter(
+        (r) => r.status === 'rejected',
+      ) as PromiseRejectedResult[];
+      rejected.forEach((r) => {
+        expect(r.reason).toBeInstanceOf(CheckoutError);
+        expect((r.reason as InstanceType<typeof CheckoutError>).field).toBe(
+          'items.0',
+        );
+      });
     });
   });
 
