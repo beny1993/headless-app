@@ -14,6 +14,27 @@ import {
 } from './routes/catalog';
 import { checkoutHandler, checkoutRoute } from './routes/checkout';
 import { healthHandler, healthRoute } from './routes/health';
+import {
+  meAddressCreateHandler,
+  meAddressCreateRoute,
+  meAddressDeleteHandler,
+  meAddressDeleteRoute,
+  meAddressUpdateHandler,
+  meAddressUpdateRoute,
+  meAddressesListHandler,
+  meAddressesListRoute,
+} from './routes/me-addresses';
+import { meOrdersHandler, meOrdersRoute } from './routes/me-orders';
+import {
+  mePetCreateHandler,
+  mePetCreateRoute,
+  mePetDeleteHandler,
+  mePetDeleteRoute,
+  mePetUpdateHandler,
+  mePetUpdateRoute,
+  mePetsListHandler,
+  mePetsListRoute,
+} from './routes/me-pets';
 import { orderDetailHandler, orderDetailRoute } from './routes/orders';
 import {
   mockCompleteHandler,
@@ -82,9 +103,25 @@ const authed = createRouter<Env & AuthedEnv>();
 authed.use('/checkout', requireAuth);
 authed.use('/orders/:id', requireAuth);
 authed.use('/payments/zarinpal/request', requireAuth);
+// The `/me/*` family (order history + owner-scoped pet/address CRUD) is entirely
+// authenticated, so one wildcard mount guards it — legible as "everything under
+// /me needs a session" and safe in a way `app.use('*')` is not: nothing public
+// lives under `/me`, and this is on the `authed` sub-router, not the parent app,
+// so it cannot reach the catalog/shipping routes. Registered before the routes so
+// the guard runs first. Every handler still scopes by `c.get('user').id`.
+authed.use('/me/*', requireAuth);
 authed.openapi(checkoutRoute, checkoutHandler);
 authed.openapi(orderDetailRoute, orderDetailHandler);
 authed.openapi(paymentRequestRoute, paymentRequestHandler);
+authed.openapi(meOrdersRoute, meOrdersHandler);
+authed.openapi(mePetsListRoute, mePetsListHandler);
+authed.openapi(mePetCreateRoute, mePetCreateHandler);
+authed.openapi(mePetUpdateRoute, mePetUpdateHandler);
+authed.openapi(mePetDeleteRoute, mePetDeleteHandler);
+authed.openapi(meAddressesListRoute, meAddressesListHandler);
+authed.openapi(meAddressCreateRoute, meAddressCreateHandler);
+authed.openapi(meAddressUpdateRoute, meAddressUpdateHandler);
+authed.openapi(meAddressDeleteRoute, meAddressDeleteHandler);
 app.route('/', authed);
 
 // OpenAPI document + interactive reference — never expose in production.

@@ -79,6 +79,12 @@ export const API_PATHS = {
   SHIPPING_RATES: '/api/shipping/rates',
   CHECKOUT: '/api/checkout',
   ORDERS: '/api/orders',
+  // Authenticated, owner-scoped customer routes. The user id is always taken from
+  // the session, never from these paths — the `{id}` in a pet/address path is the
+  // resource, and the DAO's `WHERE` also demands the row's `user_id` match.
+  ME_ORDERS: '/api/me/orders',
+  ME_PETS: '/api/me/pets',
+  ME_ADDRESSES: '/api/me/addresses',
   // Zarinpal payment endpoints. `request` starts a payment (auth), `callback` is
   // the unauthenticated gateway redirect target, `reconcile` is the admin-run
   // expiry/verify sweep. `mockGateway`/`mockComplete` back the dev-only mock
@@ -110,3 +116,21 @@ export const API_PRODUCT_DETAIL_TEMPLATE = `${API_PATHS.PRODUCTS}/{slug}`;
 /** The storefront's product detail path for one product. */
 export const apiProductPath = (slug: string) =>
   `${API_PATHS.PRODUCTS}/${encodeURIComponent(slug)}`;
+
+/** `/api/me/pets/{id}` — the OpenAPI template for the owner-scoped pet routes. */
+export const API_ME_PET_TEMPLATE = `${API_PATHS.ME_PETS}/{id}`;
+
+/** One of the caller's pets, by id (owner-scoped server-side). */
+export const apiMePetPath = (id: string) =>
+  `${API_PATHS.ME_PETS}/${encodeURIComponent(id)}`;
+
+/** `/api/me/addresses/{id}` — the OpenAPI template for the owner-scoped address routes. */
+export const API_ME_ADDRESS_TEMPLATE = `${API_PATHS.ME_ADDRESSES}/{id}`;
+
+/** One of the caller's addresses, by id (owner-scoped server-side). */
+export const apiMeAddressPath = (id: string) =>
+  `${API_PATHS.ME_ADDRESSES}/${encodeURIComponent(id)}`;
+
+/** The storefront's account order-detail page for one order. */
+export const accountOrderPath = (id: string) =>
+  `${PATHS.ACCOUNT}/orders/${encodeURIComponent(id)}`;
