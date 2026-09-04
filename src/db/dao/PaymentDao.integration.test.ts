@@ -183,4 +183,133 @@ describe.skipIf(!databaseReachable)('PaymentDao', () => {
     });
     expect(zero.amount).toBe(0);
   });
+
+  // ── The verify-path CAS guards ──────────────────────────────────────────────
+
+  const pendingZarinpalAttempt = async () => {
+    const order = await orderFor();
+    return PaymentDao.create({
+      orderId: order.id,
+      method: PAYMENT_METHODS.ZARINPAL,
+      amount: order.total,
+      authority: `A-${crypto.randomUUID()}`,
+    });
+  };
+
+  const paidFields = () => ({
+    refId: 'ref-1',
+    cardPan: null,
+    gatewayResponse: { verify: true },
+    paidAt: new Date(),
+  });
+
+  it('markPaid flips a pending attempt to paid and records the ref', async () => {
+    const attempt = await pendingZarinpalAttempt();
+
+    const paid = await db.transaction((tx) =>
+      PaymentDao.markPaid(tx, attempt.id, paidFields()),
+    );
+
+    expect(paid?.status).toBe(PAYMENT_STATUSES.PAID);
+    expect(paid?.refId).toBe('ref-1');
+    expect(paid?.paidAt).not.toBeNull();
+  });
+
+  it('markPaid is idempotent on an already-paid row (returns null, no overwrite)', async () => {
+    const attempt = await pendingZarinpalAttempt();
+    await db.transaction((tx) =>
+      PaymentDao.markPaid(tx, attempt.id, paidFields()),
+    );
+
+    const second = await db.transaction((tx) =>
+      PaymentDao.markPaid(tx, attempt.id, {
+        ...paidFields(),
+        refId: 'ref-2', // a different ref must NOT overwrite the first
+      }),
+    );
+
+    expect(second).toBeNull();
+    const [row] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.id, attempt.id));
+    expect(row.refId).toBe('ref-1');
+  });
+
+  it('markPaid CAS is <> paid, not = pending: a failed row can still be paid', async () => {
+    // The money-safety guard: a reconcile that marked an attempt failed too early
+    // must still be settleable by a genuine later verify-OK.
+    const attempt = await pendingZarinpalAttempt();
+    await PaymentDao.markFailed(db, attempt.id, {
+      failureReason: 'verified as unpaid, too early',
+      gatewayResponse: null,
+    });
+
+    const paid = await db.transaction((tx) =>
+      PaymentDao.markPaid(tx, attempt.id, paidFields()),
+    );
+
+    expect(paid?.status).toBe(PAYMENT_STATUSES.PAID);
+  });
+
+  it('markFailed flips a pending attempt to failed', async () => {
+    const attempt = await pendingZarinpalAttempt();
+
+    const failed = await PaymentDao.markFailed(db, attempt.id, {
+      failureReason: 'user cancelled',
+      gatewayResponse: { status: 'NOK' },
+    });
+
+    expect(failed?.status).toBe(PAYMENT_STATUSES.FAILED);
+    expect(failed?.failureReason).toBe('user cancelled');
+  });
+
+  it('markFailed never un-pays a paid row (CAS = pending; returns null)', async () => {
+    const attempt = await pendingZarinpalAttempt();
+    await db.transaction((tx) =>
+      PaymentDao.markPaid(tx, attempt.id, paidFields()),
+    );
+
+    const result = await PaymentDao.markFailed(db, attempt.id, {
+      failureReason: 'a late NOK must not un-pay',
+      gatewayResponse: null,
+    });
+
+    expect(result).toBeNull();
+    const [row] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.id, attempt.id));
+    expect(row.status).toBe(PAYMENT_STATUSES.PAID); // still paid
+  });
+
+  it('listPendingWithAuthorityOlderThan returns only old, pending, authority-bearing rows', async () => {
+    const fresh = await pendingZarinpalAttempt(); // pending, but created now
+    const old = await pendingZarinpalAttempt();
+    const codOrder = await orderFor();
+    const cod = await PaymentDao.create({
+      orderId: codOrder.id,
+      method: PAYMENT_METHODS.COD,
+      amount: codOrder.total,
+    });
+    // Back-date the old zarinpal row AND the COD row well past the cutoff.
+    const long = new Date(Date.now() - 60 * 60_000);
+    await db
+      .update(payments)
+      .set({ createdAt: long })
+      .where(eq(payments.id, old.id));
+    await db
+      .update(payments)
+      .set({ createdAt: long })
+      .where(eq(payments.id, cod.id));
+
+    const cutoff = new Date(Date.now() - 15 * 60_000);
+    const ids = (
+      await PaymentDao.listPendingWithAuthorityOlderThan(cutoff)
+    ).map((p) => p.id);
+
+    expect(ids).toContain(old.id);
+    expect(ids).not.toContain(fresh.id); // too fresh
+    expect(ids).not.toContain(cod.id); // no authority
+  });
 });

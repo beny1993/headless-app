@@ -2,7 +2,7 @@
 // orchestration (a transition's CAS plus its restock / COD-payment side effects)
 // lives in src/logic/orders/state-machine.ts, which composes these methods.
 // Never write raw SQL — the CAS below is the query builder, not a string.
-import { and, asc, count, eq } from 'drizzle-orm';
+import { and, asc, count, eq, lt } from 'drizzle-orm';
 import { db } from '@/db';
 import {
   orderItems,
@@ -143,6 +143,41 @@ export class OrderDao {
         ),
       );
     return row.value;
+  }
+
+  /**
+   * The current status of one order, read inside the caller's transaction. The
+   * Zarinpal verify path uses it after a lost `pending_payment → paid` CAS to
+   * decide *why* the order moved on — already `paid` (idempotent replay) versus
+   * `failed`/`cancelled` (money taken for an order that expired → manual refund).
+   * Takes a `Tx` so that read sees the same committed state the failed CAS did.
+   */
+  static async getStatus(tx: Tx, id: string): Promise<OrderStatus | null> {
+    const [row] = await tx
+      .select({ status: orders.status })
+      .from(orders)
+      .where(eq(orders.id, id))
+      .limit(1);
+    return row?.status ?? null;
+  }
+
+  /**
+   * Every `pending_payment` order created before `cutoff` — the reconcile job's
+   * pass-2 expiry worklist. The reserved stock of these orders has no release
+   * path until they are transitioned to `failed` (which restocks), so this is the
+   * query that finds the abandoned ones. The caller still checks each order for a
+   * live (pending/paid) payment before expiring it.
+   */
+  static async listExpiredPendingPayment(cutoff: Date): Promise<Order[]> {
+    return db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.status, ORDER_STATUSES.PENDING_PAYMENT),
+          lt(orders.createdAt, cutoff),
+        ),
+      );
   }
 
   /** An order's line items, oldest first. Used for display and for restock. */
