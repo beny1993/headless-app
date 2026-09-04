@@ -53,8 +53,8 @@ export default async function Page({
       ring: 'bg-success-soft',
       title: isCod ? 'سفارش ثبت شد!' : 'پرداخت موفق بود!',
       sub: isCod
-        ? 'مبلغ سفارش هنگام تحویل دریافت می‌شود. پیامک تایید برایت ارسال شد.'
-        : 'پرداخت شما با موفقیت تایید شد. پیامک تایید برایت ارسال شد.',
+        ? 'مبلغ سفارش هنگام تحویل دریافت می‌شود.'
+        : 'پرداخت شما با موفقیت تایید شد.',
     },
     pending: {
       icon: <Clock size={36} className="text-warning" aria-hidden />,
