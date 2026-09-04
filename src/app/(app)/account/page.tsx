@@ -1,42 +1,50 @@
 import type { Metadata } from 'next';
-import { SignOutButton } from '@/features/auth/sign-out-button';
+import { AddressDao } from '@/db/dao/AddressDao';
+import { OrderDao } from '@/db/dao/OrderDao';
+import { PetDao } from '@/db/dao/PetDao';
+import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
+import { AccountView } from '@/features/account/account-view';
 import { toLocalIranPhone } from '@/lib/auth/phone';
 import { requireSession } from '@/lib/auth/session';
 import { PATHS } from '@/lib/constant/paths';
-import { toPersianDigits } from '@/lib/format';
+import { toAddressResponse } from '@/lib/hono/routes/me-addresses';
+import { toOrderSummary } from '@/lib/hono/routes/me-orders';
+import { toPetResponse } from '@/lib/hono/routes/me-pets';
 
 export const metadata: Metadata = { title: 'حساب کاربری' };
 
 /**
- * Still the placeholder — the real page (pet profiles, orders, address book)
- * is [[Story - Account Page and Pet Profiles]].
+ * The account page: orders, pet profiles, saved addresses and the profile tab.
  *
- * What it gains here is the gate and the one thing a shopper needs to see
- * straight after signing in: that they are signed in, as whom, and how to leave
- * again. The navbar is deliberately untouched — the design's own navbar has no
- * signed-in state, and reading the session there would make every prerendered
- * storefront page dynamic to change an icon nobody looks at.
+ * A server component so `requireSession` is the auth gate — a signed-out visitor
+ * is bounced to `/login?next=/account` (via `safeNextPath`) and comes back here.
+ * Every tab's data is loaded owner-scoped by the SESSION id, never a URL, and
+ * projected through the exact same functions the `/api/me/*` routes use, so the
+ * server-rendered first paint and any later client fetch share one shape. The
+ * interactive tabs then own their own state (see `AccountView`).
  */
 export default async function Page() {
   const session = await requireSession(PATHS.ACCOUNT);
+  const userId = session.user.id;
+
+  const [pets, addresses, orders, rates] = await Promise.all([
+    PetDao.listByUser(userId),
+    AddressDao.listByUser(userId),
+    OrderDao.listByUser(userId),
+    ShippingRateDao.list(),
+  ]);
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
-      <h1 className="text-3xl font-black">حساب کاربری</h1>
-      <p className="text-muted-foreground mt-3">
-        با شماره{' '}
-        <span dir="ltr" className="font-medium">
-          {toPersianDigits(toLocalIranPhone(session.user.phoneNumber ?? ''))}
-        </span>{' '}
-        وارد شده‌ای.
-      </p>
-      <p className="text-muted-foreground mt-3">
-        بقیهٔ حساب کاربری در استوری «Account Page and Pet Profiles» ساخته
-        می‌شود.
-      </p>
-      <div className="mt-8">
-        <SignOutButton page="account" />
-      </div>
-    </main>
+    <AccountView
+      name={session.user.name ?? ''}
+      phone={toLocalIranPhone(session.user.phoneNumber ?? '')}
+      orders={orders.map(toOrderSummary)}
+      pets={pets.map(toPetResponse)}
+      addresses={addresses.map(toAddressResponse)}
+      provinces={rates.map((rate) => ({
+        provinceId: rate.provinceId,
+        name: rate.name,
+      }))}
+    />
   );
 }

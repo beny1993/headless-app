@@ -2,7 +2,7 @@
 // orchestration (a transition's CAS plus its restock / COD-payment side effects)
 // lives in src/logic/orders/state-machine.ts, which composes these methods.
 // Never write raw SQL — the CAS below is the query builder, not a string.
-import { and, asc, count, eq, lt } from 'drizzle-orm';
+import { and, asc, count, desc, eq, lt } from 'drizzle-orm';
 import { db } from '@/db';
 import {
   orderItems,
@@ -12,7 +12,28 @@ import {
   type OrderItem,
   type OrderWithItems,
 } from '@/db/schema/orders';
-import { ORDER_STATUSES, type OrderStatus } from '@/lib/orders/order-status';
+import {
+  ORDER_STATUSES,
+  type OrderStatus,
+  type PaymentMethod,
+} from '@/lib/orders/order-status';
+
+/**
+ * One row of a customer's order history — the summary the account orders tab
+ * lists (newest first). It carries no payment rows at all, so no gateway secret
+ * can reach it; the detail view (owner-scoped `getOwnedOrder`) is where a single
+ * order's items and safe payment status are read.
+ */
+export type OrderSummaryRow = {
+  id: string;
+  orderNo: number;
+  status: OrderStatus;
+  paymentMethod: PaymentMethod;
+  total: number;
+  createdAt: Date;
+  /** Distinct line items on the order — the design's «{n} قلم». */
+  itemCount: number;
+};
 
 /**
  * A transaction on one connection of the pool. It carries `rollback()`, which
@@ -202,6 +223,30 @@ export class OrderDao {
           lt(orders.createdAt, cutoff),
         ),
       );
+  }
+
+  /**
+   * A customer's order history: their orders, newest first, each with its line-
+   * item count — one grouped query, no N+1. Owner-scoped by `userId` from the
+   * session (never the URL). `groupBy(orders.id)` is sound because `id` is the PK,
+   * so every selected order column is functionally dependent on it.
+   */
+  static async listByUser(userId: string): Promise<OrderSummaryRow[]> {
+    return db
+      .select({
+        id: orders.id,
+        orderNo: orders.orderNo,
+        status: orders.status,
+        paymentMethod: orders.paymentMethod,
+        total: orders.total,
+        createdAt: orders.createdAt,
+        itemCount: count(orderItems.id),
+      })
+      .from(orders)
+      .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
+      .where(eq(orders.userId, userId))
+      .groupBy(orders.id)
+      .orderBy(desc(orders.createdAt), desc(orders.orderNo));
   }
 
   /** An order's line items, oldest first. Used for display and for restock. */

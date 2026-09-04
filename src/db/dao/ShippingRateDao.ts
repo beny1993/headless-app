@@ -68,6 +68,23 @@ export class ShippingRateDao {
       .orderBy(asc(provinces.id));
   }
 
+  /**
+   * Whether a province row with this id exists — the `provinces` table alone, no
+   * rate join. An address's `province_id` FK points at `provinces`, so a saved
+   * address is valid for any existing province whether or not a rate has been set
+   * for it; callers use this to turn a well-formed-but-unknown id into a 422
+   * instead of letting it hit the FK as a 500. (Distinct from `getByProvinceId`,
+   * which additionally requires a rate — the shape checkout's fee lookup needs.)
+   */
+  static async provinceExists(provinceId: number): Promise<boolean> {
+    const [row] = await db
+      .select({ id: provinces.id })
+      .from(provinces)
+      .where(eq(provinces.id, provinceId))
+      .limit(1);
+    return row !== undefined;
+  }
+
   /** One province's rate by id, or `null` when no such province exists. */
   static async getByProvinceId(
     provinceId: number,

@@ -108,6 +108,14 @@ export const patch = <T>(path: string, body?: unknown) =>
   request<ApiResponse<T>>(path, withBody('PATCH', body));
 
 /**
+ * DELETE returns the standard envelope with a 200, not a bodyless 204 — `request`
+ * reads `response.json()` unconditionally, and a 204 would leave it parsing an
+ * empty body. The authed `/me` delete routes answer `apiSuccess({ id })`.
+ */
+export const del = <T>(path: string) =>
+  request<ApiResponse<T>>(path, withBody('DELETE'));
+
+/**
  * Envelope-unwrapping variants — return `data`, throw `ApiRequestError` (an
  * `Error` subclass carrying `status` and the envelope's `errors[]`).
  */
@@ -122,3 +130,6 @@ export const postData = async <T>(
 
 export const patchData = async <T>(path: string, body?: unknown): Promise<T> =>
   unwrap(await patch<T>(path, body));
+
+export const delData = async <T>(path: string): Promise<T> =>
+  unwrap(await del<T>(path));

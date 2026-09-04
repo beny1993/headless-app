@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
+import { AddressDao } from '@/db/dao/AddressDao';
 import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
 import { CheckoutForm } from '@/features/checkout/checkout-form';
 import { toLocalIranPhone } from '@/lib/auth/phone';
 import { requireSession } from '@/lib/auth/session';
 import { PATHS } from '@/lib/constant/paths';
+import { toAddressResponse } from '@/lib/hono/routes/me-addresses';
 
 export const metadata: Metadata = { title: 'تکمیل خرید' };
 
@@ -17,13 +19,18 @@ export const metadata: Metadata = { title: 'تکمیل خرید' };
  */
 export default async function Page() {
   const session = await requireSession(PATHS.CHECKOUT);
-  const rates = await ShippingRateDao.list();
+  const [rates, addresses] = await Promise.all([
+    ShippingRateDao.list(),
+    // Owner-scoped saved addresses, for the "select a saved address" prefill.
+    AddressDao.listByUser(session.user.id),
+  ]);
 
   return (
     <CheckoutForm
       rates={rates}
       defaultName={session.user.name ?? ''}
       defaultPhone={toLocalIranPhone(session.user.phoneNumber ?? '')}
+      savedAddresses={addresses.map(toAddressResponse)}
     />
   );
 }
