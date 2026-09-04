@@ -24,6 +24,18 @@ export function toPersianDigits(value: string | number | bigint): string {
   return String(value).replace(/[0-9]/g, (d) => PERSIAN_DIGITS[Number(d)]);
 }
 
+/**
+ * The inverse of {@link toPersianDigits}: Persian and Arabic-Indic digits → ASCII,
+ * everything else untouched. An INPUT normalization, not display — a postal code or
+ * phone number a shopper types on a Persian keyboard is stored canonically (the
+ * checkout form and the account address form both call it before sending).
+ */
+export function toAsciiDigits(value: string): string {
+  return value
+    .replace(/[۰-۹]/g, (d) => String(PERSIAN_DIGITS.indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+}
+
 /** Persian digits with fa-IR thousands separators (U+066C, not a Latin comma). */
 export function formatNumber(value: number | bigint): string {
   if (typeof value === 'number' && !Number.isFinite(value)) {
