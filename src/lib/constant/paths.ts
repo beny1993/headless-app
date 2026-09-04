@@ -21,10 +21,10 @@ export const productPath = (slug: string) =>
 
 /**
  * The checkout result page for one order — where the Zarinpal callback lands the
- * browser after a payment attempt (success or failure). The page renders from
- * `GET /api/orders/:id`, not from the callback's query params, so it always shows
- * the order's real settled status. The FE page itself is a later story; this
- * helper and the callback's 302 are all this story wires.
+ * browser after a payment attempt (success or failure). The page reads the order
+ * server-side (owner-scoped), not from the callback's query params, so it always
+ * shows the order's real settled status. Built by [[Story - Checkout Flow
+ * Frontend]] at `src/app/(app)/checkout/result/[orderId]/page.tsx`.
  */
 export const checkoutResultPath = (orderId: string) =>
   `${PATHS.CHECKOUT}/result/${encodeURIComponent(orderId)}`;
@@ -33,7 +33,8 @@ export const checkoutResultPath = (orderId: string) =>
  * The generic payment-failure page — where the callback lands when it cannot tie
  * the redirect to an order (unknown/absent authority, or a malformed callback
  * query), so there is no order id to show a result for. Distinct path from
- * `checkoutResultPath` so the two never collide. FE page is a later story.
+ * `checkoutResultPath` so the two never collide. Built by [[Story - Checkout
+ * Flow Frontend]] at `src/app/(app)/checkout/failed/page.tsx`.
  */
 export const checkoutFailurePath = () => `${PATHS.CHECKOUT}/failed`;
 

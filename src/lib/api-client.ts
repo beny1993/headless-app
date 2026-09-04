@@ -12,7 +12,28 @@ import { getAppBaseUrl } from '@/lib/utils/env';
 const DEFAULT_ERROR_MESSAGE =
   'Sorry for the inconvenience, please try again later';
 
+/**
+ * A non-2xx API response, thrown by the request helpers. Extends `Error` so the
+ * many call sites that only read `.message` keep working, but also carries the
+ * HTTP `status` and the envelope's `errors[]` — the per-field detail a form needs
+ * to map `path: message` strings back to its inputs (checkout's 422). `errors`
+ * is validated to be a `string[]` before it is attached, so a malformed body can
+ * never smuggle a non-string through.
+ */
+export class ApiRequestError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+    readonly errors?: string[],
+  ) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
+}
+
 type Query = Record<string, string | number | boolean | string[] | undefined>;
+
+type Headers = Record<string, string>;
 
 const buildUrl = (path: string, query?: Query): string => {
   const base =
@@ -35,12 +56,19 @@ const buildUrl = (path: string, query?: Query): string => {
 async function handleError(response: Response): Promise<never> {
   const body = (await response.json().catch(() => null)) as {
     message?: unknown;
+    errors?: unknown;
   } | null;
   const message =
     body && typeof body.message === 'string'
       ? body.message
       : DEFAULT_ERROR_MESSAGE;
-  throw new Error(message);
+  const errors =
+    body &&
+    Array.isArray(body.errors) &&
+    body.errors.every((e): e is string => typeof e === 'string')
+      ? body.errors
+      : undefined;
+  throw new ApiRequestError(response.status, message, errors);
 }
 
 async function request<T>(
@@ -59,27 +87,38 @@ async function request<T>(
   return response.json() as Promise<T>;
 }
 
-const withBody = (method: string, body?: unknown): RequestInit => ({
+const withBody = (
+  method: string,
+  body?: unknown,
+  headers?: Headers,
+): RequestInit & { headers?: Headers } => ({
   method,
   ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  ...(headers ? { headers } : {}),
 });
 
 /** Raw envelope readers — caller branches on `status` itself. */
 export const get = <T>(path: string, query?: Query) =>
   request<ApiResponse<T>>(path, { method: 'GET', query });
 
-export const post = <T>(path: string, body?: unknown) =>
-  request<ApiResponse<T>>(path, withBody('POST', body));
+export const post = <T>(path: string, body?: unknown, headers?: Headers) =>
+  request<ApiResponse<T>>(path, withBody('POST', body, headers));
 
 export const patch = <T>(path: string, body?: unknown) =>
   request<ApiResponse<T>>(path, withBody('PATCH', body));
 
-/** Envelope-unwrapping variants — return `data`, throw `Error(message)`. */
+/**
+ * Envelope-unwrapping variants — return `data`, throw `ApiRequestError` (an
+ * `Error` subclass carrying `status` and the envelope's `errors[]`).
+ */
 export const getData = async <T>(path: string, query?: Query): Promise<T> =>
   unwrap(await get<T>(path, query));
 
-export const postData = async <T>(path: string, body?: unknown): Promise<T> =>
-  unwrap(await post<T>(path, body));
+export const postData = async <T>(
+  path: string,
+  body?: unknown,
+  headers?: Headers,
+): Promise<T> => unwrap(await post<T>(path, body, headers));
 
 export const patchData = async <T>(path: string, body?: unknown): Promise<T> =>
   unwrap(await patch<T>(path, body));
