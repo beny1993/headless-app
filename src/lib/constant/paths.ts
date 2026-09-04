@@ -76,6 +76,11 @@ export const API_PATHS = {
   HEALTH: '/api/health',
   CATEGORIES: '/api/categories',
   PRODUCTS: '/api/products',
+  // Admin product CRUD. A dedicated `/admin/*` prefix, not `/products/*`, because
+  // the guard is mounted with `app.use('/admin/*', requireAdmin)` — method-
+  // agnostic — and guarding `/products/:id` that way would also 403 the public
+  // `GET /products/{slug}`. Nothing public lives under `/admin`.
+  ADMIN_PRODUCTS: '/api/admin/products',
   SHIPPING_RATES: '/api/shipping/rates',
   CHECKOUT: '/api/checkout',
   ORDERS: '/api/orders',
@@ -112,6 +117,20 @@ export const apiShippingRatePath = (provinceId: number) =>
 
 /** `/api/products/{slug}` — the OpenAPI template, as it appears in the doc. */
 export const API_PRODUCT_DETAIL_TEMPLATE = `${API_PATHS.PRODUCTS}/{slug}`;
+
+/** `/api/admin/products/{id}` — the OpenAPI template for the admin update/delete. */
+export const API_ADMIN_PRODUCT_TEMPLATE = `${API_PATHS.ADMIN_PRODUCTS}/{id}`;
+
+/** The admin update/delete path for one product, by id. */
+export const apiAdminProductPath = (id: string) =>
+  `${API_PATHS.ADMIN_PRODUCTS}/${encodeURIComponent(id)}`;
+
+/** `/api/admin/products/{id}/images` — the OpenAPI template for image upload. */
+export const API_ADMIN_PRODUCT_IMAGES_TEMPLATE = `${API_PATHS.ADMIN_PRODUCTS}/{id}/images`;
+
+/** The image-upload path for one product, by id. */
+export const apiAdminProductImagesPath = (id: string) =>
+  `${API_PATHS.ADMIN_PRODUCTS}/${encodeURIComponent(id)}/images`;
 
 /** The storefront's product detail path for one product. */
 export const apiProductPath = (slug: string) =>

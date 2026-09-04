@@ -1,9 +1,22 @@
 import { Scalar } from '@scalar/hono-api-reference';
 import type { Env } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { DEFAULT_SITE_NAME } from '@/constants';
+import { MAX_UPLOAD_BYTES } from '@/lib/storage/image-upload';
 import { getEnvVariable, VARS } from '@/lib/utils/env';
 import { apiErrorHandler, createRouter } from './create-router';
+import { apiError } from './envelope';
 import { requireAdmin, requireAuth, type AuthedEnv } from './middleware/auth';
+import {
+  IMAGE_TOO_LARGE_MESSAGE,
+  productCreateHandler,
+  productCreateRoute,
+  productDeleteHandler,
+  productDeleteRoute,
+  productImageUploadHandler,
+  productUpdateHandler,
+  productUpdateRoute,
+} from './routes/admin-products';
 import {
   categoryListHandler,
   categoryListRoute,
@@ -123,6 +136,30 @@ authed.openapi(meAddressCreateRoute, meAddressCreateHandler);
 authed.openapi(meAddressUpdateRoute, meAddressUpdateHandler);
 authed.openapi(meAddressDeleteRoute, meAddressDeleteHandler);
 app.route('/', authed);
+
+// Admin product CRUD (`Story - Admin Product Management`). Its own sub-router so
+// the admin guard can be a single wildcard mount — `admin.use('/admin/*',
+// requireAdmin)` — the way `/me/*` is: nothing public lives under `/admin`, and
+// `app.use` is method-agnostic, so guarding `/products/:id` directly would also
+// 403 the public `GET /products/{slug}`. The guard is registered first so it runs
+// before every handler (authorize before the body is parsed or buffered). The
+// image upload additionally carries a `bodyLimit` so an oversize body is refused
+// before it is read into memory; it is registered after the guard, so an
+// unauthenticated caller is turned away before anything is buffered.
+const admin = createRouter<Env & AuthedEnv>();
+admin.use('/admin/*', requireAdmin);
+admin.use(
+  '/admin/products/:id/images',
+  bodyLimit({
+    maxSize: MAX_UPLOAD_BYTES,
+    onError: (c) => c.json(apiError(IMAGE_TOO_LARGE_MESSAGE), 413),
+  }),
+);
+admin.openapi(productCreateRoute, productCreateHandler);
+admin.openapi(productUpdateRoute, productUpdateHandler);
+admin.openapi(productDeleteRoute, productDeleteHandler);
+admin.post('/admin/products/:id/images', productImageUploadHandler);
+app.route('/', admin);
 
 // OpenAPI document + interactive reference — never expose in production.
 if (getEnvVariable(VARS.NODE_ENV, false, '') !== 'production') {
