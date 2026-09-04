@@ -14,6 +14,7 @@ import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
 import { AddressDao, type AddressWithProvince } from '@/db/dao/AddressDao';
+import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
 import { addressInputSchema } from '@/lib/account/address';
 import {
   apiError,
@@ -29,6 +30,15 @@ export const ADDRESS_NOT_FOUND_MESSAGE = 'آدرس یافت نشد';
 /** A soft per-user ceiling, refused (422) rather than stored unbounded — see me-pets.ts. */
 export const MAX_ADDRESSES_PER_USER = 20;
 const TOO_MANY_ADDRESSES_MESSAGE = 'به سقف تعداد آدرس‌ها رسیده‌ای.';
+
+/**
+ * A well-formed but unknown `provinceId` (passes the schema's int4 cap, no such
+ * province) is a 422, not the FK-violation 500 it would otherwise become — the
+ * same "no 500 on well-formed input" stance checkout takes. Checked against the
+ * `provinces` table (`provinceExists`), the address FK's target, so a province
+ * without a shipping rate is still a valid place to save an address.
+ */
+const INVALID_PROVINCE_MESSAGE = 'استان انتخاب‌شده نامعتبر است.';
 
 const AddressSchema = z
   .object({
@@ -131,7 +141,7 @@ export const meAddressCreateRoute = createRoute({
     200: addressResponse('The created address'),
     400: errorResponse('Malformed body (failed schema validation)'),
     401: errorResponse('No session'),
-    422: errorResponse('Per-user address cap reached'),
+    422: errorResponse('Per-user address cap reached, or unknown province'),
   },
 });
 
@@ -144,6 +154,10 @@ export const meAddressCreateHandler: RouteHandler<
 
   if ((await AddressDao.countForUser(user.id)) >= MAX_ADDRESSES_PER_USER) {
     return c.json(apiError(TOO_MANY_ADDRESSES_MESSAGE), 422);
+  }
+
+  if (!(await ShippingRateDao.provinceExists(input.provinceId))) {
+    return c.json(apiError(INVALID_PROVINCE_MESSAGE), 422);
   }
 
   const address = await AddressDao.create(user.id, input);
@@ -162,6 +176,7 @@ export const meAddressUpdateRoute = createRoute({
     400: errorResponse('Invalid id or malformed body'),
     401: errorResponse('No session'),
     404: errorResponse('No such address for this user (missing or not owned)'),
+    422: errorResponse('Unknown province'),
   },
 });
 
@@ -172,6 +187,10 @@ export const meAddressUpdateHandler: RouteHandler<
   const user = c.get('user');
   const { id } = c.req.valid('param');
   const input = c.req.valid('json');
+
+  if (!(await ShippingRateDao.provinceExists(input.provinceId))) {
+    return c.json(apiError(INVALID_PROVINCE_MESSAGE), 422);
+  }
 
   const address = await AddressDao.update(id, user.id, input);
   if (!address) return c.json(apiError(ADDRESS_NOT_FOUND_MESSAGE), 404);

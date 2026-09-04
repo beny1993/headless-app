@@ -98,6 +98,22 @@ describe.skipIf(!databaseReachable)('/api/me/addresses', () => {
       const { provinceId: _omit, ...noProvince } = body(1);
       expect((await post(noProvince)).status).toBe(400);
     });
+
+    it('422s a create with a well-formed but unknown province, not a 500', async () => {
+      // In int4 range so it passes the schema, but no such province exists — must
+      // be a clean 422, never the province_id FK-violation 500 it would become if
+      // it reached the insert. (Revert the provinceExists guard and this 500s.)
+      const user = await fx.user();
+      asUser(user.id);
+      expect((await post(body(2_000_000_000))).status).toBe(422);
+    });
+
+    it('422s an update to a well-formed but unknown province, not a 500', async () => {
+      const user = await fx.user();
+      const address = await seed(user.id);
+      asUser(user.id);
+      expect((await patch(address.id, body(2_000_000_000))).status).toBe(422);
+    });
   });
 
   describe('cross-user isolation (IDOR)', () => {
