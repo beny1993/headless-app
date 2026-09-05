@@ -36,7 +36,13 @@ const MESSAGES = {
 export const SLUG_PATTERN = /^[a-z0-9-]{3,}$/;
 
 /** Integer Toman, strictly positive — the `products_price_positive` CHECK. */
-const priceToman = z.number().int(MESSAGES.price).positive(MESSAGES.price);
+// `{ error }` on the base `z.number()` too, not only on `.int()`/`.positive()`:
+// a blank/NaN/null field fails the base type check, and without it zod would fall
+// back to its English "expected number, received NaN" instead of the Persian copy.
+const priceToman = z
+  .number({ error: MESSAGES.price })
+  .int(MESSAGES.price)
+  .positive(MESSAGES.price);
 
 /**
  * An optional free-text field: trimmed, and an empty (or whitespace-only) value
@@ -62,11 +68,14 @@ export const productInputSchema = z
     // below (and the `products_old_price_above_price` CHECK) require it above
     // the current price. `null` when there is no discount.
     oldPrice: z
-      .number()
+      .number({ error: MESSAGES.oldPrice })
       .int(MESSAGES.oldPrice)
       .positive(MESSAGES.oldPrice)
       .nullish(),
-    stock: z.number().int(MESSAGES.stock).nonnegative(MESSAGES.stock),
+    stock: z
+      .number({ error: MESSAGES.stock })
+      .int(MESSAGES.stock)
+      .nonnegative(MESSAGES.stock),
     categoryId: z.uuid(MESSAGES.category),
     petType: z.enum([PET_TYPES.CAT, PET_TYPES.DOG], MESSAGES.pet),
     // A real editable field — the design's «نمایش در فروشگاه» toggle. Soft delete

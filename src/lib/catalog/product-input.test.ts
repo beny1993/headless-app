@@ -50,6 +50,26 @@ describe('productInputSchema', () => {
       ).toBe(false);
     });
 
+    it('gives the Persian message (not zod English) for a blank/NaN price or stock', () => {
+      // A left-blank numeric field fails the BASE z.number() check (NaN/null), not
+      // .int()/.positive() — so the message must be set on z.number() itself or
+      // zod falls back to English "expected number, received NaN". Regression for
+      // the QA-found copy leak. (Revert the `{ error }` on the base call → English.)
+      const messageFor = (value: unknown, field: 'price' | 'stock') => {
+        const res = productInputSchema.safeParse({ ...valid, [field]: value });
+        if (res.success) throw new Error('expected a validation failure');
+        return res.error.issues.find((i) => i.path[0] === field)?.message ?? '';
+      };
+      for (const bad of [null, NaN, undefined, 'x']) {
+        expect(messageFor(bad, 'price')).toBe(
+          'قیمت باید عددی صحیح و بزرگ‌تر از صفر باشد (تومان).',
+        );
+        expect(messageFor(bad, 'stock')).toBe(
+          'موجودی باید عددی صحیح و صفر یا بیشتر باشد.',
+        );
+      }
+    });
+
     it('allows stock of zero but rejects negative stock', () => {
       expect(productInputSchema.safeParse({ ...valid, stock: 0 }).success).toBe(
         true,
