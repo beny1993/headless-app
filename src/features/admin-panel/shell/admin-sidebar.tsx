@@ -19,10 +19,9 @@ import { cn } from '@/lib/utils';
 // active item derived from the current path — every admin page renders inside
 // this frame via the (protected) layout.
 //
-// Only the pages this story delivers are linked. Later admin stories
-// (`Story - Admin Orders and Dashboard`, shipping rates) add their entry to
-// `NAV_ITEMS` when they add the page behind it — a data-driven list, so that is
-// a one-line change, not a rewrite of the shell.
+// One entry per admin page that exists (dashboard, orders, products, shipping).
+// `NAV_ITEMS` is data-driven, so a future admin page adds its entry here when it
+// adds the page behind it — a one-line change, not a rewrite of the shell.
 type NavItem = {
   href: string;
   label: string;
