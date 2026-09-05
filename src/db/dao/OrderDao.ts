@@ -2,11 +2,12 @@
 // orchestration (a transition's CAS plus its restock / COD-payment side effects)
 // lives in src/logic/orders/state-machine.ts, which composes these methods.
 // Never write raw SQL — the CAS below is the query builder, not a string.
-import { and, asc, count, desc, eq, lt } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import {
   orderItems,
   orders,
+  payments,
   type NewOrder,
   type Order,
   type OrderItem,
@@ -14,6 +15,7 @@ import {
 } from '@/db/schema/orders';
 import {
   ORDER_STATUSES,
+  PAYMENT_STATUSES,
   type OrderStatus,
   type PaymentMethod,
 } from '@/lib/orders/order-status';
@@ -34,6 +36,54 @@ export type OrderSummaryRow = {
   /** Distinct line items on the order — the design's «{n} قلم». */
   itemCount: number;
 };
+
+/**
+ * One row of the admin orders list — every order in the store (not owner-scoped),
+ * with the line-item count and a paid flag. Carries no payment rows: `isPaid` is
+ * a subquery boolean, so no gateway secret rides along and a multi-attempt
+ * Zarinpal order does not multiply into several list rows.
+ */
+export type AdminOrderRow = {
+  id: string;
+  orderNo: number;
+  /** The delivery recipient snapshot — what the admin list shows as «مشتری». */
+  recipientName: string;
+  status: OrderStatus;
+  paymentMethod: PaymentMethod;
+  total: number;
+  createdAt: Date;
+  itemCount: number;
+  /** Whether any payment attempt on the order has settled (`status = paid`). */
+  isPaid: boolean;
+};
+
+/**
+ * The order statuses that represent a booked sale — the first half of the
+ * revenue definition. The second half (an actually-settled payment) is
+ * `hasPaidPayment` below; an order counts as revenue only when BOTH hold, so a
+ * COD order still pending at `processing`/`shipped` is excluded (its cash is
+ * collected at delivery) and a paid order later `cancelled` is excluded (the
+ * money is being refunded). See `revenueSummary`.
+ */
+const REVENUE_ORDER_STATUSES: readonly OrderStatus[] = [
+  ORDER_STATUSES.PAID,
+  ORDER_STATUSES.PROCESSING,
+  ORDER_STATUSES.SHIPPED,
+  ORDER_STATUSES.DELIVERED,
+];
+
+/**
+ * A correlated `EXISTS (a settled payment for this order)`. Parameterized `sql`
+ * with interpolated identifiers and a bound status value — not a raw string — so
+ * it obeys the DAO's no-raw-SQL rule while expressing what a join cannot without
+ * multiplying rows. Used both as the list's `isPaid` flag and as half the revenue
+ * predicate.
+ */
+const hasPaidPayment = sql<boolean>`exists (select 1 from ${payments} where ${payments.orderId} = ${orders.id} and ${payments.status} = ${PAYMENT_STATUSES.PAID})`;
+
+/** The full revenue predicate: a booked status AND a settled payment. */
+const isRevenueOrder = () =>
+  and(inArray(orders.status, REVENUE_ORDER_STATUSES), hasPaidPayment);
 
 /**
  * A transaction on one connection of the pool. It carries `rollback()`, which
@@ -259,5 +309,80 @@ export class OrderDao {
       .from(orderItems)
       .where(eq(orderItems.orderId, orderId))
       .orderBy(asc(orderItems.createdAt), asc(orderItems.id));
+  }
+
+  /**
+   * The admin orders list: every order in the store, newest first, each with its
+   * line-item count and a settled-payment flag. Optionally filtered to one
+   * status. Store-wide by design — unlike `listByUser`, it is not owner-scoped,
+   * because the admin can and must see everyone's orders; the `requireAdmin`
+   * guard on the route is what authorizes it. `groupBy(orders.id)` is sound (the
+   * PK), so `isPaid` (a per-order correlated subquery) and every order column are
+   * functionally dependent on the group key.
+   */
+  static async listForAdmin(status?: OrderStatus): Promise<AdminOrderRow[]> {
+    return db
+      .select({
+        id: orders.id,
+        orderNo: orders.orderNo,
+        recipientName: orders.recipientName,
+        status: orders.status,
+        paymentMethod: orders.paymentMethod,
+        total: orders.total,
+        createdAt: orders.createdAt,
+        itemCount: count(orderItems.id),
+        isPaid: hasPaidPayment,
+      })
+      .from(orders)
+      .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
+      .where(status ? eq(orders.status, status) : undefined)
+      .groupBy(orders.id)
+      .orderBy(desc(orders.createdAt), desc(orders.orderNo));
+  }
+
+  /**
+   * The dashboard's all-time revenue and order count: `sum(total)` and `count`
+   * over the revenue set (a booked status AND a settled payment). `sum` of a
+   * `bigint` comes back as a numeric string; `Number` is exact here because a
+   * store's grand total in integer Toman stays far below 2^53.
+   * ponytail: if a store's lifetime revenue ever approaches 2^53 Toman
+   * (~9e15 ≈ 9 quadrillion), sum in `bigint`; nothing here is close.
+   */
+  static async revenueSummary(): Promise<{
+    revenue: number;
+    orderCount: number;
+  }> {
+    const [row] = await db
+      .select({
+        revenue: sql<string>`coalesce(sum(${orders.total}), 0)`,
+        orderCount: count(),
+      })
+      .from(orders)
+      .where(isRevenueOrder());
+    return { revenue: Number(row.revenue), orderCount: row.orderCount };
+  }
+
+  /**
+   * Every revenue order created on or after `cutoff`, as `{ createdAt, total }` —
+   * the raw rows the dashboard buckets by Jalali month in JS (Postgres has no
+   * Persian calendar). The window is bounded by the caller's cutoff so this never
+   * scans the whole table.
+   */
+  static async revenueOrdersSince(
+    cutoff: Date,
+  ): Promise<{ createdAt: Date; total: number }[]> {
+    return db
+      .select({ createdAt: orders.createdAt, total: orders.total })
+      .from(orders)
+      .where(and(isRevenueOrder(), gte(orders.createdAt, cutoff)));
+  }
+
+  /** How many orders are in one status — the dashboard's «awaiting action» tile. */
+  static async countByStatus(status: OrderStatus): Promise<number> {
+    const [row] = await db
+      .select({ value: count() })
+      .from(orders)
+      .where(eq(orders.status, status));
+    return row.value;
   }
 }
