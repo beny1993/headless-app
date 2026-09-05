@@ -8,6 +8,12 @@ import { apiErrorHandler, createRouter } from './create-router';
 import { apiError } from './envelope';
 import { requireAdmin, requireAuth, type AuthedEnv } from './middleware/auth';
 import {
+  adminOrderDetailHandler,
+  adminOrderDetailRoute,
+  adminOrderTransitionHandler,
+  adminOrderTransitionRoute,
+} from './routes/admin-orders';
+import {
   IMAGE_TOO_LARGE_MESSAGE,
   productCreateHandler,
   productCreateRoute,
@@ -159,6 +165,11 @@ admin.openapi(productCreateRoute, productCreateHandler);
 admin.openapi(productUpdateRoute, productUpdateHandler);
 admin.openapi(productDeleteRoute, productDeleteHandler);
 admin.post('/admin/products/:id/images', productImageUploadHandler);
+// Admin order management (`Story - Admin Orders and Dashboard`): read one order
+// (the admin projection) and move it through the state machine. The `/admin/*`
+// wildcard guard mounted above already covers these — no new mount needed.
+admin.openapi(adminOrderDetailRoute, adminOrderDetailHandler);
+admin.openapi(adminOrderTransitionRoute, adminOrderTransitionHandler);
 app.route('/', admin);
 
 // OpenAPI document + interactive reference — never expose in production.

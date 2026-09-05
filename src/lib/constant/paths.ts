@@ -69,6 +69,9 @@ export function shopPath(filters: ShopFilters = {}): string {
 export const PROTECTED_PATHS = {
   INDEX: '/admin-panel',
   PRODUCTS: '/admin-panel/products',
+  ORDERS: '/admin-panel/orders',
+  /** The shipping-rate editor — «نرخ ارسال» in the sidebar. */
+  SHIPPING: '/admin-panel/shipping',
 } as const;
 
 /** The admin "new product" form page. */
@@ -77,6 +80,10 @@ export const adminNewProductPath = () => `${PROTECTED_PATHS.PRODUCTS}/new`;
 /** The admin edit-product form page for one product, by id. */
 export const adminEditProductPath = (id: string) =>
   `${PROTECTED_PATHS.PRODUCTS}/${encodeURIComponent(id)}`;
+
+/** The admin order-detail page for one order, by uuid id. */
+export const adminOrderPath = (id: string) =>
+  `${PROTECTED_PATHS.ORDERS}/${encodeURIComponent(id)}`;
 
 export const API_PATHS = {
   DOC: '/api/doc',
@@ -89,6 +96,9 @@ export const API_PATHS = {
   // agnostic — and guarding `/products/:id` that way would also 403 the public
   // `GET /products/{slug}`. Nothing public lives under `/admin`.
   ADMIN_PRODUCTS: '/api/admin/products',
+  // Admin order management — read one order (admin projection) and transition it.
+  // Same `/admin/*` prefix and `requireAdmin` guard as the product routes.
+  ADMIN_ORDERS: '/api/admin/orders',
   SHIPPING_RATES: '/api/shipping/rates',
   CHECKOUT: '/api/checkout',
   ORDERS: '/api/orders',
@@ -115,6 +125,20 @@ export const API_ORDER_DETAIL_TEMPLATE = `${API_PATHS.ORDERS}/{id}`;
 /** The owner-scoped order-detail path for one order. */
 export const apiOrderPath = (id: string) =>
   `${API_PATHS.ORDERS}/${encodeURIComponent(id)}`;
+
+/** `/api/admin/orders/{id}` — the OpenAPI template for the admin order read. */
+export const API_ADMIN_ORDER_TEMPLATE = `${API_PATHS.ADMIN_ORDERS}/{id}`;
+
+/** The admin order-read path for one order, by id. */
+export const apiAdminOrderPath = (id: string) =>
+  `${API_PATHS.ADMIN_ORDERS}/${encodeURIComponent(id)}`;
+
+/** `/api/admin/orders/{id}/transitions` — the OpenAPI template for a status change. */
+export const API_ADMIN_ORDER_TRANSITIONS_TEMPLATE = `${API_PATHS.ADMIN_ORDERS}/{id}/transitions`;
+
+/** The admin status-transition path for one order, by id. */
+export const apiAdminOrderTransitionsPath = (id: string) =>
+  `${API_PATHS.ADMIN_ORDERS}/${encodeURIComponent(id)}/transitions`;
 
 /** `/api/shipping/rates/{provinceId}` — the OpenAPI template for the admin update. */
 export const API_SHIPPING_RATE_TEMPLATE = `${API_PATHS.SHIPPING_RATES}/{provinceId}`;
