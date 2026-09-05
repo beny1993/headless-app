@@ -3,7 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { Home, LogOut, Menu, Package } from 'lucide-react';
+import {
+  Home,
+  LogOut,
+  Menu,
+  Package,
+  Settings,
+  ShoppingCart,
+} from 'lucide-react';
 import { PATHS, PROTECTED_PATHS } from '@/lib/constant/paths';
 import { cn } from '@/lib/utils';
 
@@ -27,9 +34,21 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { href: PROTECTED_PATHS.INDEX, label: 'داشبورد', icon: Home, match: 'exact' },
   {
+    href: PROTECTED_PATHS.ORDERS,
+    label: 'سفارش‌ها',
+    icon: ShoppingCart,
+    match: 'prefix',
+  },
+  {
     href: PROTECTED_PATHS.PRODUCTS,
     label: 'محصولات',
     icon: Package,
+    match: 'prefix',
+  },
+  {
+    href: PROTECTED_PATHS.SHIPPING,
+    label: 'نرخ ارسال',
+    icon: Settings,
     match: 'prefix',
   },
 ];

@@ -1,31 +1,44 @@
 import type { Metadata } from 'next';
-import { UsersCard } from '@/features/admin-panel/dashboard/users-card';
+import { formatToman } from '@/lib/format';
+import { buildDashboardReport } from '@/logic/orders/dashboard-report';
 import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+  countLabel,
+  MonthlyBarChart,
+} from '@/features/admin-panel/dashboard/monthly-bar-chart';
+import { StatCards } from '@/features/admin-panel/dashboard/stat-cards';
 
-export const metadata: Metadata = {
-  title: 'Dashboard',
-};
+export const metadata: Metadata = { title: 'داشبورد' };
 
-export default function AdminPanelPage() {
+// Reads live order aggregates per request.
+export const dynamic = 'force-dynamic';
+
+export default async function AdminPanelPage() {
+  const report = await buildDashboardReport();
+
   return (
     <div className="flex flex-col gap-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Welcome</CardTitle>
-          <CardDescription>
-            This is the authenticated admin panel. Build admin pages here — each
-            page goes through the session gate in the (protected) layout, reads
-            data through DAOs, and mutates through server actions or the Hono
-            API.
-          </CardDescription>
-        </CardHeader>
-      </Card>
-      <UsersCard />
+      <h1 className="text-2xl font-black">داشبورد</h1>
+
+      <StatCards stats={report.stats} />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <MonthlyBarChart
+          title="روند فروش (۶ ماه)"
+          points={report.months.map((month) => ({
+            label: month.label,
+            value: month.revenue,
+          }))}
+          formatValue={formatToman}
+        />
+        <MonthlyBarChart
+          title="تعداد سفارش‌ها (۶ ماه)"
+          points={report.months.map((month) => ({
+            label: month.label,
+            value: month.orders,
+          }))}
+          formatValue={countLabel}
+        />
+      </div>
     </div>
   );
 }
