@@ -22,7 +22,11 @@ import type { Product } from '@/db/schema/catalog';
 import { productInputSchema } from '@/lib/catalog/product-input';
 import { PET_TYPES } from '@/lib/catalog/product-query';
 import { replaceProductImage } from '@/logic/admin/product-images';
-import { IMAGE_FIELD_NAME, sniffImageType } from '@/lib/storage/image-upload';
+import {
+  IMAGE_FIELD_NAME,
+  MAX_UPLOAD_BYTES,
+  sniffImageType,
+} from '@/lib/storage/image-upload';
 import {
   apiError,
   apiErrorSchema,
@@ -310,6 +314,12 @@ export const productImageUploadHandler = async (
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (bytes.byteLength === 0) {
     return c.json(apiError(NO_IMAGE_FILE_MESSAGE), 400);
+  }
+  // Backstop under `bodyLimit`: the mounted `bodyLimit` refuses an oversize body
+  // before it is buffered, but this re-checks the read length so the ceiling is
+  // still enforced if a caller ever reaches this handler off that guarded path.
+  if (bytes.byteLength > MAX_UPLOAD_BYTES) {
+    return c.json(apiError(IMAGE_TOO_LARGE_MESSAGE), 413);
   }
 
   const type = sniffImageType(bytes);
