@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
 import { z } from 'zod';
+import { toLocalIranPhone } from '@/lib/auth/phone';
 import { PROTECTED_PATHS } from '@/lib/constant/paths';
 import { formatJalali, formatToman, toPersianDigits } from '@/lib/format';
 import { PAYMENT_METHODS } from '@/lib/orders/order-status';
@@ -126,7 +127,7 @@ export default async function AdminOrderDetailPage({
             <h2 className="mb-3 font-bold">مشتری</h2>
             <p className="font-medium">{order.recipientName}</p>
             <p className="text-muted-foreground nums text-sm" dir="ltr">
-              {toPersianDigits(order.recipientPhone)}
+              {toPersianDigits(toLocalIranPhone(order.recipientPhone))}
             </p>
           </section>
 
@@ -176,20 +177,17 @@ export default async function AdminOrderDetailPage({
                         label="مبلغ"
                         value={formatToman(payment.amount)}
                       />
+                      {/* Authority and ref id are opaque gateway keys an admin
+                          copies verbatim into Zarinpal's panel to reconcile —
+                          render them as-is, never Persian-digit folded. */}
                       <PayRow
                         label="شناسه پرداخت"
-                        value={
-                          payment.authority
-                            ? toPersianDigits(payment.authority)
-                            : '—'
-                        }
+                        value={payment.authority ?? '—'}
                         ltr
                       />
                       <PayRow
                         label="کد پیگیری"
-                        value={
-                          payment.refId ? toPersianDigits(payment.refId) : '—'
-                        }
+                        value={payment.refId ?? '—'}
                         ltr
                       />
                       {payment.cardPan && (

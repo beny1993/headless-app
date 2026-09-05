@@ -85,6 +85,30 @@ describe('OrderTransition', () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
+  it('re-enables the next status buttons after a successful transition', async () => {
+    // The pin for the refresh-preserves-state bug: `router.refresh()` keeps this
+    // client component mounted (state survives), so if `busy` were left set after
+    // success, the newly-rendered buttons would stay disabled and the admin could
+    // not chain paid → processing → shipped without a reload. Simulate the round
+    // trip: click, resolve, then re-render with the order's new status.
+    postData.mockResolvedValue({});
+    const view = render(
+      <OrderTransition orderId={ORDER_ID} status={ORDER_STATUSES.PAID} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /در حال پردازش/ }));
+    await act(async () => {});
+
+    // The server refresh lands: the control is re-rendered with the new status.
+    view.rerender(
+      <OrderTransition orderId={ORDER_ID} status={ORDER_STATUSES.PROCESSING} />,
+    );
+
+    const shipButton = screen.getByRole('button', {
+      name: /ارسال شده/,
+    }) as HTMLButtonElement;
+    expect(shipButton.disabled).toBe(false);
+  });
+
   it('shows the server message and does not refresh when the transition is rejected', async () => {
     postData.mockRejectedValue(new Error('این تغییر وضعیت مجاز نیست'));
     render(<OrderTransition orderId={ORDER_ID} status={ORDER_STATUSES.PAID} />);

@@ -158,7 +158,10 @@ export const adminOrderDetailRoute = createRoute({
     200: {
       content: {
         'application/json': {
-          schema: apiSuccessSchema(AdminOrderDetailSchema, 'AdminOrderDetail'),
+          schema: apiSuccessSchema(
+            AdminOrderDetailSchema,
+            'AdminOrderDetailResponse',
+          ),
         },
       },
       description: 'The order with item snapshots and the admin payment view',

@@ -23,6 +23,12 @@ import { cn } from '@/lib/utils';
  * that this component then changes is exactly the state-sync bug class the
  * component-test rule guards; keeping only `busy`/`error` local avoids it.)
  *
+ * `busy` is cleared in `finally`, not left set on success: `router.refresh()`
+ * updates the server tree but PRESERVES this client component's state (it does
+ * not remount), so a lingering `busy` would render the next status's buttons
+ * disabled and strand the order. The brief enabled window before the refresh
+ * lands is safe — a duplicate transition hits the CAS and answers 409.
+ *
  * The server still rejects an illegal or stale transition (400/409); this only
  * decides what to *offer*. A terminal order offers nothing.
  */
@@ -55,16 +61,16 @@ export function OrderTransition({
     try {
       await postData(apiAdminOrderTransitionsPath(orderId), { to });
       // The server is now authoritative; re-render from it rather than tracking
-      // the new status locally. Leave `busy` set — this control is about to be
-      // replaced by the refreshed one, and it must not accept a second click.
+      // the new status locally.
       router.refresh();
     } catch (requestError) {
-      setBusy(null);
       setError(
         requestError instanceof Error
           ? requestError.message
           : 'تغییر وضعیت سفارش ناموفق بود. دوباره تلاش کن.',
       );
+    } finally {
+      setBusy(null);
     }
   };
 
