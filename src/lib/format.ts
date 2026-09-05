@@ -86,6 +86,46 @@ export function formatJalali(date: Date): string {
   return jalaliDate.format(date);
 }
 
+// Latin numbering so the parts parse straight to integers — this is a bucketing
+// key, not display, so it must never carry Persian digits. Tehran-pinned for the
+// same reason as `jalaliDate`: the same instant must not bucket into a different
+// month (or, at Nowruz, year) depending on where the server runs.
+const jalaliYearMonthParts = new Intl.DateTimeFormat(LOCALE, {
+  calendar: 'persian',
+  timeZone: TIME_ZONE,
+  numberingSystem: 'latn',
+  year: 'numeric',
+  month: 'numeric',
+});
+
+/**
+ * A UTC instant as its Tehran-local Jalali `{ year, month }`, both integers
+ * (month 1–12). The stable key the dashboard buckets orders by — Postgres has no
+ * Persian calendar, so revenue "per month" is grouped here in JS rather than in
+ * SQL, which would only ever produce Gregorian months that straddle two Jalali
+ * ones. Pairs with {@link formatJalaliMonth} for the human label.
+ */
+export function jalaliYearMonth(date: Date): { year: number; month: number } {
+  const parts = jalaliYearMonthParts.formatToParts(date);
+  const year = Number(parts.find((p) => p.type === 'year')?.value);
+  const month = Number(parts.find((p) => p.type === 'month')?.value);
+  if (!Number.isInteger(year) || !Number.isInteger(month)) {
+    throw new RangeError(`jalaliYearMonth: not a valid date: ${date}`);
+  }
+  return { year, month };
+}
+
+const jalaliMonthName = new Intl.DateTimeFormat(LOCALE, {
+  calendar: 'persian',
+  timeZone: TIME_ZONE,
+  month: 'long',
+});
+
+/** The Jalali month name alone, e.g. `شهریور` — a chart axis label. */
+export function formatJalaliMonth(date: Date): string {
+  return jalaliMonthName.format(date);
+}
+
 /** The Jalali year alone: `۱۴۰۵`. Defaults to now (footer copyright). */
 export function formatJalaliYear(date: Date = new Date()): string {
   return jalaliYear.format(date);
