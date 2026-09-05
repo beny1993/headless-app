@@ -18,6 +18,19 @@ export enum VARS {
   // `true` routes the real driver at Zarinpal's sandbox host instead of live.
   APP_CONFIG_ZARINPAL_SANDBOX = 'APP_CONFIG_ZARINPAL_SANDBOX',
 
+  // Which storage driver `src/lib/storage` dispatches through for product image
+  // uploads. `local` (the default) writes files under APP_CONFIG_STORAGE_LOCAL_ROOT
+  // and serves them from `/uploads/*` — the shipped default so uploads work on
+  // local and test deployments with no object-storage account. The S3-compatible
+  // (Arvan/Liara) driver is added when a provider is picked; until then selecting
+  // it throws, like the real Zarinpal driver.
+  APP_CONFIG_STORAGE_PROVIDER = 'APP_CONFIG_STORAGE_PROVIDER',
+  // Filesystem root the `local` driver writes uploads into (and the serving route
+  // reads them back from). Relative paths resolve from the process working
+  // directory. Defaults to `uploads` at the repo root; keep it out of `public/`
+  // and out of git.
+  APP_CONFIG_STORAGE_LOCAL_ROOT = 'APP_CONFIG_STORAGE_LOCAL_ROOT',
+
   APP_CONFIG_EMAIL_ENABLED = 'APP_CONFIG_EMAIL_ENABLED',
   APP_CONFIG_SMTP_SERVER = 'APP_CONFIG_SMTP_SERVER',
   APP_CONFIG_SMTP_PORT = 'APP_CONFIG_SMTP_PORT',

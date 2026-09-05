@@ -539,6 +539,92 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       );
       expect(storefront.map((row) => row.id)).toEqual([active.id]);
     });
+
+    it('narrows to inactive-only, and to active-only, on request', async () => {
+      const category = await makeCategory();
+      const active = await ProductDao.create(makeProduct(category));
+      const removed = await ProductDao.create(makeProduct(category));
+      await ProductDao.softDelete(removed.id);
+
+      const inCategory = (rows: { categoryId: string; id: string }[]) =>
+        rows.filter((row) => row.categoryId === category.id).map((r) => r.id);
+
+      expect(
+        inCategory(await ProductDao.listForAdmin({ active: false })),
+      ).toEqual([removed.id]);
+      expect(
+        inCategory(await ProductDao.listForAdmin({ active: true })),
+      ).toEqual([active.id]);
+    });
+
+    it('filters by category, pet type and a normalized search term', async () => {
+      const category = await makeCategory();
+      const other = await makeCategory();
+      const cat = await ProductDao.create(
+        makeProduct(category, {
+          title: 'غذای خشک گربه رویال',
+          petType: PET_TYPES.CAT,
+        }),
+      );
+      const dog = await ProductDao.create(
+        makeProduct(category, { title: 'قلاده سگ', petType: PET_TYPES.DOG }),
+      );
+      await ProductDao.create(makeProduct(other));
+
+      const ids = (rows: { id: string }[]) => rows.map((r) => r.id).sort();
+
+      expect(
+        ids(await ProductDao.listForAdmin({ categorySlug: category.slug })),
+      ).toEqual([cat.id, dog.id].sort());
+      expect(
+        ids(
+          await ProductDao.listForAdmin({
+            categorySlug: category.slug,
+            petType: PET_TYPES.DOG,
+          }),
+        ),
+      ).toEqual([dog.id]);
+      // Arabic yeh in the query still matches the Persian-yeh column (normalized
+      // on both sides) — «گربه» typed with the Arabic form.
+      expect(
+        ids(
+          await ProductDao.listForAdmin({
+            categorySlug: category.slug,
+            search: 'گربه',
+          }),
+        ),
+      ).toEqual([cat.id]);
+    });
+  });
+
+  describe('findByIdForAdmin', () => {
+    it('loads an inactive product the storefront read would hide', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+      await ProductDao.softDelete(product.id);
+
+      const found = await ProductDao.findByIdForAdmin(product.id);
+      expect(found?.id).toBe(product.id);
+      expect(found?.isActive).toBe(false);
+      // The storefront read of the same slug is null (active-only).
+      expect(await ProductDao.getBySlug(product.slug)).toBeNull();
+    });
+
+    it('attaches the product images, and returns null for an unknown id', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+      await ProductDao.setImages(product.id, [
+        'uploads/a.jpg',
+        'uploads/b.jpg',
+      ]);
+
+      const found = await ProductDao.findByIdForAdmin(product.id);
+      expect(found?.images.map((i) => i.objectKey)).toEqual([
+        'uploads/a.jpg',
+        'uploads/b.jpg',
+      ]);
+      expect(await ProductDao.findByIdForAdmin(faker.string.uuid())).toBeNull();
+    });
   });
 
   describe('update', () => {

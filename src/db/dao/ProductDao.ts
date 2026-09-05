@@ -13,6 +13,7 @@ import {
   eq,
   getTableColumns,
   gte,
+  ilike,
   inArray,
   lte,
   sql,
@@ -146,6 +147,19 @@ export type ProductListOptions = ProductFilters & {
 export type ProductPage = { items: ProductWithImages[]; total: number };
 
 /**
+ * Admin listing filters. Unlike {@link ProductFilters}, `active` is a first-class
+ * filter here — the admin panel is the one read that may show soft-deleted rows,
+ * so `undefined` means "both", not "active only".
+ */
+export type AdminProductFilters = {
+  search?: string;
+  categorySlug?: string;
+  petType?: PetType;
+  /** `undefined` = active and inactive; `true` = active only; `false` = inactive only. */
+  active?: boolean;
+};
+
+/**
  * Whatever a query can run on: the pool, or a transaction on one connection of
  * it. The listing builds the same two queries either way — only a search needs
  * the transaction, and only because its threshold lives in one.
@@ -237,13 +251,57 @@ export class ProductDao {
   }
 
   /** Admin panel listing — includes the products a soft delete hid. */
-  static async listForAdmin(): Promise<ProductWithImages[]> {
+  static async listForAdmin(
+    filters: AdminProductFilters = {},
+  ): Promise<ProductWithImages[]> {
+    const where: SQL[] = [];
+    // The one filter that separates this from the storefront read: `active`
+    // undefined means *both* — the admin sees soft-deleted rows by default, and
+    // narrows to only-active or only-inactive on request.
+    if (filters.active !== undefined) {
+      where.push(eq(products.isActive, filters.active));
+    }
+    if (filters.categorySlug) {
+      where.push(eq(categories.slug, filters.categorySlug));
+    }
+    if (filters.petType) {
+      where.push(eq(products.petType, filters.petType));
+    }
+    // A plain case-insensitive substring on the normalized search text — an
+    // operational lookup, not the storefront's trigram fuzziness, so it needs
+    // neither the similarity GUC nor a transaction. The term is normalized the
+    // same way the column was written, so Arabic vs. Persian yeh/kaf still match.
+    const search = filters.search ? normalizeSearchText(filters.search) : '';
+    if (search) {
+      where.push(ilike(products.searchText, `%${search}%`));
+    }
+
     const rows = await db
-      .select()
+      .select(getTableColumns(products))
       .from(products)
+      .innerJoin(categories, eq(products.categoryId, categories.id))
+      .where(where.length > 0 ? and(...where) : undefined)
       .orderBy(desc(products.createdAt), asc(products.sku));
 
     return ProductDao.withImages(rows);
+  }
+
+  /**
+   * One product by id for the admin edit form — **including inactive ones**, so
+   * a soft-deleted product can still be reopened and reactivated. This is the
+   * admin counterpart of `getBySlug`, which filters `is_active` and so could
+   * never load a removed product; the id (not the slug) is what the admin list
+   * links to.
+   */
+  static async findByIdForAdmin(id: string): Promise<ProductWithImages | null> {
+    const rows = await db
+      .select()
+      .from(products)
+      .where(eq(products.id, id))
+      .limit(1);
+
+    const [row] = await ProductDao.withImages(rows);
+    return row ?? null;
   }
 
   /** Storefront product page. An inactive product reads as absent. */

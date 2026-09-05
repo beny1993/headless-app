@@ -107,6 +107,9 @@ export const post = <T>(path: string, body?: unknown, headers?: Headers) =>
 export const patch = <T>(path: string, body?: unknown) =>
   request<ApiResponse<T>>(path, withBody('PATCH', body));
 
+export const put = <T>(path: string, body?: unknown) =>
+  request<ApiResponse<T>>(path, withBody('PUT', body));
+
 /**
  * DELETE returns the standard envelope with a 200, not a bodyless 204 — `request`
  * reads `response.json()` unconditionally, and a 204 would leave it parsing an
@@ -130,6 +133,9 @@ export const postData = async <T>(
 
 export const patchData = async <T>(path: string, body?: unknown): Promise<T> =>
   unwrap(await patch<T>(path, body));
+
+export const putData = async <T>(path: string, body?: unknown): Promise<T> =>
+  unwrap(await put<T>(path, body));
 
 export const delData = async <T>(path: string): Promise<T> =>
   unwrap(await del<T>(path));
