@@ -3,7 +3,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   ALLOWED_TRANSITIONS,
+  adminNextStatuses,
+  adminTransitionTargetSchema,
   canTransition,
+  GATEWAY_OWNED_STATUSES,
   initialStatusFor,
   ORDER_STATUS_VALUES,
   ORDER_STATUSES,
@@ -70,6 +73,67 @@ describe('order state machine transition rules', () => {
     ]) {
       expect(ALLOWED_TRANSITIONS[terminal]).toEqual([]);
     }
+  });
+});
+
+describe('adminNextStatuses (admin-triggerable subset)', () => {
+  // The admin panel offers these buttons. Spelled out independently of the
+  // implementation — it must reproduce exactly the design's ADMIN_TRANSITIONS,
+  // which is the full machine minus the gateway-owned targets. If this list and
+  // the derived map disagree, one is wrong.
+  const ADMIN_NEXT: Record<OrderStatus, OrderStatus[]> = {
+    [ORDER_STATUSES.PENDING_PAYMENT]: [ORDER_STATUSES.CANCELLED],
+    [ORDER_STATUSES.PAID]: [
+      ORDER_STATUSES.PROCESSING,
+      ORDER_STATUSES.CANCELLED,
+    ],
+    [ORDER_STATUSES.PROCESSING]: [
+      ORDER_STATUSES.SHIPPED,
+      ORDER_STATUSES.CANCELLED,
+    ],
+    [ORDER_STATUSES.SHIPPED]: [ORDER_STATUSES.DELIVERED],
+    [ORDER_STATUSES.DELIVERED]: [],
+    [ORDER_STATUSES.CANCELLED]: [],
+    [ORDER_STATUSES.FAILED]: [],
+  };
+
+  it('gateway-owned statuses are exactly paid and failed', () => {
+    expect([...GATEWAY_OWNED_STATUSES].sort()).toEqual(
+      [ORDER_STATUSES.PAID, ORDER_STATUSES.FAILED].sort(),
+    );
+  });
+
+  it.each(ORDER_STATUS_VALUES)(
+    'offers exactly the design-defined admin targets from %s',
+    (from) => {
+      expect([...adminNextStatuses(from)]).toEqual(ADMIN_NEXT[from]);
+    },
+  );
+
+  it('never offers a gateway-owned target (no admin route to paid/failed)', () => {
+    for (const from of ORDER_STATUS_VALUES) {
+      for (const to of adminNextStatuses(from)) {
+        expect(GATEWAY_OWNED_STATUSES).not.toContain(to);
+      }
+    }
+  });
+
+  it('every admin target is a real legal edge of the machine (a subset, never a superset)', () => {
+    for (const from of ORDER_STATUS_VALUES) {
+      for (const to of adminNextStatuses(from)) {
+        expect(canTransition(from, to)).toBe(true);
+        expect(ALLOWED_TRANSITIONS[from]).toContain(to);
+      }
+    }
+  });
+
+  it('validates a target status, rejecting non-statuses', () => {
+    expect(adminTransitionTargetSchema.safeParse('shipped').success).toBe(true);
+    expect(adminTransitionTargetSchema.safeParse('paid').success).toBe(true);
+    expect(adminTransitionTargetSchema.safeParse('nonsense').success).toBe(
+      false,
+    );
+    expect(adminTransitionTargetSchema.safeParse(3).success).toBe(false);
   });
 });
 

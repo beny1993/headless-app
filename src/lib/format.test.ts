@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatJalali,
+  formatJalaliMonth,
   formatJalaliYear,
   formatNumber,
   formatToman,
+  jalaliYearMonth,
   toPersianDigits,
 } from '@/lib/format';
 
@@ -160,6 +162,52 @@ describe('formatJalali', () => {
 
   it('throws on an invalid date rather than rendering garbage', () => {
     expect(() => formatJalali(new Date('not a date'))).toThrow(RangeError);
+  });
+});
+
+describe('jalaliYearMonth', () => {
+  it('returns integer Jalali year and month in Tehran time', () => {
+    // 29 Aug 2026 → 7 Shahrivar 1405 (month 6).
+    expect(jalaliYearMonth(new Date(Date.UTC(2026, 7, 29, 12, 0, 0)))).toEqual({
+      year: 1405,
+      month: 6,
+    });
+  });
+
+  it('rolls the month and year over at Nowruz in Tehran time', () => {
+    // 20 Mar 2026 23:30 Tehran — still Esfand 1404 (month 12).
+    expect(jalaliYearMonth(new Date(Date.UTC(2026, 2, 20, 20, 0, 0)))).toEqual({
+      year: 1404,
+      month: 12,
+    });
+    // 21 Mar 2026 00:00 Tehran — Farvardin 1405 (month 1).
+    expect(jalaliYearMonth(new Date(Date.UTC(2026, 2, 20, 20, 30, 0)))).toEqual(
+      { year: 1405, month: 1 },
+    );
+  });
+
+  it('throws on an invalid date rather than returning NaN', () => {
+    expect(() => jalaliYearMonth(new Date('not a date'))).toThrow(RangeError);
+  });
+});
+
+describe('formatJalaliMonth', () => {
+  it('returns the Jalali month name alone', () => {
+    expect(formatJalaliMonth(new Date(Date.UTC(2026, 7, 29, 12, 0, 0)))).toBe(
+      'شهریور',
+    );
+  });
+
+  it('respects the Nowruz boundary in Tehran time', () => {
+    expect(formatJalaliMonth(new Date(Date.UTC(2026, 2, 20, 20, 30, 0)))).toBe(
+      'فروردین',
+    );
+  });
+
+  it('carries no digits — it is a label, not a date', () => {
+    expect(formatJalaliMonth(new Date(Date.UTC(2026, 7, 29)))).not.toMatch(
+      /[0-9۰-۹]/,
+    );
   });
 });
 

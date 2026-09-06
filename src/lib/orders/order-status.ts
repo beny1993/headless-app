@@ -95,6 +95,35 @@ export const canTransition = (from: OrderStatus, to: OrderStatus): boolean =>
   ALLOWED_TRANSITIONS[from].includes(to);
 
 /**
+ * The statuses the payment system owns — an order reaches them only through
+ * Zarinpal verify (`paid`) or the reconcile/expiry sweep (`failed`), never from
+ * an admin pressing a button. They are legal edges of the machine (the CAS still
+ * performs them), but they must not be offered as admin transitions: letting an
+ * operator flip an order to `paid` would book money the gateway never confirmed.
+ */
+export const GATEWAY_OWNED_STATUSES: readonly OrderStatus[] = [
+  ORDER_STATUSES.PAID,
+  ORDER_STATUSES.FAILED,
+];
+
+/**
+ * The next statuses an admin may *trigger* from `from` — the machine's legal
+ * edges (`ALLOWED_TRANSITIONS`) minus the gateway-owned targets. Derived, never
+ * a hand-written second list: it is always a subset of the real machine, so the
+ * admin UI can never offer an illegal edge and the admin transition endpoint can
+ * never be talked into `paid`/`failed`. This is the single source the button list
+ * and the server-side transition check both read (the admin panel imports it in a
+ * `'use client'` component, which is why it lives in this client-safe module).
+ *
+ * It reproduces exactly the design's `ADMIN_TRANSITIONS`; the difference is that
+ * this cannot drift from `ALLOWED_TRANSITIONS`, whereas a copied map could.
+ */
+export const adminNextStatuses = (from: OrderStatus): readonly OrderStatus[] =>
+  ALLOWED_TRANSITIONS[from].filter(
+    (to) => !GATEWAY_OWNED_STATUSES.includes(to),
+  );
+
+/**
  * The status a freshly created order starts in. COD orders skip the gateway and
  * enter fulfillment directly at `processing`; Zarinpal orders wait at
  * `pending_payment` for a verified payment. This is the state machine's entry
@@ -128,3 +157,11 @@ export const PAYMENT_STATUS_VALUES = Object.values(PAYMENT_STATUSES) as [
 export const orderStatusSchema = z.enum(ORDER_STATUS_VALUES);
 export const paymentMethodSchema = z.enum(PAYMENT_METHOD_VALUES);
 export const paymentStatusSchema = z.enum(PAYMENT_STATUS_VALUES);
+
+/**
+ * The `to` of an admin transition request body. It accepts any order status (a
+ * value against the real enum, never a bare string); whether that target is
+ * *legal* from the order's current status is decided by `adminNextStatuses`
+ * server-side, since legality depends on the current state, not the value alone.
+ */
+export const adminTransitionTargetSchema = orderStatusSchema;

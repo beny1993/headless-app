@@ -19,7 +19,10 @@ export default async function ProtectedLayout({
       <AdminSidebar />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="border-border flex shrink-0 items-center justify-between border-b bg-white px-6 py-4">
+        {/* `ps-16` below `lg` leaves room for the sidebar's fixed mobile
+            hamburger (which lives in this gutter); `lg:ps-6` once the rail
+            takes over and the hamburger is hidden. */}
+        <header className="border-border flex shrink-0 items-center justify-between border-b bg-white py-4 ps-16 pe-6 lg:ps-6">
           <span className="text-muted-foreground text-sm">
             پنل مدیریت اسموکی
           </span>
