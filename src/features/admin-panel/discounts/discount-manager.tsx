@@ -43,7 +43,11 @@ export function DiscountManager({
     setCodes((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
 
   return (
-    <div className="flex flex-col gap-6">
+    // `min-w-0`: this is a flex item (of the page's flex column) that contains a
+    // wide table. Without it the item's `min-width:auto` grows to the table's
+    // intrinsic width and the table's `overflow-x-auto` wrapper never scrolls —
+    // pushing the whole admin page off-screen at narrow widths.
+    <div className="flex min-w-0 flex-col gap-6">
       <CreateForm onCreated={onCreated} />
       <CodeTable codes={codes} onToggled={onToggled} />
     </div>
