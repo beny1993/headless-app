@@ -80,7 +80,10 @@ export default async function AdminOrderDetailPage({
                     <p className="line-clamp-1 text-sm font-medium">
                       {item.title}
                     </p>
-                    <p className="text-muted-foreground nums text-xs" dir="ltr">
+                    <p
+                      className="text-muted-foreground nums truncate text-xs"
+                      dir="ltr"
+                    >
                       {item.sku}
                     </p>
                   </div>
