@@ -8,9 +8,11 @@
 // Needs a live database — see src/db/test-db.ts.
 import { eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { discountCodes } from '@/db/schema/discounts';
 import { orderItems, orders } from '@/db/schema/orders';
 import { products as productsTable } from '@/db/schema/catalog';
 import { provinces, shippingRates } from '@/db/schema/shipping';
+import { DISCOUNT_TYPES } from '@/lib/discount/discount-code';
 import { ORDER_STATUSES, PAYMENT_METHODS } from '@/lib/orders/order-status';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
@@ -23,6 +25,9 @@ vi.mock('@/lib/auth', () => ({ isAuthenticatedUser: mocks.getSession }));
 const { app } = await importWithDb(() => import('@/lib/hono'));
 const { ShippingRateDao } = await importWithDb(
   () => import('@/db/dao/ShippingRateDao'),
+);
+const { DiscountCodeDao } = await importWithDb(
+  () => import('@/db/dao/DiscountCodeDao'),
 );
 
 const token = () => crypto.randomUUID().slice(0, 12);
@@ -40,10 +45,17 @@ type CheckoutResult = {
 describe.skipIf(!databaseReachable)('POST /api/checkout', () => {
   const fx = new OrderFixtures();
   const provinceIds: number[] = [];
+  const codeIds: string[] = [];
 
   afterEach(async () => {
     mocks.getSession.mockReset();
     await fx.cleanup();
+    if (codeIds.length > 0) {
+      await testDb
+        .delete(discountCodes)
+        .where(inArray(discountCodes.id, codeIds));
+      codeIds.length = 0;
+    }
     if (provinceIds.length > 0) {
       await testDb
         .delete(shippingRates)
@@ -52,6 +64,21 @@ describe.skipIf(!databaseReachable)('POST /api/checkout', () => {
       provinceIds.length = 0;
     }
   });
+
+  const makeCode = async (over: Record<string, unknown> = {}) => {
+    const row = await DiscountCodeDao.create({
+      code: `SAVE-${token().toUpperCase()}`,
+      type: DISCOUNT_TYPES.PERCENT,
+      value: 10,
+      expiresAt: null,
+      usageLimit: null,
+      minOrderAmount: 0,
+      isActive: true,
+      ...over,
+    });
+    codeIds.push(row.id);
+    return row;
+  };
 
   const asUser = (id: string) =>
     mocks.getSession.mockResolvedValue({
@@ -214,7 +241,30 @@ describe.skipIf(!databaseReachable)('POST /api/checkout', () => {
     expect(response.status).toBe(422);
   });
 
-  it('422s a discount code until the discount story wires it', async () => {
+  it('applies a valid discount code end-to-end and returns the discounted total', async () => {
+    const user = await fx.user();
+    asUser(user.id);
+    const prov = await province(40_000);
+    const category = await fx.category();
+    const product = await fx.product(category, { price: 100_000, stock: 5 });
+    const code = await makeCode({ type: DISCOUNT_TYPES.PERCENT, value: 10 });
+
+    const response = await post(
+      body(prov.provinceId, [{ productId: product.id, qty: 2 }], {
+        discountCode: code.code,
+      }),
+    );
+    const payload = (await response.json()) as ApiResponse<CheckoutResult>;
+
+    expect(response.status).toBe(200);
+    if (payload.status !== 'success') throw new Error(payload.message);
+    fx.remember(payload.data.orderId);
+    expect(payload.data.subtotal).toBe(200_000);
+    expect(payload.data.discount).toBe(20_000);
+    expect(payload.data.total).toBe(200_000 - 20_000 + 40_000);
+  });
+
+  it('422s an unknown discount code, naming the field', async () => {
     const user = await fx.user();
     asUser(user.id);
     const prov = await province();
@@ -223,11 +273,18 @@ describe.skipIf(!databaseReachable)('POST /api/checkout', () => {
 
     const response = await post(
       body(prov.provinceId, [{ productId: product.id, qty: 1 }], {
-        discountCode: 'WELCOME10',
+        discountCode: 'NO-SUCH-CODE',
       }),
     );
+    const payload = (await response.json()) as ApiResponse<unknown>;
 
     expect(response.status).toBe(422);
+    if (payload.status === 'error') {
+      expect(payload.errors?.some((e) => e.startsWith('discountCode'))).toBe(
+        true,
+      );
+    }
+    expect(await ordersFor(product.id)).toBe(0);
   });
 
   it('400s a malformed body (non-uuid productId) before touching the DB', async () => {
@@ -319,6 +376,82 @@ describe.skipIf(!databaseReachable)('POST /api/checkout', () => {
 
     expect(response.status).toBe(400);
     expect(await ordersFor(product.id)).toBe(0);
+  });
+
+  // ── Discount preview (read-only; no order, no usage claim) ─────────────────────
+
+  describe('POST /api/checkout/preview', () => {
+    const preview = (body: unknown) =>
+      app.request(API_PATHS.CHECKOUT_PREVIEW, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+    it('rejects an unauthenticated request with 401 (the exact-path guard)', async () => {
+      // The regression the advisor flagged: `/checkout` is an exact-path mount, so
+      // `/checkout/preview` needs its own requireAuth or it is an anonymous
+      // code-enumeration oracle.
+      mocks.getSession.mockResolvedValue(null);
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const code = await makeCode();
+
+      const response = await preview({
+        items: [{ productId: product.id, qty: 1 }],
+        discountCode: code.code,
+      });
+      expect(response.status).toBe(401);
+    });
+
+    it('returns the server-computed subtotal and discount for a valid code (no usage claim)', async () => {
+      const user = await fx.user();
+      asUser(user.id);
+      const category = await fx.category();
+      const product = await fx.product(category, { price: 100_000, stock: 5 });
+      const code = await makeCode({ type: DISCOUNT_TYPES.PERCENT, value: 10 });
+
+      const response = await preview({
+        items: [{ productId: product.id, qty: 2 }],
+        discountCode: code.code,
+      });
+      const payload = (await response.json()) as ApiResponse<{
+        subtotal: number;
+        discount: number;
+      }>;
+
+      expect(response.status).toBe(200);
+      if (payload.status !== 'success') throw new Error(payload.message);
+      expect(payload.data.subtotal).toBe(200_000);
+      expect(payload.data.discount).toBe(20_000);
+
+      // Advisory only: the preview must NOT consume a use.
+      const [row] = await testDb
+        .select({ usageCount: discountCodes.usageCount })
+        .from(discountCodes)
+        .where(eq(discountCodes.id, code.id));
+      expect(row.usageCount).toBe(0);
+    });
+
+    it('422s a bad code, naming the discountCode field', async () => {
+      const user = await fx.user();
+      asUser(user.id);
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+
+      const response = await preview({
+        items: [{ productId: product.id, qty: 1 }],
+        discountCode: 'NO-SUCH-CODE',
+      });
+      const payload = (await response.json()) as ApiResponse<unknown>;
+
+      expect(response.status).toBe(422);
+      if (payload.status === 'error') {
+        expect(payload.errors?.some((e) => e.startsWith('discountCode'))).toBe(
+          true,
+        );
+      }
+    });
   });
 
   /** How many order lines reference this product — 0 when a checkout rolled back. */

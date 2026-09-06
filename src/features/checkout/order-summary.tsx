@@ -28,15 +28,25 @@ export type SummaryLine = {
 export function OrderSummary({
   lines,
   subtotal,
+  discount = null,
   shippingFee,
   total,
 }: {
   lines: SummaryLine[];
   subtotal: bigint | number;
+  /**
+   * The applied discount (integer Toman), or `null`/0 when none. Shown as a
+   * «تخفیف» row above the total when positive — both `/checkout` (from the
+   * server preview) and the order-detail pages (from `order.discount`) pass it.
+   */
+  discount?: bigint | number | null;
   /** `null` on `/checkout` before a province is chosen. */
   shippingFee: bigint | number | null;
   total: bigint | number;
 }) {
+  const hasDiscount =
+    discount != null &&
+    (typeof discount === 'bigint' ? discount > 0n : discount > 0);
   return (
     <>
       <ul className="mb-4 space-y-3">
@@ -79,6 +89,14 @@ export function OrderSummary({
           <dd className="nums">{formatToman(subtotal)}</dd>
           <dt className="text-muted-foreground">جمع اقلام</dt>
         </div>
+        {hasDiscount && (
+          <div className="flex justify-between text-sm">
+            <dd className="nums text-success-strong">
+              −{formatToman(discount ?? 0)}
+            </dd>
+            <dt className="text-muted-foreground">تخفیف</dt>
+          </div>
+        )}
         <div className="flex justify-between text-sm">
           <dd
             className={shippingFee === null ? 'text-muted-foreground' : 'nums'}

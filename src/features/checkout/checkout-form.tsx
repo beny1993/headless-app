@@ -30,7 +30,10 @@ import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 import { API_PATHS, PATHS, checkoutResultPath } from '@/lib/constant/paths';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
-import type { CheckoutResultResponse } from '@/lib/hono/routes/checkout';
+import type {
+  CheckoutResultResponse,
+  DiscountPreviewResponse,
+} from '@/lib/hono/routes/checkout';
 import type { ShippingRateResponse } from '@/lib/hono/routes/shipping';
 import { PAYMENT_METHODS, type PaymentMethod } from '@/lib/orders/order-status';
 import { toAsciiDigits, toPersianDigits } from '@/lib/format';
@@ -116,6 +119,19 @@ export function CheckoutForm({
   // "Save this address" — a best-effort write after the order is created; a
   // failure never blocks the redirect (see `submit`).
   const [saveAddress, setSaveAddress] = useState(false);
+  // Discount code. `applied` holds the SERVER-computed preview ({subtotal,
+  // discount}) tagged with the code and cart it was computed for; the amount the
+  // shopper sees is never client-computed. Its validity is DERIVED at render
+  // (`activeDiscount` below) rather than cleared in an effect: a preview only
+  // counts while the code text and the cart still match what it was computed
+  // against, so a changed code or cart drops it with no cascading re-render. The
+  // order re-validates and claims the code atomically at submit regardless.
+  const [discountCode, setDiscountCode] = useState('');
+  const [applied, setApplied] = useState<
+    (DiscountPreviewResponse & { code: string; signature: string }) | null
+  >(null);
+  const [discountError, setDiscountError] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
 
   // The authoritative double-submit guard: set synchronously, so a second click
   // in the same tick returns before `postData` runs — the disabled button is
@@ -129,8 +145,34 @@ export function CheckoutForm({
 
   const selectedFee =
     rates.find((rate) => String(rate.provinceId) === provinceId)?.fee ?? null;
-  const subtotal = cartTotal(lines);
-  const estimatedTotal = subtotal + BigInt(selectedFee ?? 0);
+  const clientSubtotal = cartTotal(lines);
+
+  // A stable signature of the cart contents. The applied preview is valid only
+  // while both the code text and this signature still match what it was computed
+  // for — derived here, so a changed code or cart drops the shown discount at
+  // render with no effect and no cascading update.
+  const cartSignature = lines
+    .map((line) => `${line.productId}:${line.qty}`)
+    .join('|');
+  const activeDiscount =
+    applied &&
+    applied.code === discountCode.trim() &&
+    applied.signature === cartSignature
+      ? applied
+      : null;
+
+  // When a code is applied, show the SERVER's subtotal + discount so the total
+  // always adds up (a price could have drifted since the cart was built); with no
+  // code, the client cart estimate. The order-creation response stays the sole
+  // authority on the real charge either way.
+  const subtotalForDisplay = activeDiscount
+    ? BigInt(activeDiscount.subtotal)
+    : clientSubtotal;
+  const discountForDisplay = activeDiscount
+    ? BigInt(activeDiscount.discount)
+    : null;
+  const estimatedTotal =
+    subtotalForDisplay - (discountForDisplay ?? 0n) + BigInt(selectedFee ?? 0);
 
   const summaryLines: SummaryLine[] = lines.map((line) => ({
     id: line.productId,
@@ -149,6 +191,48 @@ export function CheckoutForm({
       router.replace(PATHS.SHOP);
     }
   }, [hydrated, status, lines.length, router]);
+
+  /**
+   * Ask the server what the code takes off the current cart. Read-only — it never
+   * creates an order or consumes a use; the authoritative claim happens at submit.
+   * The displayed discount is whatever the server returns, never computed here.
+   * The result is tagged with the code + cart signature so `activeDiscount` can
+   * drop it the moment either changes.
+   */
+  const applyCode = async () => {
+    const trimmed = discountCode.trim();
+    if (!trimmed || applying) return;
+    setApplying(true);
+    setDiscountError(null);
+    try {
+      const result = await postData<DiscountPreviewResponse>(
+        API_PATHS.CHECKOUT_PREVIEW,
+        {
+          items: lines.map((line) => ({
+            productId: line.productId,
+            qty: line.qty,
+          })),
+          discountCode: trimmed,
+        },
+      );
+      setApplied({ ...result, code: trimmed, signature: cartSignature });
+    } catch (error) {
+      setApplied(null);
+      if (
+        error instanceof ApiRequestError &&
+        (error.status === 422 || error.status === 400)
+      ) {
+        const { fields, unmapped } = parseFieldErrors(error.errors);
+        setDiscountError(fields.discountCode ?? unmapped[0] ?? error.message);
+      } else {
+        setDiscountError(
+          error instanceof Error ? error.message : GENERIC_ERROR,
+        );
+      }
+    } finally {
+      setApplying(false);
+    }
+  };
 
   const clearError = (path: string) =>
     setFieldErrors((prev) => {
@@ -223,6 +307,9 @@ export function CheckoutForm({
         addressLine: addressLine.trim(),
       },
       paymentMethod,
+      // Only when a code is present — the server re-validates and claims it
+      // atomically, whatever the preview showed.
+      ...(discountCode.trim() ? { discountCode: discountCode.trim() } : {}),
     };
 
     try {
@@ -281,6 +368,12 @@ export function CheckoutForm({
       ) {
         const { fields, unmapped } = parseFieldErrors(error.errors);
         setFieldErrors(fields);
+        // A discountCode error belongs on the code input (in the summary card),
+        // not the wizard steps — surface it there and drop any stale preview.
+        if (fields.discountCode) {
+          setApplied(null);
+          setDiscountError(fields.discountCode);
+        }
         // Field errors on an input show inline; `items.*` (a cart line) and any
         // unmapped message have no input to attach to → the top-level alert.
         const itemMessages = Object.entries(fields)
@@ -712,9 +805,84 @@ export function CheckoutForm({
 
           <div className="bg-card border-border h-fit rounded-2xl border p-5">
             <h2 className="mb-4 font-bold">خلاصه سفارش</h2>
+
+            <div className="mb-4">
+              <label
+                htmlFor={`${fieldId}-discount`}
+                className="mb-1.5 block text-sm font-medium"
+              >
+                کد تخفیف
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id={`${fieldId}-discount`}
+                  type="text"
+                  dir="ltr"
+                  value={discountCode}
+                  onChange={(event) => {
+                    setDiscountCode(event.target.value);
+                    // `activeDiscount` already stops matching once the text
+                    // differs from what was applied; just clear any stale error.
+                    setDiscountError(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void applyCode();
+                    }
+                  }}
+                  placeholder="کد را وارد کن"
+                  aria-invalid={Boolean(discountError)}
+                  aria-describedby={
+                    discountError ? `${fieldId}-discount-error` : undefined
+                  }
+                  className={cn(
+                    'bg-secondary focus-visible:border-accent-strong h-11 min-w-0 flex-1 rounded-xl border px-3 text-start transition-colors outline-none focus-visible:ring-2',
+                    discountError
+                      ? 'border-destructive bg-destructive-soft/40'
+                      : 'border-border',
+                  )}
+                  data-umami-event="checkout-discount-code"
+                />
+                <button
+                  type="button"
+                  onClick={applyCode}
+                  disabled={applying || discountCode.trim() === ''}
+                  className="border-accent-strong text-accent-strong hover:bg-accent/5 shrink-0 rounded-xl border px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                  data-umami-event="checkout-discount-apply"
+                >
+                  {applying ? '...' : 'اعمال'}
+                </button>
+              </div>
+              {discountError ? (
+                <p
+                  id={`${fieldId}-discount-error`}
+                  role="alert"
+                  className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
+                >
+                  <AlertCircle
+                    size={12}
+                    className="shrink-0"
+                    aria-hidden="true"
+                  />{' '}
+                  {discountError}
+                </p>
+              ) : activeDiscount && activeDiscount.discount > 0 ? (
+                <p className="text-success-strong mt-1.5 flex items-center gap-1 text-xs">
+                  <Check size={12} className="shrink-0" aria-hidden="true" /> کد
+                  تخفیف اعمال شد.
+                </p>
+              ) : activeDiscount ? (
+                <p className="text-muted-foreground mt-1.5 text-xs">
+                  این کد برای سبد فعلی تخفیفی ندارد.
+                </p>
+              ) : null}
+            </div>
+
             <OrderSummary
               lines={summaryLines}
-              subtotal={subtotal}
+              subtotal={subtotalForDisplay}
+              discount={discountForDisplay}
               shippingFee={selectedFee}
               total={estimatedTotal}
             />

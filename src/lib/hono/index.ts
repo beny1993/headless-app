@@ -37,7 +37,12 @@ import {
   productListHandler,
   productListRoute,
 } from './routes/catalog';
-import { checkoutHandler, checkoutRoute } from './routes/checkout';
+import {
+  checkoutHandler,
+  checkoutPreviewHandler,
+  checkoutPreviewRoute,
+  checkoutRoute,
+} from './routes/checkout';
 import { healthHandler, healthRoute } from './routes/health';
 import {
   meAddressCreateHandler,
@@ -126,6 +131,10 @@ app.openapi(reconcileRoute, reconcileHandler);
 // URL (see ./routes/orders.ts and src/logic/checkout/get-order.ts).
 const authed = createRouter<Env & AuthedEnv>();
 authed.use('/checkout', requireAuth);
+// Exact-path mount — `/checkout` above does NOT cover `/checkout/preview`, so
+// guard it explicitly (before the route) or the discount preview would be an
+// unauthenticated code-enumeration oracle.
+authed.use('/checkout/preview', requireAuth);
 authed.use('/orders/:id', requireAuth);
 authed.use('/payments/zarinpal/request', requireAuth);
 // The `/me/*` family (order history + owner-scoped pet/address CRUD) is entirely
@@ -136,6 +145,7 @@ authed.use('/payments/zarinpal/request', requireAuth);
 // the guard runs first. Every handler still scopes by `c.get('user').id`.
 authed.use('/me/*', requireAuth);
 authed.openapi(checkoutRoute, checkoutHandler);
+authed.openapi(checkoutPreviewRoute, checkoutPreviewHandler);
 authed.openapi(orderDetailRoute, orderDetailHandler);
 authed.openapi(paymentRequestRoute, paymentRequestHandler);
 authed.openapi(meOrdersRoute, meOrdersHandler);

@@ -328,6 +328,76 @@ describe('the checkout submit state machine', () => {
     expect(push).toHaveBeenCalledWith('/checkout/result/order-556');
   });
 
+  it('applies a code from the server preview and sends discountCode in the create body', async () => {
+    // The discount amount shown must be the SERVER's — the form calls the preview
+    // endpoint and reflects its `{subtotal, discount}`, then the create carries the
+    // code so the server re-validates and claims it. Revert the `discountCode` line
+    // in the submit body and the create call below no longer carries it.
+    postData.mockImplementation((path: string) => {
+      if (path === API_PATHS.CHECKOUT_PREVIEW) {
+        return Promise.resolve({ subtotal: 370_000, discount: 37_000 });
+      }
+      if (path === API_PATHS.CHECKOUT) {
+        return Promise.resolve({
+          orderId: 'order-900',
+          orderNo: 10_060,
+          status: 'processing',
+          subtotal: 370_000,
+          shippingFee: 40_000,
+          discount: 37_000,
+          total: 373_000,
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    fireEvent.change(screen.getByLabelText('کد تخفیف'), {
+      target: { value: 'save10' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'اعمال' }));
+    });
+    // The preview ran against the current cart + code…
+    const previewCall = postData.mock.calls.find(
+      (call) => call[0] === API_PATHS.CHECKOUT_PREVIEW,
+    );
+    expect(previewCall![1]).toMatchObject({ discountCode: 'save10' });
+    // …and the server-computed discount is confirmed to the shopper.
+    expect(screen.getByText('کد تخفیف اعمال شد.')).toBeTruthy();
+
+    advanceToPayment();
+    fireEvent.click(screen.getByRole('radio', { name: /پرداخت در محل/ }));
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    const createCall = postData.mock.calls.find(
+      (call) => call[0] === API_PATHS.CHECKOUT,
+    );
+    expect(createCall![1]).toMatchObject({ discountCode: 'save10' });
+  });
+
+  it('renders a discountCode 422 inline on the code input', async () => {
+    postData.mockRejectedValue(
+      new ApiRequestError(422, 'کد تخفیف واردشده معتبر نیست.', [
+        'discountCode: کد تخفیف واردشده معتبر نیست.',
+      ]),
+    );
+    fireEvent.change(screen.getByLabelText('کد تخفیف'), {
+      target: { value: 'BADCODE' },
+    });
+    advanceToPayment();
+    fireEvent.click(screen.getByRole('radio', { name: /پرداخت در محل/ }));
+
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    // The message is shown inline (the code input's own error), and the cart kept.
+    expect(screen.getByText('کد تخفیف واردشده معتبر نیست.')).toBeTruthy();
+    expect(getCart()).toHaveLength(1);
+  });
+
   it('surfaces a server error with no field mapping in the top-level alert', async () => {
     postData.mockRejectedValue(new ApiRequestError(500, 'خطای سرور'));
     advanceToPayment();

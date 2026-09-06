@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { checkoutInputSchema } from '@/lib/checkout/checkout-input';
 import { orderStatusSchema } from '@/lib/orders/order-status';
 import { CheckoutError, createOrder } from '@/logic/checkout/create-order';
+import { previewDiscount } from '@/logic/checkout/preview-discount';
 import {
   apiError,
   apiErrorSchema,
@@ -96,6 +97,85 @@ export const checkoutRoute = createRoute({
     ),
   },
 });
+
+// ── Discount preview ─────────────────────────────────────────────────────────
+// A read-only "what would this code take off?" so the checkout page shows the
+// SERVER-computed discount + new total before submit. It re-prices the cart and
+// runs the same classification/math as order creation, but claims no use — the
+// authoritative claim happens at `POST /checkout`. Authed (mounted per exact path
+// in ../index.ts) to keep it off an anonymous code-enumeration path.
+
+/** The preview body: just the cart lines and the code — derived from the checkout
+ * contract so the line caps and the duplicate-line rule are shared, not restated. */
+const checkoutPreviewBodySchema = checkoutInputSchema.pick({
+  items: true,
+  discountCode: true,
+});
+
+const DiscountPreviewSchema = z
+  .object({
+    // Server-authoritative, integer Toman. `discount` is already clamped to the
+    // subtotal, so `subtotal - discount` is never negative.
+    subtotal: z.number().int().nonnegative(),
+    discount: z.number().int().nonnegative(),
+  })
+  .openapi('DiscountPreview');
+
+/** The preview result the checkout form reads to show the applied discount. */
+export type DiscountPreviewResponse = z.infer<typeof DiscountPreviewSchema>;
+
+export const checkoutPreviewRoute = createRoute({
+  method: 'post',
+  path: '/checkout/preview',
+  tags: ['checkout'],
+  summary:
+    'Preview the server-computed discount for a cart + code (auth required)',
+  request: {
+    body: {
+      content: { 'application/json': { schema: checkoutPreviewBodySchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        'application/json': {
+          schema: apiSuccessSchema(
+            DiscountPreviewSchema,
+            'DiscountPreviewResponse',
+          ),
+        },
+      },
+      description:
+        'The re-priced subtotal and the discount the code would apply',
+    },
+    400: errorResponse('Malformed body (failed schema validation)'),
+    401: errorResponse('No session'),
+    422: errorResponse(
+      'A valid body with a code the server refused — invalid/expired/exhausted/' +
+        'below-minimum; errors[] names the discountCode field',
+    ),
+  },
+});
+
+export const checkoutPreviewHandler: RouteHandler<
+  typeof checkoutPreviewRoute,
+  Env & AuthedEnv
+> = async (c) => {
+  const input = c.req.valid('json');
+  try {
+    const preview = await previewDiscount(input);
+    return c.json(apiSuccess(preview), 200);
+  } catch (error) {
+    if (error instanceof CheckoutError) {
+      return c.json(
+        apiError(error.message, [`${error.field}: ${error.message}`]),
+        422,
+      );
+    }
+    throw error;
+  }
+};
 
 export const checkoutHandler: RouteHandler<
   typeof checkoutRoute,
