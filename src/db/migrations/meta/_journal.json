@@ -57,6 +57,13 @@
       "when": 1788546692169,
       "tag": "0007_futuristic_masked_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788715418137,
+      "tag": "0008_special_proemial_gods",
+      "breakpoints": true
     }
   ]
 }
