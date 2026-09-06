@@ -10,6 +10,7 @@ import {
   Package,
   Settings,
   ShoppingCart,
+  Tag,
   X,
 } from 'lucide-react';
 import { PATHS, PROTECTED_PATHS } from '@/lib/constant/paths';
@@ -48,6 +49,12 @@ const NAV_ITEMS: NavItem[] = [
     href: PROTECTED_PATHS.PRODUCTS,
     label: 'محصولات',
     icon: Package,
+    match: 'prefix',
+  },
+  {
+    href: PROTECTED_PATHS.DISCOUNTS,
+    label: 'کدهای تخفیف',
+    icon: Tag,
     match: 'prefix',
   },
   {

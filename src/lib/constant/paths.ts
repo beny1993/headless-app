@@ -70,6 +70,8 @@ export const PROTECTED_PATHS = {
   INDEX: '/admin-panel',
   PRODUCTS: '/admin-panel/products',
   ORDERS: '/admin-panel/orders',
+  /** The discount-code manager — «کدهای تخفیف» in the sidebar. */
+  DISCOUNTS: '/admin-panel/discounts',
   /** The shipping-rate editor — «نرخ ارسال» in the sidebar. */
   SHIPPING: '/admin-panel/shipping',
 } as const;
@@ -99,8 +101,13 @@ export const API_PATHS = {
   // Admin order management — read one order (admin projection) and transition it.
   // Same `/admin/*` prefix and `requireAdmin` guard as the product routes.
   ADMIN_ORDERS: '/api/admin/orders',
+  // Admin discount codes — create + toggle active. Same `/admin/*` guard.
+  ADMIN_DISCOUNTS: '/api/admin/discounts',
   SHIPPING_RATES: '/api/shipping/rates',
   CHECKOUT: '/api/checkout',
+  // Read-only preview of the SERVER-computed discount for the current cart + code,
+  // so the checkout page can show the amount before submit. Never creates an order.
+  CHECKOUT_PREVIEW: '/api/checkout/preview',
   ORDERS: '/api/orders',
   // Authenticated, owner-scoped customer routes. The user id is always taken from
   // the session, never from these paths — the `{id}` in a pet/address path is the
@@ -139,6 +146,13 @@ export const API_ADMIN_ORDER_TRANSITIONS_TEMPLATE = `${API_PATHS.ADMIN_ORDERS}/{
 /** The admin status-transition path for one order, by id. */
 export const apiAdminOrderTransitionsPath = (id: string) =>
   `${API_PATHS.ADMIN_ORDERS}/${encodeURIComponent(id)}/transitions`;
+
+/** `/api/admin/discounts/{id}` — the OpenAPI template for the toggle route. */
+export const API_ADMIN_DISCOUNT_TEMPLATE = `${API_PATHS.ADMIN_DISCOUNTS}/{id}`;
+
+/** The admin toggle path for one discount code, by id. */
+export const apiAdminDiscountPath = (id: string) =>
+  `${API_PATHS.ADMIN_DISCOUNTS}/${encodeURIComponent(id)}`;
 
 /** `/api/shipping/rates/{provinceId}` — the OpenAPI template for the admin update. */
 export const API_SHIPPING_RATE_TEMPLATE = `${API_PATHS.SHIPPING_RATES}/{provinceId}`;

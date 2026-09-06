@@ -8,6 +8,12 @@ import { apiErrorHandler, createRouter } from './create-router';
 import { apiError } from './envelope';
 import { requireAdmin, requireAuth, type AuthedEnv } from './middleware/auth';
 import {
+  discountCreateHandler,
+  discountCreateRoute,
+  discountToggleHandler,
+  discountToggleRoute,
+} from './routes/admin-discounts';
+import {
   adminOrderDetailHandler,
   adminOrderDetailRoute,
   adminOrderTransitionHandler,
@@ -170,6 +176,10 @@ admin.post('/admin/products/:id/images', productImageUploadHandler);
 // wildcard guard mounted above already covers these — no new mount needed.
 admin.openapi(adminOrderDetailRoute, adminOrderDetailHandler);
 admin.openapi(adminOrderTransitionRoute, adminOrderTransitionHandler);
+// Admin discount codes (`Story - Discount Codes`): create a code and toggle it
+// active/inactive. Same `/admin/*` guard — covered by the wildcard above.
+admin.openapi(discountCreateRoute, discountCreateHandler);
+admin.openapi(discountToggleRoute, discountToggleHandler);
 app.route('/', admin);
 
 // OpenAPI document + interactive reference — never expose in production.
