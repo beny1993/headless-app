@@ -285,7 +285,11 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       expect(await ordersForUser(user.id)).toHaveLength(0);
     });
 
-    it('rejects a discount code until the discount story wires it', async () => {
+    it('rejects an unknown discount code, naming the field and reserving nothing', async () => {
+      // The full discount-application behaviour (money math, atomic usage claim,
+      // concurrency) is in create-order.discount.integration.test.ts; this pins
+      // that an unknown code is a client-fixable 422 on the field, not a 500, and
+      // that the whole order (including the reservation) rolls back.
       const user = await fx.user();
       const category = await fx.category();
       const product = await fx.product(category, { stock: 5 });
@@ -295,11 +299,12 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
         createOrder(
           user.id,
           buildInput(prov, [{ productId: product.id, qty: 1 }], {
-            discountCode: 'WELCOME10',
+            discountCode: 'NO-SUCH-CODE',
           }),
         ),
       ).rejects.toMatchObject({ field: 'discountCode' });
       expect(await stockOf(product.id)).toBe(5);
+      expect(await ordersForUser(user.id)).toHaveLength(0);
     });
   });
 

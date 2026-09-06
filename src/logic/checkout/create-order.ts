@@ -11,43 +11,36 @@
 // looked up server-side, and status comes from `initialStatusFor`, never the
 // request. See the story's two blocks of carried-in security constraints.
 import { db } from '@/db';
+import { DiscountCodeDao } from '@/db/dao/DiscountCodeDao';
 import { OrderDao, type OrderItemInput } from '@/db/dao/OrderDao';
 import { PaymentDao } from '@/db/dao/PaymentDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
 import type { OrderWithItems } from '@/db/schema/orders';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
+import { computeDiscount } from '@/lib/discount/discount-code';
 import {
   ORDER_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
   initialStatusFor,
 } from '@/lib/orders/order-status';
+import { CheckoutError } from '@/logic/checkout/checkout-error';
+import {
+  DISCOUNT_EXHAUSTED,
+  DISCOUNT_FIELD,
+  assertDiscountApplicable,
+} from '@/logic/checkout/discount';
 
-/**
- * A checkout that failed on a specific piece of the request — an unavailable
- * product, insufficient stock, an unknown province, a not-yet-supported discount
- * code. `field` names the offending line or field (`items.2`, `address.provinceId`,
- * `discountCode`) so the route can answer 422 with an `errors[]` the client maps
- * back to the input; `message` is the Persian, customer-facing summary the
- * envelope shows. It is deliberately distinct from a thrown `Error` (which the
- * route lets bubble to a 500): a `CheckoutError` is expected, client-fixable input.
- */
-export class CheckoutError extends Error {
-  constructor(
-    readonly field: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'CheckoutError';
-  }
-}
+// Re-exported so the many importers of `CheckoutError` keep their path
+// (`@/logic/checkout/create-order`); the class itself lives in ./checkout-error
+// so the discount policy can throw it without an import cycle.
+export { CheckoutError };
 
 // Persian, customer-facing. The `errors[]` detail the route builds is
 // `${field}: ${message}`, per the design note.
 const PRODUCT_UNAVAILABLE = 'محصول انتخابی دیگر در دسترس نیست.';
 const INVALID_PROVINCE = 'استان انتخاب‌شده نامعتبر است.';
-const DISCOUNT_UNSUPPORTED = 'کد تخفیف فعلاً پشتیبانی نمی‌شود.';
 const TOO_MANY_OPEN_ORDERS =
   'تعداد سفارش‌های در انتظار پرداختِ شما به حد مجاز رسیده است؛ لطفاً یکی را کامل یا لغو کنید.';
 const insufficientStock = (title: string) =>
@@ -107,14 +100,19 @@ const isUniqueViolation = (error: unknown, constraint: string): boolean =>
  *  1. Look up the shipping fee by province (fail-fast, before the transaction:
  *     an unknown province reserves nothing).
  *  2. Enforce the interim open-order cap (Zarinpal only — see `MAX_OPEN_ORDERS`).
- *  3. Reject a discount code — reserved for [[Story - Discount Codes]].
- *  4. In one transaction, per line **in productId order** (deadlock symmetry with
+ *  3. In one transaction, per line **in productId order** (deadlock symmetry with
  *     the restock path): reject a missing or inactive product, then run the atomic
  *     oversell guard; a 0-row decrement is out-of-stock. Snapshot title/sku/price
  *     from the guard's fresh RETURNING row.
- *  5. Compute integer-Toman totals server-side, insert the order + item snapshots,
- *     and (COD only) a `pending` payment row. Any line failing throws, and the
- *     transaction rolls the whole order — and every earlier reservation — back.
+ *  4. If a discount code was given, apply it (still in the same transaction, so it
+ *     rolls back with everything else): classify it against the server subtotal
+ *     for a specific Persian error, then claim one use atomically — 0 rows means
+ *     exhausted/expired/deactivated in a race. The amount is computed from the
+ *     claimed row and clamped to the subtotal, never client-supplied.
+ *  5. Compute integer-Toman totals server-side, insert the order + item snapshots
+ *     (with the discount amount + code snapshotted), and (COD only) a `pending`
+ *     payment row. Any step failing throws, and the transaction rolls the whole
+ *     order — every reservation and the usage claim — back.
  */
 export const createOrder = async (
   userId: string,
@@ -158,11 +156,6 @@ export const createOrder = async (
     if (openOrders >= MAX_OPEN_ORDERS) {
       throw new CheckoutError('paymentMethod', TOO_MANY_OPEN_ORDERS);
     }
-  }
-
-  // 3. Discounts are not wired yet; any code 422s rather than being ignored.
-  if (input.discountCode !== undefined) {
-    throw new CheckoutError('discountCode', DISCOUNT_UNSUPPORTED);
   }
 
   // Keep each line's original request index so an error names the line the
@@ -222,7 +215,32 @@ export const createOrder = async (
       }
 
       const shippingFee = rate.fee;
-      const discount = 0; // until Story - Discount Codes
+
+      // Discount, if a code was given. Everything money about it is decided here,
+      // server-side, against the re-priced subtotal — the client sends only the
+      // code string. Classify the loaded row for a specific Persian error, then
+      // claim one use atomically (0 rows → exhausted/expired/deactivated in a
+      // race). Compute the amount from the CLAIMED row (like the price snapshot
+      // above, not the pre-read) and clamp it to the subtotal. The claim is in
+      // this transaction, so a later failure (oversell on a following line is
+      // impossible here — the lines are done — but the idempotency insert below,
+      // or the safe-integer guard) rolls the usage back with the order.
+      let discount = 0;
+      let discountCode: string | null = null;
+      if (input.discountCode !== undefined) {
+        const found = await DiscountCodeDao.findByCode(tx, input.discountCode);
+        const applicable = assertDiscountApplicable(
+          found,
+          subtotal,
+          new Date(),
+        );
+        const claimed = await DiscountCodeDao.claim(tx, applicable.id);
+        if (!claimed)
+          throw new CheckoutError(DISCOUNT_FIELD, DISCOUNT_EXHAUSTED);
+        discount = computeDiscount(claimed, subtotal);
+        discountCode = claimed.code;
+      }
+
       const total = subtotal + shippingFee - discount;
 
       // Overflow backstop. The schema bounds qty and the line count, but not
@@ -245,7 +263,7 @@ export const createOrder = async (
           shippingFee,
           discount,
           total,
-          discountCode: null,
+          discountCode,
           provinceId: rate.provinceId,
           provinceName: rate.name,
           recipientName: input.address.recipientName,

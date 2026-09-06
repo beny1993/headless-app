@@ -54,7 +54,8 @@ export const MAX_RECIPIENT_PHONE = 20;
 export const MAX_CITY = 100;
 export const MAX_POSTAL_CODE = 20;
 export const MAX_ADDRESS_LINE = 500;
-const MAX_DISCOUNT_CODE = 64;
+/** Cap on a checkout discount code; shared with the admin create contract. */
+export const MAX_DISCOUNT_CODE = 64;
 
 const cartLineSchema = z.object({
   productId: z.uuid(),
@@ -115,9 +116,11 @@ export const checkoutInputSchema = z.object({
     }),
   address: addressSchema,
   paymentMethod: paymentMethodSchema,
-  // Reserved for [[Story - Discount Codes]]. Present here so the contract is
-  // stable, but `createOrder` 422s any non-empty code until that story wires the
-  // atomic claim — see the design note.
+  // An optional discount code ([[Story - Discount Codes]]). Validated and applied
+  // entirely server-side: `createOrder` normalizes it, computes the discount off
+  // the re-priced subtotal, and claims one use atomically. Any text is accepted
+  // here (a code that does not match simply 422s at checkout); the amount is never
+  // client-supplied.
   discountCode: boundedText(MAX_DISCOUNT_CODE).optional(),
 });
 

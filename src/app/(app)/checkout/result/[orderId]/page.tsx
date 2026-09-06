@@ -110,6 +110,7 @@ export default async function Page({
               <OrderSummary
                 lines={summaryLines}
                 subtotal={order.subtotal}
+                discount={order.discount}
                 shippingFee={order.shippingFee}
                 total={order.total}
               />

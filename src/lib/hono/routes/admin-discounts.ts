@@ -1,0 +1,209 @@
+// Admin discount-code CRUD — create a code and toggle it active/inactive. Mounted
+// under `/admin/*` behind `requireAdmin` in ../index.ts; the guard runs before
+// every handler here (401 without a session, 403 without the admin role), so
+// nothing below re-checks authorization.
+//
+// Route pattern as elsewhere (./admin-products.ts, ./shipping.ts): a `createRoute`
+// definition plus a separate typed `RouteHandler`. The bodies are the shared,
+// client-safe `@/lib/discount/discount-code` schemas — imported, never restated,
+// so the admin form validates against the very rules the API enforces, and the
+// create body is mass-assignment-safe (no `usageCount`, no `id`). `z` from `zod`,
+// not from `@hono/zod-openapi` (see ../envelope.ts).
+//
+// There is no admin GET route: the admin page reads `DiscountCodeDao.listForAdmin`
+// server-side (like the shipping editor reads its rates), so only the two
+// mutations need an endpoint. Codes are never hard-deleted — they are
+// order-snapshotted by amount + string — so "delete" is a deactivate via toggle.
+import { createRoute, type RouteHandler } from '@hono/zod-openapi';
+import type { Env } from 'hono';
+import { z } from 'zod';
+import { DiscountCodeDao } from '@/db/dao/DiscountCodeDao';
+import type { DiscountCode } from '@/db/schema/discounts';
+import {
+  DISCOUNT_TYPE_VALUES,
+  discountCodeInputSchema,
+  discountCodeToggleSchema,
+} from '@/lib/discount/discount-code';
+import {
+  apiError,
+  apiErrorSchema,
+  apiSuccess,
+  apiSuccessSchema,
+} from '../envelope';
+import type { AuthedEnv } from '../middleware/auth';
+
+/** User-facing copy, so Persian. */
+export const DISCOUNT_NOT_FOUND_MESSAGE = 'کد تخفیف یافت نشد.';
+/** A save refused by the database (a duplicate code, or a CHECK). */
+export const DISCOUNT_SAVE_FAILED_MESSAGE =
+  'کد تخفیف ذخیره نشد؛ ورودی را بررسی کن.';
+
+/**
+ * The admin view of a discount code — the full row the panel shows, with the
+ * timestamps and expiry ISO-stringified for the client. `usageCount` is read-only
+ * here (the atomic claim owns it); it is shown so the admin sees remaining
+ * capacity.
+ */
+const DiscountCodeSchema = z
+  .object({
+    id: z.uuid(),
+    code: z.string(),
+    type: z.enum(DISCOUNT_TYPE_VALUES),
+    value: z.number().int().positive(),
+    expiresAt: z.iso.datetime().nullable(),
+    usageLimit: z.number().int().positive().nullable(),
+    usageCount: z.number().int().nonnegative(),
+    minOrderAmount: z.number().int().nonnegative(),
+    isActive: z.boolean(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .openapi('DiscountCode');
+
+/** The discount payload — what create/toggle return, and the admin list renders. */
+export type DiscountCodeView = z.infer<typeof DiscountCodeSchema>;
+
+/** Project a DAO row to the admin response — ISO the dates. */
+export const toDiscountView = (c: DiscountCode): DiscountCodeView => ({
+  id: c.id,
+  code: c.code,
+  type: c.type,
+  value: c.value,
+  expiresAt: c.expiresAt ? c.expiresAt.toISOString() : null,
+  usageLimit: c.usageLimit,
+  usageCount: c.usageCount,
+  minOrderAmount: c.minOrderAmount,
+  isActive: c.isActive,
+  createdAt: c.createdAt.toISOString(),
+  updatedAt: c.updatedAt.toISOString(),
+});
+
+const IdParamSchema = z.object({
+  id: z.uuid().meta({
+    param: { name: 'id', in: 'path' },
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  }),
+});
+
+const errorResponse = (description: string) =>
+  ({
+    content: { 'application/json': { schema: apiErrorSchema } },
+    description,
+  }) as const;
+
+// ── Postgres write-error mapping (as in admin-products) ───────────────────────
+type PgError = { code?: string; constraint?: string };
+
+const pgErrorOf = (error: unknown): PgError | null => {
+  for (const candidate of [error, (error as { cause?: unknown })?.cause]) {
+    const pg = candidate as PgError | null | undefined;
+    if (pg && typeof pg.code === 'string') return pg;
+  }
+  return null;
+};
+
+/**
+ * The `errors[]` detail for a known write conflict, or `null` to rethrow. A
+ * duplicate code (23505) is field-scoped; any CHECK (23514) — the value/min/limit
+ * bounds the input schema already blocks, but psql could still surface — is a
+ * generic 400 rather than a 500. Unknown errors rethrow as the 500 they are.
+ */
+export const discountWriteErrors = (error: unknown): string[] | null => {
+  const pg = pgErrorOf(error);
+  if (!pg) return null;
+  if (pg.code === '23505' && pg.constraint === 'discount_codes_code_unique') {
+    return ['code: این کد قبلاً ثبت شده است.'];
+  }
+  if (pg.code === '23514') {
+    return ['ورودی نامعتبر است — محدودیت پایگاه داده نقض شد.'];
+  }
+  return null;
+};
+
+// ── Create ─────────────────────────────────────────────────────────────────────
+
+export const discountCreateRoute = createRoute({
+  method: 'post',
+  path: '/admin/discounts',
+  tags: ['admin'],
+  summary: 'Create a discount code (admin only)',
+  request: {
+    body: {
+      content: { 'application/json': { schema: discountCodeInputSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    201: {
+      content: {
+        'application/json': {
+          schema: apiSuccessSchema(DiscountCodeSchema, 'DiscountCreated'),
+        },
+      },
+      description: 'The created code',
+    },
+    400: errorResponse('Invalid body, or a duplicate code'),
+    401: errorResponse('No session'),
+    403: errorResponse('Signed in, but not an admin'),
+  },
+});
+
+export const discountCreateHandler: RouteHandler<
+  typeof discountCreateRoute,
+  Env & AuthedEnv
+> = async (c) => {
+  const body = c.req.valid('json');
+  try {
+    const created = await DiscountCodeDao.create(body);
+    return c.json(apiSuccess(toDiscountView(created)), 201);
+  } catch (error) {
+    const errors = discountWriteErrors(error);
+    if (errors)
+      return c.json(apiError(DISCOUNT_SAVE_FAILED_MESSAGE, errors), 400);
+    throw error;
+  }
+};
+
+// ── Toggle active (deactivate / reactivate) ──────────────────────────────────────
+
+export const discountToggleRoute = createRoute({
+  method: 'patch',
+  path: '/admin/discounts/{id}',
+  tags: ['admin'],
+  summary: 'Activate or deactivate a discount code (admin only)',
+  request: {
+    params: IdParamSchema,
+    body: {
+      content: { 'application/json': { schema: discountCodeToggleSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        'application/json': {
+          schema: apiSuccessSchema(DiscountCodeSchema, 'DiscountToggled'),
+        },
+      },
+      description: 'The updated code',
+    },
+    400: errorResponse('Invalid body'),
+    401: errorResponse('No session'),
+    403: errorResponse('Signed in, but not an admin'),
+    404: errorResponse('No such code'),
+  },
+});
+
+export const discountToggleHandler: RouteHandler<
+  typeof discountToggleRoute,
+  Env & AuthedEnv
+> = async (c) => {
+  const { id } = c.req.valid('param');
+  const { isActive } = c.req.valid('json');
+  // Only `is_active` is writable post-creation. `usageCount`, `value`, `code`
+  // and the rest are immutable here by construction — the body schema names one
+  // field — so no admin write can raise a limit or pre-exhaust a code.
+  const updated = await DiscountCodeDao.setActive(id, isActive);
+  if (!updated) return c.json(apiError(DISCOUNT_NOT_FOUND_MESSAGE), 404);
+  return c.json(apiSuccess(toDiscountView(updated)), 200);
+};

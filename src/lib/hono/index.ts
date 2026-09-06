@@ -8,6 +8,12 @@ import { apiErrorHandler, createRouter } from './create-router';
 import { apiError } from './envelope';
 import { requireAdmin, requireAuth, type AuthedEnv } from './middleware/auth';
 import {
+  discountCreateHandler,
+  discountCreateRoute,
+  discountToggleHandler,
+  discountToggleRoute,
+} from './routes/admin-discounts';
+import {
   adminOrderDetailHandler,
   adminOrderDetailRoute,
   adminOrderTransitionHandler,
@@ -31,7 +37,12 @@ import {
   productListHandler,
   productListRoute,
 } from './routes/catalog';
-import { checkoutHandler, checkoutRoute } from './routes/checkout';
+import {
+  checkoutHandler,
+  checkoutPreviewHandler,
+  checkoutPreviewRoute,
+  checkoutRoute,
+} from './routes/checkout';
 import { healthHandler, healthRoute } from './routes/health';
 import {
   meAddressCreateHandler,
@@ -120,6 +131,10 @@ app.openapi(reconcileRoute, reconcileHandler);
 // URL (see ./routes/orders.ts and src/logic/checkout/get-order.ts).
 const authed = createRouter<Env & AuthedEnv>();
 authed.use('/checkout', requireAuth);
+// Exact-path mount — `/checkout` above does NOT cover `/checkout/preview`, so
+// guard it explicitly (before the route) or the discount preview would be an
+// unauthenticated code-enumeration oracle.
+authed.use('/checkout/preview', requireAuth);
 authed.use('/orders/:id', requireAuth);
 authed.use('/payments/zarinpal/request', requireAuth);
 // The `/me/*` family (order history + owner-scoped pet/address CRUD) is entirely
@@ -130,6 +145,7 @@ authed.use('/payments/zarinpal/request', requireAuth);
 // the guard runs first. Every handler still scopes by `c.get('user').id`.
 authed.use('/me/*', requireAuth);
 authed.openapi(checkoutRoute, checkoutHandler);
+authed.openapi(checkoutPreviewRoute, checkoutPreviewHandler);
 authed.openapi(orderDetailRoute, orderDetailHandler);
 authed.openapi(paymentRequestRoute, paymentRequestHandler);
 authed.openapi(meOrdersRoute, meOrdersHandler);
@@ -170,6 +186,10 @@ admin.post('/admin/products/:id/images', productImageUploadHandler);
 // wildcard guard mounted above already covers these — no new mount needed.
 admin.openapi(adminOrderDetailRoute, adminOrderDetailHandler);
 admin.openapi(adminOrderTransitionRoute, adminOrderTransitionHandler);
+// Admin discount codes (`Story - Discount Codes`): create a code and toggle it
+// active/inactive. Same `/admin/*` guard — covered by the wildcard above.
+admin.openapi(discountCreateRoute, discountCreateHandler);
+admin.openapi(discountToggleRoute, discountToggleHandler);
 app.route('/', admin);
 
 // OpenAPI document + interactive reference — never expose in production.
