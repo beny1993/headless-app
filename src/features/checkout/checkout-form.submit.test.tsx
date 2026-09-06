@@ -377,6 +377,26 @@ describe('the checkout submit state machine', () => {
     expect(createCall![1]).toMatchObject({ discountCode: 'save10' });
   });
 
+  it('drops the applied discount when the code text changes (derived, not sticky)', async () => {
+    // The applied preview is valid only while the code text still matches what it
+    // was computed for — `activeDiscount` DERIVES that at render, no setState in an
+    // effect. Revert the derivation to `activeDiscount = applied` (drop the code
+    // match) and this fails: the stale confirmation sticks after a retype.
+    postData.mockResolvedValue({ subtotal: 370_000, discount: 37_000 });
+
+    const codeInput = screen.getByLabelText('کد تخفیف');
+    fireEvent.change(codeInput, { target: { value: 'save10' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'اعمال' }));
+    });
+    expect(screen.getByText('کد تخفیف اعمال شد.')).toBeTruthy();
+
+    // Retype: the applied preview no longer matches the code, so the confirmation
+    // drops at render — no effect, no cascading update.
+    fireEvent.change(codeInput, { target: { value: 'save11' } });
+    expect(screen.queryByText('کد تخفیف اعمال شد.')).toBeNull();
+  });
+
   it('renders a discountCode 422 inline on the code input', async () => {
     postData.mockRejectedValue(
       new ApiRequestError(422, 'کد تخفیف واردشده معتبر نیست.', [
