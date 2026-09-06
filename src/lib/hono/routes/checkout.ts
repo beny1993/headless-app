@@ -91,7 +91,8 @@ export const checkoutRoute = createRoute({
     422: errorResponse(
       'A valid body the server refused — unavailable product, insufficient ' +
         'stock, unknown province, too many open (unpaid) orders, or an ' +
-        'unsupported discount code; errors[] names the offending line/field',
+        'invalid/expired/exhausted/below-minimum discount code; errors[] names ' +
+        'the offending line/field',
     ),
   },
 });
