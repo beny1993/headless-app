@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import {
+  FileText,
   Home,
   LogOut,
   Menu,
@@ -61,6 +62,12 @@ const NAV_ITEMS: NavItem[] = [
     href: PROTECTED_PATHS.SHIPPING,
     label: 'نرخ ارسال',
     icon: Settings,
+    match: 'prefix',
+  },
+  {
+    href: PROTECTED_PATHS.CONTENT,
+    label: 'محتوای سایت',
+    icon: FileText,
     match: 'prefix',
   },
 ];
