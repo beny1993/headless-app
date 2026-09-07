@@ -36,13 +36,26 @@ export default async function AboutPage() {
     'about.cta',
   ]);
 
+  // Each section renders unless the admin has explicitly hidden it
+  // (`visible === false`); absent/true → shown, so an empty table renders today's
+  // page unchanged.
   return (
     <main>
-      <AboutHero content={content['about.hero']} />
-      <AboutStory content={content['about.story']} />
-      <AboutProcess content={content['about.process']} />
-      <AboutValues content={content['about.values']} />
-      <AboutCta content={content['about.cta']} />
+      {content['about.hero'].visible !== false && (
+        <AboutHero content={content['about.hero']} />
+      )}
+      {content['about.story'].visible !== false && (
+        <AboutStory content={content['about.story']} />
+      )}
+      {content['about.process'].visible !== false && (
+        <AboutProcess content={content['about.process']} />
+      )}
+      {content['about.values'].visible !== false && (
+        <AboutValues content={content['about.values']} />
+      )}
+      {content['about.cta'].visible !== false && (
+        <AboutCta content={content['about.cta']} />
+      )}
     </main>
   );
 }

@@ -91,6 +91,15 @@ function BlockForm({
     setJustSaved(false);
   };
 
+  // The section-visibility switch. `visible` is optional and read as "hidden only
+  // when explicitly false", so an unchecked box stores `false` and a checked one
+  // `true`; either way the value round-trips through the same save path.
+  const shown = getPath(value, 'visible') !== false;
+  const setVisible = (next: boolean) => {
+    setValue((current) => setPath(current, 'visible', next));
+    setJustSaved(false);
+  };
+
   const pickImage = (path: string, chosen: File | undefined) => {
     if (!chosen) return;
     const invalid = validateImageFile(chosen);
@@ -194,7 +203,22 @@ function BlockForm({
       noValidate
       className="border-border rounded-2xl border bg-white p-6"
     >
-      <h2 className="mb-5 text-lg font-black">{block.title}</h2>
+      <h2 className="mb-4 text-lg font-black">{block.title}</h2>
+
+      <label
+        htmlFor={fid('visible')}
+        className="mb-5 flex w-fit items-center gap-2 text-sm font-medium"
+      >
+        <input
+          id={fid('visible')}
+          type="checkbox"
+          checked={shown}
+          onChange={(e) => setVisible(e.target.checked)}
+          data-umami-event="admin-panel-content-visibility-toggle"
+          className="size-4 shrink-0"
+        />
+        نمایش این بخش در سایت
+      </label>
 
       {topError && (
         <p

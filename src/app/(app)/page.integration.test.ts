@@ -85,4 +85,17 @@ describe.skipIf(!databaseReachable)('the home page', () => {
       'سلام تازه‌وارد',
     );
   });
+
+  it('omits a section the admin has hidden (visible: false), keeps its siblings', async () => {
+    await SiteContentDao.set('home.family', {
+      ...DEFAULT_CONTENT['home.family'],
+      visible: false,
+    });
+
+    const tree = await page.default();
+    // The hidden family wall is gone from the page entirely…
+    expect(findSection(tree, CommunitySection)).toBeUndefined();
+    // …and an untouched sibling still renders.
+    expect(findSection(tree, HeroSection)).toBeDefined();
+  });
 });

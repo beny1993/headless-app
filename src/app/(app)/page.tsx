@@ -46,17 +46,29 @@ export default async function HomePage() {
   // timestamps, and two of these sections are client components.
   const tiles = categories.map(({ title, slug }) => ({ title, slug }));
 
+  // A content section renders unless the admin has explicitly hidden it
+  // (`visible === false`); absent/true → shown, so an empty table and every
+  // pre-existing row render exactly as before. The catalog-driven sections are
+  // out of scope for the CMS and always render.
   return (
     <main>
-      <HeroSection content={content['home.hero']} />
+      {content['home.hero'].visible !== false && (
+        <HeroSection content={content['home.hero']} />
+      )}
       <LifeMomentsSection />
       <RecommendsSection products={selectFeatured(items)} />
       <JourneySection />
-      <FeaturedStorySection content={content['home.guide']} />
+      {content['home.guide'].visible !== false && (
+        <FeaturedStorySection content={content['home.guide']} />
+      )}
       <RoutineSection categories={tiles} />
-      <CommunitySection content={content['home.family']} />
+      {content['home.family'].visible !== false && (
+        <CommunitySection content={content['home.family']} />
+      )}
       <CategoriesSection categories={tiles} />
-      <PhilosophySection content={content['home.philosophy']} />
+      {content['home.philosophy'].visible !== false && (
+        <PhilosophySection content={content['home.philosophy']} />
+      )}
     </main>
   );
 }

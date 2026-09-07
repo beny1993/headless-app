@@ -129,6 +129,41 @@ describe('CONTENT_SCHEMAS string fields', () => {
   });
 });
 
+describe('CONTENT_SCHEMAS visibility flag', () => {
+  const base = {
+    eyebrow: 'a',
+    headline: 'b',
+    accent: 'c',
+    body: 'd',
+    image: { key: 'site/hero-home.jpg', alt: 'x' },
+  };
+
+  it('is optional — omitted parses and leaves visible undefined (shown)', () => {
+    expect(CONTENT_SCHEMAS['home.hero'].parse(base).visible).toBeUndefined();
+    // Even the smallest block carries it.
+    expect(CONTENT_SCHEMAS['about.cta'].parse({ headline: 'x' }).visible).toBe(
+      undefined,
+    );
+  });
+
+  it('accepts an explicit true or false', () => {
+    expect(
+      CONTENT_SCHEMAS['home.hero'].parse({ ...base, visible: false }).visible,
+    ).toBe(false);
+    expect(
+      CONTENT_SCHEMAS['about.cta'].parse({ headline: 'x', visible: true })
+        .visible,
+    ).toBe(true);
+  });
+
+  it('rejects a non-boolean visible', () => {
+    expect(
+      CONTENT_SCHEMAS['home.hero'].safeParse({ ...base, visible: 'yes' })
+        .success,
+    ).toBe(false);
+  });
+});
+
 describe('CONTENT_SCHEMAS fixed-count lists', () => {
   const slot = (name: string) => ({
     image: 'site/community-luna.jpg',

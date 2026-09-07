@@ -70,6 +70,15 @@ const slot = z.object({
 const step = z.object({ step: t(40), desc: t(160) });
 const item = z.object({ title: t(60), desc: t(200) });
 
+// Per-block visibility. **Optional**, and read as "hidden only when explicitly
+// false": absent (every default, every pre-existing row) or `true` renders the
+// section, `false` makes the storefront skip it — so an admin can remove a
+// section without a deploy, and nothing in the defaults or old rows changes.
+// Kept out of the BLOCK_FIELDS descriptor list (a structural switch, not editable
+// copy) and rendered as its own toggle, so the leaf/descriptor drift test — which
+// tracks string leaves — is unaffected.
+const visible = z.boolean().optional();
+
 /**
  * The `value` schema per key. `z.tuple` is what makes "exactly five slots / four
  * steps, no add or remove" structural rather than a UI rule — a body with four or
@@ -84,40 +93,50 @@ export const CONTENT_SCHEMAS = {
     accent: t(60),
     body: t(600),
     image,
+    visible,
   }),
   'home.guide': z.object({
     eyebrow: t(60),
     headline: t(160),
     body: t(1000),
     image,
+    visible,
   }),
   'home.philosophy': z.object({
     eyebrow: t(60),
     headline: t(160),
     accent: t(60),
     body: t(600),
+    visible,
   }),
-  'home.family': z.object({ slots: z.tuple([slot, slot, slot, slot, slot]) }),
+  'home.family': z.object({
+    slots: z.tuple([slot, slot, slot, slot, slot]),
+    visible,
+  }),
   'about.hero': z.object({
     eyebrow: t(60),
     headline: t(160),
     accent: t(60),
     image,
+    visible,
   }),
   'about.story': z.object({
     title: t(120),
     paragraphs: z.tuple([t(800), t(800), t(800)]),
     image,
+    visible,
   }),
   'about.process': z.object({
     title: t(120),
     steps: z.tuple([step, step, step, step]),
+    visible,
   }),
   'about.values': z.object({
     title: t(120),
     items: z.tuple([item, item, item, item]),
+    visible,
   }),
-  'about.cta': z.object({ headline: t(120) }),
+  'about.cta': z.object({ headline: t(120), visible }),
 } as const satisfies Record<ContentKey, z.ZodType>;
 
 export type ContentValue<K extends ContentKey> = z.infer<

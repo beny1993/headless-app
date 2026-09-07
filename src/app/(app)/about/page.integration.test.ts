@@ -140,6 +140,21 @@ describe.skipIf(!databaseReachable)('the About page', () => {
     });
   });
 
+  describe('section visibility', () => {
+    it('omits a section the admin has hidden, and keeps its siblings', async () => {
+      await SiteContentDao.set('about.process', {
+        ...DEFAULT_CONTENT['about.process'],
+        visible: false,
+      });
+
+      const { strings } = await inspect();
+      // The hidden process section's copy is gone…
+      expect(strings).not.toContain(DEFAULT_CONTENT['about.process'].title);
+      // …while an untouched sibling still renders.
+      expect(strings).toContain(DEFAULT_CONTENT['about.hero'].eyebrow);
+    });
+  });
+
   describe('security: stored content is text, never markup', () => {
     it('renders a stored <script> as literal text and adds no dangerouslySetInnerHTML', async () => {
       await SiteContentDao.set('about.story', {
