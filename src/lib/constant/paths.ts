@@ -74,6 +74,8 @@ export const PROTECTED_PATHS = {
   DISCOUNTS: '/admin-panel/discounts',
   /** The shipping-rate editor — «نرخ ارسال» in the sidebar. */
   SHIPPING: '/admin-panel/shipping',
+  /** The storefront content editor — «محتوای سایت» in the sidebar. */
+  CONTENT: '/admin-panel/content',
 } as const;
 
 /** The admin "new product" form page. */
@@ -103,6 +105,11 @@ export const API_PATHS = {
   ADMIN_ORDERS: '/api/admin/orders',
   // Admin discount codes — create + toggle active. Same `/admin/*` guard.
   ADMIN_DISCOUNTS: '/api/admin/discounts',
+  // Admin storefront content — replace one block by key, and a shared image
+  // upload. Same `/admin/*` guard. No public content GET: the storefront reads
+  // through the DAO in server components, as the home page already does.
+  ADMIN_CONTENT: '/api/admin/content',
+  ADMIN_CONTENT_IMAGES: '/api/admin/content/images',
   SHIPPING_RATES: '/api/shipping/rates',
   CHECKOUT: '/api/checkout',
   // Read-only preview of the SERVER-computed discount for the current cart + code,
@@ -153,6 +160,13 @@ export const API_ADMIN_DISCOUNT_TEMPLATE = `${API_PATHS.ADMIN_DISCOUNTS}/{id}`;
 /** The admin toggle path for one discount code, by id. */
 export const apiAdminDiscountPath = (id: string) =>
   `${API_PATHS.ADMIN_DISCOUNTS}/${encodeURIComponent(id)}`;
+
+/** `/api/admin/content/{key}` — the OpenAPI template for the content block update. */
+export const API_ADMIN_CONTENT_TEMPLATE = `${API_PATHS.ADMIN_CONTENT}/{key}`;
+
+/** The content-block update path for one block, by key. */
+export const apiAdminContentPath = (key: string) =>
+  `${API_PATHS.ADMIN_CONTENT}/${encodeURIComponent(key)}`;
 
 /** `/api/shipping/rates/{provinceId}` — the OpenAPI template for the admin update. */
 export const API_SHIPPING_RATE_TEMPLATE = `${API_PATHS.SHIPPING_RATES}/{provinceId}`;
