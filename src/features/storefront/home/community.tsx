@@ -7,8 +7,9 @@ import { imageSrc } from '@/lib/storage/image-url';
  * criteria (there is no community feature behind it).
  *
  * Five positional slots, admin content (photo, name, owner, quote); the count,
- * the `tall` mosaic layout (slots 0 and 4 run tall), the section heading and the
- * eyebrow all stay in code — they are layout, not content. Each slot's alt text
+ * the `tall` mosaic layout (the first and fourth tiles — indices 0 and 3 — run
+ * tall), the section heading and the eyebrow all stay in code — they are layout,
+ * not content. Each slot's alt text
  * is derived in code from its name and owner, so a swapped photo cannot carry a
  * stale alt.
  *
