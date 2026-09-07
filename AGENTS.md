@@ -29,6 +29,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/db/schema/`, `src/db/dao/`, `src/db/migrations/` | Drizzle schema, DAOs, generated migrations |
 | `src/lib/hono/` | API app, router factory, response envelope, routes |
 | `src/lib/auth/`, `src/lib/email/`, `src/lib/utils/env.ts` | Better Auth, mailer, env accessor |
+| `src/lib/content/` | Storefront editorial content: the client-safe zod schemas + key enum (`site-content.ts`) and the typed defaults + `resolveContent` fallback (`defaults.ts`). Values live in the `site_content` table; the admin editor is `/admin-panel/content` |
 | `src/features/<area>/<feature>/` | Feature components; route files stay thin |
 | `design/` | **Canonical design reference** — vendored Figma prototype (own deps, own `pnpm dev` on :5173). FE stories port from it. Never imported by the app. |
 | `scripts/create-admin.ts` | Grant admin by phone (`pnpm create-admin <phone> [name]`) — creates or promotes |
