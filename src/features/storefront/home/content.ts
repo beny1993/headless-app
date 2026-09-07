@@ -30,12 +30,6 @@ export const CATEGORY_IMAGES: Record<string, string> = {
   hygiene: '/site/cat-hygiene.jpg',
 };
 
-/** The hero photograph. Large, above the fold, and the page's LCP element. */
-export const HERO_IMAGE = '/site/hero-home.jpg';
-
-/** The «راهنمای اسموکی» section's photograph. */
-export const STORY_IMAGE = '/site/cat-hygiene.jpg';
-
 export type LifeMoment = {
   title: string;
   desc: string;
@@ -116,57 +110,5 @@ export const ROUTINE: readonly RoutineSlot[] = [
     sub: 'آرامش',
     emoji: '🌙',
     categories: ['treats', 'wet-food'],
-  },
-];
-
-export type CommunityPet = {
-  name: string;
-  owner: string;
-  quote: string;
-  image: string;
-  /** Tailwind row span — the two portraits that run tall in the mosaic. */
-  tall: boolean;
-};
-
-/**
- * «خانواده اسموکی» — a static, bundled photo wall, by the story's own AC.
- * It links nowhere on purpose: there is no community feature behind it, and a
- * fake click target was exactly what the design review objected to.
- */
-export const COMMUNITY_PETS: readonly CommunityPet[] = [
-  {
-    name: 'لونا',
-    owner: 'سارا',
-    quote: 'لونا عاشق این تشویقیه.',
-    image: '/site/community-luna.jpg',
-    tall: true,
-  },
-  {
-    name: 'آرکو',
-    owner: 'علی',
-    quote: 'هر روز صبح منتظر وعده‌اشه!',
-    image: '/products/dog-dry-food.jpg',
-    tall: false,
-  },
-  {
-    name: 'رکسی',
-    owner: 'امیر',
-    quote: 'سفر بدون رکسی معنی نداره.',
-    image: '/products/dog-treats.jpg',
-    tall: false,
-  },
-  {
-    name: 'بارون',
-    owner: 'کاوه',
-    quote: 'بارون با این اسباب‌بازی ساعت‌ها بازی می‌کنه.',
-    image: '/site/community-baron.jpg',
-    tall: true,
-  },
-  {
-    name: 'میشا',
-    owner: 'نیلوفر',
-    quote: 'بهترین خواب دنیا رو داره.',
-    image: '/site/community-misha.jpg',
-    tall: false,
   },
 ];

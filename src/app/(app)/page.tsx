@@ -1,5 +1,6 @@
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
+import { SiteContentDao } from '@/db/dao/SiteContentDao';
 import { CategoriesSection } from '@/features/storefront/home/categories';
 import { CommunitySection } from '@/features/storefront/home/community';
 import { FeaturedStorySection } from '@/features/storefront/home/featured-story';
@@ -26,11 +27,19 @@ import { RoutineSection } from '@/features/storefront/home/routine';
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
-  // Two independent single-DAO reads, so they belong here rather than in
-  // `src/logic/` — that is for operations that span DAOs.
-  const [{ items }, categories] = await Promise.all([
+  // Independent single-DAO reads, so they belong here rather than in
+  // `src/logic/` — that is for operations that span DAOs. The content read is
+  // one primary-key `IN` over at most four small rows; a missing or invalid row
+  // resolves to its default inside the DAO, so an empty table renders today's copy.
+  const [{ items }, categories, content] = await Promise.all([
     ProductDao.list(),
     CategoryDao.list(),
+    SiteContentDao.getMany([
+      'home.hero',
+      'home.guide',
+      'home.philosophy',
+      'home.family',
+    ]),
   ]);
 
   // Narrow rows to what the sections render: `Category` also carries
@@ -39,15 +48,15 @@ export default async function HomePage() {
 
   return (
     <main>
-      <HeroSection />
+      <HeroSection content={content['home.hero']} />
       <LifeMomentsSection />
       <RecommendsSection products={selectFeatured(items)} />
       <JourneySection />
-      <FeaturedStorySection />
+      <FeaturedStorySection content={content['home.guide']} />
       <RoutineSection categories={tiles} />
-      <CommunitySection />
+      <CommunitySection content={content['home.family']} />
       <CategoriesSection categories={tiles} />
-      <PhilosophySection />
+      <PhilosophySection content={content['home.philosophy']} />
     </main>
   );
 }

@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { STORY_IMAGE } from './content';
+import type { ContentValue } from '@/lib/content/site-content';
+import { imageSrc } from '@/lib/storage/image-url';
 import { shopPath } from '@/lib/constant/paths';
 
 /**
@@ -9,20 +10,26 @@ import { shopPath } from '@/lib/constant/paths';
  * The magazine it originally linked to is parked on the backlog, so the CTA
  * points at the products the text is actually about (wet food, for a cat that
  * does not drink enough) rather than shipping a dead article route — the
- * design review's port note on the magazine.
+ * design review's port note on the magazine. The CTA label and its target stay
+ * in code (a label travels with its target); the eyebrow, headline, body and
+ * image are admin content, rendered as plain text.
  *
  * The eyebrow uses `accent-on-dark`, not `accent`: on `--ink-soft` the brand
  * terracotta measures 3.29:1 and fails AA.
  */
-export function FeaturedStorySection() {
+export function FeaturedStorySection({
+  content,
+}: {
+  content: ContentValue<'home.guide'>;
+}) {
   return (
     <section className="bg-ink py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-8">
         <div className="grid grid-cols-1 overflow-hidden rounded-3xl lg:grid-cols-2">
           <div className="relative h-80 lg:h-auto">
             <Image
-              src={STORY_IMAGE}
-              alt="گربه‌ای کنار ظرف آب"
+              src={imageSrc(content.image.key)}
+              alt={content.image.alt}
               fill
               sizes="(min-width: 1024px) 50vw, 100vw"
               className="object-cover"
@@ -30,17 +37,13 @@ export function FeaturedStorySection() {
           </div>
           <div className="bg-ink-soft flex flex-col justify-center p-10 lg:p-14">
             <span className="text-accent-on-dark mb-4 text-sm font-medium tracking-wide">
-              راهنمای اسموکی
+              {content.eyebrow}
             </span>
-            <h2 className="mb-5 text-3xl leading-tight font-black text-white lg:text-4xl">
-              چرا بعضی گربه‌ها
-              <br />
-              آب کافی نمی‌خورند؟
+            <h2 className="mb-5 text-3xl leading-tight font-black whitespace-pre-line text-white lg:text-4xl">
+              {content.headline}
             </h2>
-            <p className="mb-8 leading-relaxed text-white/70">
-              کم‌آبی در گربه‌ها یکی از مشکلات شایعی است که بسیاری از صاحبان
-              نادیده می‌گیرند. غذای مرطوب ساده‌ترین راه جبران آن در وعده‌های
-              روزانه است.
+            <p className="mb-8 leading-relaxed whitespace-pre-line text-white/70">
+              {content.body}
             </p>
             <Link
               href={shopPath({ category: 'wet-food' })}
