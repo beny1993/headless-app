@@ -167,9 +167,9 @@ function AboutValues({ content }: { content: ContentValue<'about.values'> }) {
 }
 
 /**
- * The closing call to action. The headline is admin content; the button label
- * and its target (the shop) stay in code — the prototype's button navigated
- * there and a swapped label over a fixed target would mislead.
+ * The closing call to action. The headline and the button label are admin
+ * content; the button's *target* (the shop) stays in code — a label travels with
+ * its target, and the editor shows that destination next to the label.
  *
  * This is the only interactive element in the app that sits on an
  * `--accent-strong` surface, and the global focus ring is `--ring` (#C9623F) —
@@ -188,7 +188,7 @@ function AboutCta({ content }: { content: ContentValue<'about.cta'> }) {
         className="text-accent-strong mt-4 inline-block rounded-xl bg-white px-8 py-4 font-bold transition-colors hover:bg-white/90 focus-visible:outline-white"
         data-umami-event="about-cta-shop-click"
       >
-        کشف محصولات
+        {content.cta}
       </Link>
     </section>
   );

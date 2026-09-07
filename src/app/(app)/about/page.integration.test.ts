@@ -116,7 +116,10 @@ describe.skipIf(!databaseReachable)('the About page', () => {
 
   describe('after an admin saves a block', () => {
     it('shows the new value on the very next load (no cache to go stale)', async () => {
-      await SiteContentDao.set('about.cta', { headline: 'سلام تازه‌وارد' });
+      await SiteContentDao.set('about.cta', {
+        ...DEFAULT_CONTENT['about.cta'],
+        headline: 'سلام تازه‌وارد',
+      });
 
       const { strings } = await inspect();
       expect(strings).toContain('سلام تازه‌وارد');

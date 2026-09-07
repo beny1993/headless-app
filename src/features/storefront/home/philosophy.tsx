@@ -3,11 +3,11 @@ import type { ContentValue } from '@/lib/content/site-content';
 import { PATHS } from '@/lib/constant/paths';
 
 /**
- * The closing statement. The eyebrow, headline, accent line and body are admin
- * content (plain text; the break before the accent line is a code `<br />`); the
- * link label and its target stay in code. The eyebrow is `white/60`, not
- * `white/40`: the design review measured the original at 3.72:1 on `--ink` and
- * it failed AA.
+ * The closing statement. The eyebrow, headline, accent line, body and link label
+ * are admin content (plain text; the break before the accent line is a code
+ * `<br />`); the link *target* (/about) stays in code. The eyebrow is `white/60`,
+ * not `white/40`: the design review measured the original at 3.72:1 on `--ink`
+ * and it failed AA.
  */
 export function PhilosophySection({
   content,
@@ -36,7 +36,7 @@ export function PhilosophySection({
           className="text-accent-on-dark border-accent-on-dark hover:text-accent-on-dark/80 border-b pb-0.5 font-medium transition-colors"
           data-umami-event="home-philosophy-about-click"
         >
-          بیشتر درباره انتخاب محصولات
+          {content.cta}
         </Link>
       </div>
     </section>

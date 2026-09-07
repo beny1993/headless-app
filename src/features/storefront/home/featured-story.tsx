@@ -10,9 +10,9 @@ import { shopPath } from '@/lib/constant/paths';
  * The magazine it originally linked to is parked on the backlog, so the CTA
  * points at the products the text is actually about (wet food, for a cat that
  * does not drink enough) rather than shipping a dead article route — the
- * design review's port note on the magazine. The CTA label and its target stay
- * in code (a label travels with its target); the eyebrow, headline, body and
- * image are admin content, rendered as plain text.
+ * design review's port note on the magazine. The CTA *target* (wet food) stays
+ * in code; its label, and the eyebrow, headline, body and image, are admin
+ * content, rendered as plain text.
  *
  * The eyebrow uses `accent-on-dark`, not `accent`: on `--ink-soft` the brand
  * terracotta measures 3.29:1 and fails AA.
@@ -50,7 +50,7 @@ export function FeaturedStorySection({
               className="bg-accent-strong hover:bg-accent-hover self-start rounded-xl px-6 py-3 font-bold text-white transition-colors"
               data-umami-event="home-story-shop-click"
             >
-              مشاهده غذای مرطوب
+              {content.cta}
             </Link>
           </div>
         </div>

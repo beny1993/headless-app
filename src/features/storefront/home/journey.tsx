@@ -11,6 +11,7 @@ import {
   type QuizNeed,
 } from './quiz';
 import type { PetType } from '@/db/schema/catalog';
+import type { ContentValue } from '@/lib/content/site-content';
 import { shopPath } from '@/lib/constant/paths';
 
 const optionButton =
@@ -22,8 +23,17 @@ const optionButton =
  * Entirely client-side and stateless, by the story's acceptance criteria:
  * nothing is stored, nothing is sent, and the only output is a `/shop?…` deep
  * link whose parameters are the catalog API's own (see `quiz.ts`).
+ *
+ * The section's chrome (eyebrow, headline, intro) is admin content; the quiz
+ * itself — its questions, options, the result sentence and the filters they map
+ * to — stays in code, because that copy is interpolated into sentences and mapped
+ * to catalog filters, not free editorial text.
  */
-export function JourneySection() {
+export function JourneySection({
+  content,
+}: {
+  content: ContentValue<'home.journey'>;
+}) {
   const [step, setStep] = useState(0);
   const [pet, setPet] = useState<PetType | null>(null);
   const [age, setAge] = useState<string | null>(null);
@@ -42,11 +52,11 @@ export function JourneySection() {
     <section className="py-24">
       <div className="mx-auto max-w-3xl px-4 text-center sm:px-8">
         <span className="text-accent-strong mb-3 inline-block text-sm font-medium">
-          خرید شخصی‌سازی شده
+          {content.eyebrow}
         </span>
-        <h2 className="mb-3 text-4xl font-black">برای کی خرید می‌کنی؟</h2>
-        <p className="text-muted-foreground mb-12">
-          چند سوال کوتاه تا بهترین محصولات رو بهت پیشنهاد بدیم
+        <h2 className="mb-3 text-4xl font-black">{content.headline}</h2>
+        <p className="text-muted-foreground mb-12 whitespace-pre-line">
+          {content.body}
         </p>
 
         <div className="bg-card border-border rounded-3xl border p-8 shadow-sm">

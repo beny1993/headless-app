@@ -16,10 +16,11 @@ import { PATHS, shopPath } from '@/lib/constant/paths';
  * what makes white body copy and `--accent-on-dark` land at their measured
  * contrast ratios rather than floating over an unpredictable photograph.
  *
- * The editorial fields (eyebrow, headline, accent line, body, image) are admin
- * content — rendered as plain text nodes; the headline's own line breaks come
- * from `whitespace-pre-line`, and the break before the accent line stays a code
- * `<br />`. The badge, buttons and link targets stay in code.
+ * The editorial fields (eyebrow, headline, accent line, body, image, and the two
+ * button labels) are admin content — rendered as plain text nodes; the headline's
+ * own line breaks come from `whitespace-pre-line`, and the break before the accent
+ * line stays a code `<br />`. The badge and the buttons' link targets stay in code
+ * (a label travels with its target — an editable label over a fixed destination).
  */
 export function HeroSection({
   content,
@@ -79,14 +80,14 @@ export function HeroSection({
               className="bg-accent-strong hover:bg-accent-hover rounded-xl px-8 py-4 font-bold text-white transition-[transform,background-color] duration-200 hover:scale-105"
               data-umami-event="home-hero-shop-click"
             >
-              کشف محصولات
+              {content.shopCta}
             </Link>
             <Link
               href={PATHS.ABOUT}
               className="rounded-xl border border-white/20 bg-white/10 px-8 py-4 font-semibold text-white backdrop-blur-sm transition-colors duration-200 hover:bg-white/20"
               data-umami-event="home-hero-about-click"
             >
-              داستان اسموکی
+              {content.aboutCta}
             </Link>
           </div>
         </div>

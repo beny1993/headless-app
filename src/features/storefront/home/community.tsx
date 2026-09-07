@@ -6,12 +6,11 @@ import { imageSrc } from '@/lib/storage/image-url';
  * «خانواده اسموکی» — a static photo wall, by the story's own acceptance
  * criteria (there is no community feature behind it).
  *
- * Five positional slots, admin content (photo, name, owner, quote); the count,
- * the `tall` mosaic layout (the first and fourth tiles — indices 0 and 3 — run
- * tall), the section heading and the eyebrow all stay in code — they are layout,
- * not content. Each slot's alt text
- * is derived in code from its name and owner, so a swapped photo cannot carry a
- * stale alt.
+ * The eyebrow, the section heading and the five positional slots (photo, name,
+ * owner, quote) are admin content; the count and the `tall` mosaic layout (the
+ * first and fourth tiles — indices 0 and 3 — run tall) stay in code as layout.
+ * Each slot's alt text is derived in code from its name and owner, so a swapped
+ * photo cannot carry a stale alt.
  *
  * Two design-review findings shape it: the captions are always visible rather
  * than hover-only (a hover caption is unreachable on touch), and each tile is
@@ -28,9 +27,9 @@ export function CommunitySection({
       <div className="mx-auto max-w-7xl px-4 sm:px-8">
         <div className="mb-14 text-center">
           <span className="text-accent-strong mb-3 inline-block text-sm font-medium">
-            داستان‌های واقعی
+            {content.eyebrow}
           </span>
-          <h2 className="text-4xl font-black">خانواده اسموکی</h2>
+          <h2 className="text-4xl font-black">{content.headline}</h2>
         </div>
 
         <div className="grid auto-rows-[180px] grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">

@@ -4,17 +4,29 @@ import { useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { LIFE_MOMENTS } from './content';
+import { LIFE_MOMENT_TARGETS } from './content';
+import type { ContentValue } from '@/lib/content/site-content';
+import { imageSrc } from '@/lib/storage/image-url';
 import { shopPath } from '@/lib/constant/paths';
 
 /**
  * «خرید بر اساس لحظه» — a horizontal carousel of editorial entry points.
  *
+ * The eyebrow, headline, «مشاهده همه» label and the five cards' title/desc/photo
+ * are admin content; each card's emoji and shop-filter destination stay in code
+ * (`LIFE_MOMENT_TARGETS`), zipped with the cards by index — an editable label, a
+ * fixed target. The arrows, the bare-shop «مشاهده همه» target and `alt=""`
+ * (decorative — the title sits beside it) stay in code too.
+ *
  * Client only for the two arrow buttons: the row scrolls natively (and tabbing
  * through the cards scrolls it too), but the design review asked for explicit
  * prev/next controls for pointer users who get no scrollbar.
  */
-export function LifeMomentsSection() {
+export function LifeMomentsSection({
+  content,
+}: {
+  content: ContentValue<'home.moments'>;
+}) {
   const scroller = useRef<HTMLDivElement>(null);
 
   // `direction: 1` means "further along the reading order". An RTL scroll
@@ -63,14 +75,14 @@ export function LifeMomentsSection() {
               data-umami-event="home-moments-all-click"
             >
               <ChevronLeft size={14} aria-hidden="true" />
-              مشاهده همه
+              {content.cta}
             </Link>
           </div>
           <div className="text-end">
             <p className="text-muted-foreground mb-1 text-sm">
-              خرید بر اساس لحظه
+              {content.eyebrow}
             </p>
-            <h2 className="text-4xl font-black">زندگی با حیوانات خانگی</h2>
+            <h2 className="text-4xl font-black">{content.headline}</h2>
           </div>
         </div>
 
@@ -81,37 +93,41 @@ export function LifeMomentsSection() {
           // prototype's was undefined too; this is the real property.
           style={{ scrollbarWidth: 'none' }}
         >
-          {LIFE_MOMENTS.map((moment) => (
-            <Link
-              key={moment.title}
-              href={shopPath(moment.filters)}
-              className="group w-64 shrink-0 snap-start md:w-72"
-              data-umami-event="home-moment-click"
-            >
-              <div className="relative mb-4 h-80 overflow-hidden rounded-2xl">
-                <Image
-                  src={moment.image}
-                  alt=""
-                  fill
-                  sizes="288px"
-                  className="object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                <span
-                  className="absolute end-3 top-3 rounded-full border border-white/20 bg-black/30 px-2.5 py-1 text-sm text-white backdrop-blur-sm"
-                  aria-hidden="true"
-                >
-                  {moment.emoji}
-                </span>
-                <div className="absolute inset-x-4 bottom-4">
-                  <h3 className="text-xl font-bold text-white">
-                    {moment.title}
-                  </h3>
-                  <p className="mt-1 text-sm text-white/80">{moment.desc}</p>
+          {content.cards.map((card, index) => {
+            const target = LIFE_MOMENT_TARGETS[index];
+            return (
+              <Link
+                // Index key: titles are editable content and may repeat.
+                key={index}
+                href={shopPath(target.filters)}
+                className="group w-64 shrink-0 snap-start md:w-72"
+                data-umami-event="home-moment-click"
+              >
+                <div className="relative mb-4 h-80 overflow-hidden rounded-2xl">
+                  <Image
+                    src={imageSrc(card.image)}
+                    alt=""
+                    fill
+                    sizes="288px"
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                  <span
+                    className="absolute end-3 top-3 rounded-full border border-white/20 bg-black/30 px-2.5 py-1 text-sm text-white backdrop-blur-sm"
+                    aria-hidden="true"
+                  >
+                    {target.emoji}
+                  </span>
+                  <div className="absolute inset-x-4 bottom-4">
+                    <h3 className="text-xl font-bold text-white">
+                      {card.title}
+                    </h3>
+                    <p className="mt-1 text-sm text-white/80">{card.desc}</p>
+                  </div>
                 </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       </div>
     </section>

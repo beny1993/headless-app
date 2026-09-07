@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { SiteContentDao } from '@/db/dao/SiteContentDao';
+import { CONTENT_AREAS, isVisible } from '@/lib/content/site-content';
 import {
   AboutCta,
   AboutHero,
@@ -28,32 +29,26 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic';
 
 export default async function AboutPage() {
-  const content = await SiteContentDao.getMany([
-    'about.hero',
-    'about.story',
-    'about.process',
-    'about.values',
-    'about.cta',
-  ]);
+  const content = await SiteContentDao.getMany(CONTENT_AREAS.about.keys);
 
-  // Each section renders unless the admin has explicitly hidden it
-  // (`visible === false`); absent/true → shown, so an empty table renders today's
-  // page unchanged.
+  // Each section renders unless the admin has explicitly hidden it (`isVisible` =
+  // "shown unless visible === false"); absent/true → shown, so an empty table
+  // renders today's page unchanged.
   return (
     <main>
-      {content['about.hero'].visible !== false && (
+      {isVisible(content['about.hero']) && (
         <AboutHero content={content['about.hero']} />
       )}
-      {content['about.story'].visible !== false && (
+      {isVisible(content['about.story']) && (
         <AboutStory content={content['about.story']} />
       )}
-      {content['about.process'].visible !== false && (
+      {isVisible(content['about.process']) && (
         <AboutProcess content={content['about.process']} />
       )}
-      {content['about.values'].visible !== false && (
+      {isVisible(content['about.values']) && (
         <AboutValues content={content['about.values']} />
       )}
-      {content['about.cta'].visible !== false && (
+      {isVisible(content['about.cta']) && (
         <AboutCta content={content['about.cta']} />
       )}
     </main>

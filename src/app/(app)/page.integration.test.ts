@@ -18,28 +18,37 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { siteContent } from '@/db/schema/site-content';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
+import { CONTENT_AREAS } from '@/lib/content/site-content';
+import { CategoriesSection } from '@/features/storefront/home/categories';
 import { CommunitySection } from '@/features/storefront/home/community';
 import { FeaturedStorySection } from '@/features/storefront/home/featured-story';
 import { HeroSection } from '@/features/storefront/home/hero';
+import { JourneySection } from '@/features/storefront/home/journey';
+import { LifeMomentsSection } from '@/features/storefront/home/life-moments';
 import { PhilosophySection } from '@/features/storefront/home/philosophy';
+import { RecommendsSection } from '@/features/storefront/home/recommends';
+import { RoutineSection } from '@/features/storefront/home/routine';
 
 const { SiteContentDao } = await importWithDb(
   () => import('@/db/dao/SiteContentDao'),
 );
 const page = await importWithDb(() => import('./page'));
 
-const HOME_KEYS = [
-  'home.hero',
-  'home.guide',
-  'home.philosophy',
-  'home.family',
-] as const;
+const HOME_KEYS = CONTENT_AREAS.home.keys;
 
-// The section component → content key pairing the page must honor.
+// The section component → content key pairing the page must honor. Every home
+// section is content-driven in v2, so every one is checked — a swapped
+// `content={…}` prop type-checks silently (the value types are structural
+// supersets), and only inspecting each section's own `content` prop catches it.
 const WIRING = [
   [HeroSection, 'home.hero'],
+  [LifeMomentsSection, 'home.moments'],
+  [RecommendsSection, 'home.recommends'],
+  [JourneySection, 'home.journey'],
   [FeaturedStorySection, 'home.guide'],
+  [RoutineSection, 'home.routine'],
   [CommunitySection, 'home.family'],
+  [CategoriesSection, 'home.categories'],
   [PhilosophySection, 'home.philosophy'],
 ] as const;
 
