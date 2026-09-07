@@ -10,7 +10,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import {
   afterAll,
   afterEach,
@@ -109,7 +109,9 @@ describe.skipIf(!databaseReachable)('admin content API', () => {
 
   afterEach(async () => {
     mocks.getSession.mockReset();
-    await testDb.delete(siteContent).where(eq(siteContent.key, 'about.cta'));
+    await testDb
+      .delete(siteContent)
+      .where(inArray(siteContent.key, ['about.cta', 'header']));
   });
 
   // ── Authz matrix ──────────────────────────────────────────────────────────
@@ -156,12 +158,20 @@ describe.skipIf(!databaseReachable)('admin content API', () => {
       const { status, body } = await parse<{
         key: string;
         value: { headline: string };
-      }>(await putJson('about.cta', { headline: 'به جمع ما بپیوند' }));
+      }>(
+        await putJson('about.cta', {
+          headline: 'به جمع ما بپیوند',
+          cta: 'برو',
+        }),
+      );
 
       expect(status).toBe(200);
       if (body.status !== 'success') throw new Error(body.message);
       expect(body.data.key).toBe('about.cta');
-      expect(body.data.value).toEqual({ headline: 'به جمع ما بپیوند' });
+      expect(body.data.value).toEqual({
+        headline: 'به جمع ما بپیوند',
+        cta: 'برو',
+      });
 
       // The row is really there.
       const rows = await testDb
@@ -173,12 +183,12 @@ describe.skipIf(!databaseReachable)('admin content API', () => {
 
     it('strips fields the schema does not declare before storing', async () => {
       asAdmin();
-      await putJson('about.cta', { headline: 'x', role: 'admin' });
+      await putJson('about.cta', { headline: 'x', cta: 'y', role: 'admin' });
       const [row] = await testDb
         .select()
         .from(siteContent)
         .where(eq(siteContent.key, 'about.cta'));
-      expect(row.value).toEqual({ headline: 'x' });
+      expect(row.value).toEqual({ headline: 'x', cta: 'y' });
     });
 
     it('400s a body failing that key’s schema, with field-scoped errors', async () => {
@@ -212,6 +222,22 @@ describe.skipIf(!databaseReachable)('admin content API', () => {
       asAdmin();
       const res = await putJson('home.unknown', { headline: 'x' });
       expect(res.status).toBe(400);
+    });
+
+    it('400s a wrong-count link tuple (a 4-label header nav), writing nothing', async () => {
+      asAdmin();
+      // The nav tuple is exactly 3 (one per NAV_TARGET); a fourth label is the
+      // misroute the parity rule guards, rejected at the write boundary.
+      const res = await putJson('header', {
+        ...DEFAULT_CONTENT.header,
+        nav: ['خانه', 'فروشگاه', 'درباره ما', 'اضافه'],
+      });
+      expect(res.status).toBe(400);
+      const rows = await testDb
+        .select()
+        .from(siteContent)
+        .where(eq(siteContent.key, 'header'));
+      expect(rows).toHaveLength(0);
     });
   });
 

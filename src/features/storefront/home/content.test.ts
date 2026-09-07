@@ -1,27 +1,30 @@
-// No database needed: these check the home page's editorial content itself.
+// No database needed: these check the home page's code-side data and its parity
+// with the editable content it zips against.
 import { access, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   CATEGORY_IMAGES,
-  LIFE_MOMENTS,
-  ROUTINE,
+  LIFE_MOMENT_TARGETS,
+  ROUTINE_TARGETS,
 } from '@/features/storefront/home/content';
+import {
+  FOOTER_TARGETS,
+  NAV_TARGETS,
+} from '@/features/storefront/layout/nav-links';
+import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import { SEED_CATEGORIES } from '@/db/seed/catalog-data';
 import { PET_TYPES } from '@/db/schema/catalog';
 
 const SEED_SLUGS = new Set<string>(SEED_CATEGORIES.map((row) => row.slug));
 
-// The hero, guide and community-wall photos moved into the content defaults
+// The moment/hero/guide/community/card photos all moved into the content defaults
 // (`src/lib/content/defaults.ts`) as slash-less storage keys — covered by
-// `defaults.test.ts`. What remains here is the catalog-coupled photography,
-// which keeps its `/`-prefixed public URLs.
-const everyImage = [
-  ...Object.values(CATEGORY_IMAGES),
-  ...LIFE_MOMENTS.map((moment) => moment.image),
-];
+// `defaults.test.ts`. What remains here is the catalog-coupled category
+// photography, which keeps its `/`-prefixed public URLs.
+const everyImage = Object.values(CATEGORY_IMAGES);
 
-describe('home content images', () => {
+describe('category tile images', () => {
   it('serves every photo from this repo — no external hotlink anywhere', () => {
     // The blocker of the design review: Unsplash URLs are slow or unreachable
     // from Iranian IPs. A relative path is the whole guarantee.
@@ -77,34 +80,57 @@ describe('category tiles', () => {
   });
 });
 
-describe('life moments', () => {
+describe('life-moment targets', () => {
   it('deep-links every card into a real category and pet type', () => {
     const pets = new Set<string>(Object.values(PET_TYPES));
 
-    expect(LIFE_MOMENTS.length).toBeGreaterThan(0);
-    for (const moment of LIFE_MOMENTS) {
-      expect(SEED_SLUGS).toContain(moment.filters.category);
-      expect(pets).toContain(moment.filters.pet);
+    expect(LIFE_MOMENT_TARGETS.length).toBeGreaterThan(0);
+    for (const target of LIFE_MOMENT_TARGETS) {
+      expect(SEED_SLUGS).toContain(target.filters.category);
+      expect(pets).toContain(target.filters.pet);
     }
   });
 });
 
-describe('routine', () => {
-  it('covers the four times of day the design shows', () => {
-    expect(ROUTINE.map((slot) => slot.label)).toEqual([
-      'صبح',
-      'ظهر',
-      'عصر',
-      'شب',
-    ]);
-  });
-
+describe('routine targets', () => {
   it('names only categories that exist', () => {
     // The prototype listed invented product names here linking to a product
     // that was not the one named. Every tile is a real category instead.
-    for (const slot of ROUTINE) {
-      expect(slot.categories.length).toBeGreaterThan(0);
-      for (const slug of slot.categories) expect(SEED_SLUGS).toContain(slug);
+    for (const target of ROUTINE_TARGETS) {
+      expect(target.categories.length).toBeGreaterThan(0);
+      for (const slug of target.categories) expect(SEED_SLUGS).toContain(slug);
     }
+  });
+});
+
+// The label-with-fixed-target mechanism: a block stores link labels in a tuple,
+// code keeps a same-length tuple of the destinations, and the component zips them
+// by index. If the two lengths ever diverge, label i and target i stop lining up
+// and a label silently renders on the wrong link — the misroute the whole rule
+// exists to prevent. This is the parity half of the guard (the render half is the
+// nav/footer/home-card integration tests).
+describe('label ↔ target parity', () => {
+  it('has one nav target per header nav label', () => {
+    expect(DEFAULT_CONTENT.header.nav).toHaveLength(NAV_TARGETS.length);
+  });
+
+  it('has one footer target column per footer link column, matching lengths', () => {
+    const columns = DEFAULT_CONTENT.footer.columns;
+    expect(columns).toHaveLength(FOOTER_TARGETS.length);
+    columns.forEach((column, i) => {
+      expect(column.links).toHaveLength(FOOTER_TARGETS[i].length);
+    });
+  });
+
+  it('has one moment target per moment card', () => {
+    expect(DEFAULT_CONTENT['home.moments'].cards).toHaveLength(
+      LIFE_MOMENT_TARGETS.length,
+    );
+  });
+
+  it('has one routine target per routine slot', () => {
+    expect(DEFAULT_CONTENT['home.routine'].slots).toHaveLength(
+      ROUTINE_TARGETS.length,
+    );
   });
 });

@@ -1,6 +1,9 @@
-// Today's hardcoded storefront copy, moved here verbatim from
-// `src/features/storefront/home/content.ts` and
-// `src/features/storefront/about/about-sections.tsx`. These serve as BOTH the
+// Today's hardcoded storefront copy, moved here verbatim from the section
+// components (`home/content.ts`, `home/*.tsx`, `about/about-sections.tsx`) and,
+// in v2, the chrome (`layout/navbar.tsx`, `layout/footer.tsx`, `layout/nav-links.ts`).
+// The link/card/tab *labels* moved here; their fixed *targets* (hrefs, shop
+// filters, category slugs) stay in code as the `*_TARGETS` tuples the components
+// zip with by index. These serve as BOTH the
 // implicit seed and the fallback: with an empty `site_content` table every page
 // renders byte-identical to before this story, and no SQL migration carries a
 // second, driftable copy of the Persian copy.
@@ -34,20 +37,75 @@ export const DEFAULT_CONTENT: ContentValues = {
     accent: 'دوستت',
     body: 'محصولاتی که با دقت برای سلامت، شادی و زندگی روزمره‌ی گربه‌ها و سگ‌ها انتخاب شده‌اند.',
     image: { key: 'site/hero-home.jpg', alt: 'سگی آرام در فضای خانه' },
+    shopCta: 'کشف محصولات',
+    aboutCta: 'داستان اسموکی',
+  },
+  'home.moments': {
+    eyebrow: 'خرید بر اساس لحظه',
+    headline: 'زندگی با حیوانات خانگی',
+    cta: 'مشاهده همه',
+    // Card photos are slash-less storage keys now (the family precedent); the
+    // emoji + shop filters live in LIFE_MOMENT_TARGETS at the same index.
+    cards: [
+      {
+        title: 'وقت غذا',
+        desc: 'بهترین تغذیه برای سلامت روزانه',
+        image: 'products/cat-dry-food.jpg',
+      },
+      {
+        title: 'وقت بازی',
+        desc: 'سرگرمی هوشمند برای ذهن فعال',
+        image: 'products/cat-toy.jpg',
+      },
+      {
+        title: 'وقت تشویق',
+        desc: 'پاداش کوچک برای رفتار خوب',
+        image: 'products/dog-treats.jpg',
+      },
+      {
+        title: 'مراقبت روزانه',
+        desc: 'پوست، مو و بهداشت',
+        image: 'products/cat-supplement.jpg',
+      },
+      {
+        title: 'وعده‌ی سگ',
+        desc: 'انرژی روزانه برای یک سگ فعال',
+        image: 'products/dog-dry-food.jpg',
+      },
+    ],
+  },
+  'home.recommends': {
+    eyebrow: 'کیوریت شده با دقت',
+    headline: 'انتخاب‌های اسموکی',
+    body: 'محصولاتی که اسموکی شخصاً تجربه کرده و توصیه می‌کند',
+  },
+  'home.journey': {
+    eyebrow: 'خرید شخصی‌سازی شده',
+    headline: 'برای کی خرید می‌کنی؟',
+    body: 'چند سوال کوتاه تا بهترین محصولات رو بهت پیشنهاد بدیم',
   },
   'home.guide': {
     eyebrow: 'راهنمای اسموکی',
     headline: 'چرا بعضی گربه‌ها\nآب کافی نمی‌خورند؟',
     body: 'کم‌آبی در گربه‌ها یکی از مشکلات شایعی است که بسیاری از صاحبان نادیده می‌گیرند. غذای مرطوب ساده‌ترین راه جبران آن در وعده‌های روزانه است.',
     image: { key: 'site/cat-hygiene.jpg', alt: 'گربه‌ای کنار ظرف آب' },
+    cta: 'مشاهده غذای مرطوب',
   },
-  'home.philosophy': {
-    eyebrow: 'فلسفه اسموکی',
-    headline: 'ما هر چیزی را',
-    accent: 'نمی‌فروشیم.',
-    body: 'محصولات اسموکی با تمرکز بر کیفیت، ترکیبات، کاربرد واقعی و تجربه‌ی حیوانات خانگی انتخاب می‌شوند.',
+  'home.routine': {
+    eyebrow: 'روتین روزانه',
+    headline: 'روتین روزانه یک گربه خوشحال',
+    body: 'دسته‌بندی‌های پیشنهادی برای این مرحله',
+    // Emoji + category slugs are in ROUTINE_TARGETS at the same index.
+    slots: [
+      { label: 'صبح', sub: 'غذا' },
+      { label: 'ظهر', sub: 'بازی' },
+      { label: 'عصر', sub: 'مراقبت' },
+      { label: 'شب', sub: 'آرامش' },
+    ],
   },
   'home.family': {
+    eyebrow: 'داستان‌های واقعی',
+    headline: 'خانواده اسموکی',
     slots: [
       {
         image: 'site/community-luna.jpg',
@@ -80,6 +138,17 @@ export const DEFAULT_CONTENT: ContentValues = {
         quote: 'بهترین خواب دنیا رو داره.',
       },
     ],
+  },
+  'home.categories': {
+    headline: 'فروشگاه',
+    cta: 'همه دسته‌بندی‌ها',
+  },
+  'home.philosophy': {
+    eyebrow: 'فلسفه اسموکی',
+    headline: 'ما هر چیزی را',
+    accent: 'نمی‌فروشیم.',
+    body: 'محصولات اسموکی با تمرکز بر کیفیت، ترکیبات، کاربرد واقعی و تجربه‌ی حیوانات خانگی انتخاب می‌شوند.',
+    cta: 'بیشتر درباره انتخاب محصولات',
   },
   'about.hero': {
     eyebrow: 'داستان ما',
@@ -132,7 +201,27 @@ export const DEFAULT_CONTENT: ContentValues = {
       },
     ],
   },
-  'about.cta': { headline: 'به خانواده اسموکی خوش اومدی.' },
+  'about.cta': { headline: 'به خانواده اسموکی خوش اومدی.', cta: 'کشف محصولات' },
+  header: {
+    // A display wordmark, independent of DEFAULT_SITE_NAME (which is «اسموکی» and
+    // drives page <title>s and emails) — today's latin bar wordmark, verbatim.
+    brand: 'Smokey',
+    tagline: 'فروشگاه حیوانات',
+    // Labels only; the hrefs are NAV_TARGETS in nav-links.ts at the same index.
+    nav: ['خانه', 'فروشگاه', 'درباره ما'],
+  },
+  footer: {
+    brand: 'Smokey',
+    tagline: 'فروشگاه تخصصی محصولات حیوانات خانگی. کیفیت اول، همیشه.',
+    // Column titles + link labels; the hrefs are FOOTER_TARGETS at the same index.
+    columns: [
+      { title: 'فروشگاه', links: ['گربه', 'سگ', 'غذا', 'اسباب‌بازی', 'مکمل'] },
+      { title: 'اسموکی', links: ['درباره ما'] },
+    ],
+    // The text AFTER the `© {jalali year}` prefix (rendered in code), verbatim.
+    copyright: 'اسموکی. تمام حقوق محفوظ است.',
+    credit: 'ساخته شده با ❤️ برای حیوانات خانگی ایران',
+  },
 };
 
 /**

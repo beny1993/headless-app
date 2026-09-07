@@ -21,9 +21,15 @@ for (const value of Object.values(DEFAULT_CONTENT)) {
   if (v.image && typeof v.image === 'object') {
     defaultImageKeys.push((v.image as { key: string }).key);
   }
+  // Family slots and moment cards each carry a bare image key.
   if (Array.isArray(v.slots)) {
-    for (const slot of v.slots as { image: string }[]) {
-      defaultImageKeys.push(slot.image);
+    for (const slot of v.slots as { image?: string }[]) {
+      if (typeof slot.image === 'string') defaultImageKeys.push(slot.image);
+    }
+  }
+  if (Array.isArray(v.cards)) {
+    for (const card of v.cards as { image: string }[]) {
+      defaultImageKeys.push(card.image);
     }
   }
 }
@@ -74,6 +80,18 @@ describe('DEFAULT_CONTENT', () => {
       },
     });
   });
+
+  it('keeps the four routine tab labels the design shows, in order', () => {
+    // Moved here from content.test.ts: the routine tab labels are content now
+    // (`home.routine.slots`), not code (`ROUTINE`); the emoji + category slugs
+    // stay in ROUTINE_TARGETS and are checked there.
+    expect(DEFAULT_CONTENT['home.routine'].slots.map((s) => s.label)).toEqual([
+      'صبح',
+      'ظهر',
+      'عصر',
+      'شب',
+    ]);
+  });
 });
 
 describe('resolveContent', () => {
@@ -91,9 +109,10 @@ describe('resolveContent', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const resolved = resolveContent('about.cta', {
       headline: 'سلام',
+      cta: 'برو',
       injected: '<script>',
     });
-    expect(resolved).toEqual({ headline: 'سلام' });
+    expect(resolved).toEqual({ headline: 'سلام', cta: 'برو' });
     expect(warn).not.toHaveBeenCalled();
   });
 

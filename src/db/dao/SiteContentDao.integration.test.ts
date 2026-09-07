@@ -21,6 +21,14 @@ describe.skipIf(!databaseReachable)('SiteContentDao', () => {
   // The keys any test in this file may write; cleaned after each.
   const touched = ['about.cta', 'about.story', 'home.family'] as const;
 
+  // A valid `about.cta` value with a chosen headline — spreads the default so the
+  // whole (v2-extended) shape is present and a later required field never breaks
+  // these round-trips.
+  const cta = (headline: string) => ({
+    ...DEFAULT_CONTENT['about.cta'],
+    headline,
+  });
+
   afterEach(async () => {
     vi.restoreAllMocks();
     await testDb
@@ -30,17 +38,17 @@ describe.skipIf(!databaseReachable)('SiteContentDao', () => {
 
   describe('set + getMany round-trip', () => {
     it('stores a value and reads it back', async () => {
-      await SiteContentDao.set('about.cta', { headline: 'سلام دنیا' });
+      await SiteContentDao.set('about.cta', cta('سلام دنیا'));
 
       const { 'about.cta': value } = await SiteContentDao.getMany([
         'about.cta',
       ]);
-      expect(value).toEqual({ headline: 'سلام دنیا' });
+      expect(value).toEqual(cta('سلام دنیا'));
     });
 
     it('is an upsert — a second set replaces, never duplicates', async () => {
-      await SiteContentDao.set('about.cta', { headline: 'اول' });
-      await SiteContentDao.set('about.cta', { headline: 'دوم' });
+      await SiteContentDao.set('about.cta', cta('اول'));
+      await SiteContentDao.set('about.cta', cta('دوم'));
 
       const rows = await testDb
         .select()
@@ -52,16 +60,16 @@ describe.skipIf(!databaseReachable)('SiteContentDao', () => {
 
     it('strips fields the schema does not declare before storing', async () => {
       await SiteContentDao.set('about.cta', {
-        headline: 'x',
+        ...cta('x'),
         // An injected extra field — must never reach the row.
         role: 'admin',
-      } as { headline: string });
+      } as ReturnType<typeof cta>);
 
       const rows = await testDb
         .select()
         .from(siteContent)
         .where(inArray(siteContent.key, ['about.cta']));
-      expect(rows[0].value).toEqual({ headline: 'x' });
+      expect(rows[0].value).toEqual(cta('x'));
     });
   });
 
@@ -77,7 +85,7 @@ describe.skipIf(!databaseReachable)('SiteContentDao', () => {
         updatedAt: stale,
       });
 
-      await SiteContentDao.set('about.cta', { headline: 'تازه' });
+      await SiteContentDao.set('about.cta', cta('تازه'));
 
       const [row] = await testDb
         .select()
@@ -91,7 +99,7 @@ describe.skipIf(!databaseReachable)('SiteContentDao', () => {
     it('throws and writes nothing for a value failing the schema', async () => {
       await expect(
         // Empty headline fails boundedText's min(1).
-        SiteContentDao.set('about.cta', { headline: '' }),
+        SiteContentDao.set('about.cta', cta('')),
       ).rejects.toThrow();
 
       const rows = await testDb
@@ -152,7 +160,7 @@ describe.skipIf(!databaseReachable)('SiteContentDao', () => {
     });
 
     it('returns only the keys asked for, not other rows in the table', async () => {
-      await SiteContentDao.set('about.cta', { headline: 'x' });
+      await SiteContentDao.set('about.cta', cta('x'));
       await SiteContentDao.set('home.family', DEFAULT_CONTENT['home.family']);
 
       const result = await SiteContentDao.getMany(['about.cta']);
@@ -160,12 +168,12 @@ describe.skipIf(!databaseReachable)('SiteContentDao', () => {
     });
 
     it('reads several keys in one call, each resolved independently', async () => {
-      await SiteContentDao.set('about.cta', { headline: 'ذخیره‌شده' });
+      await SiteContentDao.set('about.cta', cta('ذخیره‌شده'));
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       const result = await SiteContentDao.getMany(['about.cta', 'about.story']);
       // Saved key comes back stored; the un-saved key comes back as its default.
-      expect(result['about.cta']).toEqual({ headline: 'ذخیره‌شده' });
+      expect(result['about.cta']).toEqual(cta('ذخیره‌شده'));
       expect(result['about.story']).toEqual(DEFAULT_CONTENT['about.story']);
       expect(warn).not.toHaveBeenCalled();
     });
