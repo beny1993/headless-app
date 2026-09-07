@@ -18,6 +18,7 @@
 //
 // **Client-safe, like `site-content.ts`** — no drizzle / `pg` / hono import, so a
 // mis-formatted `console.warn` cannot drag a server-only dependency anywhere.
+import * as Sentry from '@sentry/nextjs';
 import {
   CONTENT_SCHEMAS,
   type ContentKey,
@@ -251,8 +252,10 @@ export function resolveContent<K extends ContentKey>(
   const issues = parsed.error.issues
     .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
     .join('; ');
-  console.warn(
-    `[content] site_content row "${key}" failed validation, using default: ${issues}`,
-  );
+  const message = `[content] site_content row "${key}" failed validation, using default: ${issues}`;
+  console.warn(message);
+  // The page still renders (that is the whole point of the fallback), so nobody
+  // finds out from the site that an admin's edit is being ignored.
+  Sentry.captureMessage(message, 'warning');
   return DEFAULT_CONTENT[key];
 }

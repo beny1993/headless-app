@@ -11,6 +11,13 @@ overrides:
 # install looks green but native binaries never compile.
 enablePrePostScripts: true
 allowBuilds:
+  # false on purpose. @sentry/cli's postinstall downloads a prebuilt binary from
+  # downloads.sentry-cdn.com, and `pnpm install` runs inside the Docker build ON
+  # the Iranian VPS, where Sentry's hosts answer 403 — allowing it would turn a
+  # deploy into a coin flip. The binary is only needed to UPLOAD source maps and
+  # create releases, both of which next.config.ts gates behind SENTRY_AUTH_TOKEN.
+  # Flip to true (and build somewhere with reachable Sentry hosts) if that lands.
+  '@sentry/cli': false
   '@tailwindcss/oxide': true
   esbuild: true
   unrs-resolver: true

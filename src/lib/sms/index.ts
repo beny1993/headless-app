@@ -5,6 +5,7 @@
 // 2026-09-01): the site must work end to end — browse, log in, check out — on
 // local and test deployments with no provider account. Adding the real one is a
 // new entry in `DRIVERS` and nothing else; no caller sees the difference.
+import * as Sentry from '@sentry/nextjs';
 import { getEnvVariable, isDevelopmentServer, VARS } from '@/lib/utils/env';
 
 /** Everything a provider has to do. Deliberately the whole interface. */
@@ -39,11 +40,13 @@ let mockWarningLogged = false;
 const warnIfMocked = () => {
   if (isDevelopmentServer() || mockWarningLogged) return;
   mockWarningLogged = true;
-  console.warn(
+  const message =
     '[sms] APP_CONFIG_SMS_PROVIDER is "console": one-time codes are being ' +
-      'written to the server log, not sent. Intended for mock deployments — ' +
-      'set a real provider before taking real customers.',
-  );
+    'written to the server log, not sent. Intended for mock deployments — ' +
+    'set a real provider before taking real customers.';
+  console.warn(message);
+  // The message is a fixed string with no code and no phone number in it.
+  Sentry.captureMessage(message, 'warning');
 };
 
 /**

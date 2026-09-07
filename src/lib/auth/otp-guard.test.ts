@@ -7,6 +7,12 @@ import {
 const mocks = vi.hoisted(() => ({
   decideAndRecord: vi.fn(),
   prune: vi.fn(),
+  captureException: vi.fn(),
+}));
+
+vi.mock('@sentry/nextjs', () => ({
+  captureException: mocks.captureException,
+  captureMessage: vi.fn(),
 }));
 
 vi.mock('@/db/dao/OtpSendLogDao', () => ({
@@ -142,6 +148,19 @@ describe('assertOtpSendAllowed', () => {
     mocks.prune.mockRejectedValue(new Error('deadlock detected'));
 
     await expect(assertOtpSendAllowed(PHONE)).resolves.toBeUndefined();
+    warn.mockRestore();
+  });
+
+  it('reports a prune failure, which is swallowed by design', async () => {
+    // Nothing downstream ever notices: the send succeeds and the table just
+    // keeps growing until the throttle query gets slow.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const failure = new Error('deadlock detected');
+    mocks.prune.mockRejectedValue(failure);
+
+    await assertOtpSendAllowed(PHONE);
+
+    expect(mocks.captureException).toHaveBeenCalledWith(failure);
     warn.mockRestore();
   });
 });

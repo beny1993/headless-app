@@ -8,6 +8,7 @@
 // ledger); persistence is the caller's job in `src/logic/payments`. Keeping the
 // database out also lets `client.test.ts` run on the DB-less path with 0 failures.
 import { z } from 'zod';
+import * as Sentry from '@sentry/nextjs';
 import { API_PATHS } from '@/lib/constant/paths';
 import {
   getAppBaseUrl,
@@ -289,11 +290,12 @@ let mockWarningLogged = false;
 const warnIfMocked = () => {
   if (isDevelopmentServer() || mockWarningLogged) return;
   mockWarningLogged = true;
-  console.warn(
+  const message =
     '[zarinpal] APP_CONFIG_ZARINPAL_PROVIDER is "mock": payments are simulated, ' +
-      'not charged. Intended for mock/test deployments — set a real provider and ' +
-      'merchant id before taking real payments.',
-  );
+    'not charged. Intended for mock/test deployments — set a real provider and ' +
+    'merchant id before taking real payments.';
+  console.warn(message);
+  Sentry.captureMessage(message, 'warning');
 };
 
 /**

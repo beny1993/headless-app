@@ -21,6 +21,13 @@ import {
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 
+const mocks = vi.hoisted(() => ({ captureException: vi.fn() }));
+
+vi.mock('@sentry/nextjs', () => ({
+  captureException: mocks.captureException,
+  captureMessage: vi.fn(),
+}));
+
 const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
 const { PaymentDao } = await importWithDb(() => import('@/db/dao/PaymentDao'));
 const { reconcilePayments } = await importWithDb(
@@ -254,9 +261,16 @@ describe.skipIf(!databaseReachable)('reconcilePayments', () => {
       },
     });
 
+    mocks.captureException.mockClear();
     const result = await reconcilePayments(throwingFor(a.payment.authority!));
 
     expect(result.errored).toBe(1); // a's verify threw, counted and skipped
+    // The row stays `pending` and the sweep reports success overall, so a
+    // payment that fails EVERY run is silent without this — and the money may
+    // already have left the shopper's account.
+    expect(mocks.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      extra: { paymentId: a.payment.id, orderId: a.order.id },
+    });
     expect(result.expired).toBe(1); // b was still processed after a threw
     // a is untouched and stays retryable; its order is not expired (live attempt).
     expect((await paymentRow(a.payment.id)).status).toBe(

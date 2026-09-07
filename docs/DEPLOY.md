@@ -52,6 +52,8 @@ All runtime configuration is env-only. Names come from the `VARS` enum in
 | Variable | Required | What it is |
 | --- | --- | --- |
 | `NEXT_PUBLIC_APP_URL` | yes | The real `https://` origin, no trailing slash (e.g. `https://shop.example.com`). **Inlined into the client bundle at build time** — it is a Docker build ARG, so it must be marked *available at build time* in Coolify, not just a runtime var. It drives the `Secure` session-cookie flag and Better Auth's CSRF trusted-origins list; `getAppBaseUrl()` throws in production if unset. A change here requires a **rebuild**, not just a restart. |
+| `NEXT_PUBLIC_SENTRY_DSN` | no | Sentry DSN. **Build-time only** — it is inlined into both the client *and* the server bundles, so setting it as a plain runtime variable does nothing at all. Empty ⇒ Sentry is off everywhere. A change needs a **rebuild**. See §9. |
+| `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | no | `staging` or `production`. Both apps report into one Sentry project; without this, staging noise is indistinguishable from customer-facing errors. Build-time, like the DSN. |
 
 **Not needed in Coolify** — these are consumed only by `docker-compose-dev.yaml`
 for the local dev database and have no role in production:
@@ -216,6 +218,37 @@ abuse; the fixes belong to the payments / reconcile stories, not here.
    uncapped and a discount use is never released on cancel/expiry, so one account
    can burn a limit-N promo with COD orders then cancel. **Decision:** release the
    use on cancel (reconcile/expiry story), or add a COD cap.
+
+---
+
+## 9. Error monitoring (Sentry) — blocked from this box
+
+`@sentry/nextjs` is wired for all three runtimes; the DSN is the only switch.
+**It currently delivers nothing from production or staging.** Measured
+2026-09-07 from the VPS:
+
+```bash
+curl -sI https://o4504158008901633.ingest.us.sentry.io/api/4512046597144576/envelope/
+# HTTP/2 403 — "Your client does not have permission to get URL ..."
+```
+
+That is the Google front-end sanctions block on the egress path, not a Sentry
+account problem: the same request from a non-Iranian IP returns `401`, which is
+Sentry's relay answering normally, and `https://ifconfig.me` returns the same 403
+page from the box. Iranian customers' browsers are blocked for the same reason,
+and `tunnelRoute` does not help — it proxies browser events through this server,
+which is the thing that cannot reach Sentry.
+
+Leave the DSN set anyway: it costs one blocked request per event, and the day an
+egress proxy or a self-hosted Sentry/GlitchTip exists, pointing
+`NEXT_PUBLIC_SENTRY_DSN` at it is a rebuild with no code change.
+
+**Source maps are off** unless `SENTRY_AUTH_TOKEN` is present at build
+(`next.config.ts` gates upload, release creation and plugin telemetry on it), and
+`@sentry/cli`'s postinstall is disabled in `pnpm-workspace.yaml` because it
+downloads a binary from a Sentry host this box cannot reach. Production stack
+traces are therefore minified. Fixing that means building somewhere with
+reachable Sentry hosts, not flipping a flag here.
 
 ---
 

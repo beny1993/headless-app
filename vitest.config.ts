@@ -10,6 +10,22 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // Pin the SDK's BROWSER build for the whole suite. Its Node entry reaches
+      // a bundler plugin that does `fileURLToPath(import.meta.url)`, and under
+      // vite-node that is not a `file:` URL — every suite importing an
+      // instrumented module (36 of them) died on collect with "The URL must be
+      // of scheme file". happy-dom is a browser, so the client build is the
+      // honest resolution; doing it as an alias rather than a global
+      // `resolve.conditions: ['browser']` keeps the change off `pg`,
+      // `better-auth` and everything else that also ships a browser field.
+      // A deep path on purpose: `exports` hides the client entry, and a version
+      // that moves it fails loudly here rather than silently resolving to Node.
+      '@sentry/nextjs': fileURLToPath(
+        new URL(
+          './node_modules/@sentry/nextjs/build/esm/index.client.js',
+          import.meta.url,
+        ),
+      ),
     },
   },
   test: {
@@ -35,5 +51,12 @@ export default defineConfig({
     // Revisit with a database per worker if the suite ever gets slow enough
     // to matter.
     fileParallelism: false,
+    server: {
+      deps: {
+        // Vite, not Node, resolves the aliased Sentry build: it reaches
+        // `next/constants`, which Node's own ESM loader rejects as extensionless.
+        inline: [/@sentry\//],
+      },
+    },
   },
 });

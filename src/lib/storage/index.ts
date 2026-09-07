@@ -8,6 +8,7 @@
 // **Nothing above this seam knows where an image physically lives.** Callers
 // store the opaque object key `put` was given and render it through `url(key)`;
 // the driver owns the URL↔location mapping.
+import * as Sentry from '@sentry/nextjs';
 import { getEnvVariable, isDevelopmentServer, VARS } from '@/lib/utils/env';
 import { localDriver } from './local-driver';
 import { s3Driver } from './s3-driver';
@@ -56,12 +57,13 @@ const warnIfMissingPublicBase = () => {
   if (getEnvVariable(VARS.NEXT_PUBLIC_STORAGE_BASE_URL, false, '').trim())
     return;
   publicBaseWarningLogged = true;
-  console.warn(
+  const message =
     `[storage] APP_CONFIG_STORAGE_PROVIDER is "s3" but ` +
-      `${VARS.NEXT_PUBLIC_STORAGE_BASE_URL} is unset: uploads will be stored in ` +
-      'the bucket but rendered as broken local URLs. Set it (at build time) to ' +
-      "the bucket's public base, e.g. https://<endpoint>/<bucket>.",
-  );
+    `${VARS.NEXT_PUBLIC_STORAGE_BASE_URL} is unset: uploads will be stored in ` +
+    'the bucket but rendered as broken local URLs. Set it (at build time) to ' +
+    "the bucket's public base, e.g. https://<endpoint>/<bucket>.";
+  console.warn(message);
+  Sentry.captureMessage(message, 'warning');
 };
 
 let localWarningLogged = false;
@@ -69,12 +71,13 @@ let localWarningLogged = false;
 const warnIfLocal = () => {
   if (isDevelopmentServer() || localWarningLogged) return;
   localWarningLogged = true;
-  console.warn(
+  const message =
     '[storage] APP_CONFIG_STORAGE_PROVIDER is "local": uploaded images are ' +
-      'stored on the local filesystem, which does not survive a redeploy on ' +
-      'ephemeral hosting. Intended for local/test deployments — set the ' +
-      'S3-compatible provider before taking real uploads.',
-  );
+    'stored on the local filesystem, which does not survive a redeploy on ' +
+    'ephemeral hosting. Intended for local/test deployments — set the ' +
+    'S3-compatible provider before taking real uploads.';
+  console.warn(message);
+  Sentry.captureMessage(message, 'warning');
 };
 
 /**

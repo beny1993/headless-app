@@ -59,6 +59,18 @@ export enum VARS {
   APP_CONFIG_SMTP_PASSWORD = 'APP_CONFIG_SMTP_PASSWORD',
   APP_CONFIG_SMTP_SENDER_EMAIL = 'APP_CONFIG_SMTP_SENDER_EMAIL',
 
+  // ── Error monitoring (Sentry) ───────────────────────────────────────────────
+  // Sentry DSN. Empty (the default) disables the SDK entirely, which is what a
+  // fresh clone and every `pnpm test` run should get. A DSN is public by design
+  // — it identifies the project and nothing else — so NEXT_PUBLIC_ is correct.
+  // The browser reads it inlined at BUILD time; the server reads it from the
+  // process at RUNTIME, so a deployment has to set it in both places.
+  NEXT_PUBLIC_SENTRY_DSN = 'NEXT_PUBLIC_SENTRY_DSN',
+  // Which deployment an event came from: `staging` or `production`. Staging and
+  // production share one Sentry project, so without this every staging error
+  // looks like a customer hitting a bug. Build-time, like the DSN.
+  NEXT_PUBLIC_SENTRY_ENVIRONMENT = 'NEXT_PUBLIC_SENTRY_ENVIRONMENT',
+
   NODE_ENV = 'NODE_ENV',
   NEXT_PUBLIC_APP_URL = 'NEXT_PUBLIC_APP_URL',
 }
@@ -76,6 +88,9 @@ const STATIC_INLINED_VARS: Partial<Record<VARS, string | undefined>> = {
   [VARS.NODE_ENV]: process.env.NODE_ENV,
   [VARS.NEXT_PUBLIC_APP_URL]: process.env.NEXT_PUBLIC_APP_URL,
   [VARS.NEXT_PUBLIC_STORAGE_BASE_URL]: process.env.NEXT_PUBLIC_STORAGE_BASE_URL,
+  [VARS.NEXT_PUBLIC_SENTRY_DSN]: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  [VARS.NEXT_PUBLIC_SENTRY_ENVIRONMENT]:
+    process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT,
 };
 
 export const getEnvVariable: Func = (
