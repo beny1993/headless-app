@@ -43,6 +43,10 @@ COPY . .
 # NEXT_PUBLIC_APP_URL is inlined into the client bundle now — must be the real
 # origin at build time (drives the Secure cookie flag + CSRF trusted origins).
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
+# Added with the S3 storage driver: also a NEXT_PUBLIC_* inlined at build time
+# (STATIC_INLINED_VARS in src/lib/utils/env.ts). Empty => uploads resolve to the
+# local-relative /uploads path and next.config.ts adds no remote image pattern.
+ARG NEXT_PUBLIC_STORAGE_BASE_URL=
 
 # Build the standalone output. The three vars are set inline for this command
 # only — they never become image ENV metadata (nothing sensitive is baked in;
@@ -52,9 +56,17 @@ ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
 # not connect, nothing here verifies the secret, and every data route is
 # force-dynamic so no DB-backed page is rendered at build.
 RUN NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
+    NEXT_PUBLIC_STORAGE_BASE_URL="$NEXT_PUBLIC_STORAGE_BASE_URL" \
     APP_CONFIG_DATABASE_URL="postgres://build:build@127.0.0.1:5432/build" \
     APP_CONFIG_AUTH_SECRET="build-time-placeholder-not-used-at-runtime" \
     pnpm build
+
+# Next bundles drizzle-orm into the server chunks rather than tracing it as an
+# external, so .next/standalone/node_modules does NOT contain it — and the
+# migration script below is a plain Node script, outside that bundle. Stage a
+# dereferenced copy (pnpm's node_modules entries are symlinks into .pnpm/,
+# which would copy across as dangling links).
+RUN mkdir -p /migrator && cp -rL node_modules/drizzle-orm /migrator/drizzle-orm
 
 # ─────────────────────────────────────────────────────────────────────────────
 # runtime — the shipped image. Slim, non-root, env-only.
@@ -80,6 +92,13 @@ RUN mkdir -p /app/uploads && chown node:node /app/uploads
 COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
+
+# Migrations are applied by a deploy step, not by the server on boot — so the
+# SQL and a devDependency-free applier travel with the image.
+# Coolify pre-deployment command:  node scripts/migrate.mjs
+COPY --from=build --chown=node:node /app/src/db/migrations ./src/db/migrations
+COPY --from=build --chown=node:node /app/scripts/migrate.mjs ./scripts/migrate.mjs
+COPY --from=build --chown=node:node /migrator/drizzle-orm ./node_modules/drizzle-orm
 
 USER node
 EXPOSE 3000
