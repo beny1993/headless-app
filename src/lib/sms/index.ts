@@ -47,6 +47,22 @@ const warnIfMocked = () => {
 };
 
 /**
+ * What the environment names as the provider, defaulted and trimmed. Not
+ * checked against `DRIVERS` — `getSmsSender` does that; this is also what
+ * `src/lib/auth/otp-echo.ts` reads to answer "is anything real being sent?".
+ */
+export function getConfiguredSmsProvider(): SmsProvider {
+  const configured = getEnvVariable(
+    VARS.APP_CONFIG_SMS_PROVIDER,
+    false,
+    DEFAULT_PROVIDER,
+  );
+  // `||` not `??`: an empty value (`APP_CONFIG_SMS_PROVIDER=` left in a `.env`)
+  // is an unset one, and `??` would hand `''` through as a provider name.
+  return (configured.trim() || DEFAULT_PROVIDER) as SmsProvider;
+}
+
+/**
  * The configured driver.
  *
  * An unrecognized value throws rather than falling back to the console driver.
@@ -55,14 +71,7 @@ const warnIfMocked = () => {
  * login reports success while dispatching nothing.
  */
 export function getSmsSender(): SmsSender {
-  const configured = getEnvVariable(
-    VARS.APP_CONFIG_SMS_PROVIDER,
-    false,
-    DEFAULT_PROVIDER,
-  );
-  // `||` not `??`: an empty value (`APP_CONFIG_SMS_PROVIDER=` left in a `.env`)
-  // is an unset one, and `??` would hand `''` through as a provider name.
-  const provider = (configured.trim() || DEFAULT_PROVIDER) as SmsProvider;
+  const provider = getConfiguredSmsProvider();
 
   // `Object.hasOwn`, not a truthiness check on the lookup: `DRIVERS` is an
   // object literal, so `constructor`/`toString`/`valueOf` would otherwise

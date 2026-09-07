@@ -17,6 +17,7 @@ import {
   normalizeIranPhone,
   toLocalIranPhone,
 } from '@/lib/auth/phone';
+import { otpEchoResponseSchema } from '@/lib/auth/otp-echo';
 import {
   OTP_CODE_LENGTH,
   OTP_RESEND_COOLDOWN_SECONDS,
@@ -98,6 +99,10 @@ export function LoginForm({ next }: { next: string }) {
   const [error, setError] = useState<string | undefined>();
   const [isBusy, setIsBusy] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
+  // Only ever set on staging/local, where the server echoes the code back
+  // instead of texting it (src/lib/auth/otp-echo.ts). Empty in production
+  // because the field is not in the response.
+  const [devCode, setDevCode] = useState<string | undefined>();
 
   const boxes = useRef<(HTMLInputElement | null)[]>([]);
   const phoneField = useRef<HTMLInputElement>(null);
@@ -177,6 +182,8 @@ export function LoginForm({ next }: { next: string }) {
       }
       setSentTo(phoneNumber);
       setSecondsLeft(RESEND_SECONDS);
+      const echoed = otpEchoResponseSchema.safeParse(response.data);
+      setDevCode(echoed.success ? echoed.data.devCode : undefined);
       return true;
     } catch {
       setError(MESSAGES.offline);
@@ -414,6 +421,7 @@ export function LoginForm({ next }: { next: string }) {
                     setStep('phone');
                     setError(undefined);
                     putCode(emptyCode());
+                    setDevCode(undefined);
                   }}
                   className="text-accent-strong focus-visible:ring-ring rounded hover:underline focus-visible:ring-2 focus-visible:outline-none"
                   data-umami-event="login-edit-phone"
@@ -421,6 +429,22 @@ export function LoginForm({ next }: { next: string }) {
                   ویرایش شماره
                 </button>
               </p>
+
+              {/* Staging/local only — the code was never texted anywhere, so
+                  the page is the only place it can be read. ASCII digits and
+                  ltr for the same reason the SMS uses them: it gets typed back
+                  into the boxes verbatim. */}
+              {devCode ? (
+                <p className="border-accent-strong/40 bg-accent/10 text-accent-strong mb-4 rounded-xl border border-dashed px-3 py-2 text-center text-sm">
+                  حالت آزمایشی — کد ورود:{' '}
+                  <span
+                    dir="ltr"
+                    className="font-mono font-bold tracking-widest"
+                  >
+                    {devCode}
+                  </span>
+                </p>
+              ) : null}
 
               {/* The code reads left to right even on an RTL page: it is a
                   number, and the first digit typed must be the leftmost box. */}

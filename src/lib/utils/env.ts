@@ -7,6 +7,12 @@ export enum VARS {
   // writes codes to the server log instead of sending them — the mock the
   // project ships with until Kavenegar or SMS.ir is picked.
   APP_CONFIG_SMS_PROVIDER = 'APP_CONFIG_SMS_PROVIDER',
+  // `true` echoes the one-time code back in the send-otp response, so the login
+  // form can show it on screen. For staging/QA deployments, where the console
+  // SMS driver means the code only ever reaches the server log. Anything but
+  // `true` is off, and it does nothing unless the SMS provider is `console`
+  // (see `src/lib/auth/otp-echo.ts`) — on its own it is a full auth bypass.
+  APP_CONFIG_SHOW_OTP_IN_UI = 'APP_CONFIG_SHOW_OTP_IN_UI',
 
   // Which Zarinpal driver `src/lib/zarinpal` dispatches through. `mock` (the
   // default) simulates the whole request/redirect/callback/verify flow locally

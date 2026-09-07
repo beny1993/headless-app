@@ -32,6 +32,7 @@ All runtime configuration is env-only. Names come from the `VARS` enum in
 | `APP_CONFIG_DATABASE_URL` | yes | Postgres connection string. Comes from the Coolify Postgres service (see §2). Use the **internal** service URL, not a public one. |
 | `APP_CONFIG_AUTH_SECRET` | yes | Better Auth signing secret. Generate once with `openssl rand -hex 32`; rotating it invalidates all sessions. |
 | `APP_CONFIG_SMS_PROVIDER` | yes | OTP SMS driver. `console` (default) logs codes to the server log — **fine for a soft launch, not for real customers**. Set to the real driver (Kavenegar / SMS.ir) before launch (see §6). |
+| `APP_CONFIG_SHOW_OTP_IN_UI` | no | `true` prints the OTP on the login page for **staging/QA only**, where `console` codes reach nothing but the server log. Anything else is off, and it is ignored unless `APP_CONFIG_SMS_PROVIDER=console`. Never set it on the production app — it is a sign-in bypass. |
 | `APP_CONFIG_ZARINPAL_PROVIDER` | yes | `mock` (default) simulates the full pay flow with no gateway account. Set to `zarinpal` at the real-gateway flip (see §6). |
 | `APP_CONFIG_ZARINPAL_MERCHANT_ID` | when `=zarinpal` | Merchant UUID from the Zarinpal panel. |
 | `APP_CONFIG_ZARINPAL_SANDBOX` | no | `true` routes the real driver at Zarinpal's sandbox host. Default `false`. |
@@ -176,6 +177,9 @@ and deliberately not baked into the image:
 - [ ] **Real SMS driver:** set `APP_CONFIG_SMS_PROVIDER` to the picked provider
       (Kavenegar / SMS.ir) and add its `DRIVERS` entry. The `console` default
       logs every OTP to the server log.
+- [ ] **`APP_CONFIG_SHOW_OTP_IN_UI` unset (or `false`) on production.** Staging
+      sets it to `true` to read codes off the login page; production must not,
+      and the real SMS driver above also disarms it.
 - [ ] **Email-era users** (`phone_number` NULL) cannot sign in (email login is
       removed), and `pnpm create-admin <their-phone>` mints a **new** row beside
       the dormant one — reconcile or accept per the data state before launch.

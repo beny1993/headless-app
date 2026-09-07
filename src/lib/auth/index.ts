@@ -14,6 +14,7 @@ import {
 import { sendOtpSms } from '@/lib/sms';
 import { getAppBaseUrl, getEnvVariable, VARS } from '@/lib/utils/env';
 import { assertOtpSendAllowed } from './otp-guard';
+import { rememberOtp, takeOtp } from './otp-echo';
 import { OTP_CODE_LENGTH } from './otp-throttle';
 import {
   INVALID_PHONE_MESSAGE,
@@ -133,6 +134,25 @@ export const auth = betterAuth({
 
       if (ctx.path === SEND_OTP_PATH) await assertOtpSendAllowed(phone);
     }),
+
+    /**
+     * Staging only: puts the code just sent into the response body, so the
+     * login form can show it (see ./otp-echo.ts for why that is safe to ship
+     * switched off, and only that).
+     *
+     * `takeOtp` answers `undefined` whenever the echo is off — which is also
+     * what makes the failure case correct: after hooks still run when the
+     * handler threw, and returning a body there would turn a failed send into
+     * a cheerful 200.
+     */
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== SEND_OTP_PATH) return;
+      const phone = (ctx.body as { phoneNumber?: string } | undefined)
+        ?.phoneNumber;
+      const devCode = phone ? takeOtp(phone) : undefined;
+      if (!devCode) return;
+      return ctx.json({ message: 'code sent', devCode });
+    }),
   },
   rateLimit: {
     // On by default only in production. Turned on everywhere so the limits are
@@ -155,7 +175,12 @@ export const auth = betterAuth({
     phoneNumber({
       // The throttle already passed *and counted this send* in `hooks.before`,
       // atomically — see `assertOtpSendAllowed`. Nothing to do here but send.
-      sendOTP: async ({ phoneNumber: phone, code }) => sendOtpSms(phone, code),
+      sendOTP: async ({ phoneNumber: phone, code }) => {
+        await sendOtpSms(phone, code);
+        // No-op unless the staging echo is switched on. After the send, so a
+        // provider that rejected never leaves a code to hand back.
+        rememberOtp(phone, code);
+      },
       // Two minutes. Long enough for a slow SMS route, short enough that the
       // window in which a code sits in the database is small.
       //
