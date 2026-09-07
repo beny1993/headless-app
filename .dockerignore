@@ -1,0 +1,37 @@
+# Build context excludes. Keep this tight: everything not listed here is sent to
+# the daemon and can leak into build-stage layers.
+
+# Secrets — a real dev .env is gitignored (so `git status` hides it) but would
+# otherwise land in the context and bake into a layer. Never ship it.
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output — reinstalled/regenerated inside the image.
+node_modules
+.next
+out
+build
+coverage
+*.tsbuildinfo
+
+# VCS and tooling metadata (also lets husky's `prepare` script no-op cleanly).
+.git
+.gitignore
+.husky
+
+# The vendored Figma prototype: its own deps, its own dev server, never imported
+# by the app. Huge and irrelevant to the build.
+design
+
+# Local dev-only artifacts.
+uploads
+docker-compose-dev.yaml
+Dockerfile
+.dockerignore
+docs
+
+# Editor / OS noise.
+.DS_Store
+.vscode
+.idea
