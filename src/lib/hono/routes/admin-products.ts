@@ -22,11 +22,7 @@ import type { Product } from '@/db/schema/catalog';
 import { productInputSchema } from '@/lib/catalog/product-input';
 import { PET_TYPES } from '@/lib/catalog/product-query';
 import { replaceProductImage } from '@/logic/admin/product-images';
-import {
-  IMAGE_FIELD_NAME,
-  MAX_UPLOAD_BYTES,
-  sniffImageType,
-} from '@/lib/storage/image-upload';
+import { readImageUpload } from '../image-upload';
 import {
   apiError,
   apiErrorSchema,
@@ -40,13 +36,6 @@ export const PRODUCT_NOT_FOUND_MESSAGE = 'محصول یافت نشد';
 /** A save refused by the database (duplicate slug/sku, bad category…). */
 export const PRODUCT_SAVE_FAILED_MESSAGE =
   'محصول ذخیره نشد؛ ورودی را بررسی کن.';
-/** No usable image file on an upload request. */
-export const NO_IMAGE_FILE_MESSAGE = 'فایلی برای بارگذاری ارسال نشده است.';
-/** The uploaded bytes are not one of the accepted image formats. */
-export const INVALID_IMAGE_MESSAGE =
-  'فقط تصویر JPEG، PNG یا WEBP پذیرفته می‌شود.';
-/** The uploaded file is larger than the allowed size. */
-export const IMAGE_TOO_LARGE_MESSAGE = 'حجم تصویر بیش از حد مجاز است.';
 
 /**
  * The admin view of a product — the full row the form round-trips, including
@@ -305,26 +294,12 @@ export const productImageUploadHandler = async (
   const product = await ProductDao.findByIdForAdmin(id.data);
   if (!product) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
 
-  const form = await c.req.parseBody();
-  const file = form[IMAGE_FIELD_NAME];
-  if (!(file instanceof File)) {
-    return c.json(apiError(NO_IMAGE_FILE_MESSAGE), 400);
-  }
+  // The shared trust boundary: parse the body, refuse a missing/empty/oversize
+  // file, and sniff the real type from the bytes. Identical to the content
+  // upload — the only difference is what happens with the bytes afterwards.
+  const upload = await readImageUpload(c);
+  if (!upload.ok) return upload.response;
 
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  if (bytes.byteLength === 0) {
-    return c.json(apiError(NO_IMAGE_FILE_MESSAGE), 400);
-  }
-  // Backstop under `bodyLimit`: the mounted `bodyLimit` refuses an oversize body
-  // before it is buffered, but this re-checks the read length so the ceiling is
-  // still enforced if a caller ever reaches this handler off that guarded path.
-  if (bytes.byteLength > MAX_UPLOAD_BYTES) {
-    return c.json(apiError(IMAGE_TOO_LARGE_MESSAGE), 413);
-  }
-
-  const type = sniffImageType(bytes);
-  if (!type) return c.json(apiError(INVALID_IMAGE_MESSAGE), 400);
-
-  const stored = await replaceProductImage(product, bytes, type);
+  const stored = await replaceProductImage(product, upload.bytes, upload.type);
   return c.json(apiSuccess(stored), 201);
 };

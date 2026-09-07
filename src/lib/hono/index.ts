@@ -6,6 +6,7 @@ import { MAX_UPLOAD_BYTES } from '@/lib/storage/image-upload';
 import { getEnvVariable, VARS } from '@/lib/utils/env';
 import { apiErrorHandler, createRouter } from './create-router';
 import { apiError } from './envelope';
+import { IMAGE_TOO_LARGE_MESSAGE } from './image-upload';
 import { requireAdmin, requireAuth, type AuthedEnv } from './middleware/auth';
 import {
   discountCreateHandler,
@@ -20,7 +21,6 @@ import {
   adminOrderTransitionRoute,
 } from './routes/admin-orders';
 import {
-  IMAGE_TOO_LARGE_MESSAGE,
   productCreateHandler,
   productCreateRoute,
   productDeleteHandler,
