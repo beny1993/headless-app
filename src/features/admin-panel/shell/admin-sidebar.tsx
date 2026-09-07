@@ -2,18 +2,26 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import {
   Home,
+  Info,
+  LayoutTemplate,
   LogOut,
   Menu,
   Package,
+  PanelBottom,
+  PanelTop,
   Settings,
   ShoppingCart,
   Tag,
   X,
 } from 'lucide-react';
-import { PATHS, PROTECTED_PATHS } from '@/lib/constant/paths';
+import {
+  adminContentAreaPath,
+  PATHS,
+  PROTECTED_PATHS,
+} from '@/lib/constant/paths';
 import { cn } from '@/lib/utils';
 
 // The admin panel's sidebar, ported from the Figma admin shell
@@ -28,14 +36,20 @@ import { cn } from '@/lib/utils';
 //     Defaults closed, so the first paint is hydration-safe (no `window` read).
 //
 // One entry per admin page that exists (dashboard, orders, products, shipping).
-// `NAV_ITEMS` is data-driven, so a future admin page adds its entry here.
+// `NAV_ITEMS` is data-driven, so a future admin page adds its entry here. The
+// content editor is four area sub-links under one «محتوای سایت» group heading —
+// `group` labels them; a heading is emitted when an item's group first appears.
 type NavItem = {
   href: string;
   label: string;
   icon: typeof Home;
   /** Active when the path is exactly `href` (`exact`) or starts with it. */
   match: 'exact' | 'prefix';
+  /** The group heading this item sits under; grouped items are indented. */
+  group?: string;
 };
+
+const CONTENT_GROUP = 'محتوای سایت';
 
 const NAV_ITEMS: NavItem[] = [
   { href: PROTECTED_PATHS.INDEX, label: 'داشبورد', icon: Home, match: 'exact' },
@@ -62,6 +76,36 @@ const NAV_ITEMS: NavItem[] = [
     label: 'نرخ ارسال',
     icon: Settings,
     match: 'prefix',
+  },
+  // «محتوای سایت» — four area editors. `exact`, because no area has sub-routes;
+  // each links to `/admin-panel/content/[area]`.
+  {
+    href: adminContentAreaPath('home'),
+    label: 'صفحه اصلی',
+    icon: LayoutTemplate,
+    match: 'exact',
+    group: CONTENT_GROUP,
+  },
+  {
+    href: adminContentAreaPath('about'),
+    label: 'درباره ما',
+    icon: Info,
+    match: 'exact',
+    group: CONTENT_GROUP,
+  },
+  {
+    href: adminContentAreaPath('header'),
+    label: 'هدر',
+    icon: PanelTop,
+    match: 'exact',
+    group: CONTENT_GROUP,
+  },
+  {
+    href: adminContentAreaPath('footer'),
+    label: 'فوتر',
+    icon: PanelBottom,
+    match: 'exact',
+    group: CONTENT_GROUP,
   },
 ];
 
@@ -147,26 +191,39 @@ export function AdminSidebar() {
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.map((item, index) => {
             const active = isActive(pathname, item);
             const Icon = item.icon;
+            // A group heading precedes the first item of each group; the
+            // collapsed rail (no labels) just shows the grouped items' icons.
+            const heading =
+              item.group && item.group !== NAV_ITEMS[index - 1]?.group
+                ? item.group
+                : null;
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileOpen(false)}
-                aria-current={active ? 'page' : undefined}
-                data-umami-event={`admin-panel-nav-${item.label}`}
-                className={cn(
-                  'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
-                  active
-                    ? 'bg-accent-strong text-white'
-                    : 'text-white/70 hover:bg-white/10 hover:text-white',
+              <Fragment key={item.href}>
+                {heading && showLabels && (
+                  <p className="px-3 pt-4 pb-1 text-xs text-white/40">
+                    {heading}
+                  </p>
                 )}
-              >
-                <Icon size={16} aria-hidden="true" />
-                {showLabels && <span>{item.label}</span>}
-              </Link>
+                <Link
+                  href={item.href}
+                  onClick={() => setMobileOpen(false)}
+                  aria-current={active ? 'page' : undefined}
+                  data-umami-event={`admin-panel-nav-${item.label}`}
+                  className={cn(
+                    'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                    item.group && 'ps-5',
+                    active
+                      ? 'bg-accent-strong text-white'
+                      : 'text-white/70 hover:bg-white/10 hover:text-white',
+                  )}
+                >
+                  <Icon size={16} aria-hidden="true" />
+                  {showLabels && <span>{item.label}</span>}
+                </Link>
+              </Fragment>
             );
           })}
         </nav>

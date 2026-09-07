@@ -3,7 +3,6 @@
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
-import { NAV_LINKS } from './nav-links';
 import { PATHS } from '@/lib/constant/paths';
 
 /**
@@ -15,8 +14,17 @@ import { PATHS } from '@/lib/constant/paths';
  * and top-layer stacking that the design review asked for, with no dependency
  * and no vendored primitive. The one thing it does not give is a scroll lock —
  * `body:has(dialog[open])` in globals.css covers that.
+ *
+ * The nav links are the ones the `Navbar` (a server component) zipped from the
+ * `header` content and its code-side targets, handed down as props so this client
+ * component never reads content itself and the desktop bar and mobile menu can
+ * never drift.
  */
-export function MobileMenu() {
+export function MobileMenu({
+  links,
+}: {
+  links: readonly { label: string; href: string }[];
+}) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
 
@@ -84,9 +92,10 @@ export function MobileMenu() {
           </div>
 
           <nav className="flex flex-col gap-1 p-4">
-            {NAV_LINKS.map((link) => (
+            {links.map((link, index) => (
               <Link
-                key={link.href}
+                // Index key: labels are content and may repeat; hrefs recur too.
+                key={index}
                 href={link.href}
                 onClick={close}
                 className="hover:bg-secondary rounded-xl px-2 py-3.5 text-start text-lg font-semibold transition-colors"

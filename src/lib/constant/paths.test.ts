@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
+import {
+  adminContentAreaPath,
+  API_PATHS,
+  apiAdminContentPath,
+  PATHS,
+  productPath,
+  PROTECTED_PATHS,
+  shopPath,
+} from '@/lib/constant/paths';
 
 describe('productPath', () => {
   it('builds the storefront path for a slug', () => {
@@ -40,5 +48,32 @@ describe('shopPath', () => {
 
   it('encodes a value with URL-significant characters', () => {
     expect(shopPath({ category: 'a&b=c' })).toBe('/shop?category=a%26b%3Dc');
+  });
+});
+
+describe('apiAdminContentPath', () => {
+  it('builds the content-block path for a key', () => {
+    expect(apiAdminContentPath('home.hero')).toBe(
+      `${API_PATHS.ADMIN_CONTENT}/home.hero`,
+    );
+  });
+
+  it('encodes a key so it can never break out of the path segment', () => {
+    // The route validates the key against the enum, but the builder takes
+    // whatever a caller hands it — a slash or `?` must stay inside the segment.
+    expect(apiAdminContentPath('a/b?c')).toBe(
+      `${API_PATHS.ADMIN_CONTENT}/a%2Fb%3Fc`,
+    );
+  });
+});
+
+describe('adminContentAreaPath', () => {
+  it('builds the editor page path for each area', () => {
+    expect(adminContentAreaPath('home')).toBe(
+      `${PROTECTED_PATHS.CONTENT}/home`,
+    );
+    expect(adminContentAreaPath('footer')).toBe(
+      `${PROTECTED_PATHS.CONTENT}/footer`,
+    );
   });
 });

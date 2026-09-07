@@ -1,16 +1,20 @@
-// The home page's editorial content — the parts that are not catalog data.
+// The home page's non-editable, code-side data — the parts that are NOT content.
 //
-// Kept in one module rather than inline in the sections so the checks that
-// matter can run without a browser: every photo is a committed local file (the
-// design review's blocker 1), and every deep link names a category that really
-// exists (its "no dead navigation" rule).
+// Under the v2 CMS rule the editorial *labels* (the moment cards' title/desc/photo,
+// the routine tabs' label/sub) moved into `DEFAULT_CONTENT` (`src/lib/content/`);
+// what stays here is everything catalog-coupled or destination-bearing: the
+// category photography, and the fixed link TARGETS the sections zip with their
+// editable labels by index. Kept in one module so the checks that matter run
+// without a browser: every category photo is a committed local file (the design
+// review's blocker 1), and every deep link names a category that really exists
+// (its "no dead navigation" rule) — `content.test.ts` asserts both on these arrays.
 //
-// Paths are public/ URLs, the same convention `product_images.object_key`
-// follows: `/products/cat-toy.jpg` is `public/products/cat-toy.jpg`.
-// Type-only: this module is imported by client components, and a *value*
-// import of the schema ships `pgTable`/`pg-core` to the browser. The pet
-// literals below are checked against `PetType` by the annotations on
-// `LIFE_MOMENTS`, so a renamed enum value still breaks `pnpm type-check`.
+// Paths are public/ URLs, the same convention `product_images.object_key` follows:
+// `/products/cat-toy.jpg` is `public/products/cat-toy.jpg`.
+// Type-only: this module is imported by client components, and a *value* import of
+// the schema ships `pgTable`/`pg-core` to the browser. The pet literals below are
+// checked against `PetType` by the `satisfies` on `LIFE_MOMENT_TARGETS`, so a
+// renamed enum value still breaks `pnpm type-check`.
 import type { PetType } from '@/db/schema/catalog';
 
 /**
@@ -19,7 +23,8 @@ import type { PetType } from '@/db/schema/catalog';
  * Categories are database rows and can be added in the admin panel, so this is
  * a lookup with a miss — an unmapped category still renders, on a plain
  * surface instead of a photo. Nothing here is a source of category *titles*;
- * those come from `CategoryDao`.
+ * those come from `CategoryDao`. (A `categories.image_key` catalog story would
+ * move these into the database later — flagged to the PM, out of scope here.)
  */
 export const CATEGORY_IMAGES: Record<string, string> = {
   'dry-food': '/products/cat-dry-food.jpg',
@@ -30,143 +35,41 @@ export const CATEGORY_IMAGES: Record<string, string> = {
   hygiene: '/site/cat-hygiene.jpg',
 };
 
-/** The hero photograph. Large, above the fold, and the page's LCP element. */
-export const HERO_IMAGE = '/site/hero-home.jpg';
-
-/** The «راهنمای اسموکی» section's photograph. */
-export const STORY_IMAGE = '/site/cat-hygiene.jpg';
-
-export type LifeMoment = {
-  title: string;
-  desc: string;
-  image: string;
-  /** Rendered as decoration next to the title, not as a functional icon. */
+export type LifeMomentTarget = {
+  /** Rendered as decoration next to the card title, not as a functional icon. */
   emoji: string;
   filters: { category: string; pet: PetType };
 };
 
 /**
- * «خرید بر اساس لحظه» — five editorial entry points into the shop. The
- * prototype linked them all at the bare shop page; each one now carries the
- * filter its own copy promises.
+ * «خرید بر اساس لحظه» — the five cards' fixed destinations, zipped by index with
+ * the editable `home.moments.cards` labels. Each card links at the filter its own
+ * copy promises. `as const satisfies` keeps the tuple length fixed (for the parity
+ * test) AND checks each `pet` against `PetType`.
  */
-export const LIFE_MOMENTS: readonly LifeMoment[] = [
-  {
-    title: 'وقت غذا',
-    desc: 'بهترین تغذیه برای سلامت روزانه',
-    image: '/products/cat-dry-food.jpg',
-    emoji: '🐱',
-    filters: { category: 'dry-food', pet: 'cat' },
-  },
-  {
-    title: 'وقت بازی',
-    desc: 'سرگرمی هوشمند برای ذهن فعال',
-    image: '/products/cat-toy.jpg',
-    emoji: '🐱',
-    filters: { category: 'toys', pet: 'cat' },
-  },
-  {
-    title: 'وقت تشویق',
-    desc: 'پاداش کوچک برای رفتار خوب',
-    image: '/products/dog-treats.jpg',
-    emoji: '🐶',
-    filters: { category: 'treats', pet: 'dog' },
-  },
-  {
-    title: 'مراقبت روزانه',
-    desc: 'پوست، مو و بهداشت',
-    image: '/products/cat-supplement.jpg',
-    emoji: '🐱',
-    filters: { category: 'supplements', pet: 'cat' },
-  },
-  {
-    title: 'وعده‌ی سگ',
-    desc: 'انرژی روزانه برای یک سگ فعال',
-    image: '/products/dog-dry-food.jpg',
-    emoji: '🐶',
-    filters: { category: 'dry-food', pet: 'dog' },
-  },
-];
+export const LIFE_MOMENT_TARGETS = [
+  { emoji: '🐱', filters: { category: 'dry-food', pet: 'cat' } },
+  { emoji: '🐱', filters: { category: 'toys', pet: 'cat' } },
+  { emoji: '🐶', filters: { category: 'treats', pet: 'dog' } },
+  { emoji: '🐱', filters: { category: 'supplements', pet: 'cat' } },
+  { emoji: '🐶', filters: { category: 'dry-food', pet: 'dog' } },
+] as const satisfies readonly LifeMomentTarget[];
 
-export type RoutineSlot = {
-  label: string;
-  sub: string;
+export type RoutineTarget = {
   emoji: string;
   /** Category slugs; the tiles take their titles from the database. */
   categories: readonly string[];
 };
 
 /**
- * «روتین روزانه» — four times of day, each pointing at the categories that
- * serve it. The prototype listed invented product names here («آبخوری هوشمند»,
- * «تخت راحت») which all linked to one unrelated product page; real categories
- * keep the section's shape without shipping fake products or dead links.
+ * «روتین روزانه» — the four times of day, each pointing at the categories that
+ * serve it, zipped by index with the editable `home.routine.slots` labels. The
+ * prototype listed invented product names here; real categories keep the section's
+ * shape without shipping fake products or dead links.
  */
-export const ROUTINE: readonly RoutineSlot[] = [
-  { label: 'صبح', sub: 'غذا', emoji: '🌅', categories: ['dry-food'] },
-  { label: 'ظهر', sub: 'بازی', emoji: '☀️', categories: ['toys'] },
-  {
-    label: 'عصر',
-    sub: 'مراقبت',
-    emoji: '🌤️',
-    categories: ['supplements', 'hygiene'],
-  },
-  {
-    label: 'شب',
-    sub: 'آرامش',
-    emoji: '🌙',
-    categories: ['treats', 'wet-food'],
-  },
-];
-
-export type CommunityPet = {
-  name: string;
-  owner: string;
-  quote: string;
-  image: string;
-  /** Tailwind row span — the two portraits that run tall in the mosaic. */
-  tall: boolean;
-};
-
-/**
- * «خانواده اسموکی» — a static, bundled photo wall, by the story's own AC.
- * It links nowhere on purpose: there is no community feature behind it, and a
- * fake click target was exactly what the design review objected to.
- */
-export const COMMUNITY_PETS: readonly CommunityPet[] = [
-  {
-    name: 'لونا',
-    owner: 'سارا',
-    quote: 'لونا عاشق این تشویقیه.',
-    image: '/site/community-luna.jpg',
-    tall: true,
-  },
-  {
-    name: 'آرکو',
-    owner: 'علی',
-    quote: 'هر روز صبح منتظر وعده‌اشه!',
-    image: '/products/dog-dry-food.jpg',
-    tall: false,
-  },
-  {
-    name: 'رکسی',
-    owner: 'امیر',
-    quote: 'سفر بدون رکسی معنی نداره.',
-    image: '/products/dog-treats.jpg',
-    tall: false,
-  },
-  {
-    name: 'بارون',
-    owner: 'کاوه',
-    quote: 'بارون با این اسباب‌بازی ساعت‌ها بازی می‌کنه.',
-    image: '/site/community-baron.jpg',
-    tall: true,
-  },
-  {
-    name: 'میشا',
-    owner: 'نیلوفر',
-    quote: 'بهترین خواب دنیا رو داره.',
-    image: '/site/community-misha.jpg',
-    tall: false,
-  },
-];
+export const ROUTINE_TARGETS = [
+  { emoji: '🌅', categories: ['dry-food'] },
+  { emoji: '☀️', categories: ['toys'] },
+  { emoji: '🌤️', categories: ['supplements', 'hygiene'] },
+  { emoji: '🌙', categories: ['treats', 'wet-food'] },
+] as const satisfies readonly RoutineTarget[];

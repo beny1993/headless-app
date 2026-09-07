@@ -2,28 +2,37 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ROUTINE } from './content';
+import { ROUTINE_TARGETS } from './content';
 import type { CategoryTile } from './categories';
+import type { ContentValue } from '@/lib/content/site-content';
 import { shopPath } from '@/lib/constant/paths';
 
 /**
  * «روتین روزانه» — four times of day, each opening the categories that serve
  * it. Client only for the active tab.
  *
- * The prototype listed invented product names here («آبخوری هوشمند», «تخت
- * راحت») and pointed every one of them at the same unrelated product page.
- * Real categories keep the section's shape without shipping fake products or
- * dead links; the titles come from the database, so nothing here can name a
- * category that does not exist.
+ * The eyebrow, headline, body and the four tabs' label/sub are admin content
+ * (`home.routine`); each tab's emoji and the category slugs it opens stay in code
+ * (`ROUTINE_TARGETS`), zipped with the slots by index. The tile titles come from
+ * the database, the «مشاهده محصولات ←» and empty state stay in code — so nothing
+ * here can name a category that does not exist, and no editable label rides a
+ * fixed link.
  */
-export function RoutineSection({ categories }: { categories: CategoryTile[] }) {
+export function RoutineSection({
+  content,
+  categories,
+}: {
+  content: ContentValue<'home.routine'>;
+  categories: CategoryTile[];
+}) {
   const [active, setActive] = useState(0);
 
   const bySlug = new Map(
     categories.map((category) => [category.slug, category]),
   );
-  const slot = ROUTINE[active];
-  const tiles = slot.categories
+  const slot = content.slots[active];
+  const target = ROUTINE_TARGETS[active];
+  const tiles = target.categories
     .map((slug) => bySlug.get(slug))
     .filter((category): category is CategoryTile => category !== undefined);
 
@@ -32,9 +41,9 @@ export function RoutineSection({ categories }: { categories: CategoryTile[] }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-8">
         <div className="mb-14 text-center">
           <span className="text-accent-strong mb-3 inline-block text-sm font-medium">
-            روتین روزانه
+            {content.eyebrow}
           </span>
-          <h2 className="text-4xl font-black">روتین روزانه یک گربه خوشحال</h2>
+          <h2 className="text-4xl font-black">{content.headline}</h2>
         </div>
 
         <div className="flex flex-col items-start gap-8 lg:flex-row">
@@ -42,9 +51,10 @@ export function RoutineSection({ categories }: { categories: CategoryTile[] }) {
               arrow-key roving focus that this does not implement, and a
               half-built widget reads worse than a plain pressed button. */}
           <div className="flex w-full shrink-0 gap-2 overflow-x-auto pb-2 lg:w-48 lg:flex-col lg:overflow-x-visible lg:pb-0">
-            {ROUTINE.map((option, index) => (
+            {content.slots.map((option, index) => (
               <button
-                key={option.label}
+                // Index key: labels are editable content and may repeat.
+                key={index}
                 type="button"
                 aria-pressed={active === index}
                 onClick={() => setActive(index)}
@@ -56,7 +66,7 @@ export function RoutineSection({ categories }: { categories: CategoryTile[] }) {
                 data-umami-event="home-routine-tab-click"
               >
                 <span className="text-2xl" aria-hidden="true">
-                  {option.emoji}
+                  {ROUTINE_TARGETS[index].emoji}
                 </span>
                 <span>
                   <span className="block font-bold">{option.label}</span>
@@ -78,8 +88,8 @@ export function RoutineSection({ categories }: { categories: CategoryTile[] }) {
             <h3 className="mb-2 text-xl font-bold">
               {slot.label} — {slot.sub}
             </h3>
-            <p className="text-muted-foreground mb-6">
-              دسته‌بندی‌های پیشنهادی برای این مرحله
+            <p className="text-muted-foreground mb-6 whitespace-pre-line">
+              {content.body}
             </p>
             {tiles.length === 0 && (
               <p className="text-muted-foreground text-sm">
@@ -98,7 +108,7 @@ export function RoutineSection({ categories }: { categories: CategoryTile[] }) {
                     className="bg-secondary flex size-14 shrink-0 items-center justify-center rounded-xl text-2xl"
                     aria-hidden="true"
                   >
-                    {slot.emoji}
+                    {target.emoji}
                   </span>
                   <span>
                     <span className="block text-sm font-semibold">

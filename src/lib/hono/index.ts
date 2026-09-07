@@ -6,6 +6,7 @@ import { MAX_UPLOAD_BYTES } from '@/lib/storage/image-upload';
 import { getEnvVariable, VARS } from '@/lib/utils/env';
 import { apiErrorHandler, createRouter } from './create-router';
 import { apiError } from './envelope';
+import { IMAGE_TOO_LARGE_MESSAGE } from './image-upload';
 import { requireAdmin, requireAuth, type AuthedEnv } from './middleware/auth';
 import {
   discountCreateHandler,
@@ -20,7 +21,11 @@ import {
   adminOrderTransitionRoute,
 } from './routes/admin-orders';
 import {
-  IMAGE_TOO_LARGE_MESSAGE,
+  contentImageUploadHandler,
+  contentUpdateHandler,
+  contentUpdateRoute,
+} from './routes/admin-content';
+import {
   productCreateHandler,
   productCreateRoute,
   productDeleteHandler,
@@ -177,6 +182,14 @@ admin.use(
     onError: (c) => c.json(apiError(IMAGE_TOO_LARGE_MESSAGE), 413),
   }),
 );
+// Content image upload shares the same ceiling and refuse-before-buffer guard.
+admin.use(
+  '/admin/content/images',
+  bodyLimit({
+    maxSize: MAX_UPLOAD_BYTES,
+    onError: (c) => c.json(apiError(IMAGE_TOO_LARGE_MESSAGE), 413),
+  }),
+);
 admin.openapi(productCreateRoute, productCreateHandler);
 admin.openapi(productUpdateRoute, productUpdateHandler);
 admin.openapi(productDeleteRoute, productDeleteHandler);
@@ -190,6 +203,12 @@ admin.openapi(adminOrderTransitionRoute, adminOrderTransitionHandler);
 // active/inactive. Same `/admin/*` guard — covered by the wildcard above.
 admin.openapi(discountCreateRoute, discountCreateHandler);
 admin.openapi(discountToggleRoute, discountToggleHandler);
+// Admin storefront content (`Story - Storefront Content Management`): replace one
+// block by key, and a shared image upload. Same `/admin/*` guard as above; the
+// image path additionally carries the `bodyLimit` mounted earlier. No public
+// content GET — the storefront reads through the DAO in its server components.
+admin.openapi(contentUpdateRoute, contentUpdateHandler);
+admin.post('/admin/content/images', contentImageUploadHandler);
 app.route('/', admin);
 
 // OpenAPI document + interactive reference — never expose in production.

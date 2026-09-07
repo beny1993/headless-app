@@ -4,3 +4,4 @@ export * from './catalog';
 export * from './discounts';
 export * from './orders';
 export * from './shipping';
+export * from './site-content';

@@ -1,9 +1,8 @@
 'use client';
 
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
-import { AlertCircle, Camera, ChevronRight, Loader2 } from 'lucide-react';
+import { AlertCircle, ChevronRight, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import { ApiRequestError, postData, putData } from '@/lib/api-client';
 import { productInputSchema } from '@/lib/catalog/product-input';
@@ -16,12 +15,12 @@ import {
   PROTECTED_PATHS,
 } from '@/lib/constant/paths';
 import { formatToman, toAsciiDigits } from '@/lib/format';
-import {
-  ACCEPTED_IMAGE_TYPES,
-  IMAGE_FIELD_NAME,
-  MAX_UPLOAD_BYTES,
-} from '@/lib/storage/image-upload';
+import { IMAGE_FIELD_NAME } from '@/lib/storage/image-upload';
 import { imageSrc } from '@/lib/storage/image-url';
+import {
+  ImagePicker,
+  validateImageFile,
+} from '@/features/admin-panel/shared/image-picker';
 
 // The form imports nothing from the route module: that would pull `pg` into the
 // browser bundle. It only reads the saved product's id back, so this narrow
@@ -50,8 +49,6 @@ export type ProductFormInitial = {
 export type CategoryOption = { id: string; title: string };
 
 const GENERIC_ERROR = 'خطای غیرمنتظره رخ داد. دوباره تلاش کن.';
-const IMAGE_TYPE_ERROR = 'فقط تصویر JPEG، PNG یا WEBP.';
-const IMAGE_SIZE_ERROR = 'حجم تصویر باید حداکثر ۲ مگابایت باشد.';
 
 /** Numeric-input string → number: Persian digits folded, empty/blank → NaN so
  *  the schema rejects it with the field's own message. */
@@ -128,12 +125,9 @@ export function ProductForm({
 
   const onPickFile = (chosen: File | undefined) => {
     if (!chosen) return;
-    if (!(ACCEPTED_IMAGE_TYPES as readonly string[]).includes(chosen.type)) {
-      setFieldErrors((current) => ({ ...current, image: IMAGE_TYPE_ERROR }));
-      return;
-    }
-    if (chosen.size > MAX_UPLOAD_BYTES) {
-      setFieldErrors((current) => ({ ...current, image: IMAGE_SIZE_ERROR }));
+    const invalid = validateImageFile(chosen);
+    if (invalid) {
+      setFieldErrors((current) => ({ ...current, image: invalid }));
       return;
     }
     setFieldErrors((current) => ({ ...current, image: '' }));
@@ -249,55 +243,14 @@ export function ProductForm({
         noValidate
         className="border-border space-y-5 rounded-2xl border bg-white p-6"
       >
-        {/* Image slot */}
-        <div>
-          <p className="mb-1.5 block text-sm font-medium">تصویر محصول</p>
-          <div className="flex items-center gap-4">
-            <div className="bg-secondary relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl">
-              {preview ? (
-                <Image
-                  src={preview}
-                  alt=""
-                  fill
-                  sizes="96px"
-                  className="object-cover"
-                  unoptimized={preview.startsWith('blob:')}
-                />
-              ) : (
-                <Camera
-                  size={22}
-                  className="text-muted-foreground"
-                  aria-hidden="true"
-                />
-              )}
-            </div>
-            <div>
-              <label
-                htmlFor={fid('image')}
-                className="border-border hover:bg-secondary inline-flex cursor-pointer items-center gap-2 rounded-xl border-2 px-4 py-2.5 text-sm font-medium transition-colors"
-              >
-                <Camera size={14} aria-hidden="true" />
-                {isEdit || preview ? 'تغییر تصویر' : 'انتخاب تصویر'}
-              </label>
-              <input
-                id={fid('image')}
-                type="file"
-                accept={ACCEPTED_IMAGE_TYPES.join(',')}
-                className="sr-only"
-                onChange={(e) => onPickFile(e.target.files?.[0])}
-              />
-              <p className="text-muted-foreground mt-1.5 text-xs">
-                JPG، PNG یا WEBP، تا ۲ مگابایت
-              </p>
-              {fieldErrors.image && (
-                <p className="text-destructive mt-1.5 flex items-center gap-1 text-xs">
-                  <AlertCircle size={12} aria-hidden="true" />{' '}
-                  {fieldErrors.image}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+        <ImagePicker
+          id={fid('image')}
+          label="تصویر محصول"
+          preview={preview}
+          error={fieldErrors.image}
+          buttonLabel={isEdit || preview ? 'تغییر تصویر' : 'انتخاب تصویر'}
+          onPick={onPickFile}
+        />
 
         <Field id={fid('title')} label="عنوان محصول" error={fieldErrors.title}>
           <input

@@ -1,7 +1,8 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
-import { HERO_IMAGE } from './content';
+import type { ContentValue } from '@/lib/content/site-content';
+import { imageSrc } from '@/lib/storage/image-url';
 import { PATHS, shopPath } from '@/lib/constant/paths';
 
 /**
@@ -14,14 +15,24 @@ import { PATHS, shopPath } from '@/lib/constant/paths';
  * Text sits on `--ink` with the photo at 50% opacity plus a gradient — that is
  * what makes white body copy and `--accent-on-dark` land at their measured
  * contrast ratios rather than floating over an unpredictable photograph.
+ *
+ * The editorial fields (eyebrow, headline, accent line, body, image, and the two
+ * button labels) are admin content — rendered as plain text nodes; the headline's
+ * own line breaks come from `whitespace-pre-line`, and the break before the accent
+ * line stays a code `<br />`. The badge and the buttons' link targets stay in code
+ * (a label travels with its target — an editable label over a fixed destination).
  */
-export function HeroSection() {
+export function HeroSection({
+  content,
+}: {
+  content: ContentValue<'home.hero'>;
+}) {
   return (
     <section className="bg-ink relative flex min-h-[calc(100vh-4rem)] items-center overflow-hidden">
       <div className="absolute inset-0">
         <Image
-          src={HERO_IMAGE}
-          alt="سگی آرام در فضای خانه"
+          src={imageSrc(content.image.key)}
+          alt={content.image.alt}
           fill
           // The page's LCP element: it must not be lazy-loaded, and it is
           // always full-bleed.
@@ -39,7 +50,7 @@ export function HeroSection() {
         <div className="max-w-2xl">
           <div className="mb-6 flex flex-wrap items-center gap-3">
             <span className="text-accent-on-dark text-sm font-medium tracking-widest">
-              زندگی با اسموکی
+              {content.eyebrow}
             </span>
             <span className="flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs text-white/80 backdrop-blur-sm">
               <span aria-hidden="true">🐱</span> گربه
@@ -51,19 +62,16 @@ export function HeroSection() {
           </div>
 
           <h1
-            className="mb-6 font-black text-white"
+            className="mb-6 font-black whitespace-pre-line text-white"
             style={{ fontSize: 'clamp(2.5rem, 6vw, 4.5rem)', lineHeight: 1.2 }}
           >
-            زندگی بهتر،
+            {content.headline}
             <br />
-            کنار بهترین
-            <br />
-            <span className="text-accent-on-dark">دوستت</span>
+            <span className="text-accent-on-dark">{content.accent}</span>
           </h1>
 
-          <p className="mb-10 max-w-lg text-lg leading-relaxed text-white/70">
-            محصولاتی که با دقت برای سلامت، شادی و زندگی روزمره‌ی گربه‌ها و سگ‌ها
-            انتخاب شده‌اند.
+          <p className="mb-10 max-w-lg text-lg leading-relaxed whitespace-pre-line text-white/70">
+            {content.body}
           </p>
 
           <div className="flex flex-wrap gap-4">
@@ -72,14 +80,14 @@ export function HeroSection() {
               className="bg-accent-strong hover:bg-accent-hover rounded-xl px-8 py-4 font-bold text-white transition-[transform,background-color] duration-200 hover:scale-105"
               data-umami-event="home-hero-shop-click"
             >
-              کشف محصولات
+              {content.shopCta}
             </Link>
             <Link
               href={PATHS.ABOUT}
               className="rounded-xl border border-white/20 bg-white/10 px-8 py-4 font-semibold text-white backdrop-blur-sm transition-colors duration-200 hover:bg-white/20"
               data-umami-event="home-hero-about-click"
             >
-              داستان اسموکی
+              {content.aboutCta}
             </Link>
           </div>
         </div>

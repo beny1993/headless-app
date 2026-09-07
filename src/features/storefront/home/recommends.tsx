@@ -1,20 +1,24 @@
 import Link from 'next/link';
 import type { ProductWithImages } from '@/db/schema/catalog';
 import { ProductCard } from '@/features/storefront/product/product-card';
+import type { ContentValue } from '@/lib/content/site-content';
 import { shopPath } from '@/lib/constant/paths';
 
 /**
- * «انتخاب‌های اسموکی» — the featured grid. Everything in it comes from the
- * database (see `featured.ts` for which four and why); nothing here is
- * hardcoded product data.
+ * «انتخاب‌های اسموکی» — the featured grid. The section's chrome (eyebrow,
+ * headline, intro) is admin content; the products themselves come from the
+ * database (see `featured.ts` for which four and why) and the empty state stays
+ * in code — both are catalog/state, not editable copy.
  *
  * An empty list is a real state, not an error: a catalog that has not been
  * seeded yet, or a shop where everything in the first page is out of stock.
  * It says so rather than rendering an empty grid.
  */
 export function RecommendsSection({
+  content,
   products,
 }: {
+  content: ContentValue<'home.recommends'>;
   products: ProductWithImages[];
 }) {
   return (
@@ -22,11 +26,11 @@ export function RecommendsSection({
       <div className="mx-auto max-w-7xl px-4 sm:px-8">
         <div className="mb-14 text-center">
           <span className="text-accent-strong mb-3 inline-block text-sm font-medium">
-            کیوریت شده با دقت
+            {content.eyebrow}
           </span>
-          <h2 className="mb-3 text-4xl font-black">انتخاب‌های اسموکی</h2>
-          <p className="text-muted-foreground mx-auto max-w-lg">
-            محصولاتی که اسموکی شخصاً تجربه کرده و توصیه می‌کند
+          <h2 className="mb-3 text-4xl font-black">{content.headline}</h2>
+          <p className="text-muted-foreground mx-auto max-w-lg whitespace-pre-line">
+            {content.body}
           </p>
         </div>
 

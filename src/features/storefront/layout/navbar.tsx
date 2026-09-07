@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { Search, User } from 'lucide-react';
 import { MobileMenu } from './mobile-menu';
-import { NAV_LINKS } from './nav-links';
+import { NAV_TARGETS } from './nav-links';
 import { CartDrawer } from '@/features/storefront/cart/cart-drawer';
 import { PATHS } from '@/lib/constant/paths';
+import type { ContentValue } from '@/lib/content/site-content';
 
 const iconButton =
   'flex size-10 items-center justify-center rounded-full text-foreground transition-colors hover:bg-secondary';
@@ -20,8 +21,16 @@ const iconButton =
  *
  * A server component: only the mobile menu and the cart drawer — which owns
  * the cart button and its badge — need client state.
+ *
+ * The wordmark, subtitle and nav labels are admin content (`header`); the hrefs,
+ * icons and aria-labels stay in code. Nav labels zip with `NAV_TARGETS` by index —
+ * a label is content, its destination is not — and the same zipped list is handed
+ * to the mobile menu so the two can never drift. The wordmark is a display string
+ * independent of `DEFAULT_SITE_NAME`, so editing it never touches a page <title>.
  */
-export function Navbar() {
+export function Navbar({ content }: { content: ContentValue<'header'> }) {
+  const links = NAV_TARGETS.map((href, i) => ({ href, label: content.nav[i] }));
+
   return (
     <nav className="bg-background/95 fixed inset-x-0 top-0 z-50 shadow-sm backdrop-blur-md">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -45,14 +54,16 @@ export function Navbar() {
               <User size={18} aria-hidden="true" />
             </Link>
             <CartDrawer className={iconButton} />
-            <MobileMenu />
+            <MobileMenu links={links} />
           </div>
 
-          {/* Links — desktop only; the mobile menu carries them below md */}
+          {/* Links — desktop only; the mobile menu carries them below md.
+              Index key, not the href: the hrefs repeat in the footer and a label
+              is content, so the stable identity is the position. */}
           <div className="hidden items-center gap-6 md:flex">
-            {NAV_LINKS.map((link) => (
+            {links.map((link, index) => (
               <Link
-                key={link.href}
+                key={index}
                 href={link.href}
                 className="text-foreground hover:text-accent-strong text-sm font-medium transition-colors"
                 data-umami-event="nav-link-click"
@@ -69,10 +80,10 @@ export function Navbar() {
             data-umami-event="nav-logo-home"
           >
             <span className="text-foreground text-2xl font-black tracking-tight">
-              Smokey
+              {content.brand}
             </span>
             <span className="text-muted-foreground border-border ms-1 hidden border-s ps-2 text-xs sm:inline">
-              فروشگاه حیوانات
+              {content.tagline}
             </span>
           </Link>
         </div>
