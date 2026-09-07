@@ -11,7 +11,11 @@ export const metadata: Metadata = { title: 'پرداخت ناموفق' };
  * `checkoutFailurePath`) only when it cannot tie the redirect to an order — an
  * unknown or absent authority, or a malformed callback query — so there is no
  * order id and no order summary to show, unlike `/checkout/result/[orderId]`.
- * Static: it reads nothing and says the same thing every time.
+ *
+ * The page body itself reads nothing and says the same thing every time — but it
+ * is `ƒ` (dynamic) in the build legend, not `○`, because its `(app)` layout now
+ * reads the header/footer content per request (`await connection()`). That is by
+ * design: a 404 or a failed checkout must still show the admin's live chrome.
  */
 export default function Page() {
   return (
