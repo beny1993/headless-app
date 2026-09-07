@@ -49,6 +49,7 @@ import {
   checkoutRoute,
 } from './routes/checkout';
 import { healthHandler, healthRoute } from './routes/health';
+import { readinessHandler, readinessRoute } from './routes/readiness';
 import {
   meAddressCreateHandler,
   meAddressCreateRoute,
@@ -96,6 +97,10 @@ export const app = createRouter().basePath('/api');
 app.onError(apiErrorHandler);
 
 app.openapi(healthRoute, healthHandler);
+// Readiness sits beside liveness: `/health` says the process is up, `/ready`
+// says it can actually serve (Postgres reachable AND migrated). Container and
+// load-balancer probes belong on `/ready`.
+app.openapi(readinessRoute, readinessHandler);
 
 // Public storefront catalog — read-only, no auth. Order matters only for
 // readability here; Hono matches `/products/{slug}` and `/products` distinctly.
