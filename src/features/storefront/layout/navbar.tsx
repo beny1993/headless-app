@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { Search, User } from 'lucide-react';
 import { MobileMenu } from './mobile-menu';
@@ -79,7 +80,18 @@ export function Navbar({ content }: { content: ContentValue<'header'> }) {
             className="flex items-center gap-2"
             data-umami-event="nav-logo-home"
           >
-            <span className="text-foreground text-2xl font-black tracking-tight">
+            <Image
+              src="/brand/smokey-mark.png"
+              width={44}
+              height={44}
+              alt={`لوگوی ${content.brand}`}
+              priority
+              className="size-11 shrink-0"
+            />
+            <span
+              aria-hidden="true"
+              className="text-foreground text-2xl font-black tracking-tight"
+            >
               {content.brand}
             </span>
             <span className="text-muted-foreground border-border ms-1 hidden border-s ps-2 text-xs sm:inline">

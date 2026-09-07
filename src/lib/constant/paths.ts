@@ -16,6 +16,8 @@ export const PATHS = {
   LOGIN: '/login',
 } as const;
 
+export const API_ROOT = '/api';
+
 /** The storefront's product page for one product: `/product/cat-dry-food`. */
 export const productPath = (slug: string) =>
   `${PATHS.PRODUCT}/${encodeURIComponent(slug)}`;

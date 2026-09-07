@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { FOOTER_TARGETS } from './nav-links';
 import type { ContentValue } from '@/lib/content/site-content';
@@ -31,7 +32,17 @@ export function Footer({ content }: { content: ContentValue<'footer'> }) {
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-8">
         <div className="mb-12 grid grid-cols-2 gap-8 md:grid-cols-3">
           <div className="col-span-2 md:col-span-1">
-            <p className="mb-3 text-2xl font-black text-white">
+            <Image
+              src="/brand/smokey-logo-primary.png"
+              width={176}
+              height={146}
+              alt={`لوگوی ${content.brand}، فروشگاه حیوانات خانگی`}
+              className="mb-4 h-auto w-44"
+            />
+            <p
+              aria-hidden="true"
+              className="mb-3 text-2xl font-black text-white"
+            >
               {content.brand}
             </p>
             <p className="text-sm leading-relaxed whitespace-pre-line">

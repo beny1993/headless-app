@@ -11,6 +11,7 @@
 // (The (app) pages don't call `connection()`, so their page.integration tests
 // need no such mock.)
 import { inArray } from 'drizzle-orm';
+import Image from 'next/image';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { siteContent } from '@/db/schema/site-content';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
@@ -104,6 +105,24 @@ describe.skipIf(!databaseReachable)('the storefront chrome', () => {
       DEFAULT_CONTENT.header.nav.forEach((label, i) => {
         expect(hasLink(rendered, NAV_TARGETS[i], label), `nav ${i}`).toBe(true);
       });
+    });
+
+    it('derives meaningful Persian logo alt text from the editable brand', () => {
+      const navbarLogo = findByType(
+        Navbar({ content: DEFAULT_CONTENT.header }),
+        Image,
+      );
+      const footerLogo = findByType(
+        Footer({ content: DEFAULT_CONTENT.footer }),
+        Image,
+      );
+
+      expect(navbarLogo?.props?.alt).toBe(
+        `لوگوی ${DEFAULT_CONTENT.header.brand}`,
+      );
+      expect(footerLogo?.props?.alt).toBe(
+        `لوگوی ${DEFAULT_CONTENT.footer.brand}، فروشگاه حیوانات خانگی`,
+      );
     });
 
     it('renders each footer link label inside the <Link> with its own target (zip)', () => {
