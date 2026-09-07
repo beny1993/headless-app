@@ -18,7 +18,14 @@ export default defineConfig({
     // Run as the deployed container does — UTC — not as the developer's machine
     // does. On a Tehran-local host the Jalali formatter's `Asia/Tehran` pin is
     // invisible: its tests pass even when the pin is removed.
-    env: { TZ: 'UTC' },
+    //
+    // Force the local storage driver for the whole suite, overriding whatever
+    // `.env` selects. Real LIARA_* credentials already sit in `.env`, so without
+    // this a single `provider=s3` edit would let any `getStorageDriver().put`
+    // test write to the live bucket during `pnpm test`. Belt-and-suspenders on
+    // top of each upload suite's own pin; a test that genuinely needs `s3` must
+    // opt in explicitly.
+    env: { TZ: 'UTC', APP_CONFIG_STORAGE_PROVIDER: 'local' },
     // One file at a time. Seven suites talk to the *same* dev Postgres, and
     // some of what they exercise is table-wide by design — `otp_send_log`'s
     // prune takes a cutoff and no phone number, so a send in one worker

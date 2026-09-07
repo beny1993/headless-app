@@ -24,6 +24,7 @@ import {
 } from './cart';
 import { PATHS } from '@/lib/constant/paths';
 import { formatNumber, formatToman } from '@/lib/format';
+import { imageSrc } from '@/lib/storage/image-url';
 import { cn } from '@/lib/utils';
 
 /**
@@ -223,9 +224,10 @@ function CartLineRow({
       {line.imageKey ? (
         // `alt=""`: the title is announced immediately after, so a described
         // thumbnail would only repeat it. `imageKey` is a storage key —
-        // `products/cat-toy.jpg` is served from `public/` at `/products/…`.
+        // `imageSrc` resolves bundled `products/…` from public/, an `uploads/…`
+        // object from the bucket.
         <img
-          src={`/${line.imageKey}`}
+          src={imageSrc(line.imageKey)}
           alt=""
           width={64}
           height={64}

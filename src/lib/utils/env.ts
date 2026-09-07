@@ -30,6 +30,21 @@ export enum VARS {
   // directory. Defaults to `uploads` at the repo root; keep it out of `public/`
   // and out of git.
   APP_CONFIG_STORAGE_LOCAL_ROOT = 'APP_CONFIG_STORAGE_LOCAL_ROOT',
+  // Liara (S3-compatible) object storage — read only when the `s3` driver is
+  // selected, and only server-side (`src/lib/storage/s3-driver.ts`). Names follow
+  // Liara's platform convention rather than the `APP_CONFIG_` prefix (Benyamin,
+  // 2026-09-07). ENDPOINT is the host with no bucket; the public *read* base
+  // (bucket appended) is NEXT_PUBLIC_STORAGE_BASE_URL below.
+  LIARA_ENDPOINT = 'LIARA_ENDPOINT',
+  LIARA_BUCKET_NAME = 'LIARA_BUCKET_NAME',
+  LIARA_ACCESS_KEY = 'LIARA_ACCESS_KEY',
+  LIARA_SECRET_KEY = 'LIARA_SECRET_KEY',
+  // Public read base for uploaded objects, e.g.
+  // `https://storage.c2.liara.site/<bucket>`. NEXT_PUBLIC_* is inlined into the
+  // client bundle at build time — the browser (the localStorage cart, etc.)
+  // resolves image URLs from this, so it must be set at *build* and must equal
+  // `${LIARA_ENDPOINT}/${LIARA_BUCKET_NAME}`. Empty ⇒ local-relative `/uploads`.
+  NEXT_PUBLIC_STORAGE_BASE_URL = 'NEXT_PUBLIC_STORAGE_BASE_URL',
 
   APP_CONFIG_EMAIL_ENABLED = 'APP_CONFIG_EMAIL_ENABLED',
   APP_CONFIG_SMTP_SERVER = 'APP_CONFIG_SMTP_SERVER',
@@ -54,6 +69,7 @@ type Func = {
 const STATIC_INLINED_VARS: Partial<Record<VARS, string | undefined>> = {
   [VARS.NODE_ENV]: process.env.NODE_ENV,
   [VARS.NEXT_PUBLIC_APP_URL]: process.env.NEXT_PUBLIC_APP_URL,
+  [VARS.NEXT_PUBLIC_STORAGE_BASE_URL]: process.env.NEXT_PUBLIC_STORAGE_BASE_URL,
 };
 
 export const getEnvVariable: Func = (

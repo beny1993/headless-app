@@ -21,6 +21,7 @@ import {
   IMAGE_FIELD_NAME,
   MAX_UPLOAD_BYTES,
 } from '@/lib/storage/image-upload';
+import { imageSrc } from '@/lib/storage/image-url';
 
 // The form imports nothing from the route module: that would pull `pg` into the
 // browser bundle. It only reads the saved product's id back, so this narrow
@@ -114,7 +115,7 @@ export function ProductForm({
   });
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(
-    product?.imageKey ? `/${product.imageKey}` : null,
+    product?.imageKey ? imageSrc(product.imageKey) : null,
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [topError, setTopError] = useState<string | undefined>();

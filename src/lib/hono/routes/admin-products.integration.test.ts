@@ -73,10 +73,16 @@ const anon = () => mocks.getSession.mockResolvedValue(null);
 
 let storageRoot: string;
 const originalRoot = process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT];
+const originalProvider = process.env[VARS.APP_CONFIG_STORAGE_PROVIDER];
 
 beforeAll(async () => {
   storageRoot = await mkdtemp(path.join(tmpdir(), 'smokey-admin-uploads-'));
   process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = storageRoot;
+  // Pin the local driver regardless of what .env selects: this suite uploads
+  // through the real route and reads the bytes back off disk. With a real .env
+  // set to `s3` it would otherwise push to the live bucket during `pnpm test`
+  // (and the `url === /${key}` assertion below would break).
+  process.env[VARS.APP_CONFIG_STORAGE_PROVIDER] = 'local';
 });
 
 afterAll(async () => {
@@ -84,6 +90,11 @@ afterAll(async () => {
     delete process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT];
   } else {
     process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = originalRoot;
+  }
+  if (originalProvider === undefined) {
+    delete process.env[VARS.APP_CONFIG_STORAGE_PROVIDER];
+  } else {
+    process.env[VARS.APP_CONFIG_STORAGE_PROVIDER] = originalProvider;
   }
   await rm(storageRoot, { recursive: true, force: true });
 });

@@ -10,6 +10,7 @@
 // the driver owns the URL↔location mapping.
 import { getEnvVariable, isDevelopmentServer, VARS } from '@/lib/utils/env';
 import { localDriver } from './local-driver';
+import { s3Driver } from './s3-driver';
 
 /**
  * Everything a storage provider must do. `put` takes the server-generated key
@@ -35,16 +36,32 @@ const DEFAULT_PROVIDER: StorageProvider = 'local';
 // default never touches S3 config, mirroring the Zarinpal seam.
 const DRIVERS: Record<StorageProvider, () => StorageDriver> = {
   local: () => localDriver,
+  // The S3-compatible (Liara/Arvan) driver. It reads its own env lazily on first
+  // use, so returning it here touches no S3 config — `next build` and the `local`
+  // default never construct a client.
   s3: () => {
-    // Present as a selectable name so the seam is complete, but inert until a
-    // provider is picked — selecting it is a loud failure, never a silent
-    // fall-back to local that would strand uploads on an ephemeral disk.
-    throw new Error(
-      `${VARS.APP_CONFIG_STORAGE_PROVIDER}="s3" has no driver yet. ` +
-        'The S3-compatible (Arvan/Liara) driver is added when a provider is ' +
-        'picked; use "local" until then.',
-    );
+    warnIfMissingPublicBase();
+    return s3Driver;
   },
+};
+
+let publicBaseWarningLogged = false;
+
+// `s3` writes to the bucket at runtime, but the browser resolves read URLs from
+// the build-time NEXT_PUBLIC_STORAGE_BASE_URL. If that is unset while `s3` is the
+// provider, uploads succeed but render as broken `/uploads/*` local paths — warn
+// loudly once rather than fail silently.
+const warnIfMissingPublicBase = () => {
+  if (publicBaseWarningLogged) return;
+  if (getEnvVariable(VARS.NEXT_PUBLIC_STORAGE_BASE_URL, false, '').trim())
+    return;
+  publicBaseWarningLogged = true;
+  console.warn(
+    `[storage] APP_CONFIG_STORAGE_PROVIDER is "s3" but ` +
+      `${VARS.NEXT_PUBLIC_STORAGE_BASE_URL} is unset: uploads will be stored in ` +
+      'the bucket but rendered as broken local URLs. Set it (at build time) to ' +
+      "the bucket's public base, e.g. https://<endpoint>/<bucket>.",
+  );
 };
 
 let localWarningLogged = false;

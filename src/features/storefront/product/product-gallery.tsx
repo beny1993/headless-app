@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { ShoppingBag } from 'lucide-react';
 import { formatNumber } from '@/lib/format';
+import { imageSrc } from '@/lib/storage/image-url';
 
 /** One image as the product page reads it — a storage key, not a URL. */
 export type GalleryImage = { id: string; objectKey: string };
@@ -42,9 +43,9 @@ export function ProductGallery({
       <div className="bg-secondary relative aspect-square overflow-hidden rounded-3xl">
         {current ? (
           <Image
-            // A storage key, not a URL: `products/cat-toy.jpg` is served from
-            // public/ at `/products/cat-toy.jpg`.
-            src={`/${current.objectKey}`}
+            // A storage key, not a URL: `imageSrc` resolves it — bundled
+            // `products/…` from public/, an `uploads/…` object from the bucket.
+            src={imageSrc(current.objectKey)}
             // Described, unlike the card's decorative thumbnail: here the image
             // is the subject of the page, and it is the only place a
             // non-sighted visitor learns one exists at all.
@@ -84,7 +85,7 @@ export function ProductGallery({
               data-umami-event="product-gallery-thumb-select"
             >
               <Image
-                src={`/${image.objectKey}`}
+                src={imageSrc(image.objectKey)}
                 alt=""
                 width={64}
                 height={64}
