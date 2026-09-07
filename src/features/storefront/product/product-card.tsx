@@ -5,6 +5,7 @@ import { AddToCartButton } from './add-to-cart-button';
 import type { ProductWithImages } from '@/db/schema/catalog';
 import { productPath } from '@/lib/constant/paths';
 import { formatToman } from '@/lib/format';
+import { imageSrc } from '@/lib/storage/image-url';
 
 /**
  * One product tile, shared by the home page's recommendations and — when it
@@ -35,9 +36,9 @@ export function ProductCard({ product }: { product: ProductWithImages }) {
       <div className="bg-secondary relative aspect-square overflow-hidden group-data-[view=list]/results:aspect-auto group-data-[view=list]/results:w-32 group-data-[view=list]/results:shrink-0 sm:group-data-[view=list]/results:w-44">
         {imageKey ? (
           <Image
-            // A storage key, not a URL: `products/cat-toy.jpg` is served from
-            // public/ at `/products/cat-toy.jpg`.
-            src={`/${imageKey}`}
+            // A storage key, not a URL: `imageSrc` resolves it — bundled
+            // `products/…` from public/, an `uploads/…` object from the bucket.
+            src={imageSrc(imageKey)}
             alt=""
             fill
             sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"

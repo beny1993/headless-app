@@ -13,6 +13,7 @@ import {
   productPath,
 } from '@/lib/constant/paths';
 import { formatToman, toPersianDigits } from '@/lib/format';
+import { imageSrc } from '@/lib/storage/image-url';
 import { DeleteProductButton } from '@/features/admin-panel/products/delete-product-button';
 
 export const metadata: Metadata = { title: 'محصولات' };
@@ -232,7 +233,7 @@ function ProductRow({
         <div className="bg-muted relative h-10 w-10 overflow-hidden rounded-lg">
           {imageKey && (
             <Image
-              src={`/${imageKey}`}
+              src={imageSrc(imageKey)}
               alt=""
               fill
               sizes="40px"

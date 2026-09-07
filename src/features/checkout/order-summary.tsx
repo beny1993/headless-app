@@ -1,5 +1,6 @@
 import { ShoppingBag } from 'lucide-react';
 import { formatToman, toPersianDigits } from '@/lib/format';
+import { imageSrc } from '@/lib/storage/image-url';
 
 /**
  * One line in the summary. `lineTotal` is integer Toman (qty × unit price) —
@@ -56,7 +57,7 @@ export function OrderSummary({
               // `alt=""`: the title is announced right after, so a described
               // thumbnail would only repeat it.
               <img
-                src={`/${line.imageKey}`}
+                src={imageSrc(line.imageKey)}
                 alt=""
                 width={48}
                 height={48}
