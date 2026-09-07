@@ -44,11 +44,52 @@ describe('BLOCK_FIELDS', () => {
   it('marks exactly the image-key leaves as kind "image"', () => {
     for (const key of CONTENT_KEYS as readonly ContentKey[]) {
       for (const field of BLOCK_FIELDS[key].fields) {
+        // The `{ key, alt }` images (hero/guide/about) plus the bare-key family
+        // slots and moment cards — nothing else renders an ImagePicker.
         const isImageKey =
-          field.path === 'image.key' || /^slots\.\d+\.image$/.test(field.path);
+          field.path === 'image.key' ||
+          /^(slots|cards)\.\d+\.image$/.test(field.path);
         expect(field.kind === 'image', `${key} ${field.path}`).toBe(isImageKey);
       }
     }
+  });
+
+  it('gives every target a non-empty string, and puts targets on the link labels', () => {
+    for (const key of CONTENT_KEYS as readonly ContentKey[]) {
+      for (const field of BLOCK_FIELDS[key].fields) {
+        if (field.target !== undefined) {
+          expect(
+            field.target.length,
+            `${key} ${field.path} target`,
+          ).toBeGreaterThan(0);
+        }
+      }
+    }
+
+    // The label-with-a-fixed-target AC: the CTA / nav / footer-link / card / tab
+    // labels each show a destination. Spot-check one of each kind — a label that
+    // sits on a link but forgets its target would slip the AC otherwise.
+    const targetOf = (key: ContentKey, path: string) =>
+      BLOCK_FIELDS[key].fields.find((f) => f.path === path)?.target;
+
+    expect(targetOf('home.hero', 'shopCta')).toBe('/shop');
+    expect(targetOf('home.hero', 'aboutCta')).toBe('/about');
+    expect(targetOf('home.guide', 'cta')).toBe('/shop?category=wet-food');
+    expect(targetOf('home.philosophy', 'cta')).toBe('/about');
+    expect(targetOf('about.cta', 'cta')).toBe('/shop');
+    expect(targetOf('home.categories', 'cta')).toBe('/shop');
+    expect(targetOf('home.moments', 'cta')).toBe('/shop');
+    // A moment card's title carries its own deep-link destination.
+    expect(targetOf('home.moments', 'cards.0.title')).toBe(
+      '/shop?category=dry-food&pet=cat',
+    );
+    expect(targetOf('header', 'nav.0')).toBe('/');
+    expect(targetOf('header', 'nav.1')).toBe('/shop');
+    expect(targetOf('footer', 'columns.1.links.0')).toBe('/about');
+    // A routine tab shows its category slugs.
+    expect(targetOf('home.routine', 'slots.2.label')).toBe(
+      'supplements, hygiene',
+    );
   });
 
   it('every descriptor path resolves to a string in the default', () => {

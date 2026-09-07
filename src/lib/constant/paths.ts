@@ -4,6 +4,7 @@
 // Type-only import: erased at compile time, so nothing here drags the Hono
 // router (and through it the database) into a client bundle.
 import type { ProductListQuery } from '@/lib/hono/routes/catalog';
+import type { ContentArea } from '@/lib/content/site-content';
 
 export const PATHS = {
   HOME: '/',
@@ -74,9 +75,14 @@ export const PROTECTED_PATHS = {
   DISCOUNTS: '/admin-panel/discounts',
   /** The shipping-rate editor — «نرخ ارسال» in the sidebar. */
   SHIPPING: '/admin-panel/shipping',
-  /** The storefront content editor — «محتوای سایت» in the sidebar. */
+  /** The storefront content editor — «محتوای سایت» in the sidebar. The base
+   *  redirects to the home area; the real pages are `/admin-panel/content/[area]`. */
   CONTENT: '/admin-panel/content',
 } as const;
+
+/** The content editor page for one area: `/admin-panel/content/home`. */
+export const adminContentAreaPath = (area: ContentArea) =>
+  `${PROTECTED_PATHS.CONTENT}/${area}`;
 
 /** The admin "new product" form page. */
 export const adminNewProductPath = () => `${PROTECTED_PATHS.PRODUCTS}/new`;

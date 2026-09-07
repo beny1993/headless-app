@@ -7,7 +7,6 @@ import { ApiRequestError, putData } from '@/lib/api-client';
 import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiAdminContentPath } from '@/lib/constant/paths';
 import {
-  CONTENT_KEYS,
   CONTENT_SCHEMAS,
   type ContentKey,
   type ContentValues,
@@ -29,19 +28,33 @@ const GENERIC_ERROR = 'خطای غیرمنتظره رخ داد. دوباره ت�
 const IMAGE_UPLOAD_FAILED = 'بارگذاری تصویر ناموفق بود. دوباره تلاش کن.';
 
 /**
- * The storefront content editor: one independent form per block, each pre-filled
- * from its row-or-default value and saved on its own. Reuses the product form's
- * stack — `useState` + a zod `safeParse` before send + `putData` + the shared
- * `parseFieldErrors` for server 400s — so there is no form library and no new
- * mechanism here; the block-specific part is entirely data (BLOCK_FIELDS).
+ * The storefront content editor for one area: one independent form per block in
+ * `keys` (page order), each pre-filled from its row-or-default value and saved on
+ * its own. Reuses the product form's stack — `useState` + a zod `safeParse` before
+ * send + `putData` + the shared `parseFieldErrors` for server 400s — so there is
+ * no form library and no new mechanism here; the block-specific part is entirely
+ * data (BLOCK_FIELDS). The `[area]` page hands it just its own area's keys.
  */
-export function ContentEditor({ values }: { values: ContentValues }) {
+export function ContentEditor<K extends ContentKey>({
+  keys,
+  values,
+}: {
+  keys: readonly K[];
+  values: Pick<ContentValues, K>;
+}) {
   return (
     <div className="flex flex-col gap-6">
-      {CONTENT_KEYS.map((key) => (
+      {keys.map((key) => (
         <BlockForm key={key} contentKey={key} initial={values[key]} />
       ))}
     </div>
+  );
+}
+
+/** Whether a block's schema carries a `visible` toggle — derived, not a table. */
+function hasVisibleToggle(key: ContentKey): boolean {
+  return (
+    'visible' in (CONTENT_SCHEMAS[key] as unknown as { shape: object }).shape
   );
 }
 
@@ -83,6 +96,7 @@ function BlockForm({
   const [justSaved, setJustSaved] = useState(false);
 
   const block = BLOCK_FIELDS[contentKey];
+  const showToggle = hasVisibleToggle(contentKey);
   const fid = (path: string) => `${formId}-${path}`;
 
   const setField = (path: string, next: string) => {
@@ -205,20 +219,25 @@ function BlockForm({
     >
       <h2 className="mb-4 text-lg font-black">{block.title}</h2>
 
-      <label
-        htmlFor={fid('visible')}
-        className="mb-5 flex w-fit items-center gap-2 text-sm font-medium"
-      >
-        <input
-          id={fid('visible')}
-          type="checkbox"
-          checked={shown}
-          onChange={(e) => setVisible(e.target.checked)}
-          data-umami-event="admin-panel-content-visibility-toggle"
-          className="size-4 shrink-0"
-        />
-        نمایش این بخش در سایت
-      </label>
+      {/* The toggle appears only for blocks whose schema carries `visible` — the
+          Home/About content sections. Chrome (header/footer) has no such field,
+          so it gets no toggle: the header and footer are always rendered. */}
+      {showToggle && (
+        <label
+          htmlFor={fid('visible')}
+          className="mb-5 flex w-fit items-center gap-2 text-sm font-medium"
+        >
+          <input
+            id={fid('visible')}
+            type="checkbox"
+            checked={shown}
+            onChange={(e) => setVisible(e.target.checked)}
+            data-umami-event="admin-panel-content-visibility-toggle"
+            className="size-4 shrink-0"
+          />
+          نمایش این بخش در سایت
+        </label>
+      )}
 
       {topError && (
         <p
@@ -320,6 +339,17 @@ function BlockField({
           onChange={(e) => onText(e.target.value)}
           className={inputClass(error, false)}
         />
+      )}
+      {/* The fixed destination of a label that sits on a link — read-only, so the
+          editor makes clear this label's target stays in code. LTR: the value is a
+          path or slug, which must not bidi-reorder inside the RTL shell. */}
+      {field.target !== undefined && (
+        <p className="text-muted-foreground mt-1.5 text-xs">
+          مقصد:{' '}
+          <span dir="ltr" className="inline-block align-middle">
+            {field.target}
+          </span>
+        </p>
       )}
       {error && (
         <p className="text-destructive mt-1.5 flex items-center gap-1 text-xs">

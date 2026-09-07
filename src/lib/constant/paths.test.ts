@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  adminContentAreaPath,
   API_PATHS,
   apiAdminContentPath,
   PATHS,
   productPath,
+  PROTECTED_PATHS,
   shopPath,
 } from '@/lib/constant/paths';
 
@@ -61,6 +63,17 @@ describe('apiAdminContentPath', () => {
     // whatever a caller hands it — a slash or `?` must stay inside the segment.
     expect(apiAdminContentPath('a/b?c')).toBe(
       `${API_PATHS.ADMIN_CONTENT}/a%2Fb%3Fc`,
+    );
+  });
+});
+
+describe('adminContentAreaPath', () => {
+  it('builds the editor page path for each area', () => {
+    expect(adminContentAreaPath('home')).toBe(
+      `${PROTECTED_PATHS.CONTENT}/home`,
+    );
+    expect(adminContentAreaPath('footer')).toBe(
+      `${PROTECTED_PATHS.CONTENT}/footer`,
     );
   });
 });
