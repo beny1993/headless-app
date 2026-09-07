@@ -125,7 +125,9 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
   },
   'about.cta': {
     title: 'فراخوان پایانی (درباره ما)',
-    fields: [{ path: 'headline', label: 'سرتیتر', kind: 'input' }],
+    // textarea like every other headline: the rendered <h2> carries
+    // whitespace-pre-line, so an admin newline becomes a line break.
+    fields: [{ path: 'headline', label: 'سرتیتر', kind: 'textarea' }],
   },
 };
 
