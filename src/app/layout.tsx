@@ -1,17 +1,11 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
-import { DEFAULT_SITE_NAME } from '@/constants';
 import { vazirmatn } from '@/lib/fonts';
+import { SITE_METADATA } from '@/lib/seo';
 import { getEnvVariable, VARS } from '@/lib/utils/env';
 import './globals.css';
 
-export const metadata: Metadata = {
-  title: {
-    default: DEFAULT_SITE_NAME,
-    template: `%s | ${DEFAULT_SITE_NAME}`,
-  },
-  description: 'فروشگاه آنلاین لوازم و غذای حیوانات خانگی',
-};
+export const metadata: Metadata = SITE_METADATA;
 
 export default function RootLayout({
   children,

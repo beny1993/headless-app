@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Fragment, useState } from 'react';
@@ -187,7 +188,20 @@ export function AdminSidebar() {
           >
             <X size={14} aria-hidden="true" />
           </button>
-          {showLabels && <span className="font-black text-white">Smokey</span>}
+          {showLabels && (
+            <>
+              <Image
+                src="/brand/smokey-mark.png"
+                width={32}
+                height={32}
+                alt="لوگوی اسموکی"
+                className="size-8 shrink-0"
+              />
+              <span aria-hidden="true" className="font-black text-white">
+                Smokey
+              </span>
+            </>
+          )}
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
