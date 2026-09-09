@@ -53,6 +53,12 @@ ARG NEXT_PUBLIC_STORAGE_BASE_URL=
 # monitoring configured.
 ARG NEXT_PUBLIC_SENTRY_DSN=
 ARG NEXT_PUBLIC_SENTRY_ENVIRONMENT=
+# Umami web analytics. Same story again: NEXT_PUBLIC_* (STATIC_INLINED_VARS), so
+# the tracker URL and website id are baked into the client bundle HERE. Either
+# one empty => the root layout renders no script tag and the data-umami-event
+# attributes throughout the app do nothing.
+ARG NEXT_PUBLIC_UMAMI_SCRIPT_URL=
+ARG NEXT_PUBLIC_UMAMI_WEBSITE_ID=
 
 # Build the standalone output. The vars are set inline for this command
 # only — they never become image ENV metadata (nothing sensitive is baked in;
@@ -65,6 +71,8 @@ RUN NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
     NEXT_PUBLIC_STORAGE_BASE_URL="$NEXT_PUBLIC_STORAGE_BASE_URL" \
     NEXT_PUBLIC_SENTRY_DSN="$NEXT_PUBLIC_SENTRY_DSN" \
     NEXT_PUBLIC_SENTRY_ENVIRONMENT="$NEXT_PUBLIC_SENTRY_ENVIRONMENT" \
+    NEXT_PUBLIC_UMAMI_SCRIPT_URL="$NEXT_PUBLIC_UMAMI_SCRIPT_URL" \
+    NEXT_PUBLIC_UMAMI_WEBSITE_ID="$NEXT_PUBLIC_UMAMI_WEBSITE_ID" \
     APP_CONFIG_DATABASE_URL="postgres://build:build@127.0.0.1:5432/build" \
     APP_CONFIG_AUTH_SECRET="build-time-placeholder-not-used-at-runtime" \
     pnpm build
