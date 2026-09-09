@@ -2,6 +2,7 @@
 // ./otp-throttle.ts; this is the thin layer that fetches the log and turns a
 // denial into the 429 the login screen renders.
 import { APIError } from 'better-auth/api';
+import * as Sentry from '@sentry/nextjs';
 import { OtpSendLogDao } from '@/db/dao/OtpSendLogDao';
 import { evaluateOtpThrottle, OTP_SEND_WINDOW_SECONDS } from './otp-throttle';
 
@@ -49,6 +50,10 @@ export async function assertOtpSendAllowed(phoneNumber: string): Promise<void> {
     // if the login path ever shows it.
     await OtpSendLogDao.prune(windowStart(new Date())).catch((error) => {
       console.warn('[auth] pruning otp_send_log failed', error);
+      // Deliberately swallowed so a housekeeping failure never costs a shopper
+      // their login — which is precisely why it needs reporting: unbounded
+      // growth of this table is silent until the throttle query gets slow.
+      Sentry.captureException(error);
     });
     return;
   }

@@ -3,9 +3,9 @@
 # is a slim Node 24 runtime carrying only the standalone server, its traced
 # node_modules, the static assets and public/. No source, no dev deps, no pnpm.
 #
-# All runtime configuration is env-only (see docs/DEPLOY.md) EXCEPT
-# NEXT_PUBLIC_APP_URL, which Next inlines into the client bundle at build time —
-# so it is a build ARG here, not a container env var. Pass the real https origin:
+# All runtime configuration is env-only (see docs/DEPLOY.md) EXCEPT the
+# NEXT_PUBLIC_* names, which Next inlines into the client bundle at build time —
+# so they are build ARGs here, not container env vars. Pass the real https origin:
 #   docker build --build-arg NEXT_PUBLIC_APP_URL=https://shop.example.com .
 # The default below is a placeholder that only makes local builds boot.
 
@@ -47,8 +47,14 @@ ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
 # (STATIC_INLINED_VARS in src/lib/utils/env.ts). Empty => uploads resolve to the
 # local-relative /uploads path and next.config.ts adds no remote image pattern.
 ARG NEXT_PUBLIC_STORAGE_BASE_URL=
+# Sentry. Also NEXT_PUBLIC_* (STATIC_INLINED_VARS), so the DSN is baked in HERE
+# for the browser AND the server bundles alike — a runtime container variable
+# does nothing. Empty => the SDK is off, the right default for a build with no
+# monitoring configured.
+ARG NEXT_PUBLIC_SENTRY_DSN=
+ARG NEXT_PUBLIC_SENTRY_ENVIRONMENT=
 
-# Build the standalone output. The three vars are set inline for this command
+# Build the standalone output. The vars are set inline for this command
 # only — they never become image ENV metadata (nothing sensitive is baked in;
 # also why BuildKit's secret-in-ENV check stays quiet). The DB/secret values are
 # throwaway placeholders that only satisfy the required-var checks in
@@ -57,6 +63,8 @@ ARG NEXT_PUBLIC_STORAGE_BASE_URL=
 # force-dynamic so no DB-backed page is rendered at build.
 RUN NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
     NEXT_PUBLIC_STORAGE_BASE_URL="$NEXT_PUBLIC_STORAGE_BASE_URL" \
+    NEXT_PUBLIC_SENTRY_DSN="$NEXT_PUBLIC_SENTRY_DSN" \
+    NEXT_PUBLIC_SENTRY_ENVIRONMENT="$NEXT_PUBLIC_SENTRY_ENVIRONMENT" \
     APP_CONFIG_DATABASE_URL="postgres://build:build@127.0.0.1:5432/build" \
     APP_CONFIG_AUTH_SECRET="build-time-placeholder-not-used-at-runtime" \
     pnpm build

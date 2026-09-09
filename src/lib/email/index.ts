@@ -1,5 +1,6 @@
 import { render } from '@react-email/components';
 import nodemailer from 'nodemailer';
+import * as Sentry from '@sentry/nextjs';
 import { ReactElement } from 'react';
 import { DEFAULT_SITE_NAME, DEFAULT_SUPPORT_EMAIL } from '@/constants';
 import { getEnvVariable, VARS } from '../utils/env';
@@ -72,6 +73,9 @@ export default async function sendEmail({
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown error';
     console.error(`[email] Failed to send "${subject}" to ${to}: ${message}`);
+    // `subject` only — the recipient address stays in the container log. It is
+    // the customer's email, and nothing here needs it to identify the fault.
+    Sentry.captureException(error, { extra: { subject } });
     throw new Error(message);
   }
 }

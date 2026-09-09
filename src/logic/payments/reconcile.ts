@@ -15,6 +15,7 @@
 // Admin-triggered for v1; the function is directly callable so a PaaS cron can
 // wrap it later. ponytail: no cron here — add the wrapper when order volume
 // outpaces the admin clicking the button.
+import * as Sentry from '@sentry/nextjs';
 import { db } from '@/db';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { PaymentDao } from '@/db/dao/PaymentDao';
@@ -81,6 +82,12 @@ export async function reconcilePayments(
         `[reconcile] verify/settle failed for payment ${payment.id}; left pending for a later run`,
         error,
       );
+      // Money that the gateway may already have taken. The row stays `pending`
+      // so the next run retries, which is exactly why this must not stay quiet
+      // in a log — a row that fails every sweep looks like nothing at all.
+      Sentry.captureException(error, {
+        extra: { paymentId: payment.id, orderId: payment.orderId },
+      });
     }
   }
 

@@ -52,6 +52,8 @@ All runtime configuration is env-only. Names come from the `VARS` enum in
 | Variable | Required | What it is |
 | --- | --- | --- |
 | `NEXT_PUBLIC_APP_URL` | yes | The real `https://` origin, no trailing slash (e.g. `https://shop.example.com`). **Inlined into the client bundle at build time** — it is a Docker build ARG, so it must be marked *available at build time* in Coolify, not just a runtime var. It drives the `Secure` session-cookie flag and Better Auth's CSRF trusted-origins list; `getAppBaseUrl()` throws in production if unset. A change here requires a **rebuild**, not just a restart. |
+| `NEXT_PUBLIC_SENTRY_DSN` | no | Sentry DSN. **Build-time only** — it is inlined into both the client *and* the server bundles, so setting it as a plain runtime variable does nothing at all. Empty ⇒ Sentry is off everywhere. A change needs a **rebuild**. See §9. |
+| `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | no | `staging` or `production`. Both apps report into one Sentry project; without this, staging noise is indistinguishable from customer-facing errors. Build-time, like the DSN. |
 
 **Not needed in Coolify** — these are consumed only by `docker-compose-dev.yaml`
 for the local dev database and have no role in production:
@@ -216,6 +218,66 @@ abuse; the fixes belong to the payments / reconcile stories, not here.
    uncapped and a discount use is never released on cancel/expiry, so one account
    can burn a limit-N promo with COD orders then cancel. **Decision:** release the
    use on cancel (reconcile/expiry story), or add a COD cap.
+
+---
+
+## 9. Error monitoring — GlitchTip, not Sentry
+
+The app is instrumented with **`@sentry/nextjs`**, but the backend is
+**GlitchTip Cloud** (`app.glitchtip.com`). GlitchTip implements the Sentry
+envelope protocol, so the SDK, every `captureException` call site and the whole
+privacy contract in `src/lib/sentry.ts` are unchanged — only the DSN differs.
+
+**Why not Sentry:** sentry.io refuses Iranian IPs. Measured from this box:
+
+```bash
+curl -sI https://o<org>.ingest.us.sentry.io/api/<project>/envelope/
+# HTTP/2 403 — "Your client does not have permission to get URL ..."
+```
+
+That is the Google front-end sanctions block on the egress path, not an account
+problem — the same request from a non-Iranian IP returns Sentry's normal `401`.
+Shoppers' browsers are refused for the same reason, so `tunnelRoute` does not
+rescue it either: it proxies browser events through this server, which is itself
+blocked. GlitchTip has none of that problem.
+
+### Reachability from this box (measured 2026-09-08)
+
+| Host | | |
+| --- | --- | --- |
+| `app.glitchtip.com/api/<id>/envelope/` | **405** | ingest alive (405 = "POST me") — **what we use** |
+| `us.i.posthog.com/i/v0/e/`, `us-assets.i.posthog.com` | 400 / 200 | reachable; EU region is not |
+| `cloud.umami.is` | 200 | |
+| `notify.bugsnag.com`, `api.honeybadger.io`, `api.axiom.co` | 405 / 301 / 404 | reachable alternatives |
+| `downloads.sentry-cdn.com` | 200 | sentry-cli binary — not blocked |
+| `registry.npmjs.org` | 200 | |
+| `ghcr.io`, `registry-1.docker.io` | 401 | normal unauth reply — a prebuilt image can be pulled |
+| **`sentry.io`** | **403** | blocked |
+| **`eu.posthog.com`, `api.rollbar.com`, `otlp.eu01.nr-data.net`** | **403** | blocked |
+| **`in.logs.betterstack.com`, `api.telegram.org`** | **timeout** | blocked |
+
+Note the egress IP is **not stable** — `api.ipify.org`, `ipinfo.io` and
+`icanhazip.com` each reported a different address (Liara NATs through a pool).
+Anything that needs an IP allow-list is therefore not an option here.
+
+### Configuration
+
+`NEXT_PUBLIC_SENTRY_DSN` holds the **GlitchTip** DSN; the variable keeps its name
+because the SDK reads it. Both it and `NEXT_PUBLIC_SENTRY_ENVIRONMENT` are
+**build-time** (§1) — they are inlined into the client *and* server bundles, so a
+runtime-only value does nothing.
+
+**Tracing is off** (no `tracesSampleRate` in `src/lib/sentry.ts`). GlitchTip's
+performance support is partial, and transactions are the high-volume signal —
+enabling them spends a shared event quota on data nobody reads. Errors are the
+point.
+
+**Source maps** are still off: `next.config.ts` gates upload, release creation
+and plugin telemetry on `SENTRY_AUTH_TOKEN`, and `@sentry/cli`'s postinstall is
+skipped in `pnpm-workspace.yaml`. Neither is now blocked by the network —
+`downloads.sentry-cdn.com` answers 200 and GlitchTip accepts sentry-cli uploads —
+so turning both on is a real option whenever minified production stack traces
+start costing more than the setup does.
 
 ---
 

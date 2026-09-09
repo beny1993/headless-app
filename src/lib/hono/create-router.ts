@@ -1,4 +1,5 @@
 import type { Context, Env } from 'hono';
+import * as Sentry from '@sentry/nextjs';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { apiError, formatZodIssues } from './envelope';
@@ -73,6 +74,12 @@ export const apiErrorHandler = (err: Error, c: Context) => {
   }
 
   console.error('Unhandled error:', err);
+  // Next's own `onRequestError` (src/instrumentation.ts) never sees these: this
+  // handler catches the throw and answers with the 500 envelope, so without this
+  // line every API 500 would be invisible to Sentry.
+  Sentry.captureException(err, {
+    extra: { method: c.req.method, path: c.req.path },
+  });
 
   const details =
     process.env.NODE_ENV !== 'production'
