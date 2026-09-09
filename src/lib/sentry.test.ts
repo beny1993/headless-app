@@ -108,17 +108,15 @@ describe('sentryOptions', () => {
     });
   });
 
-  describe('tracesSampleRate', () => {
-    it('samples everything in development', async () => {
-      const { sentryOptions } = await freshSentry({ NODE_ENV: 'development' });
-
-      expect(sentryOptions().tracesSampleRate).toBe(1);
-    });
-
-    it('samples a tenth in production', async () => {
+  describe('tracing', () => {
+    it('stays off — the SDK enables tracing merely by seeing a sample rate', async () => {
+      // `tracesSampleRate: 0` would still be "defined" to some SDK code paths,
+      // and a stray 0.1 is how a shared event quota quietly goes to transactions
+      // instead of the errors this exists to catch. Absent, not zero.
       const { sentryOptions } = await freshSentry({ NODE_ENV: 'production' });
 
-      expect(sentryOptions().tracesSampleRate).toBe(0.1);
+      expect(sentryOptions()).not.toHaveProperty('tracesSampleRate');
+      expect(sentryOptions()).not.toHaveProperty('tracesSampler');
     });
   });
 

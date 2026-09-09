@@ -91,11 +91,12 @@ export default withSentryConfig(nextConfig, {
   // repo treats a build warning as a failed gate. With a token, its warnings are
   // about real upload failures, so let them through.
   silent: !hasSentryAuthToken,
+  // No `tunnelRoute`: it only ever existed to route browser events around
+  // sentry.io's block on Iranian IPs, and the backend is GlitchTip now, which
+  // answers from Iran. Browsers post to it directly. Re-add it only if a future
+  // backend becomes unreachable from a shopper's browser.
   // Deliberately absent: `disableLogger` and `automaticVercelMonitors`. Both are
   // deprecated in favour of `webpack.*` equivalents that Turbopack — which is
   // what `next build` uses on Next 16 — does not support, so setting either only
   // buys a deprecation warning. Vercel is not a deploy target here anyway.
-  //
-  // Also absent: `tunnelRoute`. It proxies browser events through this server,
-  // and this server is the thing that cannot reach sentry.io.
 });

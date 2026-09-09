@@ -2,12 +2,12 @@
 // object into their own `Sentry.init`, so a privacy decision made here cannot be
 // true on one runtime and false on another.
 //
-// Errors and tracing only. Session replay, logs, profiling and metrics are
+// Errors only. Tracing, session replay, logs, profiling and metrics are
 // deliberately not enabled: this is a shop for Iranian customers on slow
 // connections, and every extra signal is bundle weight and quota for data we
 // have no way to read yet (see the sanctions note in `docs/DEPLOY.md`).
 import type * as Sentry from '@sentry/nextjs';
-import { getEnvVariable, isDevelopmentServer, VARS } from '@/lib/utils/env';
+import { getEnvVariable, VARS } from '@/lib/utils/env';
 
 /**
  * `Integration` itself lives in `@sentry/core`, which `@sentry/nextjs` does not
@@ -98,9 +98,11 @@ export function sentryOptions() {
     environment:
       getEnvVariable(VARS.NEXT_PUBLIC_SENTRY_ENVIRONMENT, false, '').trim() ||
       undefined,
-    // Everything locally, a tenth in production — tracing is the high-volume
-    // signal and the quota is shared with the errors that actually matter.
-    tracesSampleRate: isDevelopmentServer() ? 1 : 0.1,
+    // No `tracesSampleRate`, so tracing stays OFF and only errors are sent.
+    // The backend is GlitchTip (docs/DEPLOY.md §9), whose performance support is
+    // partial — and transactions are the high-volume signal, so enabling them
+    // spends a shared event quota on data nobody here reads. Errors are the
+    // whole point. One line to turn back on if that ever changes.
     dataCollection,
     integrations: withoutConsoleBreadcrumbs,
   };
