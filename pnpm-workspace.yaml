@@ -6,6 +6,19 @@ overrides:
   # (commitlint + react-email CLI), not in the runtime bundle, but the
   # pre-push audit gate is repo-wide — pin the patched line everywhere.
   'fast-uri@>=3.0.0 <3.1.6': ^3.1.6
+  # GHSA-2x7j-588g-ccc2 + the windows-host RCE: two CRITICAL unauthenticated
+  # RCEs in Next <16.3.3, one of them in Image Optimization — which this app
+  # uses (`images.remotePatterns` in next.config.ts). The app's own `next` is
+  # already 16.3.4; this override exists for the SECOND copy that
+  # `@react-email/ui` pins at 16.3.0. Dev-only (the email preview server) and
+  # never in the shipped image, but the audit gate is repo-wide.
+  'next@>=16.0.0 <16.3.3': ^16.3.4
+  # GHSA-2883-xcg3-v3hh: js-yaml <4.3.2 unbounded CPU on empty merge keys.
+  # 27 transitive paths, all tooling.
+  'js-yaml@>=4.0.0 <4.3.2': ^4.3.2
+  # libheif CVEs reachable through sharp <0.35.4. Arrives via
+  # @sentry/nextjs -> @sentry/webpack-plugin, i.e. build-time only.
+  'sharp@<0.35.4': ^0.35.4
 
 # pnpm 11 blocks dependency build scripts by default. Without these allows,
 # install looks green but native binaries never compile.
