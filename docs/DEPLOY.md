@@ -54,6 +54,8 @@ All runtime configuration is env-only. Names come from the `VARS` enum in
 | `NEXT_PUBLIC_APP_URL` | yes | The real `https://` origin, no trailing slash (e.g. `https://shop.example.com`). **Inlined into the client bundle at build time** — it is a Docker build ARG, so it must be marked *available at build time* in Coolify, not just a runtime var. It drives the `Secure` session-cookie flag and Better Auth's CSRF trusted-origins list; `getAppBaseUrl()` throws in production if unset. A change here requires a **rebuild**, not just a restart. |
 | `NEXT_PUBLIC_SENTRY_DSN` | no | Sentry DSN. **Build-time only** — it is inlined into both the client *and* the server bundles, so setting it as a plain runtime variable does nothing at all. Empty ⇒ Sentry is off everywhere. A change needs a **rebuild**. See §9. |
 | `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | no | `staging` or `production`. Both apps report into one Sentry project; without this, staging noise is indistinguishable from customer-facing errors. Build-time, like the DSN. |
+| `NEXT_PUBLIC_UMAMI_SCRIPT_URL` | no | Tracker URL on our self-hosted Umami, `https://analytics.bendev.ir/script.js`. **Build-time only** — inlined into the client bundle, so a runtime-only variable does nothing. |
+| `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | no | Website id from the Umami dashboard. **Use a different website for staging than for production**, or staging traffic lands in the real numbers. Either this or the script URL empty ⇒ no tracker at all. Build-time; a change needs a **rebuild**. |
 
 **Not needed in Coolify** — these are consumed only by `docker-compose-dev.yaml`
 for the local dev database and have no role in production:

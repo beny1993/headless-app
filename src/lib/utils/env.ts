@@ -71,6 +71,18 @@ export enum VARS {
   // looks like a customer hitting a bug. Build-time, like the DSN.
   NEXT_PUBLIC_SENTRY_ENVIRONMENT = 'NEXT_PUBLIC_SENTRY_ENVIRONMENT',
 
+  // ── Web analytics (self-hosted Umami) ───────────────────────────────────────
+  // Full URL of the tracker script on our own Umami instance, e.g.
+  // `https://analytics.bendev.ir/script.js`. One instance serves every project,
+  // so the host is config, not a constant — it has already moved once.
+  NEXT_PUBLIC_UMAMI_SCRIPT_URL = 'NEXT_PUBLIC_UMAMI_SCRIPT_URL',
+  // The website id Umami issues per site. Not a secret (it ships in the page
+  // source), but it is per-deployment: staging and production are separate sites
+  // in the dashboard, or staging traffic pollutes the real numbers. EITHER of
+  // these two empty ⇒ no script tag at all, which is what a fresh clone, every
+  // `pnpm test` run and local dev get. Both are inlined at BUILD time.
+  NEXT_PUBLIC_UMAMI_WEBSITE_ID = 'NEXT_PUBLIC_UMAMI_WEBSITE_ID',
+
   NODE_ENV = 'NODE_ENV',
   NEXT_PUBLIC_APP_URL = 'NEXT_PUBLIC_APP_URL',
 }
@@ -91,6 +103,8 @@ const STATIC_INLINED_VARS: Partial<Record<VARS, string | undefined>> = {
   [VARS.NEXT_PUBLIC_SENTRY_DSN]: process.env.NEXT_PUBLIC_SENTRY_DSN,
   [VARS.NEXT_PUBLIC_SENTRY_ENVIRONMENT]:
     process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT,
+  [VARS.NEXT_PUBLIC_UMAMI_SCRIPT_URL]: process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL,
+  [VARS.NEXT_PUBLIC_UMAMI_WEBSITE_ID]: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID,
 };
 
 export const getEnvVariable: Func = (
