@@ -122,35 +122,41 @@ describe('admin page authorization coverage', () => {
 // Invoke each server page independently of its layout, as an independently
 // rendered route segment can be. Exercise the real role gate; only session
 // lookup and data access are mocked. A rejected visitor must never reach data.
-describe.each(pages)('admin %s page authorization', (_path, _name, render) => {
-  beforeEach(() => vi.clearAllMocks());
+describe.each(pages)(
+  'admin %s (%s) page authorization',
+  (_path, _name, render) => {
+    beforeEach(() => vi.clearAllMocks());
 
-  it.each([
-    [null, `${PATHS.LOGIN}?next=${encodeURIComponent(PROTECTED_PATHS.INDEX)}`],
-    [{ user: { role: 'customer' } }, PATHS.HOME],
-    [{ user: { role: 'unknown' } }, PATHS.HOME],
-  ])(
-    'rejects unauthorized sessions before reading data (%j)',
-    async (session, destination) => {
-      mocks.getSession.mockResolvedValue(session);
-      await expect(render()).rejects.toThrow(`REDIRECT:${destination}`);
+    it.each([
+      [
+        null,
+        `${PATHS.LOGIN}?next=${encodeURIComponent(PROTECTED_PATHS.INDEX)}`,
+      ],
+      [{ user: { role: 'customer' } }, PATHS.HOME],
+      [{ user: { role: 'unknown' } }, PATHS.HOME],
+    ])(
+      'rejects unauthorized sessions before reading data (%j)',
+      async (session, destination) => {
+        mocks.getSession.mockResolvedValue(session);
+        await expect(render()).rejects.toThrow(`REDIRECT:${destination}`);
+        expect(mocks.read).not.toHaveBeenCalled();
+      },
+    );
+
+    it('allows the admin to reach data access', async () => {
+      mocks.getSession.mockResolvedValue({ user: { role: 'admin' } });
+      await expect(render()).rejects.toThrow('AUTHORIZED_DATA_READ');
+      expect(mocks.getSession).toHaveBeenCalled();
+      expect(mocks.read).toHaveBeenCalled();
+    });
+
+    it('rechecks a revoked admin role on the next page render', async () => {
+      mocks.getSession.mockResolvedValueOnce({ user: { role: 'admin' } });
+      await expect(render()).rejects.toThrow('AUTHORIZED_DATA_READ');
+      mocks.read.mockClear();
+      mocks.getSession.mockResolvedValueOnce({ user: { role: 'customer' } });
+      await expect(render()).rejects.toThrow(`REDIRECT:${PATHS.HOME}`);
       expect(mocks.read).not.toHaveBeenCalled();
-    },
-  );
-
-  it('allows the admin to reach data access', async () => {
-    mocks.getSession.mockResolvedValue({ user: { role: 'admin' } });
-    await expect(render()).rejects.toThrow('AUTHORIZED_DATA_READ');
-    expect(mocks.getSession).toHaveBeenCalled();
-    expect(mocks.read).toHaveBeenCalled();
-  });
-
-  it('rechecks a revoked admin role on the next page render', async () => {
-    mocks.getSession.mockResolvedValueOnce({ user: { role: 'admin' } });
-    await expect(render()).rejects.toThrow('AUTHORIZED_DATA_READ');
-    mocks.read.mockClear();
-    mocks.getSession.mockResolvedValueOnce({ user: { role: 'customer' } });
-    await expect(render()).rejects.toThrow(`REDIRECT:${PATHS.HOME}`);
-    expect(mocks.read).not.toHaveBeenCalled();
-  });
-});
+    });
+  },
+);
