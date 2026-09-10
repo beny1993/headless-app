@@ -111,9 +111,9 @@ const nav = z.tuple([t(30), t(30), t(30)]);
 const visible = z.boolean().optional();
 
 /**
- * The `value` schema per key. `z.tuple` is what makes "exactly five slots / four
- * steps, no add or remove" structural rather than a UI rule — a body with four or
- * six entries fails the schema. Extra fields are stripped, not stored. The family
+ * The `value` schema per key. `z.tuple` is what makes "exactly six slots / four
+ * steps, no add or remove" structural rather than a UI rule. Extra fields are
+ * stripped, not stored. The family
  * slot's alt text is not a field: it stays derived in code (`${name}، حیوان
  * خانگی ${owner}`), as today.
  */
@@ -168,7 +168,7 @@ export const CONTENT_SCHEMAS = {
   'home.family': z.object({
     eyebrow: t(60),
     headline: t(120),
-    slots: z.tuple([slot, slot, slot, slot, slot]),
+    slots: z.tuple([slot, slot, slot, slot, slot, slot]),
     visible,
   }),
   'home.categories': z.object({
