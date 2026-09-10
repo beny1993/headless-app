@@ -348,17 +348,12 @@ export class ProductDao {
       // A form round-trips stock even when only its title was edited. Preserve
       // concurrent reservations unless the operator actually changed inventory.
       const update = { ...patch };
+      let stockGuard: number | undefined;
       if (expectedStock !== undefined && update.stock !== undefined) {
         if (update.stock === expectedStock) {
           delete update.stock;
         } else {
-          const [current] = await tx
-            .select({ stock: products.stock })
-            .from(products)
-            .where(eq(products.id, id))
-            .for('update');
-          if (!current) return null;
-          if (current.stock !== expectedStock) throw new StockConflictError();
+          stockGuard = expectedStock;
         }
       }
       if (Object.keys(update).length === 0) {
@@ -371,10 +366,24 @@ export class ProductDao {
       const [row] = await tx
         .update(products)
         .set(update)
-        .where(eq(products.id, id))
+        .where(
+          stockGuard === undefined
+            ? eq(products.id, id)
+            : and(eq(products.id, id), eq(products.stock, stockGuard)),
+        )
         .returning();
 
-      if (!row) return null;
+      if (!row) {
+        if (stockGuard === undefined) return null;
+        // The CAS intentionally combines "missing" and "stale" into zero rows;
+        // split them only on this failure path for the API's 404/409 contract.
+        const [existing] = await tx
+          .select({ id: products.id })
+          .from(products)
+          .where(eq(products.id, id));
+        if (!existing) return null;
+        throw new StockConflictError();
+      }
       if (!SEARCHABLE_FIELDS.some((field) => field in update)) return row;
 
       const [rewritten] = await tx

@@ -57,6 +57,8 @@ export function AccountView({
   provinces: ProvinceOption[];
 }) {
   const [tab, setTab] = useState<Tab>('orders');
+  const [savedPets, setSavedPets] = useState(pets);
+  const [savedAddresses, setSavedAddresses] = useState(addresses);
 
   return (
     <main className="min-h-screen pt-4">
@@ -100,17 +102,16 @@ export function AccountView({
 
           <div className="flex-1">
             {tab === 'orders' && <OrdersTab orders={orders} />}
-            {/* Keep resource state mounted across tab switches; mutations live in
-                these children, and remounting would restore stale server props. */}
-            <div hidden={tab !== 'pets'}>
-              <PetsTab initialPets={pets} />
-            </div>
-            <div hidden={tab !== 'addresses'}>
+            {tab === 'pets' && (
+              <PetsTab pets={savedPets} onPetsChange={setSavedPets} />
+            )}
+            {tab === 'addresses' && (
               <AddressesTab
-                initialAddresses={addresses}
+                addresses={savedAddresses}
+                onAddressesChange={setSavedAddresses}
                 provinces={provinces}
               />
-            </div>
+            )}
             {tab === 'profile' && <ProfileTab name={name} phone={phone} />}
           </div>
         </div>

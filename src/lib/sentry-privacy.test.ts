@@ -32,9 +32,9 @@ beforeAll(() => {
 afterAll(async () => {
   await Sentry.close(2000);
 });
-async function capture(error: Error) {
+async function capture(error: Error, extra?: Record<string, unknown>) {
   captured = undefined;
-  Sentry.captureException(error);
+  Sentry.captureException(error, { extra });
   await Sentry.flush(2000);
   expect(captured).toBeDefined();
   return captured!;
@@ -64,6 +64,22 @@ describe('database exception privacy', () => {
     );
     expect(event).not.toContain('PRIVATE_ADDRESS');
     expect(event).toContain('Database operation failed');
+  });
+
+  it('keeps safe payment correlation ids while dropping arbitrary extras', async () => {
+    const event = await capture(
+      new DrizzleQueryError('update payments set status = $1', [
+        'PRIVATE_VALUE',
+      ]),
+      {
+        paymentId: 'safe-payment-id',
+        orderId: 'safe-order-id',
+        params: ['PRIVATE_VALUE'],
+      },
+    );
+    expect(event).toContain('safe-payment-id');
+    expect(event).toContain('safe-order-id');
+    expect(event).not.toContain('PRIVATE_VALUE');
   });
 
   it('preserves ordinary error diagnostics', async () => {

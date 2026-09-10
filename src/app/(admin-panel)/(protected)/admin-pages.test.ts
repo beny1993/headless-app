@@ -44,9 +44,15 @@ vi.mock('@/logic/orders/get-admin-order', () => ({
 }));
 
 const id = '00000000-0000-4000-8000-000000000001';
+const pageModules = import.meta.glob('./admin-panel/**/page.tsx');
 const pages = [
-  ['dashboard', async () => (await import('./admin-panel/page')).default()],
   [
+    './admin-panel/page.tsx',
+    'dashboard',
+    async () => (await import('./admin-panel/page')).default(),
+  ],
+  [
+    './admin-panel/orders/page.tsx',
     'orders',
     async () =>
       (await import('./admin-panel/orders/page')).default({
@@ -54,6 +60,7 @@ const pages = [
       }),
   ],
   [
+    './admin-panel/orders/[id]/page.tsx',
     'order detail',
     async () =>
       (await import('./admin-panel/orders/[id]/page')).default({
@@ -61,6 +68,7 @@ const pages = [
       }),
   ],
   [
+    './admin-panel/products/page.tsx',
     'products',
     async () =>
       (await import('./admin-panel/products/page')).default({
@@ -68,6 +76,7 @@ const pages = [
       }),
   ],
   [
+    './admin-panel/products/[id]/page.tsx',
     'product detail',
     async () =>
       (await import('./admin-panel/products/[id]/page')).default({
@@ -75,18 +84,22 @@ const pages = [
       }),
   ],
   [
+    './admin-panel/products/new/page.tsx',
     'new product',
     async () => (await import('./admin-panel/products/new/page')).default(),
   ],
   [
+    './admin-panel/discounts/page.tsx',
     'discounts',
     async () => (await import('./admin-panel/discounts/page')).default(),
   ],
   [
+    './admin-panel/shipping/page.tsx',
     'shipping',
     async () => (await import('./admin-panel/shipping/page')).default(),
   ],
   [
+    './admin-panel/content/[area]/page.tsx',
     'content area',
     async () =>
       (await import('./admin-panel/content/[area]/page')).default({
@@ -95,10 +108,21 @@ const pages = [
   ],
 ] as const;
 
+describe('admin page authorization coverage', () => {
+  it('includes every page that can read data', () => {
+    // The content index is redirect-only and has no data access. Every other
+    // page must be listed above, so adding a route without its auth test fails.
+    const dataPages = Object.keys(pageModules)
+      .filter((path) => path !== './admin-panel/content/page.tsx')
+      .sort();
+    expect(pages.map(([path]) => path).sort()).toEqual(dataPages);
+  });
+});
+
 // Invoke each server page independently of its layout, as an independently
 // rendered route segment can be. Exercise the real role gate; only session
 // lookup and data access are mocked. A rejected visitor must never reach data.
-describe.each(pages)('admin %s page authorization', (_name, render) => {
+describe.each(pages)('admin %s page authorization', (_path, _name, render) => {
   beforeEach(() => vi.clearAllMocks());
 
   it.each([

@@ -100,6 +100,29 @@ const containsDatabaseError = (error: unknown): boolean => {
   return false;
 };
 
+// These are deliberately attached by the payment and API error boundaries so
+// an operator can locate the failed operation. Keep only this audited set for a
+// database exception; arbitrary extras may contain the same private values as
+// the rejected query.
+const SAFE_DATABASE_EXTRA_KEYS = new Set([
+  'method',
+  'path',
+  'paymentId',
+  'orderId',
+]);
+
+const safeDatabaseExtras = (extra: Sentry.ErrorEvent['extra']) => {
+  if (!extra) return undefined;
+  const kept = Object.fromEntries(
+    Object.entries(extra).filter(
+      ([key, value]) =>
+        SAFE_DATABASE_EXTRA_KEYS.has(key) &&
+        ['string', 'number', 'boolean'].includes(typeof value),
+    ),
+  );
+  return Object.keys(kept).length > 0 ? kept : undefined;
+};
+
 /** Keep database failure locations while removing values from the entire chain. */
 export const sanitizeDatabaseError = (
   event: Sentry.ErrorEvent,
@@ -112,8 +135,7 @@ export const sanitizeDatabaseError = (
   return {
     ...event,
     message: event.message ? 'Database operation failed' : undefined,
-    // An SDK integration/caller can serialize the original error here too.
-    extra: undefined,
+    extra: safeDatabaseExtras(event.extra),
     exception: event.exception
       ? {
           ...event.exception,

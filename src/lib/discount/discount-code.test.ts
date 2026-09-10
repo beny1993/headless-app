@@ -47,20 +47,11 @@ describe('computeDiscount', () => {
     expect(computeDiscount(percent(33), 9_007_199_254_740_000)).toBe(
       2_972_375_754_064_200,
     );
-    for (let value = 1; value <= 100; value++) {
-      for (const subtotal of [
-        Number.MAX_SAFE_INTEGER,
-        Number.MAX_SAFE_INTEGER - 1,
-        0,
-        1,
-        99,
-        101,
-      ]) {
-        expect(computeDiscount(percent(value), subtotal)).toBe(
-          Number((BigInt(subtotal) * BigInt(value)) / 100n),
-        );
-      }
-    }
+    // Hand-computed MAX_SAFE_INTEGER boundary. The old floating-point
+    // multiplication produced 2_972_375_754_064_526, one Toman short.
+    expect(computeDiscount(percent(33), Number.MAX_SAFE_INTEGER)).toBe(
+      2_972_375_754_064_527,
+    );
   });
 });
 

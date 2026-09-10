@@ -164,7 +164,11 @@ describe('sanitizeDatabaseError', () => {
       {
         type: undefined,
         message: 'Private value',
-        extra: { params: ['Private value'] },
+        extra: {
+          params: ['Private value'],
+          paymentId: 'payment-id',
+          orderId: 'order-id',
+        },
         exception: {
           values: [
             { type: 'Error', value: 'Private value', stacktrace: { frames } },
@@ -174,7 +178,10 @@ describe('sanitizeDatabaseError', () => {
       { originalException: { query: 'insert ...', params: ['Private value'] } },
     );
     expect(result.message).toBe('Database operation failed');
-    expect(result.extra).toBeUndefined();
+    expect(result.extra).toEqual({
+      paymentId: 'payment-id',
+      orderId: 'order-id',
+    });
     expect(result.exception?.values?.[0]).toEqual({
       type: 'Error',
       value: 'Database operation failed',
