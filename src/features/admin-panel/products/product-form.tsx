@@ -5,7 +5,10 @@ import { useId, useState } from 'react';
 import { AlertCircle, ChevronRight, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import { ApiRequestError, postData, putData } from '@/lib/api-client';
-import { productInputSchema } from '@/lib/catalog/product-input';
+import {
+  productInputSchema,
+  productUpdateInputSchema,
+} from '@/lib/catalog/product-input';
 import { PET_TYPES, type PetType } from '@/lib/catalog/product-query';
 import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import {
@@ -154,7 +157,12 @@ export function ProductForm({
     event.preventDefault();
     setTopError(undefined);
 
-    const parsed = productInputSchema.safeParse(buildBody());
+    const parsed = product
+      ? productUpdateInputSchema.safeParse({
+          ...buildBody(),
+          expectedStock: product.stock,
+        })
+      : productInputSchema.safeParse(buildBody());
     if (!parsed.success) {
       setFieldErrors(zodFieldErrors(parsed.error));
       return;
@@ -191,7 +199,7 @@ export function ProductForm({
       setBusy(false);
       if (
         error instanceof ApiRequestError &&
-        (error.status === 400 || error.status === 422)
+        (error.status === 400 || error.status === 409 || error.status === 422)
       ) {
         const { fields, unmapped } = parseFieldErrors(error.errors);
         setFieldErrors(fields);
@@ -210,7 +218,7 @@ export function ProductForm({
 
   const money = (value: string): string | null => {
     const n = numeric(value);
-    return Number.isInteger(n) && n > 0 ? formatToman(n) : null;
+    return Number.isSafeInteger(n) && n > 0 ? formatToman(n) : null;
   };
 
   const fid = (name: string) => `${formId}-${name}`;

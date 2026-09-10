@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { z } from 'zod';
@@ -14,6 +15,7 @@ export default async function EditProductPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireAdmin();
   const { id } = await params;
   // A non-uuid id would raise a 22P02 on the uuid column; treat it as absent, the
   // same 404 an unknown product gets. `findByIdForAdmin` includes inactive rows,

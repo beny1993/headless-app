@@ -256,6 +256,16 @@ export class OrderDao {
     return row?.status ?? null;
   }
 
+  /** Serialize payment-attempt insertion and expiry on their shared order row. */
+  static async lockStatus(tx: Tx, id: string): Promise<OrderStatus | null> {
+    const [row] = await tx
+      .select({ status: orders.status })
+      .from(orders)
+      .where(eq(orders.id, id))
+      .for('update');
+    return row?.status ?? null;
+  }
+
   /**
    * Every `pending_payment` order created before `cutoff` — the reconcile job's
    * pass-2 expiry worklist. The reserved stock of these orders has no release

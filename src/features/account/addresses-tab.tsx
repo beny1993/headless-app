@@ -164,6 +164,9 @@ export function AddressesTab({
                 onCancel={() => setPendingDelete(null)}
                 onConfirm={async () => {
                   await delData(apiMeAddressPath(address.id));
+                  setEditing((current) =>
+                    current?.id === address.id ? null : current,
+                  );
                   setAddresses((prev) =>
                     prev.filter((a) => a.id !== address.id),
                   );

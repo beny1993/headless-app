@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Eye } from 'lucide-react';
@@ -32,6 +33,7 @@ export default async function AdminOrdersPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requireAdmin();
   const filters = filterSchema.parse(await searchParams);
   const orders = await OrderDao.listForAdmin(filters.status);
 

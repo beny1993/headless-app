@@ -42,6 +42,26 @@ describe('computeDiscount', () => {
     expect(computeDiscount(percent(50), 0)).toBe(0);
     expect(computeDiscount(fixed(50_000), 0)).toBe(0);
   });
+
+  it('keeps integer precision when the percentage multiplication exceeds the safe range', () => {
+    expect(computeDiscount(percent(33), 9_007_199_254_740_000)).toBe(
+      2_972_375_754_064_200,
+    );
+    for (let value = 1; value <= 100; value++) {
+      for (const subtotal of [
+        Number.MAX_SAFE_INTEGER,
+        Number.MAX_SAFE_INTEGER - 1,
+        0,
+        1,
+        99,
+        101,
+      ]) {
+        expect(computeDiscount(percent(value), subtotal)).toBe(
+          Number((BigInt(subtotal) * BigInt(value)) / 100n),
+        );
+      }
+    }
+  });
 });
 
 describe('discountCodeInputSchema (admin create body)', () => {
@@ -114,6 +134,18 @@ describe('discountCodeInputSchema (admin create body)', () => {
         value: 10,
         usageLimit: 0,
       }).success,
+    ).toBe(false);
+  });
+
+  it('bounds usage limits to the database integer column', () => {
+    const input = { ...base, type: 'percent', value: 10 };
+    expect(
+      discountCodeInputSchema.safeParse({ ...input, usageLimit: 2_147_483_647 })
+        .success,
+    ).toBe(true);
+    expect(
+      discountCodeInputSchema.safeParse({ ...input, usageLimit: 2_147_483_648 })
+        .success,
     ).toBe(false);
   });
 

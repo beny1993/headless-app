@@ -49,6 +49,13 @@ export type ProductInput = Omit<
   'id' | 'createdAt' | 'updatedAt' | 'searchText'
 >;
 
+export class StockConflictError extends Error {
+  constructor() {
+    super('موجودی محصول تغییر کرده است؛ صفحه را تازه‌سازی و دوباره تلاش کن.');
+    this.name = 'StockConflictError';
+  }
+}
+
 /** The fields a shopper can find a product by. */
 const SEARCHABLE_FIELDS = ['title', 'brand', 'benefit'] as const;
 
@@ -335,16 +342,40 @@ export class ProductDao {
   static async update(
     id: string,
     patch: Partial<ProductInput>,
+    expectedStock?: number,
   ): Promise<Product | null> {
     return db.transaction(async (tx) => {
+      // A form round-trips stock even when only its title was edited. Preserve
+      // concurrent reservations unless the operator actually changed inventory.
+      const update = { ...patch };
+      if (expectedStock !== undefined && update.stock !== undefined) {
+        if (update.stock === expectedStock) {
+          delete update.stock;
+        } else {
+          const [current] = await tx
+            .select({ stock: products.stock })
+            .from(products)
+            .where(eq(products.id, id))
+            .for('update');
+          if (!current) return null;
+          if (current.stock !== expectedStock) throw new StockConflictError();
+        }
+      }
+      if (Object.keys(update).length === 0) {
+        const [current] = await tx
+          .select()
+          .from(products)
+          .where(eq(products.id, id));
+        return current ?? null;
+      }
       const [row] = await tx
         .update(products)
-        .set(patch)
+        .set(update)
         .where(eq(products.id, id))
         .returning();
 
       if (!row) return null;
-      if (!SEARCHABLE_FIELDS.some((field) => field in patch)) return row;
+      if (!SEARCHABLE_FIELDS.some((field) => field in update)) return row;
 
       const [rewritten] = await tx
         .update(products)

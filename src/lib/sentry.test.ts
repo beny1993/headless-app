@@ -155,3 +155,59 @@ describe('sentryOptions', () => {
     expect(sentryOptions().integrations).toBe(withoutConsoleBreadcrumbs);
   });
 });
+
+describe('sanitizeDatabaseError', () => {
+  it('preserves safe exception types and frames while removing copied payloads', async () => {
+    const { sanitizeDatabaseError } = await freshSentry({});
+    const frames = [{ filename: 'AddressDao.ts', lineno: 42 }];
+    const result = sanitizeDatabaseError(
+      {
+        type: undefined,
+        message: 'Private value',
+        extra: { params: ['Private value'] },
+        exception: {
+          values: [
+            { type: 'Error', value: 'Private value', stacktrace: { frames } },
+          ],
+        },
+      },
+      { originalException: { query: 'insert ...', params: ['Private value'] } },
+    );
+    expect(result.message).toBe('Database operation failed');
+    expect(result.extra).toBeUndefined();
+    expect(result.exception?.values?.[0]).toEqual({
+      type: 'Error',
+      value: 'Database operation failed',
+      stacktrace: { frames },
+    });
+  });
+
+  it('handles empty events and database errors without causes', async () => {
+    const { sanitizeDatabaseError } = await freshSentry({});
+    expect(
+      sanitizeDatabaseError(
+        { type: undefined },
+        {
+          originalException: { query: '', params: [] },
+        },
+      ).exception,
+    ).toBeUndefined();
+  });
+
+  it('leaves non-database errors, invalid shapes and cycles unchanged', async () => {
+    const { sanitizeDatabaseError } = await freshSentry({});
+    const cyclic: { cause?: unknown } = {};
+    cyclic.cause = cyclic;
+    const event = { type: undefined, message: 'Useful diagnosis' };
+    for (const originalException of [
+      undefined,
+      null,
+      'failure',
+      {},
+      { query: 'query', params: 'not an array' },
+      cyclic,
+    ]) {
+      expect(sanitizeDatabaseError(event, { originalException })).toBe(event);
+    }
+  });
+});

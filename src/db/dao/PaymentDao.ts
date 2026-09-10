@@ -46,8 +46,11 @@ export class PaymentDao {
    * ordering matters once Zarinpal retries create more than one row per order
    * (story 15): without it the read flips between requests.
    */
-  static async listByOrder(orderId: string): Promise<Payment[]> {
-    return db
+  static async listByOrder(
+    orderId: string,
+    executor: Executor = db,
+  ): Promise<Payment[]> {
+    return executor
       .select()
       .from(payments)
       .where(eq(payments.orderId, orderId))

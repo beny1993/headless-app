@@ -100,13 +100,17 @@ export function AccountView({
 
           <div className="flex-1">
             {tab === 'orders' && <OrdersTab orders={orders} />}
-            {tab === 'pets' && <PetsTab initialPets={pets} />}
-            {tab === 'addresses' && (
+            {/* Keep resource state mounted across tab switches; mutations live in
+                these children, and remounting would restore stale server props. */}
+            <div hidden={tab !== 'pets'}>
+              <PetsTab initialPets={pets} />
+            </div>
+            <div hidden={tab !== 'addresses'}>
               <AddressesTab
                 initialAddresses={addresses}
                 provinces={provinces}
               />
-            )}
+            </div>
             {tab === 'profile' && <ProfileTab name={name} phone={phone} />}
           </div>
         </div>

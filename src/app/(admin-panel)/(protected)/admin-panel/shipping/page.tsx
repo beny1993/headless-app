@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
 import { ShippingRatesEditor } from '@/features/admin-panel/shipping/shipping-rates-editor';
@@ -8,6 +9,7 @@ export const metadata: Metadata = { title: 'نرخ ارسال' };
 export const dynamic = 'force-dynamic';
 
 export default async function AdminShippingPage() {
+  await requireAdmin();
   const rates = await ShippingRateDao.list();
 
   return (

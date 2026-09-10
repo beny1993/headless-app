@@ -78,6 +78,55 @@ const dataCollection = {
 };
 
 /**
+ * Drizzle embeds every bound value in Error.message. SDK collection opt-outs
+ * only control instrumentation, so they do not sanitize that message or the
+ * PostgreSQL cause (which can repeat a rejected value). Detect structurally:
+ * server bundles can contain a different Drizzle constructor from this module.
+ */
+const containsDatabaseError = (error: unknown): boolean => {
+  const seen = new Set<object>();
+  while (typeof error === 'object' && error !== null && !seen.has(error)) {
+    seen.add(error);
+    if (
+      'query' in error &&
+      'params' in error &&
+      typeof error.query === 'string' &&
+      Array.isArray(error.params)
+    ) {
+      return true;
+    }
+    error = 'cause' in error ? error.cause : undefined;
+  }
+  return false;
+};
+
+/** Keep database failure locations while removing values from the entire chain. */
+export const sanitizeDatabaseError = (
+  event: Sentry.ErrorEvent,
+  hint: Sentry.EventHint,
+): Sentry.ErrorEvent => {
+  if (!containsDatabaseError(hint.originalException)) return event;
+
+  // All messages in the chain are unsafe: an outer wrapper may interpolate the
+  // original message and a PostgreSQL cause may repeat a constraint value.
+  return {
+    ...event,
+    message: event.message ? 'Database operation failed' : undefined,
+    // An SDK integration/caller can serialize the original error here too.
+    extra: undefined,
+    exception: event.exception
+      ? {
+          ...event.exception,
+          values: event.exception.values?.map((exception) => ({
+            ...exception,
+            value: 'Database operation failed',
+          })),
+        }
+      : undefined,
+  };
+};
+
+/**
  * Shared `Sentry.init` options.
  *
  * A function, not a constant: the DSN and environment are read from `process.env`,
@@ -104,6 +153,7 @@ export function sentryOptions() {
     // spends a shared event quota on data nobody here reads. Errors are the
     // whole point. One line to turn back on if that ever changes.
     dataCollection,
+    beforeSend: sanitizeDatabaseError,
     integrations: withoutConsoleBreadcrumbs,
   };
 }

@@ -166,6 +166,9 @@ export function PetsTab({ initialPets }: { initialPets: PetResponse[] }) {
                 onCancel={() => setPendingDelete(null)}
                 onConfirm={async () => {
                   await delData(apiMePetPath(pet.id));
+                  setEditing((current) =>
+                    current?.id === pet.id ? null : current,
+                  );
                   setPets((prev) => prev.filter((p) => p.id !== pet.id));
                   setPendingDelete(null);
                 }}

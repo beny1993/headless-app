@@ -63,6 +63,7 @@ const AdminPaymentSchema = z
     refId: z.string().nullable(),
     cardPan: z.string().nullable(),
     failureReason: z.string().nullable(),
+    needsManualRefund: z.boolean(),
     paidAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime(),
   })
@@ -131,6 +132,7 @@ export const toAdminOrderResponse = (
     refId: payment.refId,
     cardPan: payment.cardPan,
     failureReason: payment.failureReason,
+    needsManualRefund: payment.needsManualRefund,
     paidAt: payment.paidAt ? payment.paidAt.toISOString() : null,
     createdAt: payment.createdAt.toISOString(),
   })),

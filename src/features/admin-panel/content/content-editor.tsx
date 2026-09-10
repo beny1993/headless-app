@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { AlertCircle, Check, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import { ApiRequestError, putData } from '@/lib/api-client';
@@ -93,6 +93,7 @@ function BlockForm({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [topError, setTopError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  const saving = useRef(false);
   const [justSaved, setJustSaved] = useState(false);
 
   const block = BLOCK_FIELDS[contentKey];
@@ -132,6 +133,7 @@ function BlockForm({
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (saving.current) return;
     setTopError(undefined);
 
     // (1) Validate the current value. Pending image picks are not yet in it, but
@@ -149,6 +151,7 @@ function BlockForm({
       return;
     }
 
+    saving.current = true;
     setBusy(true);
 
     // (2) Upload each pending file, adopting the returned key into a local copy
@@ -168,6 +171,7 @@ function BlockForm({
       setValue(next);
       setFiles(remainingFiles);
       setPreviews(remainingPreviews);
+      saving.current = false;
       setBusy(false);
       setTopError(error instanceof Error ? error.message : IMAGE_UPLOAD_FAILED);
       return;
@@ -185,12 +189,14 @@ function BlockForm({
       setPreviews({});
       setFieldErrors({});
       setJustSaved(true);
+      saving.current = false;
       setBusy(false);
     } catch (error) {
       // Uploaded keys are already adopted into `next`; keep them on the form.
       setValue(next);
       setFiles(remainingFiles);
       setPreviews(remainingPreviews);
+      saving.current = false;
       setBusy(false);
       if (
         error instanceof ApiRequestError &&
@@ -219,72 +225,76 @@ function BlockForm({
     >
       <h2 className="mb-4 text-lg font-black">{block.title}</h2>
 
-      {/* The toggle appears only for blocks whose schema carries `visible` — the
+      {/* Lock the snapshot being saved, including image picks, until upload and
+          persistence finish; a response must never overwrite newer local edits. */}
+      <fieldset disabled={busy} className="min-w-0">
+        {/* The toggle appears only for blocks whose schema carries `visible` — the
           Home/About content sections. Chrome (header/footer) has no such field,
           so it gets no toggle: the header and footer are always rendered. */}
-      {showToggle && (
-        <label
-          htmlFor={fid('visible')}
-          className="mb-5 flex w-fit items-center gap-2 text-sm font-medium"
-        >
-          <input
-            id={fid('visible')}
-            type="checkbox"
-            checked={shown}
-            onChange={(e) => setVisible(e.target.checked)}
-            data-umami-event="admin-panel-content-visibility-toggle"
-            className="size-4 shrink-0"
-          />
-          نمایش این بخش در سایت
-        </label>
-      )}
-
-      {topError && (
-        <p
-          role="alert"
-          className="text-destructive border-destructive/30 bg-destructive-soft/40 mb-4 flex items-center gap-2 rounded-xl border p-3 text-sm"
-        >
-          <AlertCircle size={16} className="shrink-0" aria-hidden="true" />
-          {topError}
-        </p>
-      )}
-
-      <div className="space-y-5">
-        {block.fields.map((field) => (
-          <BlockField
-            key={field.path}
-            field={field}
-            id={fid(field.path)}
-            value={String(getPath(value, field.path) ?? '')}
-            preview={
-              previews[field.path] ??
-              imageSrc(String(getPath(value, field.path) ?? ''))
-            }
-            error={fieldErrors[field.path]}
-            onText={(next) => setField(field.path, next)}
-            onPick={(file) => pickImage(field.path, file)}
-          />
-        ))}
-      </div>
-
-      <div className="mt-6 flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={busy}
-          data-umami-event="admin-panel-content-save"
-          className="bg-accent-strong hover:bg-accent-hover inline-flex items-center gap-2 rounded-xl px-6 py-3 font-bold text-white transition-colors disabled:opacity-60"
-        >
-          {busy && (
-            <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-          )}
-          ذخیره
-        </button>
-        {justSaved && (
-          <span className="text-accent-strong flex items-center gap-1 text-sm font-medium">
-            <Check size={16} aria-hidden="true" /> ذخیره شد
-          </span>
+        {showToggle && (
+          <label
+            htmlFor={fid('visible')}
+            className="mb-5 flex w-fit items-center gap-2 text-sm font-medium"
+          >
+            <input
+              id={fid('visible')}
+              type="checkbox"
+              checked={shown}
+              onChange={(e) => setVisible(e.target.checked)}
+              data-umami-event="admin-panel-content-visibility-toggle"
+              className="size-4 shrink-0"
+            />
+            نمایش این بخش در سایت
+          </label>
         )}
-      </div>
+
+        {topError && (
+          <p
+            role="alert"
+            className="text-destructive border-destructive/30 bg-destructive-soft/40 mb-4 flex items-center gap-2 rounded-xl border p-3 text-sm"
+          >
+            <AlertCircle size={16} className="shrink-0" aria-hidden="true" />
+            {topError}
+          </p>
+        )}
+
+        <div className="space-y-5">
+          {block.fields.map((field) => (
+            <BlockField
+              key={field.path}
+              field={field}
+              id={fid(field.path)}
+              value={String(getPath(value, field.path) ?? '')}
+              preview={
+                previews[field.path] ??
+                imageSrc(String(getPath(value, field.path) ?? ''))
+              }
+              error={fieldErrors[field.path]}
+              onText={(next) => setField(field.path, next)}
+              onPick={(file) => pickImage(field.path, file)}
+            />
+          ))}
+        </div>
+
+        <div className="mt-6 flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={busy}
+            data-umami-event="admin-panel-content-save"
+            className="bg-accent-strong hover:bg-accent-hover inline-flex items-center gap-2 rounded-xl px-6 py-3 font-bold text-white transition-colors disabled:opacity-60"
+          >
+            {busy && (
+              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+            )}
+            ذخیره
+          </button>
+          {justSaved && (
+            <span className="text-accent-strong flex items-center gap-1 text-sm font-medium">
+              <Check size={16} aria-hidden="true" /> ذخیره شد
+            </span>
+          )}
+        </div>
+      </fieldset>
     </form>
   );
 }

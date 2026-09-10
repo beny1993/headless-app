@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PET_TYPES } from './product-query';
-import { productInputSchema } from './product-input';
+import { productInputSchema, productUpdateInputSchema } from './product-input';
 
 const valid = {
   title: 'غذای خشک گربه',
@@ -144,5 +144,28 @@ describe('productInputSchema', () => {
     expect(
       productInputSchema.safeParse({ ...valid, petType: 'hamster' }).success,
     ).toBe(false);
+  });
+});
+
+describe('stock storage bounds and concurrency input', () => {
+  it('rejects stock beyond the Postgres integer range', () => {
+    expect(
+      productInputSchema.safeParse({ ...valid, stock: 2_147_483_648 }).success,
+    ).toBe(false);
+    expect(
+      productInputSchema.safeParse({ ...valid, stock: 2_147_483_647 }).success,
+    ).toBe(true);
+  });
+  it('requires a valid original stock value for edits', () => {
+    expect(productUpdateInputSchema.safeParse(valid).success).toBe(false);
+    for (const expectedStock of [-1, 1.5, 2_147_483_648]) {
+      expect(
+        productUpdateInputSchema.safeParse({ ...valid, expectedStock }).success,
+      ).toBe(false);
+    }
+    expect(
+      productUpdateInputSchema.safeParse({ ...valid, expectedStock: 0 })
+        .success,
+    ).toBe(true);
   });
 });
