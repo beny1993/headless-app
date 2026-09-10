@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -27,13 +28,14 @@ export default async function AdminOrderDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireAdmin();
   const { id } = await params;
   const parsed = idSchema.safeParse(id);
   if (!parsed.success) notFound();
 
-  // Not owner-scoped: the admin (the (protected) layout's `requireAdmin` guard)
-  // may read any order. `getAdminOrder` returns the admin projection — no raw
-  // gatewayResponse — so nothing sensitive reaches this page or its client child.
+  // Not owner-scoped: the page has authorized an admin to read any order.
+  // The projection excludes raw gatewayResponse, but still contains customer
+  // and payment details that must never be read before the role check.
   const order = await getAdminOrder(parsed.data);
   if (!order) notFound();
 
@@ -160,6 +162,16 @@ export default async function AdminOrderDetailPage({
                       key={index}
                       className="border-border space-y-2.5 border-b pb-4 text-sm last:border-0 last:pb-0"
                     >
+                      {payment.needsManualRefund && (
+                        <p
+                          role="alert"
+                          className="border-destructive/30 bg-destructive-soft text-destructive rounded-lg border p-3 font-bold"
+                        >
+                          نیاز به بازپرداخت دستی: مبلغ دریافت شده اما به این
+                          سفارش تخصیص نیافته است. پرداخت را بررسی و وجه را
+                          بازگردانید.
+                        </p>
+                      )}
                       <PayRow
                         label="روش"
                         value={

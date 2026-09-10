@@ -2,13 +2,11 @@
 
 // The «حیوانات من» tab: the customer's pet profiles, with add / edit / delete.
 //
-// The list is SEEDED from the server page's props and then owns its own state —
-// each mutation updates the array from the API response (create/update return the
-// pet, delete echoes its id). No `router.refresh()` and no prop-derived state, so
-// there is no server/prop-vs-intention window to get wrong. Every write is the
-// owner-scoped `/api/me/pets` route; the session is the only authority on whose
-// pets these are.
-import { useState } from 'react';
+// AccountView owns the saved list so it survives this tab unmounting. Each
+// mutation updates that list from the API response (create/update return the pet,
+// delete echoes its id). Every write is the owner-scoped `/api/me/pets` route;
+// the session is the only authority on whose pets these are.
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import { AlertCircle, Camera, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   delData,
@@ -71,8 +69,13 @@ const toBody = (form: FormValues): PetInput => ({
   photoUrl: form.photoUrl.trim() || undefined,
 });
 
-export function PetsTab({ initialPets }: { initialPets: PetResponse[] }) {
-  const [pets, setPets] = useState(initialPets);
+export function PetsTab({
+  pets,
+  onPetsChange,
+}: {
+  pets: PetResponse[];
+  onPetsChange: Dispatch<SetStateAction<PetResponse[]>>;
+}) {
   // null = form closed; { id: null } = adding; { id } = editing that pet.
   const [editing, setEditing] = useState<{ id: string | null } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
@@ -166,7 +169,10 @@ export function PetsTab({ initialPets }: { initialPets: PetResponse[] }) {
                 onCancel={() => setPendingDelete(null)}
                 onConfirm={async () => {
                   await delData(apiMePetPath(pet.id));
-                  setPets((prev) => prev.filter((p) => p.id !== pet.id));
+                  setEditing((current) =>
+                    current?.id === pet.id ? null : current,
+                  );
+                  onPetsChange((prev) => prev.filter((p) => p.id !== pet.id));
                   setPendingDelete(null);
                 }}
               />
@@ -201,7 +207,7 @@ export function PetsTab({ initialPets }: { initialPets: PetResponse[] }) {
           }
           onCancel={() => setEditing(null)}
           onSaved={(pet) => {
-            setPets((prev) =>
+            onPetsChange((prev) =>
               editing.id
                 ? prev.map((p) => (p.id === pet.id ? pet : p))
                 : [...prev, pet],

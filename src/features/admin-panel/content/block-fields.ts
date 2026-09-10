@@ -211,7 +211,7 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
     fields: [
       { path: 'eyebrow', label: 'عنوان کوچک', kind: 'input' },
       { path: 'headline', label: 'سرتیتر', kind: 'input' },
-      ...[0, 1, 2, 3, 4].flatMap(familySlot),
+      ...[0, 1, 2, 3, 4, 5].flatMap(familySlot),
     ],
   },
   'home.categories': {

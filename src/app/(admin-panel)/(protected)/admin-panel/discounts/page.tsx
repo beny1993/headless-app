@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import { DiscountCodeDao } from '@/db/dao/DiscountCodeDao';
 import { DiscountManager } from '@/features/admin-panel/discounts/discount-manager';
@@ -9,6 +10,7 @@ export const metadata: Metadata = { title: 'کدهای تخفیف' };
 export const dynamic = 'force-dynamic';
 
 export default async function AdminDiscountsPage() {
+  await requireAdmin();
   const codes = await DiscountCodeDao.listForAdmin();
 
   return (

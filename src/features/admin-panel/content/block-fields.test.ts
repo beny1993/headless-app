@@ -110,7 +110,7 @@ describe('getPath', () => {
       DEFAULT_CONTENT['about.cta'].headline,
     );
     expect(getPath(DEFAULT_CONTENT['home.family'], 'slots.0.name')).toBe(
-      'لونا',
+      'اسموکی',
     );
     expect(getPath(DEFAULT_CONTENT['about.story'], 'image.alt')).toBe(
       DEFAULT_CONTENT['about.story'].image.alt,
@@ -140,7 +140,7 @@ describe('setPath', () => {
     expect(before.slots[1].owner).not.toBe('رضا');
     // The tuple stays an array of the same length.
     expect(Array.isArray(after.slots)).toBe(true);
-    expect(after.slots).toHaveLength(5);
+    expect(after.slots).toHaveLength(6);
     // Untouched siblings are carried over.
     expect(after.slots[0]).toEqual(before.slots[0]);
   });

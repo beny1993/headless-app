@@ -5,8 +5,8 @@ import { SignOutButton } from '@/features/auth/sign-out-button';
 import { toPersianDigits } from '@/lib/format';
 
 // The admin shell — the sidebar frame every admin page renders inside, ported
-// from the Figma admin design. The role gate stays here (a session alone is not
-// authorization; customers get sessions too), so no page below re-checks it.
+// from the Figma admin design. This role check protects the shell; each page
+// also checks before reading data because route segments render independently.
 export default async function ProtectedLayout({
   children,
 }: Readonly<{

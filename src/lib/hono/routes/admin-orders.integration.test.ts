@@ -201,48 +201,64 @@ describe.skipIf(!databaseReachable)('admin order API', () => {
   // ── Detail read + admin projection ──────────────────────────────────────────
 
   describe('GET /admin/orders/{id}', () => {
-    it('returns the admin projection — authority/refId/method, never gatewayResponse', async () => {
-      const order = await seedOrder(ORDER_STATUSES.PAID);
-      await PaymentDao.create({
-        orderId: order.id,
-        method: PAYMENT_METHODS.ZARINPAL,
-        status: PAYMENT_STATUSES.PAID,
-        amount: order.total,
-        authority: 'AUTH-XYZ',
-        refId: 'REF-123',
-        cardPan: '6037********1234',
-        gatewayResponse: { secret: 'SECRET_BLOB_MARKER', pan: 'raw' },
-        paidAt: new Date(),
-      });
+    it.each([
+      [true, true],
+      [false, false],
+      [undefined, false],
+      ['true', false],
+      [1, false],
+      [null, false],
+    ])(
+      'projects only the boolean refund flag (%s), never gatewayResponse',
+      async (flag, expected) => {
+        const order = await seedOrder(ORDER_STATUSES.PAID);
+        await PaymentDao.create({
+          orderId: order.id,
+          method: PAYMENT_METHODS.ZARINPAL,
+          status: PAYMENT_STATUSES.PAID,
+          amount: order.total,
+          authority: `AUTH-${order.id}`,
+          refId: 'REF-123',
+          cardPan: '6037********1234',
+          gatewayResponse: {
+            secret: 'SECRET_BLOB_MARKER',
+            pan: 'raw',
+            needsManualRefund: flag,
+          },
+          paidAt: new Date(),
+        });
 
-      asAdmin();
-      const { status, body } = await parse<{
-        status: string;
-        payments: {
-          method: string;
+        asAdmin();
+        const { status, body } = await parse<{
           status: string;
-          amount: number;
-          authority: string | null;
-          refId: string | null;
-          cardPan: string | null;
-        }[];
-      }>(await json(apiAdminOrderPath(order.id), 'GET'));
+          payments: {
+            method: string;
+            status: string;
+            amount: number;
+            authority: string | null;
+            refId: string | null;
+            cardPan: string | null;
+            needsManualRefund: boolean;
+          }[];
+        }>(await json(apiAdminOrderPath(order.id), 'GET'));
 
-      expect(status).toBe(200);
-      if (body.status !== 'success') throw new Error(body.message);
-      const payment = body.data.payments[0];
-      // The admin sees more than a customer does…
-      expect(payment.authority).toBe('AUTH-XYZ');
-      expect(payment.refId).toBe('REF-123');
-      expect(payment.method).toBe(PAYMENT_METHODS.ZARINPAL);
-      expect(payment.amount).toBe(order.total);
-      expect(payment.cardPan).toBe('6037********1234');
+        expect(status).toBe(200);
+        if (body.status !== 'success') throw new Error(body.message);
+        const payment = body.data.payments[0];
+        // The admin sees more than a customer does…
+        expect(payment.authority).toBe(`AUTH-${order.id}`);
+        expect(payment.refId).toBe('REF-123');
+        expect(payment.method).toBe(PAYMENT_METHODS.ZARINPAL);
+        expect(payment.amount).toBe(order.total);
+        expect(payment.cardPan).toBe('6037********1234');
+        expect(payment.needsManualRefund).toBe(expected);
 
-      // …but the raw gateway blob is not in the response at all.
-      const raw = JSON.stringify(body);
-      expect(raw).not.toContain('gatewayResponse');
-      expect(raw).not.toContain('SECRET_BLOB_MARKER');
-    });
+        // …but the raw gateway blob is not in the response at all.
+        const raw = JSON.stringify(body);
+        expect(raw).not.toContain('gatewayResponse');
+        expect(raw).not.toContain('SECRET_BLOB_MARKER');
+      },
+    );
 
     it('404s an unknown id and 400s a malformed id', async () => {
       asAdmin();

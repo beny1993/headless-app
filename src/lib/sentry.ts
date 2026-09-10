@@ -78,6 +78,77 @@ const dataCollection = {
 };
 
 /**
+ * Drizzle embeds every bound value in Error.message. SDK collection opt-outs
+ * only control instrumentation, so they do not sanitize that message or the
+ * PostgreSQL cause (which can repeat a rejected value). Detect structurally:
+ * server bundles can contain a different Drizzle constructor from this module.
+ */
+const containsDatabaseError = (error: unknown): boolean => {
+  const seen = new Set<object>();
+  while (typeof error === 'object' && error !== null && !seen.has(error)) {
+    seen.add(error);
+    if (
+      'query' in error &&
+      'params' in error &&
+      typeof error.query === 'string' &&
+      Array.isArray(error.params)
+    ) {
+      return true;
+    }
+    error = 'cause' in error ? error.cause : undefined;
+  }
+  return false;
+};
+
+// These are deliberately attached by the payment and API error boundaries so
+// an operator can locate the failed operation. Keep only this audited set for a
+// database exception; arbitrary extras may contain the same private values as
+// the rejected query.
+const SAFE_DATABASE_EXTRA_KEYS = new Set([
+  'method',
+  'path',
+  'paymentId',
+  'orderId',
+]);
+
+const safeDatabaseExtras = (extra: Sentry.ErrorEvent['extra']) => {
+  if (!extra) return undefined;
+  const kept = Object.fromEntries(
+    Object.entries(extra).filter(
+      ([key, value]) =>
+        SAFE_DATABASE_EXTRA_KEYS.has(key) &&
+        ['string', 'number', 'boolean'].includes(typeof value),
+    ),
+  );
+  return Object.keys(kept).length > 0 ? kept : undefined;
+};
+
+/** Keep database failure locations while removing values from the entire chain. */
+export const sanitizeDatabaseError = (
+  event: Sentry.ErrorEvent,
+  hint: Sentry.EventHint,
+): Sentry.ErrorEvent => {
+  if (!containsDatabaseError(hint.originalException)) return event;
+
+  // All messages in the chain are unsafe: an outer wrapper may interpolate the
+  // original message and a PostgreSQL cause may repeat a constraint value.
+  return {
+    ...event,
+    message: event.message ? 'Database operation failed' : undefined,
+    extra: safeDatabaseExtras(event.extra),
+    exception: event.exception
+      ? {
+          ...event.exception,
+          values: event.exception.values?.map((exception) => ({
+            ...exception,
+            value: 'Database operation failed',
+          })),
+        }
+      : undefined,
+  };
+};
+
+/**
  * Shared `Sentry.init` options.
  *
  * A function, not a constant: the DSN and environment are read from `process.env`,
@@ -104,6 +175,7 @@ export function sentryOptions() {
     // spends a shared event quota on data nobody here reads. Errors are the
     // whole point. One line to turn back on if that ever changes.
     dataCollection,
+    beforeSend: sanitizeDatabaseError,
     integrations: withoutConsoleBreadcrumbs,
   };
 }

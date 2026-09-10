@@ -64,19 +64,18 @@ describe('DEFAULT_CONTENT', () => {
     }
   });
 
-  it('keeps the Luna wall tile and the About story caption editable independently', () => {
-    // The identity bug the story exists to make fixable: the same photo is
-    // «لونا» on Home and the «این اسموکی‌ه» story on About today. Both are
-    // defaults now, so both are editable — this pins that they start as today.
+  it('uses the real pet identities independently across Home and About', () => {
+    // Smokey owns the first community slot and the About story independently
+    // uses Smokey too. The name and photo identity now agree in both places.
     expect(DEFAULT_CONTENT['home.family'].slots[0]).toMatchObject({
-      image: 'site/community-luna.jpg',
-      name: 'لونا',
+      image: 'site/smokey-v2.webp',
+      name: 'اسموکی',
     });
     expect(DEFAULT_CONTENT['about.story']).toMatchObject({
       title: 'این اسموکی‌ه',
       image: {
-        key: 'site/community-luna.jpg',
-        alt: 'اسموکی، گربه‌ای سیاه‌وسفید با چشمان سبز',
+        key: 'site/smokey-v2.webp',
+        alt: 'اسموکی، گربه خاکستری اسکاتیش فولد با چشمان سبز',
       },
     });
   });

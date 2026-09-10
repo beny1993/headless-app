@@ -37,7 +37,10 @@ export const DEFAULT_CONTENT: ContentValues = {
     headline: 'زندگی بهتر،\nکنار بهترین',
     accent: 'دوستت',
     body: 'محصولاتی که با دقت برای سلامت، شادی و زندگی روزمره‌ی گربه‌ها و سگ‌ها انتخاب شده‌اند.',
-    image: { key: 'site/hero-home.jpg', alt: 'سگی آرام در فضای خانه' },
+    image: {
+      key: 'site/smokey-hero-v3.webp',
+      alt: 'اسموکی، گربه خاکستری اسکاتیش فولد در فضای خانه',
+    },
     shopCta: 'کشف محصولات',
     aboutCta: 'داستان اسموکی',
   },
@@ -51,12 +54,12 @@ export const DEFAULT_CONTENT: ContentValues = {
       {
         title: 'وقت غذا',
         desc: 'بهترین تغذیه برای سلامت روزانه',
-        image: 'products/cat-dry-food.jpg',
+        image: 'site/sansa.webp',
       },
       {
         title: 'وقت بازی',
         desc: 'سرگرمی هوشمند برای ذهن فعال',
-        image: 'products/cat-toy.jpg',
+        image: 'site/khepelo.webp',
       },
       {
         title: 'وقت تشویق',
@@ -66,7 +69,7 @@ export const DEFAULT_CONTENT: ContentValues = {
       {
         title: 'مراقبت روزانه',
         desc: 'پوست، مو و بهداشت',
-        image: 'products/cat-supplement.jpg',
+        image: 'site/melis.webp',
       },
       {
         title: 'وعده‌ی سگ',
@@ -89,7 +92,10 @@ export const DEFAULT_CONTENT: ContentValues = {
     eyebrow: 'راهنمای اسموکی',
     headline: 'چرا بعضی گربه‌ها\nآب کافی نمی‌خورند؟',
     body: 'کم‌آبی در گربه‌ها یکی از مشکلات شایعی است که بسیاری از صاحبان نادیده می‌گیرند. غذای مرطوب ساده‌ترین راه جبران آن در وعده‌های روزانه است.',
-    image: { key: 'site/cat-hygiene.jpg', alt: 'گربه‌ای کنار ظرف آب' },
+    image: {
+      key: 'site/fiuna.webp',
+      alt: 'فیونا، گربه اسکاتیش فولد با چشم‌های زردسبز',
+    },
     cta: 'مشاهده غذای مرطوب',
   },
   'home.routine': {
@@ -109,34 +115,40 @@ export const DEFAULT_CONTENT: ContentValues = {
     headline: 'خانواده اسموکی',
     slots: [
       {
-        image: 'site/community-luna.jpg',
-        name: 'لونا',
-        owner: 'سارا',
-        quote: 'لونا عاشق این تشویقیه.',
+        image: 'site/smokey-v2.webp',
+        name: 'اسموکی',
+        owner: 'خانواده اسموکی',
+        quote: 'همه‌چیز از عشق به اسموکی شروع شد.',
       },
       {
-        image: 'products/dog-dry-food.jpg',
-        name: 'آرکو',
-        owner: 'علی',
-        quote: 'هر روز صبح منتظر وعده‌اشه!',
+        image: 'site/sansa.webp',
+        name: 'سانسا',
+        owner: 'خانواده اسموکی',
+        quote: 'سانسا دنیا را از کنار پنجره تماشا می‌کند.',
       },
       {
-        image: 'products/dog-treats.jpg',
-        name: 'رکسی',
-        owner: 'امیر',
-        quote: 'سفر بدون رکسی معنی نداره.',
+        image: 'site/khepelo.webp',
+        name: 'خپلو',
+        owner: 'خانواده اسموکی',
+        quote: 'خپلو همیشه با کنجکاوی همه‌جا را کشف می‌کند.',
       },
       {
-        image: 'site/community-baron.jpg',
-        name: 'بارون',
-        owner: 'کاوه',
-        quote: 'بارون با این اسباب‌بازی ساعت‌ها بازی می‌کنه.',
+        image: 'site/fiuna.webp',
+        name: 'فیونا',
+        owner: 'خانواده اسموکی',
+        quote: 'نگاه فیونا هر روز خانه را شیرین‌تر می‌کند.',
       },
       {
-        image: 'site/community-misha.jpg',
-        name: 'میشا',
-        owner: 'نیلوفر',
-        quote: 'بهترین خواب دنیا رو داره.',
+        image: 'site/melis.webp',
+        name: 'ملیس',
+        owner: 'خانواده اسموکی',
+        quote: 'ملیس آرام‌ترین گوشه خانه را همیشه پیدا می‌کند.',
+      },
+      {
+        image: 'site/lili.webp',
+        name: 'لیلی',
+        owner: 'خانواده اسموکی',
+        quote: 'لیلی عاشق تماشای خانه از روی میز است.',
       },
     ],
   },
@@ -156,7 +168,7 @@ export const DEFAULT_CONTENT: ContentValues = {
     headline: 'همه‌چیز از عشق\nبه یک گربه',
     accent: 'شروع شد.',
     image: {
-      key: 'site/hero-about.jpg',
+      key: 'site/smokey-hero.webp',
       alt: 'اسموکی، گربه‌ای که فروشگاه از او شروع شد',
     },
   },
@@ -168,8 +180,8 @@ export const DEFAULT_CONTENT: ContentValues = {
       'امروز هر محصولی که پیشنهاد می‌دهیم، از فیلتر دقیق کیفیت، ترکیبات، و تجربه واقعی گذشته.',
     ],
     image: {
-      key: 'site/community-luna.jpg',
-      alt: 'اسموکی، گربه‌ای سیاه‌وسفید با چشمان سبز',
+      key: 'site/smokey-v2.webp',
+      alt: 'اسموکی، گربه خاکستری اسکاتیش فولد با چشمان سبز',
     },
   },
   'about.process': {

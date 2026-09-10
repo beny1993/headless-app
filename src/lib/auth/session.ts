@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { ROLES } from '@/db/schema/auth';
@@ -5,8 +6,12 @@ import { PATHS, PROTECTED_PATHS } from '@/lib/constant/paths';
 import { auth } from './index';
 import { loginPath } from './next-path';
 
-export const getSession = async () =>
-  auth.api.getSession({ headers: await headers() });
+// Layouts and pages can both enforce the same boundary during one render. React
+// cache keeps that defense-in-depth from doing two Better Auth database reads,
+// while a later navigation/render still gets a fresh session check.
+export const getSession = cache(async () =>
+  auth.api.getSession({ headers: await headers() }),
+);
 
 /**
  * Server-component gate for pages that belong to one customer.

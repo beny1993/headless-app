@@ -21,6 +21,8 @@ import { z } from 'zod';
 import { PET_TYPES } from './product-query';
 
 /** Persian, user-facing — these strings surface on the form's fields. */
+const MAX_STOCK = 2_147_483_647;
+
 const MESSAGES = {
   title: 'عنوان محصول الزامی است.',
   slug: 'نشانی فقط با حروف کوچک انگلیسی، عدد و خط تیره (حداقل ۳ نویسه).',
@@ -75,7 +77,8 @@ export const productInputSchema = z
     stock: z
       .number({ error: MESSAGES.stock })
       .int(MESSAGES.stock)
-      .nonnegative(MESSAGES.stock),
+      .nonnegative(MESSAGES.stock)
+      .max(MAX_STOCK, MESSAGES.stock),
     categoryId: z.uuid(MESSAGES.category),
     petType: z.enum([PET_TYPES.CAT, PET_TYPES.DOG], MESSAGES.pet),
     // A real editable field — the design's «نمایش در فروشگاه» toggle. Soft delete
@@ -93,3 +96,8 @@ export const productInputSchema = z
 
 /** The validated body — assignable to `ProductDao`'s `ProductInput`. */
 export type ProductInputBody = z.infer<typeof productInputSchema>;
+
+/** The inventory observed when opening the edit form; required for safe stock writes. */
+export const productUpdateInputSchema = productInputSchema.safeExtend({
+  expectedStock: z.number().int().nonnegative().max(MAX_STOCK),
+});
