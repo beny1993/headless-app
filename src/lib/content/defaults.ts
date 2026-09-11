@@ -38,7 +38,7 @@ export const DEFAULT_CONTENT: ContentValues = {
     accent: 'دوستت',
     body: 'محصولاتی که با دقت برای سلامت، شادی و زندگی روزمره‌ی گربه‌ها و سگ‌ها انتخاب شده‌اند.',
     image: {
-      key: 'site/smokey-hero-v3.webp',
+      key: 'site/smokey-hero-v4.jpg',
       alt: 'اسموکی، گربه خاکستری اسکاتیش فولد در فضای خانه',
     },
     shopCta: 'کشف محصولات',
