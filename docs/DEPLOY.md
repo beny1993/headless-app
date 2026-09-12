@@ -31,12 +31,14 @@ All runtime configuration is env-only. Names come from the `VARS` enum in
 | --- | --- | --- |
 | `APP_CONFIG_DATABASE_URL` | yes | Postgres connection string. Comes from the Coolify Postgres service (see §2). Use the **internal** service URL, not a public one. |
 | `APP_CONFIG_AUTH_SECRET` | yes | Better Auth signing secret. Generate once with `openssl rand -hex 32`; rotating it invalidates all sessions. |
-| `APP_CONFIG_SMS_PROVIDER` | yes | OTP SMS driver. `console` (default) logs codes to the server log — **fine for a soft launch, not for real customers**. Set to the real driver (Kavenegar / SMS.ir) before launch (see §6). |
+| `APP_CONFIG_SMS_PROVIDER` | yes | OTP SMS driver. `console` (default) logs codes to the server log — **fine for a soft launch, not for real customers**. Set to `smsir` before launch (see §6). |
+| `APP_CONFIG_SMSIR_API_KEY` | when `=smsir` | SMS.ir web-service key, sent as `x-api-key`. A **secret** — Coolify env only, never a build arg. |
+| `APP_CONFIG_SMSIR_TEMPLATE_ID` | when `=smsir` | Numeric id of the SMS.ir panel template the code is substituted into. Its body must contain `#CODE#`. |
 | `APP_CONFIG_SHOW_OTP_IN_UI` | no | `true` prints the OTP on the login page for **staging/QA only**, where `console` codes reach nothing but the server log. Anything else is off, and it is ignored unless `APP_CONFIG_SMS_PROVIDER=console`. Never set it on the production app — it is a sign-in bypass. |
 | `APP_CONFIG_ZARINPAL_PROVIDER` | yes | `mock` (default) simulates the full pay flow with no gateway account. Set to `zarinpal` at the real-gateway flip (see §6). |
 | `APP_CONFIG_ZARINPAL_MERCHANT_ID` | when `=zarinpal` | Merchant UUID from the Zarinpal panel. |
 | `APP_CONFIG_ZARINPAL_SANDBOX` | no | `true` routes the real driver at Zarinpal's sandbox host. Default `false`. |
-| `APP_CONFIG_STORAGE_PROVIDER` | yes | `local` (default) stores uploads on disk (needs a persistent volume, §3). `s3` is not built yet — selecting it throws until the MinIO driver lands. |
+| `APP_CONFIG_STORAGE_PROVIDER` | yes | `local` (default) stores uploads on disk (needs a persistent volume, §3). `s3` uses the Liara/Arvan S3-compatible driver — built and verifiable with `pnpm verify-s3`; needs the four `LIARA_*` vars plus build-time `NEXT_PUBLIC_STORAGE_BASE_URL`. |
 | `APP_CONFIG_STORAGE_LOCAL_ROOT` | with `local` | Absolute path the `local` driver writes to. Set to **`/app/uploads`** and mount the volume there (§3). |
 | `APP_CONFIG_EMAIL_ENABLED` | no | `false` (default) logs emails to the console. `true` sends over SMTP and requires the five SMTP vars below. |
 | `APP_CONFIG_SMTP_SERVER` | when email on | SMTP host. |
@@ -93,9 +95,13 @@ for the local dev database and have no role in production:
   bind mount**, that directory is root-owned and uploads fail silently — `chown
   1000:1000` the host directory on the VPS once before first deploy.
 
-**Later — `s3` driver (MinIO):** when the S3-compatible driver lands, add a MinIO
-service in Coolify, point the app at it via the storage env vars, and flip
-`APP_CONFIG_STORAGE_PROVIDER=s3`. The storage seam means nothing else changes.
+**Production option — `s3` driver (Liara/Arvan):** the S3-compatible driver is
+built. Set the four `LIARA_*` vars as runtime secrets, set
+`NEXT_PUBLIC_STORAGE_BASE_URL` = `${LIARA_ENDPOINT}/${LIARA_BUCKET_NAME}` as a
+**build** variable, flip `APP_CONFIG_STORAGE_PROVIDER=s3`, and set the bucket to
+public object-read (no listing). Prove it with `pnpm verify-s3` before trusting
+it — it round-trips a real object through the live bucket. Uploads then survive a
+redeploy with no persistent volume. The storage seam means nothing else changes.
 
 ---
 
@@ -171,16 +177,31 @@ and deliberately not baked into the image:
 - [ ] **`NEXT_PUBLIC_APP_URL`** = the real `https://` origin, set as a **build
       variable** (§1). Confirm it's the real host, not the placeholder — rebuild
       after changing it.
-- [ ] **`advanced.ipAddress.trustedProxies`** in `src/lib/auth/index.ts`: set it
-      to match Coolify's reverse proxy (Traefik/Caddy) `X-Forwarded-For`
-      behavior. Until set, Better Auth's IP rate limiter either collapses to one
-      shared bucket or is bypassable via a client-supplied XFF. (The per-phone
-      `otp_send_log` throttle backstops OTP abuse regardless, but the IP axis is
-      untrustworthy until configured.) This is a **code change** — a small
-      follow-up once the proxy is known.
-- [ ] **Real SMS driver:** set `APP_CONFIG_SMS_PROVIDER` to the picked provider
-      (Kavenegar / SMS.ir) and add its `DRIVERS` entry. The `console` default
-      logs every OTP to the server log.
+- [ ] **Lock the origin to Cloudflare.** The domain is Cloudflare-proxied, so
+      `src/lib/auth/index.ts` resolves the client IP from `CF-Connecting-IP`
+      (`advanced.ipAddress.ipAddressHeaders`) — without it Better Auth's IP rate
+      limiter buckets every visitor together. Cloudflare overwrites that header,
+      so it cannot be forged *through* Cloudflare — but a request that reaches
+      the VPS **directly** carries whatever header it likes, and a fresh forged
+      value per request mints a fresh rate-limit bucket each time. So the origin
+      must refuse non-Cloudflare traffic: allow 443 only from
+      [Cloudflare's published ranges](https://www.cloudflare.com/ips/), or use a
+      Cloudflare Tunnel so the origin has no public port at all. Until then the
+      IP axis is bypassable; the per-phone `otp_send_log` throttle still bounds
+      the SMS bill.
+      **Verify after deploy:** hit the site through the domain and confirm
+      `rate_limit` rows key on real visitor IPs — not one repeated Cloudflare
+      edge address, and not the literal `no-trusted-ip`. Note that the
+      "could not determine a client IP" warning does **not** fire in the
+      Cloudflare-edge case, so log-grepping alone will not catch it.
+- [ ] **Real SMS driver:** set `APP_CONFIG_SMS_PROVIDER=smsir` plus
+      `APP_CONFIG_SMSIR_API_KEY` and `APP_CONFIG_SMSIR_TEMPLATE_ID`. The
+      `console` default logs every OTP to the server log. The driver posts to
+      SMS.ir's **verify** service (`/v1/send/verify`), which is where OTP is
+      routed — the bulk/line-number API is for marketing sends and carriers
+      filter codes on it. Create the template in the SMS.ir panel first: its
+      body must contain `#CODE#`, and the driver sends that parameter as `CODE`.
+      A missing or malformed key/template throws at boot, not at send time.
 - [ ] **`APP_CONFIG_SHOW_OTP_IN_UI` unset (or `false`) on production.** Staging
       sets it to `true` to read codes off the login page; production must not,
       and the real SMS driver above also disarms it.
