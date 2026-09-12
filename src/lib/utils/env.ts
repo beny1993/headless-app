@@ -5,8 +5,16 @@ export enum VARS {
 
   // Which SMS driver `src/lib/sms` dispatches through. `console` (the default)
   // writes codes to the server log instead of sending them — the mock the
-  // project ships with until Kavenegar or SMS.ir is picked.
+  // project ships with, so a fresh clone logs in with no provider account.
+  // `smsir` is the real provider; it needs the two variables below.
   APP_CONFIG_SMS_PROVIDER = 'APP_CONFIG_SMS_PROVIDER',
+  // SMS.ir web-service key (`x-api-key`) and the id of the panel template the
+  // code is substituted into. Both are read only when the provider is `smsir`,
+  // and both are required then — a missing one throws at construction rather
+  // than letting every login report success while sending nothing. The template
+  // body must contain `#CODE#`; the sandbox's stock template is 123456.
+  APP_CONFIG_SMSIR_API_KEY = 'APP_CONFIG_SMSIR_API_KEY',
+  APP_CONFIG_SMSIR_TEMPLATE_ID = 'APP_CONFIG_SMSIR_TEMPLATE_ID',
   // `true` echoes the one-time code back in the send-otp response, so the login
   // form can show it on screen. For staging/QA deployments, where the console
   // SMS driver means the code only ever reaches the server log. Anything but
