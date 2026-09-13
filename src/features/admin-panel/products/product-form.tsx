@@ -273,7 +273,17 @@ export function ProductForm({
           <Field
             id={fid('slug')}
             label="نشانی یکتا (slug)"
-            hint="در آدرس صفحه محصول استفاده می‌شود"
+            hint={
+              // The SKU is derived from this, so the convention matters: brand,
+              // pet, product, then size, so two sizes never share a slug. The
+              // example sits in <bdi> so the RTL sentence cannot reorder it.
+              <>
+                به ترتیب از چپ: برند، حیوان، نام محصول، وزن یا اندازه — با حروف
+                کوچک انگلیسی و خط تیره؛ مثل{' '}
+                <bdi className="font-mono">royal-canin-cat-sensible-2kg</bdi>.
+                کد کالا از همین ساخته می‌شود.
+              </>
+            }
             error={fieldErrors.slug}
           >
             <input
@@ -281,7 +291,7 @@ export function ProductForm({
               dir="ltr"
               value={form.slug}
               onChange={(e) => update('slug', e.target.value)}
-              placeholder="royal-canin-adult-cat"
+              placeholder="royal-canin-cat-sensible-2kg"
               className={`${inputClass(fieldErrors.slug)} text-start`}
             />
           </Field>
@@ -516,7 +526,7 @@ function Field({
 }: {
   id: string;
   label: string;
-  hint?: string;
+  hint?: React.ReactNode;
   error?: string;
   children: React.ReactNode;
 }) {
