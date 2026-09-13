@@ -62,6 +62,9 @@ it('submits the observed inventory when editing a product', async () => {
   fireEvent.change(screen.getByLabelText('عنوان محصول'), {
     target: { value: 'عنوان تازه' },
   });
+  const sku = screen.getByLabelText('کد کالا (SKU)') as HTMLInputElement;
+  expect(sku.readOnly).toBe(true);
+  expect(sku.value).toBe('CAT-FOOD');
   fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
   await waitFor(() =>
     expect(api.putData).toHaveBeenCalledWith(
@@ -73,4 +76,16 @@ it('submits the observed inventory when editing a product', async () => {
       }),
     ),
   );
+  expect(api.putData.mock.calls[0][1]).not.toHaveProperty('sku');
+});
+
+it('previews a read-only SKU from the slug while creating', () => {
+  render(<ProductForm categories={[]} />);
+  const sku = screen.getByLabelText('کد کالا (SKU)') as HTMLInputElement;
+  expect(sku.readOnly).toBe(true);
+  expect(sku.value).toBe('');
+  fireEvent.change(screen.getByLabelText('نشانی یکتا (slug)'), {
+    target: { value: 'royal-canin' },
+  });
+  expect(sku.value).toBe('ROYAL-CANIN-????');
 });

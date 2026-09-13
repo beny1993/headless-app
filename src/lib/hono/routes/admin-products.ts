@@ -24,6 +24,7 @@ import {
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
 import { PET_TYPES } from '@/lib/catalog/product-query';
+import { generateSku } from '@/lib/catalog/sku';
 import { replaceProductImage } from '@/logic/admin/product-images';
 import { readImageUpload } from '../image-upload';
 import {
@@ -173,7 +174,12 @@ export const productCreateHandler: RouteHandler<
 > = async (c) => {
   const body = c.req.valid('json');
   try {
-    const created = await ProductDao.create(body);
+    // The SKU is server-owned: derived from the slug once, here. The body schema
+    // has no `sku`, and the update route never passes one, so it never changes.
+    const created = await ProductDao.create({
+      ...body,
+      sku: generateSku(body.slug),
+    });
     return c.json(apiSuccess(toAdminProduct(created)), 201);
   } catch (error) {
     const errors = productWriteErrors(error);

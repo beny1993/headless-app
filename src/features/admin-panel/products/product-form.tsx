@@ -11,6 +11,7 @@ import {
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
 import { PET_TYPES, type PetType } from '@/lib/catalog/product-query';
+import { SKU_SUFFIX_LENGTH, skuPreview } from '@/lib/catalog/sku';
 import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import {
   API_PATHS,
@@ -18,7 +19,7 @@ import {
   apiAdminProductPath,
   PROTECTED_PATHS,
 } from '@/lib/constant/paths';
-import { formatToman, toAsciiDigits } from '@/lib/format';
+import { formatToman, toAsciiDigits, toPersianDigits } from '@/lib/format';
 import { IMAGE_FIELD_NAME } from '@/lib/storage/image-upload';
 import { imageSrc } from '@/lib/storage/image-url';
 import {
@@ -103,7 +104,6 @@ export function ProductForm({
   const [form, setForm] = useState({
     title: product?.title ?? '',
     slug: product?.slug ?? '',
-    sku: product?.sku ?? '',
     brand: product?.brand ?? '',
     description: product?.description ?? '',
     benefit: product?.benefit ?? '',
@@ -142,7 +142,6 @@ export function ProductForm({
   const buildBody = () => ({
     title: form.title,
     slug: form.slug,
-    sku: form.sku,
     brand: form.brand,
     description: form.description,
     benefit: form.benefit,
@@ -289,15 +288,21 @@ export function ProductForm({
           <Field
             id={fid('sku')}
             label="کد کالا (SKU)"
-            hint="روی اقلام سفارش ثبت (snapshot) می‌شود"
+            hint={
+              isEdit
+                ? 'بعد از ساخت ثابت می‌ماند و روی اقلام سفارش ثبت می‌شود'
+                : `از نشانی ساخته می‌شود؛ هنگام ذخیره ${toPersianDigits(SKU_SUFFIX_LENGTH)} نویسه تصادفی به آن اضافه می‌شود`
+            }
             error={fieldErrors.sku}
           >
+            {/* Server-owned: derived from the slug at create and never sent, so
+                the field only shows it — a preview now, the saved code on edit. */}
             <input
               id={fid('sku')}
               dir="ltr"
-              value={form.sku}
-              onChange={(e) => update('sku', e.target.value)}
-              className={`${inputClass(fieldErrors.sku)} text-start`}
+              readOnly
+              value={product ? product.sku : skuPreview(form.slug)}
+              className={`${inputClass(fieldErrors.sku)} text-muted-foreground text-start`}
             />
           </Field>
         </div>
