@@ -1,6 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { randomInt } from 'node:crypto';
+// The plain `test`, not the one in ./support: a run that waits out the send-otp
+// limit logs its 429s as console errors, by design.
 import { expect, test as setup, type Page } from '@playwright/test';
+import { otpEchoResponseSchema } from '@/lib/auth/otp-echo';
 import { ADMIN_STATE, CUSTOMER_STATE } from './support';
 
 /**
@@ -20,8 +23,8 @@ const requestCode = async (page: Page) => {
 };
 
 /**
- * Signs `phone` in through the real login screen and lands on `next`. The code
- * is read off the page, where the console SMS driver's staging echo shows it.
+ * Signs `phone` in through the real login screen and lands on `next`, typing
+ * the code the console SMS driver's staging echo returns.
  */
 async function signIn(page: Page, phone: string, next: string) {
   await page.goto(`/login?next=${encodeURIComponent(next)}`);
@@ -38,20 +41,21 @@ async function signIn(page: Page, phone: string, next: string) {
   }
   expect(response.status(), 'send-otp').toBe(200);
 
-  const devCode = page.getByText('حالت آزمایشی').locator('span');
-  await expect(
-    devCode,
-    'the login page shows no code: the server needs APP_CONFIG_SMS_PROVIDER=console and APP_CONFIG_SHOW_OTP_IN_UI=true',
-  ).toHaveText(/^\d{6}$/);
+  // The same payload, parsed by the same schema, the login form reads it from.
+  const echoed = otpEchoResponseSchema.safeParse(await response.json());
+  if (!echoed.success) {
+    throw new Error(
+      'send-otp returned no code: the server needs APP_CONFIG_SMS_PROVIDER=console and APP_CONFIG_SHOW_OTP_IN_UI=true',
+    );
+  }
 
   // Typed, not filled: each box holds one digit (`maxLength`), which `fill`
   // respects, and typing is the path where the form walks focus along the
   // boxes. It verifies on its own once the sixth digit lands.
-  const code = (await devCode.textContent()) ?? '';
   await page
     .locator('[data-umami-event="login-code-type"]')
     .first()
-    .pressSequentially(code);
+    .pressSequentially(echoed.data.devCode);
   await page.waitForURL(`**${next}`);
 }
 

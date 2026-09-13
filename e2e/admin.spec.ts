@@ -1,6 +1,12 @@
-import { expect, test } from '@playwright/test';
 import { PATHS, PROTECTED_PATHS, adminOrderPath } from '@/lib/constant/paths';
-import { ADMIN_STATE, CUSTOMER_STATE, placeOrder } from './support';
+import {
+  ADMIN_STATE,
+  CUSTOMER_STATE,
+  expect,
+  placeOrder,
+  resultOrderId,
+  test,
+} from './support';
 
 test('a signed-out visitor is sent to sign in first', async ({ page }) => {
   await page.goto(PROTECTED_PATHS.INDEX);
@@ -32,16 +38,13 @@ test.describe('an admin', () => {
     });
     const shopperPage = await shopper.newPage();
     await placeOrder(shopperPage, 'cod');
-    await expect(
-      shopperPage.getByRole('heading', { name: 'سفارش ثبت شد!' }),
-    ).toBeVisible();
-    const orderId = new URL(shopperPage.url()).pathname.split('/').at(-1);
+    const orderId = await resultOrderId(shopperPage);
     await shopper.close();
 
     await page.goto(PROTECTED_PATHS.ORDERS);
     await page
       .locator(
-        `[data-umami-event="admin-panel-orders-view"][href="${adminOrderPath(orderId ?? '')}"]`,
+        `[data-umami-event="admin-panel-orders-view"][href="${adminOrderPath(orderId)}"]`,
       )
       .click();
 

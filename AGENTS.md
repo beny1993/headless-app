@@ -197,13 +197,22 @@ covered by their pure modules' unit tests plus browser verification.
 ### End-to-end tests
 
 `pnpm test:e2e` (Playwright, `e2e/`) is the regression walk QA used to do by
-hand: phone-OTP sign-in for a customer and an admin; home → shop → product →
-cart drawer at 1280px and 375px, with no console errors and no request leaving
-localhost; checkout by cash on delivery and through the mock Zarinpal gateway
-(paid, and failed → retry), and the order in `/account`; the admin panel
-turning away anonymous visitors and customers; an admin shipping an order. QA
-runs it instead of re-walking those flows and drives the browser only for a
-story's new behaviour. A story that changes one of these flows changes its spec.
+hand, run at 1280px and again at 375px: phone-OTP sign-in for a customer and an
+admin; home → shop → product → cart drawer (quantity, removal, empty state) and
+a sold-out product; checkout by cash on delivery — Jalali date and
+`format.ts`-formatted numbers on the result page, the order in `/account` — and
+through the mock Zarinpal gateway (paid, and failed → retry → paid); the admin
+panel turning away anonymous visitors and customers; an admin shipping an
+order. Every page a spec opens is also checked for console errors and for
+requests to any host but the app's own (the `test` fixture in
+`e2e/support.ts`). QA runs it instead of re-walking those flows and drives the
+browser only for a story's new behaviour. A story that changes one of these
+flows changes its spec.
+
+**Not covered — still walked by hand when a story touches them:** discount
+codes, cancelling an order and its restock, a wrong or resent login code, admin
+product/discount/content editing, and anything visual (RTL layout, Persian font
+rendering).
 
 - **It starts its own server**: `next dev` on :3100, never a running :3000 —
   that one may be another checkout on another branch. Before it: migrate,
@@ -221,7 +230,9 @@ story's new behaviour. A story that changes one of these flows changes its spec.
   started within a minute of the last one waits about a minute. Every run
   leaves two throwaway `0999…` accounts and a few orders in the dev database.
 - **Selectors are the `data-umami-event` names** (roles for headings and
-  dialogs), and routes come from `paths.ts`. Renaming an event is a spec change.
+  dialogs). App routes come from `paths.ts`, and the product and province a
+  spec uses from the seed data in `src/db/seed/`, never restated. Renaming an
+  event is a spec change.
 - **Browser: the installed Google Chrome** (`channel: 'chrome'`), no download.
   A failure keeps its trace and screenshot: `pnpm exec playwright show-report`.
 

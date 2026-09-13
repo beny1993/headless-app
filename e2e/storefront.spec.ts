@@ -1,29 +1,9 @@
-import { expect, test } from '@playwright/test';
 import { PATHS } from '@/lib/constant/paths';
-import { IN_STOCK_PRODUCT } from './support';
+import { IN_STOCK_PRODUCT, SOLD_OUT_PRODUCT, expect, test } from './support';
 
 test('a shopper browses from home to a product and into the cart', async ({
   page,
-  baseURL,
 }) => {
-  // Collected over the whole walk and asserted at the end, so a failure lists
-  // every problem instead of stopping at the first.
-  const consoleErrors: string[] = [];
-  page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text());
-  });
-  page.on('pageerror', (error) => consoleErrors.push(error.message));
-
-  // Local-first: fonts are self-hosted and analytics are off in this run, so a
-  // request to any other host is a leak — a Google font, a CDN, a baked-in URL.
-  const offsiteRequests: string[] = [];
-  page.on('request', (request) => {
-    const { origin, protocol } = new URL(request.url());
-    if (protocol.startsWith('http') && origin !== baseURL) {
-      offsiteRequests.push(request.url());
-    }
-  });
-
   await page.goto(PATHS.HOME);
   await expect(page.locator('html')).toHaveAttribute('lang', 'fa');
   await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
@@ -39,16 +19,30 @@ test('a shopper browses from home to a product and into the cart', async ({
   );
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-  // The first card can be the seeded out-of-stock product, so the cart is
-  // exercised on one that always has stock.
+  // The first card can be the sold-out product, so the cart is exercised on
+  // one that always has stock.
   await page.goto(IN_STOCK_PRODUCT);
   const title = await page.getByRole('heading', { level: 1 }).innerText();
   await page.locator('[data-umami-event="product-add-to-cart"]').click();
 
   const drawer = page.getByRole('dialog', { name: 'سبد خرید' });
-  await expect(drawer).toBeVisible();
   await expect(drawer).toContainText(title);
+  // Every count and price in the drawer goes through src/lib/format.ts; an
+  // ASCII digit here is one that skipped it.
+  await expect(drawer).not.toContainText(/\d/);
 
-  expect.soft(consoleErrors, 'console errors').toEqual([]);
-  expect.soft(offsiteRequests, 'requests to other hosts').toEqual([]);
+  await drawer.locator('[data-umami-event="cart-line-increase"]').click();
+  await expect(drawer).toContainText('سبد خرید (۲)');
+  await drawer.locator('[data-umami-event="cart-line-remove"]').click();
+  await expect(drawer).toContainText('سبد خرید شما خالی است');
+});
+
+test('a sold-out product cannot go in the cart', async ({ page }) => {
+  await page.goto(SOLD_OUT_PRODUCT);
+  await expect(
+    page.locator('[data-umami-event="product-add-to-cart-unavailable"]'),
+  ).toBeDisabled();
+  await expect(
+    page.locator('[data-umami-event="product-add-to-cart"]'),
+  ).toHaveCount(0);
 });

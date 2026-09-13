@@ -42,15 +42,13 @@ export default defineConfig({
       dependencies: ['setup'],
     },
     {
-      // The storefront is what shoppers reach from a phone. Checkout and admin
-      // run at desktop width only.
+      // Every spec again at a phone's width: QA verified each flow at both.
       name: 'mobile',
       use: {
         viewport: { width: 375, height: 812 },
         isMobile: true,
         hasTouch: true,
       },
-      testMatch: /storefront\.spec\.ts$/,
       dependencies: ['setup'],
     },
   ],
