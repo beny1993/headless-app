@@ -6,6 +6,8 @@ import { NAV_TARGETS } from './nav-links';
 import { CartDrawer } from '@/features/storefront/cart/cart-drawer';
 import { PATHS } from '@/lib/constant/paths';
 import type { ContentValue } from '@/lib/content/site-content';
+import { ContentLink } from '@/features/storefront/content-link';
+import { resolveLink, type LinkTargets } from '@/lib/content/link';
 
 const iconButton =
   'flex size-10 items-center justify-center rounded-full text-foreground transition-colors hover:bg-secondary';
@@ -23,14 +25,23 @@ const iconButton =
  * A server component: only the mobile menu and the cart drawer — which owns
  * the cart button and its badge — need client state.
  *
- * The wordmark, subtitle and nav labels are admin content (`header`); the hrefs,
- * icons and aria-labels stay in code. Nav labels zip with `NAV_TARGETS` by index —
- * a label is content, its destination is not — and the same zipped list is handed
- * to the mobile menu so the two can never drift. The wordmark is a display string
+ * The wordmark, subtitle, nav labels and their destinations are admin content
+ * (`header`); the icons, their hrefs and aria-labels stay in code. Label i goes to
+ * its saved `navLinks[i]`, else to `NAV_TARGETS[i]`, and the same resolved list is
+ * handed to the mobile menu so the two can never drift. The wordmark is a display string
  * independent of `DEFAULT_SITE_NAME`, so editing it never touches a page <title>.
  */
-export function Navbar({ content }: { content: ContentValue<'header'> }) {
-  const links = NAV_TARGETS.map((href, i) => ({ href, label: content.nav[i] }));
+export function Navbar({
+  content,
+  targets,
+}: {
+  content: ContentValue<'header'>;
+  targets: LinkTargets;
+}) {
+  const links = NAV_TARGETS.map((fallback, i) => ({
+    label: content.nav[i],
+    ...resolveLink(content.navLinks?.[i], fallback, targets),
+  }));
 
   return (
     <nav className="bg-background/95 fixed inset-x-0 top-0 z-50 shadow-sm backdrop-blur-md">
@@ -63,14 +74,15 @@ export function Navbar({ content }: { content: ContentValue<'header'> }) {
               is content, so the stable identity is the position. */}
           <div className="hidden items-center gap-6 md:flex">
             {links.map((link, index) => (
-              <Link
+              <ContentLink
                 key={index}
                 href={link.href}
+                external={link.external}
                 className="text-foreground hover:text-accent-strong text-sm font-medium transition-colors"
                 data-umami-event="nav-link-click"
               >
                 {link.label}
-              </Link>
+              </ContentLink>
             ))}
           </div>
 

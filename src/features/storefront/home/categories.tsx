@@ -4,12 +4,15 @@ import { ChevronLeft } from 'lucide-react';
 import { CATEGORY_IMAGES } from './content';
 import type { ContentValue } from '@/lib/content/site-content';
 import { shopPath } from '@/lib/constant/paths';
+import { ContentLink } from '@/features/storefront/content-link';
+import { resolveLink, type LinkTargets } from '@/lib/content/link';
 
-export type CategoryTile = { title: string; slug: string };
+export type CategoryTile = { id: string; title: string; slug: string };
 
 /**
  * The category strip. The section heading and the «همه دسته‌بندی‌ها» label are
- * admin content (`home.categories`); the link targets, and the tiles themselves —
+ * admin content (`home.categories`), and so is where that label goes (unset: the
+ * bare shop); the tiles themselves —
  * titles and slugs from the database, photos from `CATEGORY_IMAGES[slug]` — stay
  * in code (a `categories.image_key` catalog story would move the photos later). A
  * category added in the admin panel appears here without a code change; one with
@@ -21,9 +24,11 @@ export type CategoryTile = { title: string; slug: string };
 export function CategoriesSection({
   content,
   categories,
+  targets,
 }: {
   content: ContentValue<'home.categories'>;
   categories: CategoryTile[];
+  targets: LinkTargets;
 }) {
   if (categories.length === 0) return null;
 
@@ -31,15 +36,15 @@ export function CategoriesSection({
     <section className="py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-8">
         <div className="mb-12 flex items-end justify-between gap-4">
-          <Link
-            href={shopPath()}
+          <ContentLink
+            {...resolveLink(content.ctaLink, shopPath(), targets)}
             className="text-accent-strong flex items-center gap-1 text-sm font-medium hover:underline"
             data-umami-event="home-categories-all-click"
           >
             {/* In RTL the "forward" chevron points left. */}
             <ChevronLeft size={14} aria-hidden="true" />
             {content.cta}
-          </Link>
+          </ContentLink>
           <h2 className="text-4xl font-black">{content.headline}</h2>
         </div>
 

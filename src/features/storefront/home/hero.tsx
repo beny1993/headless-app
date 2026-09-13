@@ -1,9 +1,10 @@
 import Image from 'next/image';
-import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import type { ContentValue } from '@/lib/content/site-content';
 import { imageSrc } from '@/lib/storage/image-url';
 import { PATHS, shopPath } from '@/lib/constant/paths';
+import { ContentLink } from '@/features/storefront/content-link';
+import { resolveLink, type LinkTargets } from '@/lib/content/link';
 
 /**
  * The home hero.
@@ -19,13 +20,16 @@ import { PATHS, shopPath } from '@/lib/constant/paths';
  * The editorial fields (eyebrow, headline, accent line, body, image, and the two
  * button labels) are admin content — rendered as plain text nodes; the headline's
  * own line breaks come from `whitespace-pre-line`, and the break before the accent
- * line stays a code `<br />`. The badge and the buttons' link targets stay in code
- * (a label travels with its target — an editable label over a fixed destination).
+ * line stays a code `<br />`. Each button's destination is content too
+ * (`shopCtaLink` / `aboutCtaLink`), falling back to the shop and /about when
+ * unset; the badge stays in code.
  */
 export function HeroSection({
   content,
+  targets,
 }: {
   content: ContentValue<'home.hero'>;
+  targets: LinkTargets;
 }) {
   return (
     <section className="bg-ink relative flex min-h-[calc(100vh-4rem)] items-center overflow-hidden">
@@ -75,20 +79,20 @@ export function HeroSection({
           </p>
 
           <div className="flex flex-wrap gap-4">
-            <Link
-              href={shopPath()}
+            <ContentLink
+              {...resolveLink(content.shopCtaLink, shopPath(), targets)}
               className="bg-accent-strong hover:bg-accent-hover rounded-xl px-8 py-4 font-bold text-white transition-[transform,background-color] duration-200 hover:scale-105"
               data-umami-event="home-hero-shop-click"
             >
               {content.shopCta}
-            </Link>
-            <Link
-              href={PATHS.ABOUT}
+            </ContentLink>
+            <ContentLink
+              {...resolveLink(content.aboutCtaLink, PATHS.ABOUT, targets)}
               className="rounded-xl border border-white/20 bg-white/10 px-8 py-4 font-semibold text-white backdrop-blur-sm transition-colors duration-200 hover:bg-white/20"
               data-umami-event="home-hero-about-click"
             >
               {content.aboutCta}
-            </Link>
+            </ContentLink>
           </div>
         </div>
       </div>

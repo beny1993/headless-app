@@ -13,12 +13,15 @@
 // The four home keys are cleared before and after each case: the storefront and
 // the admin editor share this table on the shared dev database, so a crashed
 // prior run must not leak a row into the "empty table → defaults" case.
-import { inArray } from 'drizzle-orm';
+import { faker } from '@faker-js/faker';
+import { eq, inArray } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { categories } from '@/db/schema/catalog';
 import { siteContent } from '@/db/schema/site-content';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
-import { CONTENT_AREAS } from '@/lib/content/site-content';
+import type { LinkTargets } from '@/lib/content/link';
+import { CONTENT_AREAS, type ContentValue } from '@/lib/content/site-content';
 import { CategoriesSection } from '@/features/storefront/home/categories';
 import { CommunitySection } from '@/features/storefront/home/community';
 import { FeaturedStorySection } from '@/features/storefront/home/featured-story';
@@ -52,6 +55,15 @@ const WIRING = [
   [PhilosophySection, 'home.philosophy'],
 ] as const;
 
+// The sections that render a content link, and so need the page's link targets.
+const LINKED_SECTIONS = [
+  HeroSection,
+  LifeMomentsSection,
+  FeaturedStorySection,
+  CategoriesSection,
+  PhilosophySection,
+] as const;
+
 type El = { type: unknown; props: Record<string, unknown> };
 
 const isEl = (n: unknown): n is El =>
@@ -80,6 +92,47 @@ describe.skipIf(!databaseReachable)('the home page', () => {
       // The exact block reaches the exact section — a swap would put the wrong
       // default here and fail, even though the types would allow it.
       expect(section?.props.content).toEqual(DEFAULT_CONTENT[key]);
+    }
+    // No saved destination anywhere: every linked section gets empty maps.
+    for (const type of LINKED_SECTIONS) {
+      expect(findSection(tree, type)?.props.targets).toEqual({
+        categories: {},
+        products: {},
+      });
+    }
+  });
+
+  it('loads the targets a saved destination needs, once, for every linked section', async () => {
+    const [category] = await testDb
+      .insert(categories)
+      .values({
+        title: 'دسته کارت',
+        slug: `home-${faker.string.alphanumeric(10).toLowerCase()}`,
+      })
+      .returning();
+    try {
+      const cards = [
+        ...DEFAULT_CONTENT['home.moments'].cards,
+      ] as ContentValue<'home.moments'>['cards'];
+      cards[2] = {
+        ...cards[2],
+        link: { type: 'shop', categoryId: category.id, pet: 'dog' },
+      };
+      await SiteContentDao.set('home.moments', {
+        ...DEFAULT_CONTENT['home.moments'],
+        cards,
+      });
+
+      const tree = await page.default();
+      const targets = findSection(tree, LifeMomentsSection)?.props
+        .targets as LinkTargets;
+      expect(targets.categories[category.id]).toBe(category.slug);
+      for (const type of LINKED_SECTIONS) {
+        expect(findSection(tree, type)?.props.targets).toBe(targets);
+      }
+    } finally {
+      await clear();
+      await testDb.delete(categories).where(eq(categories.id, category.id));
     }
   });
 

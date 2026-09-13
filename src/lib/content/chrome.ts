@@ -20,13 +20,22 @@
 // ponytail: two PK reads per request (this + the page's own area). React `cache()`
 // dedupe pays only if one `getAll()` replaces the per-area `getMany`; wrap a
 // `cache()`-ed getAll if it ever shows in p95.
+// Saved header/footer destinations add at most a category list and a
+// products-by-id read, and only when one of those links names a category or a
+// product (`loadLinkTargets`).
 import { connection } from 'next/server';
 import { SiteContentDao } from '@/db/dao/SiteContentDao';
+import type { LinkTargets } from '@/lib/content/link';
 import type { ContentValues } from '@/lib/content/site-content';
+import { loadLinkTargets } from '@/logic/content/link-targets';
 
-export type SiteChrome = Pick<ContentValues, 'header' | 'footer'>;
+export type SiteChrome = Pick<ContentValues, 'header' | 'footer'> & {
+  /** The catalog slugs the header's and footer's saved destinations resolve to. */
+  targets: LinkTargets;
+};
 
 export async function readSiteChrome(): Promise<SiteChrome> {
   await connection();
-  return SiteContentDao.getMany(['header', 'footer']);
+  const { header, footer } = await SiteContentDao.getMany(['header', 'footer']);
+  return { header, footer, targets: await loadLinkTargets([header, footer]) };
 }

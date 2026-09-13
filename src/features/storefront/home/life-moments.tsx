@@ -2,21 +2,23 @@
 
 import { useRef } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { LIFE_MOMENT_TARGETS } from './content';
+import { LIFE_MOMENT_TARGETS, momentEmoji } from './content';
 import type { ContentValue } from '@/lib/content/site-content';
 import { imageSrc } from '@/lib/storage/image-url';
 import { shopPath } from '@/lib/constant/paths';
+import { ContentLink } from '@/features/storefront/content-link';
+import { resolveLink, type LinkTargets } from '@/lib/content/link';
 
 /**
  * «خرید بر اساس لحظه» — a horizontal carousel of editorial entry points.
  *
  * The eyebrow, headline, «مشاهده همه» label and the five cards' title/desc/photo
- * are admin content; each card's emoji and shop-filter destination stay in code
- * (`LIFE_MOMENT_TARGETS`), zipped with the cards by index — an editable label, a
- * fixed target. The arrows, the bare-shop «مشاهده همه» target and `alt=""`
- * (decorative — the title sits beside it) stay in code too.
+ * are admin content, and so is where each card and «مشاهده همه» go (`link`,
+ * `ctaLink`, resolved against `targets`). With nothing saved a card keeps its
+ * code filter and emoji (`LIFE_MOMENT_TARGETS`, zipped by index) and «مشاهده همه»
+ * the bare shop; a saved card wears its destination's pet (`momentEmoji`). The
+ * arrows and `alt=""` (decorative — the title sits beside it) stay in code.
  *
  * Client only for the two arrow buttons: the row scrolls natively (and tabbing
  * through the cards scrolls it too), but the design review asked for explicit
@@ -24,8 +26,10 @@ import { shopPath } from '@/lib/constant/paths';
  */
 export function LifeMomentsSection({
   content,
+  targets,
 }: {
   content: ContentValue<'home.moments'>;
+  targets: LinkTargets;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -69,14 +73,14 @@ export function LifeMomentsSection({
             >
               <ChevronRight size={16} aria-hidden="true" />
             </button>
-            <Link
-              href={shopPath()}
+            <ContentLink
+              {...resolveLink(content.ctaLink, shopPath(), targets)}
               className="text-accent-strong ms-2 flex items-center gap-1 text-sm font-medium hover:underline"
               data-umami-event="home-moments-all-click"
             >
               <ChevronLeft size={14} aria-hidden="true" />
               {content.cta}
-            </Link>
+            </ContentLink>
           </div>
           <div className="text-end">
             <p className="text-muted-foreground mb-1 text-sm">
@@ -94,12 +98,12 @@ export function LifeMomentsSection({
           style={{ scrollbarWidth: 'none' }}
         >
           {content.cards.map((card, index) => {
-            const target = LIFE_MOMENT_TARGETS[index];
+            const fallback = shopPath(LIFE_MOMENT_TARGETS[index].filters);
             return (
-              <Link
+              <ContentLink
                 // Index key: titles are editable content and may repeat.
                 key={index}
-                href={shopPath(target.filters)}
+                {...resolveLink(card.link, fallback, targets)}
                 className="group w-64 shrink-0 snap-start md:w-72"
                 data-umami-event="home-moment-click"
               >
@@ -116,7 +120,7 @@ export function LifeMomentsSection({
                     className="absolute end-3 top-3 rounded-full border border-white/20 bg-black/30 px-2.5 py-1 text-sm text-white backdrop-blur-sm"
                     aria-hidden="true"
                   >
-                    {target.emoji}
+                    {momentEmoji(card.link, index)}
                   </span>
                   <div className="absolute inset-x-4 bottom-4">
                     <h3 className="text-xl font-bold text-white">
@@ -125,7 +129,7 @@ export function LifeMomentsSection({
                     <p className="mt-1 text-sm text-white/80">{card.desc}</p>
                   </div>
                 </div>
-              </Link>
+              </ContentLink>
             );
           })}
         </div>

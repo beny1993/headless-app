@@ -12,6 +12,7 @@ import {
   type ContentValues,
 } from '@/lib/content/site-content';
 import { IMAGE_FIELD_NAME } from '@/lib/storage/image-upload';
+import type { Link, LinkTargets } from '@/lib/content/link';
 import { imageSrc } from '@/lib/storage/image-url';
 import {
   ImagePicker,
@@ -23,6 +24,7 @@ import {
   setPath,
   type FieldDescriptor,
 } from './block-fields';
+import { CategoryPicker, LinkPicker, type LinkOptions } from './link-picker';
 
 const GENERIC_ERROR = 'خطای غیرمنتظره رخ داد. دوباره تلاش کن.';
 const IMAGE_UPLOAD_FAILED = 'بارگذاری تصویر ناموفق بود. دوباره تلاش کن.';
@@ -33,19 +35,39 @@ const IMAGE_UPLOAD_FAILED = 'بارگذاری تصویر ناموفق بود. د
  * its own. Reuses the product form's stack — `useState` + a zod `safeParse` before
  * send + `putData` + the shared `parseFieldErrors` for server 400s — so there is
  * no form library and no new mechanism here; the block-specific part is entirely
- * data (BLOCK_FIELDS). The `[area]` page hands it just its own area's keys.
+ * data (BLOCK_FIELDS). The `[area]` page hands it just its own area's keys, and
+ * the categories and active products its destination pickers offer.
  */
 export function ContentEditor<K extends ContentKey>({
   keys,
   values,
+  options,
 }: {
   keys: readonly K[];
   values: Pick<ContentValues, K>;
+  options: LinkOptions;
 }) {
+  // The pickers preview each destination against the same id → slug maps the
+  // storefront resolves with, built from the options the page loaded.
+  const targets: LinkTargets = {
+    categories: Object.fromEntries(
+      options.categories.map(({ id, slug }) => [id, slug]),
+    ),
+    products: Object.fromEntries(
+      options.products.map(({ id, slug }) => [id, slug]),
+    ),
+  };
+
   return (
     <div className="flex flex-col gap-6">
       {keys.map((key) => (
-        <BlockForm key={key} contentKey={key} initial={values[key]} />
+        <BlockForm
+          key={key}
+          contentKey={key}
+          initial={values[key]}
+          options={options}
+          targets={targets}
+        />
       ))}
     </div>
   );
@@ -80,9 +102,13 @@ async function uploadContentImage(file: File): Promise<string> {
 function BlockForm({
   contentKey,
   initial,
+  options,
+  targets,
 }: {
   contentKey: ContentKey;
   initial: ContentValues[ContentKey];
+  options: LinkOptions;
+  targets: LinkTargets;
 }) {
   const formId = useId();
   const [value, setValue] = useState<ContentValues[ContentKey]>(initial);
@@ -103,6 +129,20 @@ function BlockForm({
   const setField = (path: string, next: string) => {
     setValue((current) => setPath(current, path, next));
     setFieldErrors((current) => ({ ...current, [path]: '' }));
+    setJustSaved(false);
+  };
+
+  // A picker replaces the whole destination at its path and clears every error
+  // under it — a bad URL is reported at `ctaLink.url`, the `ctaLink` picker's own.
+  const setDestination = (path: string, next: unknown) => {
+    setValue((current) => setPath(current, path, next));
+    setFieldErrors((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(
+          ([key]) => key !== path && !key.startsWith(`${path}.`),
+        ),
+      ),
+    );
     setJustSaved(false);
   };
 
@@ -259,21 +299,46 @@ function BlockForm({
         )}
 
         <div className="space-y-5">
-          {block.fields.map((field) => (
-            <BlockField
-              key={field.path}
-              field={field}
-              id={fid(field.path)}
-              value={String(getPath(value, field.path) ?? '')}
-              preview={
-                previews[field.path] ??
-                imageSrc(String(getPath(value, field.path) ?? ''))
-              }
-              error={fieldErrors[field.path]}
-              onText={(next) => setField(field.path, next)}
-              onPick={(file) => pickImage(field.path, file)}
-            />
-          ))}
+          {block.fields.map((field) =>
+            field.kind === 'link' ? (
+              <LinkPicker
+                key={field.path}
+                id={fid(field.path)}
+                label={field.label}
+                value={getPath(value, field.path) as Link | null | undefined}
+                fallback={field.fallback ?? ''}
+                options={options}
+                targets={targets}
+                error={errorUnder(fieldErrors, field.path)}
+                onChange={(next) => setDestination(field.path, next)}
+              />
+            ) : field.kind === 'categories' ? (
+              <CategoryPicker
+                key={field.path}
+                id={fid(field.path)}
+                label={field.label}
+                value={getPath(value, field.path) as string[] | undefined}
+                fallback={field.fallback ?? ''}
+                categories={options.categories}
+                error={errorUnder(fieldErrors, field.path)}
+                onChange={(next) => setDestination(field.path, next)}
+              />
+            ) : (
+              <BlockField
+                key={field.path}
+                field={field}
+                id={fid(field.path)}
+                value={String(getPath(value, field.path) ?? '')}
+                preview={
+                  previews[field.path] ??
+                  imageSrc(String(getPath(value, field.path) ?? ''))
+                }
+                error={fieldErrors[field.path]}
+                onText={(next) => setField(field.path, next)}
+                onPick={(file) => pickImage(field.path, file)}
+              />
+            ),
+          )}
         </div>
 
         <div className="mt-6 flex items-center gap-3">
@@ -350,17 +415,6 @@ function BlockField({
           className={inputClass(error, false)}
         />
       )}
-      {/* The fixed destination of a label that sits on a link — read-only, so the
-          editor makes clear this label's target stays in code. LTR: the value is a
-          path or slug, which must not bidi-reorder inside the RTL shell. */}
-      {field.target !== undefined && (
-        <p className="text-muted-foreground mt-1.5 text-xs">
-          مقصد:{' '}
-          <span dir="ltr" className="inline-block align-middle">
-            {field.target}
-          </span>
-        </p>
-      )}
       {error && (
         <p className="text-destructive mt-1.5 flex items-center gap-1 text-xs">
           <AlertCircle size={12} aria-hidden="true" /> {error}
@@ -369,6 +423,13 @@ function BlockField({
     </div>
   );
 }
+
+/** The first error at `path` or under it (`ctaLink.url` belongs to `ctaLink`). */
+const errorUnder = (errors: Record<string, string>, path: string) =>
+  errors[path] ||
+  Object.entries(errors).find(
+    ([key, message]) => message && key.startsWith(`${path}.`),
+  )?.[1];
 
 const inputClass = (error: string | undefined, multiline: boolean) =>
   `bg-secondary w-full rounded-xl px-4 text-sm outline-none border ${

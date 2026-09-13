@@ -7,16 +7,18 @@
 //
 // **Nothing here may import drizzle, `pg` or `@hono/zod-openapi`** — the editor is
 // a client component, so this stays plain zod, exactly like `product-input.ts`.
-// It leans on two already-client-safe modules: `boundedText` (the trimmed,
-// length-capped, NUL-refusing string used across every input contract) and the
+// It leans on three already-client-safe modules: `boundedText` (the trimmed,
+// length-capped, NUL-refusing string used across every input contract), the
 // upload key shape (`UPLOAD_KEY_PREFIX` / `UPLOAD_FILENAME_PATTERN`) — so the
-// "what is a valid image key" rule is derived from the uploader, not restated.
+// "what is a valid image key" rule is derived from the uploader, not restated —
+// and `linkSchema` (`link.ts`), the one definition of a saved destination.
 import { z } from 'zod';
 import { boundedText } from '@/lib/validation/text';
 import {
   UPLOAD_FILENAME_PATTERN,
   UPLOAD_KEY_PREFIX,
 } from '@/lib/storage/image-upload';
+import { LINK_MESSAGES, linkSchema } from './link';
 
 /** One row per editable block. Fixed set — the structure lives in code, only the
  *  values move to the database. New blocks are a schema + a default + a code change.
@@ -90,15 +92,43 @@ const slot = z.object({
 });
 const step = z.object({ step: t(40), desc: t(160) });
 const item = z.object({ title: t(60), desc: t(200) });
+// A saved destination (`link.ts`). Every key below has shipped, so a link field
+// is optional AND nullable: absent or `null` means the destination the code had
+// before links were editable (a `*_TARGETS` entry, a section's inline path), so a
+// row saved before this change renders exactly as it did.
+const link = linkSchema.nullish();
+// Destinations zipped by index with a label tuple (header nav, footer column): a
+// hole or `null` keeps that label's code destination, and the list is never
+// longer than its labels.
+const linkList = (labels: number) => z.array(link).max(labels).optional();
 // A «خرید بر اساس لحظه» card: a label pair plus a photo. Its alt is derived
-// (`alt=""`, decorative — the title sits next to it), so no alt field. The card's
-// link target (emoji + shop filters) is a same-index entry in `LIFE_MOMENT_TARGETS`.
-const card = z.object({ title: t(60), desc: t(120), image: imageKeySchema });
+// (`alt=""`, decorative — the title sits next to it), so no alt field. Unset
+// `link` → the same-index `LIFE_MOMENT_TARGETS` shop filters and emoji.
+const card = z.object({
+  title: t(60),
+  desc: t(120),
+  image: imageKeySchema,
+  link,
+});
 // A «روتین روزانه» tab's two labels. Its emoji + category slugs are the same-index
-// entry in `ROUTINE_TARGETS`.
-const routineSlot = z.object({ label: t(30), sub: t(30) });
-// A footer column: a title and its link labels. The hrefs are the same-index
-// `FOOTER_TARGETS[column]`; the two columns have 5 and 1 links today.
+// entry in `ROUTINE_TARGETS`; a saved `categoryIds` (1–4 distinct ids) replaces the
+// slugs. The message is digit-free, like every Persian message here.
+const ROUTINE_CATEGORIES_MESSAGE = 'یک تا چهار دسته‌بندی متفاوت انتخاب کن.';
+/** A routine tab's category tiles at most; the editor's picker stops there too. */
+export const MAX_ROUTINE_CATEGORIES = 4;
+const routineSlot = z.object({
+  label: t(30),
+  sub: t(30),
+  categoryIds: z
+    .array(z.uuid(LINK_MESSAGES.category))
+    .min(1, { error: ROUTINE_CATEGORIES_MESSAGE })
+    .max(MAX_ROUTINE_CATEGORIES, { error: ROUTINE_CATEGORIES_MESSAGE })
+    .refine((ids) => new Set(ids).size === ids.length, {
+      error: ROUTINE_CATEGORIES_MESSAGE,
+    })
+    .optional(),
+});
+// The header's three nav labels; `navLinks` holds their destinations.
 const nav = z.tuple([t(30), t(30), t(30)]);
 
 // Per-block visibility. **Optional**, and read as "hidden only when explicitly
@@ -124,16 +154,19 @@ export const CONTENT_SCHEMAS = {
     accent: t(60),
     body: t(600),
     image,
-    // The two hero buttons' labels; the targets (shop, /about) stay in code.
+    // The two hero buttons' labels and destinations (unset: the shop, /about).
     shopCta: t(40),
     aboutCta: t(40),
+    shopCtaLink: link,
+    aboutCtaLink: link,
     visible,
   }),
   'home.moments': z.object({
     eyebrow: t(60),
     headline: t(120),
-    // The «مشاهده همه» link label; its target (the bare shop) stays in code.
+    // The «مشاهده همه» link label and destination (unset: the bare shop).
     cta: t(40),
+    ctaLink: link,
     cards: z.tuple([card, card, card, card, card]),
     visible,
   }),
@@ -154,8 +187,9 @@ export const CONTENT_SCHEMAS = {
     headline: t(160),
     body: t(1000),
     image,
-    // The «مشاهده غذای مرطوب» link label; its target (wet food) stays in code.
+    // The «مشاهده غذای مرطوب» link label and destination (unset: wet food).
     cta: t(40),
+    ctaLink: link,
     visible,
   }),
   'home.routine': z.object({
@@ -173,8 +207,9 @@ export const CONTENT_SCHEMAS = {
   }),
   'home.categories': z.object({
     headline: t(120),
-    // The «همه دسته‌بندی‌ها» link label; its target (the bare shop) stays in code.
+    // The «همه دسته‌بندی‌ها» link label and destination (unset: the bare shop).
     cta: t(40),
+    ctaLink: link,
     visible,
   }),
   'home.philosophy': z.object({
@@ -182,8 +217,9 @@ export const CONTENT_SCHEMAS = {
     headline: t(160),
     accent: t(60),
     body: t(600),
-    // The «بیشتر درباره انتخاب محصولات» link label; its target (/about) stays in code.
+    // The «بیشتر درباره انتخاب محصولات» link label and destination (unset: /about).
     cta: t(40),
+    ctaLink: link,
     visible,
   }),
   'about.hero': z.object({
@@ -211,8 +247,9 @@ export const CONTENT_SCHEMAS = {
   }),
   'about.cta': z.object({
     headline: t(120),
-    // The closing button's label; its target (the shop) stays in code.
+    // The closing button's label and destination (unset: the shop).
     cta: t(40),
+    ctaLink: link,
     visible,
   }),
   // ── Site chrome. No `visible`: the header and footer are structural, always
@@ -224,16 +261,24 @@ export const CONTENT_SCHEMAS = {
     brand: t(40),
     tagline: t(60),
     nav,
+    navLinks: linkList(3),
   }),
   footer: z.object({
     brand: t(40),
     tagline: t(200),
+    // Each column: a title, its link labels (5 and 1 today), and their
+    // destinations by index (unset: the same-index `FOOTER_TARGETS[column]`).
     columns: z.tuple([
       z.object({
         title: t(40),
         links: z.tuple([t(30), t(30), t(30), t(30), t(30)]),
+        linkTargets: linkList(5),
       }),
-      z.object({ title: t(40), links: z.tuple([t(30)]) }),
+      z.object({
+        title: t(40),
+        links: z.tuple([t(30)]),
+        linkTargets: linkList(1),
+      }),
     ]),
     // The copyright sentence AFTER the `© {jalali year}` prefix — the prefix and
     // the year are rendered in code (`formatJalaliYear`), never stored.

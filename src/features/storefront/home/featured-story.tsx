@@ -1,8 +1,9 @@
 import Image from 'next/image';
-import Link from 'next/link';
 import type { ContentValue } from '@/lib/content/site-content';
 import { imageSrc } from '@/lib/storage/image-url';
 import { shopPath } from '@/lib/constant/paths';
+import { ContentLink } from '@/features/storefront/content-link';
+import { resolveLink, type LinkTargets } from '@/lib/content/link';
 
 /**
  * «راهنمای اسموکی» — an editorial block above the fold of the lower page.
@@ -10,8 +11,8 @@ import { shopPath } from '@/lib/constant/paths';
  * The magazine it originally linked to is parked on the backlog, so the CTA
  * points at the products the text is actually about (wet food, for a cat that
  * does not drink enough) rather than shipping a dead article route — the
- * design review's port note on the magazine. The CTA *target* (wet food) stays
- * in code; its label, and the eyebrow, headline, body and image, are admin
+ * design review's port note on the magazine. The CTA's label and destination
+ * (unset: wet food), and the eyebrow, headline, body and image, are admin
  * content, rendered as plain text.
  *
  * The eyebrow uses `accent-on-dark`, not `accent`: on `--ink-soft` the brand
@@ -19,8 +20,10 @@ import { shopPath } from '@/lib/constant/paths';
  */
 export function FeaturedStorySection({
   content,
+  targets,
 }: {
   content: ContentValue<'home.guide'>;
+  targets: LinkTargets;
 }) {
   return (
     <section className="bg-ink py-24">
@@ -45,13 +48,17 @@ export function FeaturedStorySection({
             <p className="mb-8 leading-relaxed whitespace-pre-line text-white/70">
               {content.body}
             </p>
-            <Link
-              href={shopPath({ category: 'wet-food' })}
+            <ContentLink
+              {...resolveLink(
+                content.ctaLink,
+                shopPath({ category: 'wet-food' }),
+                targets,
+              )}
               className="bg-accent-strong hover:bg-accent-hover self-start rounded-xl px-6 py-3 font-bold text-white transition-colors"
               data-umami-event="home-story-shop-click"
             >
               {content.cta}
-            </Link>
+            </ContentLink>
           </div>
         </div>
       </div>
