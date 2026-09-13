@@ -220,7 +220,9 @@ rendering).
   the stock the specs spend). `webServer.env` pins console SMS with the code on
   the login page, mock Zarinpal and local storage, and blanks Sentry, Umami and
   the S3 image base URL over whatever `.env` says. Only the dev Postgres has to
-  be up already.
+  be up already. Next allows one `next dev` per checkout: if `pnpm dev` is
+  running in the same checkout, the suite stops at "Another next dev server is
+  already running" — stop that server, or run the suite from a worktree.
 - **A worktree has no `.env`**:
   `DOTENV_CONFIG_PATH=<main checkout>/.env pnpm test:e2e`.
 - **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
