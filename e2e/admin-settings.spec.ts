@@ -26,6 +26,9 @@ test('a shipping rate an admin changes is what checkout charges', async ({
   const changed = Number(toAsciiDigits(original)) + 1_000;
 
   const saveFee = async (value: string) => {
+    // Save stays disabled on an unchanged value: restoring after a save that
+    // never took would otherwise wait out the test and bury the real failure.
+    if ((await fee.inputValue()) === value) return;
     await fee.fill(value);
     await row.locator('[data-umami-event="admin-panel-shipping-save"]').click();
     await expect(row.getByText('ذخیره شد')).toBeVisible();
