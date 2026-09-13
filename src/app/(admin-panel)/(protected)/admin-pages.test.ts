@@ -89,6 +89,12 @@ const pages = [
     async () => (await import('./admin-panel/products/new/page')).default(),
   ],
   [
+    './admin-panel/products/categories/page.tsx',
+    'categories',
+    async () =>
+      (await import('./admin-panel/products/categories/page')).default(),
+  ],
+  [
     './admin-panel/discounts/page.tsx',
     'discounts',
     async () => (await import('./admin-panel/discounts/page')).default(),
