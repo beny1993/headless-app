@@ -197,22 +197,32 @@ covered by their pure modules' unit tests plus browser verification.
 ### End-to-end tests
 
 `pnpm test:e2e` (Playwright, `e2e/`) is the regression walk QA used to do by
-hand, run at 1280px and again at 375px: phone-OTP sign-in for a customer and an
-admin; home → shop → product → cart drawer (quantity, removal, empty state) and
-a sold-out product; checkout by cash on delivery — Jalali date and
-`format.ts`-formatted numbers on the result page, the order in `/account` — and
-through the mock Zarinpal gateway (paid, and failed → retry → paid); the admin
-panel turning away anonymous visitors and customers; an admin shipping an
-order. Every page a spec opens is also checked for console errors and for
-requests to any host but the app's own (the `test` fixture in
-`e2e/support.ts`). QA runs it instead of re-walking those flows and drives the
-browser only for a story's new behaviour. A story that changes one of these
-flows changes its spec.
+hand, run at 1280px and again at 375px. Storefront: phone-OTP sign-in for a
+customer and an admin; home → shop → product → cart drawer (quantity, removal,
+empty state) and a sold-out product; checkout by cash on delivery — Jalali date
+and `format.ts`-formatted numbers on the result page, the order in `/account` —
+and through the mock Zarinpal gateway (paid, and failed → retry → paid). Admin:
+anonymous visitors and customers turned away; the dashboard figures; an order
+shipped, and one cancelled with its stock coming back; a product added with a
+photo, repriced and taken off the shop; a discount code a shopper redeems,
+then cannot once it is switched off; a shipping rate that checkout then
+charges; a home headline that the storefront then shows. Every page a spec
+opens is also checked for console errors, failed requests and requests to any
+host but the app's own (the `test` fixture in `e2e/support.ts`). QA runs it
+instead of re-walking those flows and drives the browser only for a story's new
+behaviour.
 
-**Not covered — still walked by hand when a story touches them:** discount
-codes, cancelling an order and its restock, a wrong or resent login code, admin
-product/discount/content editing, and anything visual (RTL layout, Persian font
-rendering).
+**Every new feature ships with E2E coverage (Benyamin's standing rule,
+2026-09-14).** A story that adds or changes something a shopper or an admin
+does adds or updates its spec in `e2e/`, in the same branch, covering the
+story's acceptance criteria — and is not done until `pnpm test:e2e` is green
+with it. Prove the spec like a component test: put the bug back, watch it
+fail, restore. Only a change with no user-facing flow (a helper, a migration,
+docs) is exempt.
+
+**Not covered — still walked by hand when a story touches them:** content
+areas other than the home headline, a wrong or resent login code, and anything
+visual (RTL layout, Persian font rendering).
 
 - **It starts its own server**: `next dev` on :3100, never a running :3000 —
   that one may be another checkout on another branch. Before it: migrate,
@@ -229,8 +239,16 @@ rendering).
   customer and a fresh admin (`pnpm create-admin`) in through the real login
   page and saves their sessions; specs opt in with `test.use({ storageState })`
   (`e2e/support.ts`). send-otp allows 3 a minute for the whole machine, so a run
-  started within a minute of the last one waits about a minute. Every run
-  leaves two throwaway `0999…` accounts and a few orders in the dev database.
+  started within a minute of the last one waits about a minute.
+- **What a run leaves in the dev database:** two throwaway `0999…` accounts, a
+  few orders, one inactive `e2e-…` product (its photo stays under `uploads/`)
+  and one switched-off `E2E…` discount code — those two specs run at 1280px
+  only, since neither row can be deleted. The shipping-rate and headline specs
+  put the old value back, even when they fail.
+- **Uploaded images never count as failed requests.** A dev database keeps the
+  uploads it was given while `.env` pointed at object storage, and this run's
+  local driver has no file for them. The catalog spec proves the upload path
+  instead: it uploads a photo and checks that it renders.
 - **Selectors are the `data-umami-event` names** (roles for headings and
   dialogs). App routes come from `paths.ts`, and the product and province a
   spec uses from the seed data in `src/db/seed/`, never restated. Renaming an
