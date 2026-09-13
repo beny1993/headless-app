@@ -7,6 +7,7 @@ import { Fragment, useState } from 'react';
 import {
   Home,
   Info,
+  Layers,
   LayoutTemplate,
   LogOut,
   Menu,
@@ -24,6 +25,7 @@ import {
   PROTECTED_PATHS,
 } from '@/lib/constant/paths';
 import { cn } from '@/lib/utils';
+import { activeHref, type NavMatch } from './nav-match';
 
 // The admin panel's sidebar, ported from the Figma admin shell
 // (`design/src/app/App.tsx` → AdminPage). Every admin page renders inside this
@@ -40,12 +42,9 @@ import { cn } from '@/lib/utils';
 // `NAV_ITEMS` is data-driven, so a future admin page adds its entry here. The
 // content editor is four area sub-links under one «محتوای سایت» group heading —
 // `group` labels them; a heading is emitted when an item's group first appears.
-type NavItem = {
-  href: string;
+type NavItem = NavMatch & {
   label: string;
   icon: typeof Home;
-  /** Active when the path is exactly `href` (`exact`) or starts with it. */
-  match: 'exact' | 'prefix';
   /** The group heading this item sits under; grouped items are indented. */
   group?: string;
 };
@@ -64,6 +63,14 @@ const NAV_ITEMS: NavItem[] = [
     href: PROTECTED_PATHS.PRODUCTS,
     label: 'محصولات',
     icon: Package,
+    match: 'prefix',
+  },
+  // Nested under «محصولات» by path; `activeHref` keeps «محصولات» from lighting
+  // up here too.
+  {
+    href: PROTECTED_PATHS.CATEGORIES,
+    label: 'دسته‌بندی‌ها',
+    icon: Layers,
     match: 'prefix',
   },
   {
@@ -110,13 +117,9 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-const isActive = (pathname: string, item: NavItem): boolean =>
-  item.match === 'exact'
-    ? pathname === item.href
-    : pathname.startsWith(item.href);
-
 export function AdminSidebar() {
   const pathname = usePathname();
+  const current = activeHref(pathname, NAV_ITEMS);
   const [open, setOpen] = useState(true); // desktop collapse
   const [mobileOpen, setMobileOpen] = useState(false); // mobile drawer
 
@@ -206,7 +209,7 @@ export function AdminSidebar() {
 
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
           {NAV_ITEMS.map((item, index) => {
-            const active = isActive(pathname, item);
+            const active = item.href === current;
             const Icon = item.icon;
             // A group heading precedes the first item of each group; the
             // collapsed rail (no labels) just shows the grouped items' icons.

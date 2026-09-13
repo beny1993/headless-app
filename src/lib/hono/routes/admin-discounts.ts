@@ -31,6 +31,7 @@ import {
   apiSuccessSchema,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
+import { pgErrorOf } from '../pg-error';
 
 /** User-facing copy, so Persian. */
 export const DISCOUNT_NOT_FOUND_MESSAGE = 'کد تخفیف یافت نشد.';
@@ -92,16 +93,6 @@ const errorResponse = (description: string) =>
   }) as const;
 
 // ── Postgres write-error mapping (as in admin-products) ───────────────────────
-type PgError = { code?: string; constraint?: string };
-
-const pgErrorOf = (error: unknown): PgError | null => {
-  for (const candidate of [error, (error as { cause?: unknown })?.cause]) {
-    const pg = candidate as PgError | null | undefined;
-    if (pg && typeof pg.code === 'string') return pg;
-  }
-  return null;
-};
-
 /**
  * The `errors[]` detail for a known write conflict, or `null` to rethrow. A
  * duplicate code (23505) is field-scoped; any CHECK (23514) — the value/min/limit

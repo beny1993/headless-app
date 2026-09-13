@@ -33,6 +33,7 @@ import {
   apiSuccessSchema,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
+import { pgErrorOf } from '../pg-error';
 
 /** User-facing copy, so Persian. */
 export const PRODUCT_NOT_FOUND_MESSAGE = 'محصول یافت نشد';
@@ -106,17 +107,6 @@ const errorResponse = (description: string) =>
 // not a server fault, so they answer 400 with a field-scoped message the form can
 // map back onto its input — the "422 an unknown province, not a 500" stance the
 // address save established. Anything unrecognized is rethrown as the 500 it is.
-
-type PgError = { code?: string; constraint?: string };
-
-/** The pg error, whether raw or wrapped by drizzle at `.cause`. */
-const pgErrorOf = (error: unknown): PgError | null => {
-  for (const candidate of [error, (error as { cause?: unknown })?.cause]) {
-    const pg = candidate as PgError | null | undefined;
-    if (pg && typeof pg.code === 'string') return pg;
-  }
-  return null;
-};
 
 /** Field-scoped messages, keyed by the constraint name (from the migration). */
 const WRITE_ERROR_MESSAGES: Record<string, string> = {

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
 import { AlertCircle, ChevronRight, Loader2 } from 'lucide-react';
@@ -328,6 +329,20 @@ export function ProductForm({
                 </option>
               ))}
             </select>
+            {/* ponytail: leaving the form drops what was typed; an inline
+                create beside the select is the upgrade if that bites. */}
+            {categories.length === 0 && (
+              <p className="text-muted-foreground mt-1.5 text-xs">
+                هنوز دسته‌بندی‌ای ساخته نشده است.{' '}
+                <Link
+                  href={PROTECTED_PATHS.CATEGORIES}
+                  data-umami-event="admin-panel-product-form-categories-link"
+                  className="text-accent-strong font-medium underline"
+                >
+                  ساخت دسته‌بندی
+                </Link>
+              </p>
+            )}
           </Field>
         </div>
 
