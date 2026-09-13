@@ -205,6 +205,16 @@ pnpm build           # next build
 
 A zero exit code is not "clean": deprecation and lint warnings count as failures.
 
+In a checkout with no `.env` — every agent worktree — run the build gate as
+`pnpm build:local`, which is also what the pre-push hook runs. It is `next build`
+with the Dockerfile's throwaway build-time values (`APP_CONFIG_DATABASE_URL`,
+`APP_CONFIG_AUTH_SECRET`, `NEXT_PUBLIC_APP_URL=http://localhost:3000`) filled in
+for each one that neither the shell nor a `.env` file sets, so real values
+always win. Nothing connects to the database or checks the secret while
+building, but the URL is inlined into that output: build it to check, never to
+deploy. Plain `pnpm build` fills nothing, so a real build without
+`NEXT_PUBLIC_APP_URL` still fails.
+
 ## Local development
 
 ```bash
@@ -224,6 +234,10 @@ to the server log, so no SMS account is needed locally.
 Other commands: `pnpm dev:email` (email preview), `pnpm drizzle-studio`,
 `pnpm migration:reset-dev` (nuke volumes, re-migrate), `pnpm --dir design dev`
 (design prototype).
+
+Agent worktrees have no `.env` of their own: build there with
+`pnpm build:local` (see Quality gates), and give the database-backed tests the
+main checkout's with `DOTENV_CONFIG_PATH=<main checkout>/.env pnpm test`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
