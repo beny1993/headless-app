@@ -35,6 +35,7 @@ import {
   apiAdminProductPath,
   apiProductPath,
 } from '@/lib/constant/paths';
+import { PRODUCT_MESSAGES } from '@/lib/catalog/product-input';
 import type { ApiResponse } from '@/lib/hono/envelope';
 import { MAX_UPLOAD_BYTES } from '@/lib/storage/image-upload';
 import { VARS } from '@/lib/utils/env';
@@ -279,6 +280,21 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       expect(res.body.errors?.some((e) => e.startsWith('categoryId:'))).toBe(
         true,
       );
+    });
+
+    it('400s a NUL byte in the title rather than a database 500', async () => {
+      const category = await makeCategory();
+      asAdmin();
+      const res = await parse(
+        await json(
+          API_PATHS.ADMIN_PRODUCTS,
+          'POST',
+          body(category, { title: `غذای گربه${String.fromCharCode(0)}` }),
+        ),
+      );
+      expect(res.status).toBe(400);
+      if (res.body.status !== 'error') throw new Error('expected error');
+      expect(res.body.errors).toContain(`title: ${PRODUCT_MESSAGES.textChars}`);
     });
   });
 
