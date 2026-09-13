@@ -17,6 +17,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   check,
   integer,
   pgTable,
@@ -41,6 +42,12 @@ export const provinces = pgTable('provinces', {
    * update «تهران» in place rather than plant a second row.
    */
   name: text('name').notNull().unique(),
+  /**
+   * Soft delete. Three `restrict` FKs (rates, addresses, orders) point here, so a
+   * province is never removed — the admin deactivates it. Storefront reads
+   * filter to active; admin reads do not. The seed's upsert never touches it.
+   */
+  isActive: boolean('is_active').default(true).notNull(),
   createdAt,
   updatedAt,
 });

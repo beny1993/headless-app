@@ -9,7 +9,7 @@
 // addresses, so they come out only after the users that owned those addresses.
 import { inArray } from 'drizzle-orm';
 import { users, type User } from '@/db/schema/auth';
-import { provinces, type Province } from '@/db/schema/shipping';
+import { provinces, shippingRates, type Province } from '@/db/schema/shipping';
 import { testDb } from '@/db/test-db';
 
 const token = () => crypto.randomUUID().slice(0, 12);
@@ -36,6 +36,11 @@ export class AccountFixtures {
   async province(name = `استان ${token()}`): Promise<Province> {
     const [row] = await testDb.insert(provinces).values({ name }).returning();
     this.provinceIds.push(row.id);
+    // With a rate, as every real writer creates one: an address may only be
+    // saved against an active, rated province (`getByProvinceId`).
+    await testDb
+      .insert(shippingRates)
+      .values({ provinceId: row.id, fee: 40_000 });
     return row;
   }
 
@@ -46,6 +51,9 @@ export class AccountFixtures {
       this.userIds.length = 0;
     }
     if (this.provinceIds.length > 0) {
+      await testDb
+        .delete(shippingRates)
+        .where(inArray(shippingRates.provinceId, this.provinceIds));
       await testDb
         .delete(provinces)
         .where(inArray(provinces.id, this.provinceIds));

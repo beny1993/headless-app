@@ -113,6 +113,10 @@ export const API_PATHS = {
   ADMIN_ORDERS: '/api/admin/orders',
   // Admin discount codes — create + toggle active. Same `/admin/*` guard.
   ADMIN_DISCOUNTS: '/api/admin/discounts',
+  // Admin province management — create + activate/deactivate. Same `/admin/*`
+  // guard; deliberately not under `/shipping/rates`, where a method-agnostic
+  // guard would also 403 the public `GET /shipping/rates` checkout reads.
+  ADMIN_PROVINCES: '/api/admin/provinces',
   // Admin storefront content — replace one block by key, and a shared image
   // upload. Same `/admin/*` guard. No public content GET: the storefront reads
   // through the DAO in server components, as the home page already does.
@@ -168,6 +172,13 @@ export const API_ADMIN_DISCOUNT_TEMPLATE = `${API_PATHS.ADMIN_DISCOUNTS}/{id}`;
 /** The admin toggle path for one discount code, by id. */
 export const apiAdminDiscountPath = (id: string) =>
   `${API_PATHS.ADMIN_DISCOUNTS}/${encodeURIComponent(id)}`;
+
+/** `/api/admin/provinces/{id}` — the OpenAPI template for the province toggle. */
+export const API_ADMIN_PROVINCE_TEMPLATE = `${API_PATHS.ADMIN_PROVINCES}/{id}`;
+
+/** The admin activate/deactivate path for one province, by id. */
+export const apiAdminProvincePath = (id: number) =>
+  `${API_PATHS.ADMIN_PROVINCES}/${id}`;
 
 /** `/api/admin/content/{key}` — the OpenAPI template for the content block update. */
 export const API_ADMIN_CONTENT_TEMPLATE = `${API_PATHS.ADMIN_CONTENT}/{key}`;

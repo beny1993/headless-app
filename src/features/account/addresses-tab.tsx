@@ -21,6 +21,7 @@ import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiMeAddressPath } from '@/lib/constant/paths';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
 import { toAsciiDigits, toPersianDigits } from '@/lib/format';
+import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
 import {
   controlClass,
   FieldShell,
@@ -278,6 +279,18 @@ function AddressForm({
   const [topError, setTopError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
 
+  // An address saved against a province the admin has since deactivated: its id
+  // is not among the (active) options, so React would display the first enabled
+  // one — which re-picking fires no change for. The select gets '' instead,
+  // showing its placeholder, while state keeps the stale id. Derived at render,
+  // and `save` refuses it — the API's 422 is the backstop, not the experience.
+  const staleProvince =
+    form.provinceId !== '' &&
+    !provinces.some((p) => String(p.provinceId) === form.provinceId);
+  const provinceError =
+    fieldErrors.provinceId ??
+    (staleProvince ? STALE_PROVINCE_MESSAGE : undefined);
+
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     setFieldErrors((prev) => {
@@ -300,6 +313,7 @@ function AddressForm({
     if (!form.recipientPhone.trim())
       errors.recipientPhone = 'شماره تماس گیرنده را وارد کن.';
     if (!form.provinceId) errors.provinceId = 'استان را انتخاب کن.';
+    else if (staleProvince) errors.provinceId = STALE_PROVINCE_MESSAGE;
     if (!form.city.trim()) errors.city = 'شهر را وارد کن.';
     if (form.addressLine.trim().length < 10)
       errors.addressLine = 'آدرس کامل را وارد کن (حداقل ۱۰ حرف).';
@@ -360,20 +374,14 @@ function AddressForm({
           hint="مثلاً خانه یا محل کار"
           umami="account-addresses-title"
         />
-        <FieldShell
-          id="addr-province"
-          label="استان"
-          error={fieldErrors.provinceId}
-        >
+        <FieldShell id="addr-province" label="استان" error={provinceError}>
           <select
             id="addr-province"
-            value={form.provinceId}
+            value={staleProvince ? '' : form.provinceId}
             onChange={(event) => set('provinceId', event.target.value)}
-            aria-invalid={Boolean(fieldErrors.provinceId)}
-            aria-describedby={
-              fieldErrors.provinceId ? 'addr-province-error' : undefined
-            }
-            className={controlClass(Boolean(fieldErrors.provinceId))}
+            aria-invalid={Boolean(provinceError)}
+            aria-describedby={provinceError ? 'addr-province-error' : undefined}
+            className={controlClass(Boolean(provinceError))}
             data-umami-event="account-addresses-province"
           >
             <option value="" disabled>

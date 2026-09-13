@@ -12,6 +12,18 @@
 // here would be invisible to review and to every diff.
 import { z } from 'zod';
 
+/**
+ * Characters no free-text field may carry, as escapes (never typed): every
+ * control character — NUL among them, which Postgres refuses as a 500 — and the
+ * bidi embeddings, overrides and isolates (U+202A–U+202E, U+2066–U+2069), which
+ * reorder the text around them wherever it is shown. ZWNJ is deliberately
+ * allowed: Persian words need it. No `g` flag, so `.test` is stateless.
+ */
+export const FORBIDDEN_TEXT_CHARS = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/u;
+
+/** At least one letter, digit, punctuation mark or symbol — `trim()` leaves ZWNJ. */
+export const VISIBLE_CHAR = /[\p{L}\p{N}\p{P}\p{S}]/u;
+
 /** The null byte, constructed — the `pg` driver 500s on one inside a text param. */
 const NUL = String.fromCharCode(0);
 

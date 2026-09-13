@@ -1,6 +1,7 @@
 // No database needed: these check the seed data itself, so they run everywhere.
 import { describe, expect, it } from 'vitest';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
+import { normalizeProvinceName } from '@/lib/shipping/province-input';
 
 describe('shipping seed data', () => {
   it('carries all 31 Iranian provinces', () => {
@@ -11,6 +12,14 @@ describe('shipping seed data', () => {
     expect(new Set(SEED_PROVINCES.map((p) => p.name)).size).toBe(
       SEED_PROVINCES.length,
     );
+  });
+
+  it('writes every name in the canonical form the DAO normalizes to', () => {
+    // The DAO normalizes on every write; a seed name that is not already a fixed
+    // point would be stored differently from how it reads here.
+    for (const province of SEED_PROVINCES) {
+      expect(normalizeProvinceName(province.name)).toBe(province.name);
+    }
   });
 
   it('prices every province in whole non-negative Toman', () => {
