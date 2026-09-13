@@ -36,6 +36,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `scripts/create-admin.ts` | Grant admin by phone (`pnpm create-admin <phone> [name]`) — creates or promotes |
 | `src/db/seed/`, `scripts/seed-catalog.ts` | Demo catalog seed (`pnpm seed-catalog`), idempotent; its images live in `public/products/` |
 | `scripts/seed-shipping.ts` | Seed all 31 provinces + placeholder shipping rates (`pnpm seed-shipping`), idempotent (upserts by name, never resets a tuned fee) |
+| `e2e/`, `playwright.config.ts` | Playwright E2E suite (`pnpm test:e2e`): the core-flow regression walk — see *End-to-end tests* under Testing standard |
 
 ## Conventions
 
@@ -193,6 +194,37 @@ implements `<dialog>` only partly — keep assertions off `showModal()`), the
 No blanket retrofit: components without one of the three properties above are
 covered by their pure modules' unit tests plus browser verification.
 
+### End-to-end tests
+
+`pnpm test:e2e` (Playwright, `e2e/`) is the regression walk QA used to do by
+hand: phone-OTP sign-in for a customer and an admin; home → shop → product →
+cart drawer at 1280px and 375px, with no console errors and no request leaving
+localhost; checkout by cash on delivery and through the mock Zarinpal gateway
+(paid, and failed → retry), and the order in `/account`; the admin panel
+turning away anonymous visitors and customers; an admin shipping an order. QA
+runs it instead of re-walking those flows and drives the browser only for a
+story's new behaviour. A story that changes one of these flows changes its spec.
+
+- **It starts its own server**: `next dev` on :3100, never a running :3000 —
+  that one may be another checkout on another branch. Before it: migrate,
+  `seed-catalog` and `seed-shipping`, all idempotent (the seed also puts back
+  the stock the specs spend). `webServer.env` pins console SMS with the code on
+  the login page, mock Zarinpal and local storage, and blanks Sentry, Umami and
+  the S3 image base URL over whatever `.env` says. Only the dev Postgres has to
+  be up already.
+- **A worktree has no `.env`**:
+  `DOTENV_CONFIG_PATH=<main checkout>/.env pnpm test:e2e`.
+- **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
+  customer and a fresh admin (`pnpm create-admin`) in through the real login
+  page and saves their sessions; specs opt in with `test.use({ storageState })`
+  (`e2e/support.ts`). send-otp allows 3 a minute for the whole machine, so a run
+  started within a minute of the last one waits about a minute. Every run
+  leaves two throwaway `0999…` accounts and a few orders in the dev database.
+- **Selectors are the `data-umami-event` names** (roles for headings and
+  dialogs), and routes come from `paths.ts`. Renaming an event is a spec change.
+- **Browser: the installed Google Chrome** (`channel: 'chrome'`), no download.
+  A failure keeps its trace and screenshot: `pnpm exec playwright show-report`.
+
 ## Quality gates — all must pass before a story is done
 
 ```bash
@@ -200,6 +232,7 @@ pnpm type-check      # tsc --noEmit
 pnpm lint            # eslint .
 pnpm format:check    # prettier --check ./src  (`pnpm format` writes the fixes)
 pnpm test            # vitest run
+pnpm test:e2e        # playwright test (dev Postgres up; see End-to-end tests)
 pnpm build           # next build
 ```
 

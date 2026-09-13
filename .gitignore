@@ -31,6 +31,11 @@ yarn-error.log*
 # local product-image uploads (dev storage driver)
 /uploads
 
+# Playwright (`pnpm test:e2e`): reports, traces and the saved test sessions
+/test-results/
+/playwright-report/
+/e2e/.auth/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
