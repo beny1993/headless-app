@@ -319,6 +319,7 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       }>(
         await json(apiAdminProductPath(product.id), 'PUT', {
           ...body(category),
+          expectedStock: 3,
           title: 'عنوان تازه',
           price: 555_000,
           oldPrice: null,
@@ -330,14 +331,35 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       expect(envelope.data.price).toBe(555_000);
     });
 
+    it('rejects a missing stock snapshot and reports stale stock changes as 409', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(body(category));
+      asAdmin();
+      expect(
+        (await json(apiAdminProductPath(product.id), 'PUT', body(category)))
+          .status,
+      ).toBe(400);
+      await ProductDao.decrementStock(testDb, product.id, 1);
+      const res = await json(apiAdminProductPath(product.id), 'PUT', {
+        ...body(category),
+        stock: 15,
+        expectedStock: product.stock,
+      });
+      expect(res.status).toBe(409);
+      const [stored] = await testDb
+        .select()
+        .from(products)
+        .where(eq(products.id, product.id));
+      expect(stored.stock).toBe(product.stock - 1);
+    });
+
     it('404s an unknown id', async () => {
       const category = await makeCategory();
       asAdmin();
-      const res = await json(
-        apiAdminProductPath(faker.string.uuid()),
-        'PUT',
-        body(category),
-      );
+      const res = await json(apiAdminProductPath(faker.string.uuid()), 'PUT', {
+        ...body(category),
+        expectedStock: 0,
+      });
       expect(res.status).toBe(404);
     });
 
@@ -355,6 +377,7 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       asAdmin();
       const res = await json(apiAdminProductPath(product.id), 'PUT', {
         ...body(category),
+        expectedStock: 3,
         price: 200_000,
         oldPrice: 150_000,
       });

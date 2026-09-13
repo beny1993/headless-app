@@ -4,6 +4,7 @@ import {
   PRODUCT_MESSAGES,
   PRODUCT_TEXT_LIMITS,
   productInputSchema,
+  productUpdateInputSchema,
 } from './product-input';
 
 const valid = {
@@ -260,5 +261,28 @@ describe('productInputSchema', () => {
         .error?.issues.find((i) => i.path[0] === 'title');
       expect(issue?.message).toBe(PRODUCT_MESSAGES.title);
     });
+  });
+});
+
+describe('stock storage bounds and concurrency input', () => {
+  it('rejects stock beyond the Postgres integer range', () => {
+    expect(
+      productInputSchema.safeParse({ ...valid, stock: 2_147_483_648 }).success,
+    ).toBe(false);
+    expect(
+      productInputSchema.safeParse({ ...valid, stock: 2_147_483_647 }).success,
+    ).toBe(true);
+  });
+  it('requires a valid original stock value for edits', () => {
+    expect(productUpdateInputSchema.safeParse(valid).success).toBe(false);
+    for (const expectedStock of [-1, 1.5, 2_147_483_648]) {
+      expect(
+        productUpdateInputSchema.safeParse({ ...valid, expectedStock }).success,
+      ).toBe(false);
+    }
+    expect(
+      productUpdateInputSchema.safeParse({ ...valid, expectedStock: 0 })
+        .success,
+    ).toBe(true);
   });
 });

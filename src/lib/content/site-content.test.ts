@@ -181,17 +181,23 @@ describe('CONTENT_SCHEMAS fixed-count lists', () => {
     slots,
   });
 
-  it('requires exactly five family slots', () => {
-    const five = [slot('1'), slot('2'), slot('3'), slot('4'), slot('5')];
-    expect(CONTENT_SCHEMAS['home.family'].safeParse(family(five)).success).toBe(
+  it('requires exactly six family slots', () => {
+    const six = [
+      slot('1'),
+      slot('2'),
+      slot('3'),
+      slot('4'),
+      slot('5'),
+      slot('6'),
+    ];
+    expect(CONTENT_SCHEMAS['home.family'].safeParse(family(six)).success).toBe(
       true,
     );
     expect(
-      CONTENT_SCHEMAS['home.family'].safeParse(family(five.slice(0, 4)))
-        .success,
+      CONTENT_SCHEMAS['home.family'].safeParse(family(six.slice(0, 5))).success,
     ).toBe(false);
     expect(
-      CONTENT_SCHEMAS['home.family'].safeParse(family([...five, slot('6')]))
+      CONTENT_SCHEMAS['home.family'].safeParse(family([...six, slot('7')]))
         .success,
     ).toBe(false);
   });
@@ -203,6 +209,7 @@ describe('CONTENT_SCHEMAS fixed-count lists', () => {
       slot('3'),
       { ...slot('4'), image: 'http://evil/x.jpg' },
       slot('5'),
+      slot('6'),
     ];
     expect(CONTENT_SCHEMAS['home.family'].safeParse(family(bad)).success).toBe(
       false,

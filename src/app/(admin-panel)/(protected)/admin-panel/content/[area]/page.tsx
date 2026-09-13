@@ -1,11 +1,11 @@
+import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { SiteContentDao } from '@/db/dao/SiteContentDao';
 import { CONTENT_AREAS, contentAreaSchema } from '@/lib/content/site-content';
 import { ContentEditor } from '@/features/admin-panel/content/content-editor';
 
-// Reads live content per request. Authz is the (protected) layout's
-// requireAdmin() — a session alone is never authorization; nothing to add here.
+// Reads live content per request; the page checks the role before data access.
 export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({
@@ -31,6 +31,7 @@ export default async function AdminContentAreaPage({
 }: {
   params: Promise<{ area: string }>;
 }) {
+  await requireAdmin();
   const parsed = contentAreaSchema.safeParse((await params).area);
   if (!parsed.success) notFound();
 

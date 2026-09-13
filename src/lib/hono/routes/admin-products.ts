@@ -17,9 +17,12 @@
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Context, Env } from 'hono';
 import { z } from 'zod';
-import { ProductDao } from '@/db/dao/ProductDao';
+import { ProductDao, StockConflictError } from '@/db/dao/ProductDao';
 import type { Product } from '@/db/schema/catalog';
-import { productInputSchema } from '@/lib/catalog/product-input';
+import {
+  productInputSchema,
+  productUpdateInputSchema,
+} from '@/lib/catalog/product-input';
 import { PET_TYPES } from '@/lib/catalog/product-query';
 import { replaceProductImage } from '@/logic/admin/product-images';
 import { readImageUpload } from '../image-upload';
@@ -200,7 +203,7 @@ export const productUpdateRoute = createRoute({
   request: {
     params: IdParamSchema,
     body: {
-      content: { 'application/json': { schema: productInputSchema } },
+      content: { 'application/json': { schema: productUpdateInputSchema } },
       required: true,
     },
   },
@@ -217,6 +220,7 @@ export const productUpdateRoute = createRoute({
     401: errorResponse('No session'),
     403: errorResponse('Signed in, but not an admin'),
     404: errorResponse('No such product'),
+    409: errorResponse('Stock changed since the form was opened'),
   },
 });
 
@@ -225,12 +229,14 @@ export const productUpdateHandler: RouteHandler<
   Env & AuthedEnv
 > = async (c) => {
   const { id } = c.req.valid('param');
-  const body = c.req.valid('json');
+  const { expectedStock, ...body } = c.req.valid('json');
   try {
-    const updated = await ProductDao.update(id, body);
+    const updated = await ProductDao.update(id, body, expectedStock);
     if (!updated) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
     return c.json(apiSuccess(toAdminProduct(updated)), 200);
   } catch (error) {
+    if (error instanceof StockConflictError)
+      return c.json(apiError(error.message, [`stock: ${error.message}`]), 409);
     const errors = productWriteErrors(error);
     if (errors)
       return c.json(apiError(PRODUCT_SAVE_FAILED_MESSAGE, errors), 400);

@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import { formatToman } from '@/lib/format';
 import { buildDashboardReport } from '@/logic/orders/dashboard-report';
@@ -13,6 +14,7 @@ export const metadata: Metadata = { title: 'داشبورد' };
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPanelPage() {
+  await requireAdmin();
   const report = await buildDashboardReport();
 
   return (

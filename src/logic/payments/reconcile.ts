@@ -99,24 +99,33 @@ export async function reconcilePayments(
     new Date(now - ORDER_EXPIRY_MS),
   );
   for (const order of expiredCandidates) {
-    const attempts = await PaymentDao.listByOrder(order.id);
-    const hasLiveAttempt = attempts.some(
-      (p) =>
-        p.status === PAYMENT_STATUSES.PENDING ||
-        p.status === PAYMENT_STATUSES.PAID,
-    );
-    if (hasLiveAttempt) continue;
-
     try {
-      await db.transaction((tx) =>
-        transitionOrder(
+      const expired = await db.transaction(async (tx) => {
+        // Attempt insertion takes this same lock. A retry either commits before
+        // this live-attempt read, or waits and rejects the expired status.
+        if (
+          (await OrderDao.lockStatus(tx, order.id)) !==
+          ORDER_STATUSES.PENDING_PAYMENT
+        )
+          return false;
+        const attempts = await PaymentDao.listByOrder(order.id, tx);
+        if (
+          attempts.some(
+            (p) =>
+              p.status === PAYMENT_STATUSES.PENDING ||
+              p.status === PAYMENT_STATUSES.PAID,
+          )
+        )
+          return false;
+        await transitionOrder(
           tx,
           order.id,
           ORDER_STATUSES.PENDING_PAYMENT,
           ORDER_STATUSES.FAILED,
-        ),
-      );
-      result.expired += 1;
+        );
+        return true;
+      });
+      if (expired) result.expired += 1;
     } catch (error) {
       // A concurrent callback paid it mid-pass — its CAS out of pending_payment
       // won, ours lost. Leave it paid and move on.

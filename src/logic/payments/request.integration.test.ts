@@ -4,9 +4,9 @@
 // wires end to end.
 //
 // Needs a live database — see src/db/test-db.ts.
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { payments } from '@/db/schema/orders';
+import { orders, payments } from '@/db/schema/orders';
 import {
   ORDER_STATUSES,
   PAYMENT_METHODS,
@@ -14,13 +14,20 @@ import {
 } from '@/lib/orders/order-status';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
+import { mockDriver } from '@/lib/zarinpal/client';
 
 const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
+const { reconcilePayments } = await importWithDb(
+  () => import('@/logic/payments/reconcile'),
+);
 const request = await importWithDb(() => import('@/logic/payments/request'));
 
 describe.skipIf(!databaseReachable)('requestZarinpalPayment', () => {
   const fx = new OrderFixtures();
-  afterEach(() => fx.cleanup());
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await fx.cleanup();
+  });
 
   const zarinpalOrder = async (overrides = {}) => {
     const user = await fx.user();
@@ -56,6 +63,39 @@ describe.skipIf(!databaseReachable)('requestZarinpalPayment', () => {
       amount: 340_000,
     });
     expect(rows[0].authority).toBeTruthy();
+  });
+
+  it('does not return a payable URL when expiry wins during the gateway request', async () => {
+    const { user, order } = await zarinpalOrder();
+    await testDb
+      .update(orders)
+      .set({ createdAt: new Date(Date.now() - 2 * 60 * 60_000) })
+      .where(eq(orders.id, order.id));
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const original = mockDriver.requestPayment.bind(mockDriver);
+    vi.spyOn(mockDriver, 'requestPayment').mockImplementation(async (input) => {
+      entered.resolve();
+      await release.promise;
+      return original(input);
+    });
+    const pending = request.requestZarinpalPayment(user.id, order.id);
+    const outcome = pending.then(
+      () => 'payable',
+      (error: unknown) => error,
+    );
+    await entered.promise;
+    try {
+      const sweep = await reconcilePayments(mockDriver);
+      expect(sweep.expired).toBeGreaterThanOrEqual(1);
+    } finally {
+      release.resolve();
+    }
+    expect(await outcome).toMatchObject({
+      name: 'PaymentRequestError',
+      status: 422,
+    });
+    expect(await paymentsFor(order.id)).toHaveLength(0);
   });
 
   it('404s another user’s order without leaking that it exists (IDOR)', async () => {

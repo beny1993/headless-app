@@ -39,6 +39,9 @@ export const PRODUCT_TEXT_LIMITS = {
 const tooLong = (label: string, max: number) =>
   `${label} حداکثر ${toPersianDigits(max)} نویسه است.`;
 
+/** `products.stock` is a Postgres `integer`; past this the write would 500. */
+const MAX_STOCK = 2_147_483_647;
+
 /** Persian, user-facing — these strings surface on the form's fields. */
 export const PRODUCT_MESSAGES = {
   title: 'عنوان محصول الزامی است.',
@@ -160,7 +163,8 @@ export const productInputSchema = z
     stock: z
       .number({ error: PRODUCT_MESSAGES.stock })
       .int(PRODUCT_MESSAGES.stock)
-      .nonnegative(PRODUCT_MESSAGES.stock),
+      .nonnegative(PRODUCT_MESSAGES.stock)
+      .max(MAX_STOCK, PRODUCT_MESSAGES.stock),
     categoryId: z.uuid(PRODUCT_MESSAGES.category),
     petType: z.enum([PET_TYPES.CAT, PET_TYPES.DOG], PRODUCT_MESSAGES.pet),
     // A real editable field — the design's «نمایش در فروشگاه» toggle. Soft delete
@@ -178,3 +182,8 @@ export const productInputSchema = z
 
 /** The validated body — assignable to `ProductDao`'s `ProductInput`. */
 export type ProductInputBody = z.infer<typeof productInputSchema>;
+
+/** The inventory observed when opening the edit form; required for safe stock writes. */
+export const productUpdateInputSchema = productInputSchema.safeExtend({
+  expectedStock: z.number().int().nonnegative().max(MAX_STOCK),
+});

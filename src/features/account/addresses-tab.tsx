@@ -1,13 +1,14 @@
 'use client';
 
 // The «آدرس‌ها» tab: the customer's saved address book, with add / edit / delete.
-// Same seeded-from-props, own-state, owner-scoped-API shape as the pets tab.
+// AccountView owns the saved list so it survives this tab unmounting; writes use
+// the same owner-scoped API shape as the pets tab.
 //
 // A saved address is a checkout delivery address plus a label, so the fields (and
 // their validation) match the checkout address step exactly — the same shared
 // contract drives both. The postal code is normalized to ASCII on save, as
 // checkout does, so a code typed on a Persian keyboard stores canonically.
-import { useState } from 'react';
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import { AlertCircle, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   delData,
@@ -72,13 +73,14 @@ const toBody = (form: FormValues): AddressInput => ({
 });
 
 export function AddressesTab({
-  initialAddresses,
+  addresses,
+  onAddressesChange,
   provinces,
 }: {
-  initialAddresses: AddressResponse[];
+  addresses: AddressResponse[];
+  onAddressesChange: Dispatch<SetStateAction<AddressResponse[]>>;
   provinces: ProvinceOption[];
 }) {
-  const [addresses, setAddresses] = useState(initialAddresses);
   const [editing, setEditing] = useState<{ id: string | null } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
@@ -164,7 +166,10 @@ export function AddressesTab({
                 onCancel={() => setPendingDelete(null)}
                 onConfirm={async () => {
                   await delData(apiMeAddressPath(address.id));
-                  setAddresses((prev) =>
+                  setEditing((current) =>
+                    current?.id === address.id ? null : current,
+                  );
+                  onAddressesChange((prev) =>
                     prev.filter((a) => a.id !== address.id),
                   );
                   setPendingDelete(null);
@@ -186,7 +191,7 @@ export function AddressesTab({
           }
           onCancel={() => setEditing(null)}
           onSaved={(address) => {
-            setAddresses((prev) =>
+            onAddressesChange((prev) =>
               editing.id
                 ? prev.map((a) => (a.id === address.id ? address : a))
                 : [...prev, address],

@@ -11,6 +11,7 @@
 // never reach a client, and — since the page reads THIS, not the raw row — never
 // ride along in an RSC payload either. Not owner-scoped: the admin may read any
 // order (that is the point), keyed by the uuid `id`, authorized by `requireAdmin`.
+import { z } from 'zod';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { PaymentDao } from '@/db/dao/PaymentDao';
 import type { OrderWithItems, Payment } from '@/db/schema/orders';
@@ -29,12 +30,17 @@ export type AdminPayment = {
   /** Masked card number the gateway returned, if any. */
   cardPan: string | null;
   failureReason: string | null;
+  needsManualRefund: boolean;
   paidAt: Date | null;
   createdAt: Date;
 };
 
 /** An order with its item snapshots and the admin payment view. */
 export type AdminOrder = OrderWithItems & { payments: AdminPayment[] };
+
+const refundFlagSchema = z
+  .object({ needsManualRefund: z.boolean().catch(false) })
+  .catch({ needsManualRefund: false });
 
 /** Payment row → the admin projection. `gatewayResponse` is deliberately dropped. */
 const toAdminPayment = (payment: Payment): AdminPayment => ({
@@ -45,6 +51,8 @@ const toAdminPayment = (payment: Payment): AdminPayment => ({
   refId: payment.refId,
   cardPan: payment.cardPan,
   failureReason: payment.failureReason,
+  needsManualRefund: refundFlagSchema.parse(payment.gatewayResponse)
+    .needsManualRefund,
   paidAt: payment.paidAt,
   createdAt: payment.createdAt,
 });

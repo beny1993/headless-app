@@ -71,6 +71,67 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
     createdCategoryIds.length = 0;
   });
 
+  describe('stock concurrency during admin edits', () => {
+    it('preserves a checkout reservation when a stale form changes only the title', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, { stock: 1 }),
+      );
+      await ProductDao.decrementStock(testDb, product.id, 1);
+
+      const saved = await ProductDao.update(
+        product.id,
+        { title: 'عنوان تازه', stock: 1 },
+        1,
+      );
+
+      expect(saved).toMatchObject({ title: 'عنوان تازه', stock: 0 });
+    });
+
+    it('rejects a deliberate stock edit after inventory changed, leaving other fields untouched', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, { stock: 1 }),
+      );
+      await ProductDao.decrementStock(testDb, product.id, 1);
+
+      await expect(
+        ProductDao.update(product.id, { title: 'عنوان تازه', stock: 5 }, 1),
+      ).rejects.toMatchObject({ name: 'StockConflictError' });
+      const [stored] = await testDb
+        .select()
+        .from(products)
+        .where(eq(products.id, product.id));
+      expect(stored).toMatchObject({ title: product.title, stock: 0 });
+    });
+
+    it('handles a stock-only no-op and a missing product without writing inventory', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, { stock: 1 }),
+      );
+      expect(
+        await ProductDao.update(product.id, { stock: 1 }, 1),
+      ).toMatchObject({ stock: 1 });
+      expect(
+        await ProductDao.update(crypto.randomUUID(), { stock: 2 }, 1),
+      ).toBeNull();
+      expect(
+        await ProductDao.update(crypto.randomUUID(), { stock: 1 }, 1),
+      ).toBeNull();
+    });
+
+    it('applies an intentional stock change when the observed inventory is current', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, { stock: 1 }),
+      );
+      expect(
+        await ProductDao.update(product.id, { stock: 5 }, 1),
+      ).toMatchObject({ stock: 5 });
+    });
+  });
+
   describe('list — the storefront read', () => {
     it('returns active products of the requested category', async () => {
       const category = await makeCategory();
