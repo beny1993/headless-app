@@ -27,7 +27,7 @@ export const productPath = (slug: string) =>
  * browser after a payment attempt (success or failure). The page reads the order
  * server-side (owner-scoped), not from the callback's query params, so it always
  * shows the order's real settled status. Built by [[Story - Checkout Flow
- * Frontend]] at `src/app/(app)/checkout/result/[orderId]/page.tsx`.
+ * Frontend]] at `src/app/(app)/(store)/checkout/result/[orderId]/page.tsx`.
  */
 export const checkoutResultPath = (orderId: string) =>
   `${PATHS.CHECKOUT}/result/${encodeURIComponent(orderId)}`;
@@ -37,7 +37,7 @@ export const checkoutResultPath = (orderId: string) =>
  * the redirect to an order (unknown/absent authority, or a malformed callback
  * query), so there is no order id to show a result for. Distinct path from
  * `checkoutResultPath` so the two never collide. Built by [[Story - Checkout
- * Flow Frontend]] at `src/app/(app)/checkout/failed/page.tsx`.
+ * Flow Frontend]] at `src/app/(app)/(store)/checkout/failed/page.tsx`.
  */
 export const checkoutFailurePath = () => `${PATHS.CHECKOUT}/failed`;
 

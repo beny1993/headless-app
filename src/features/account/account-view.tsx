@@ -1,7 +1,7 @@
 'use client';
 
 // The account page shell: a sidebar of tabs (orders · pets · addresses · profile)
-// over one signed-in customer's data. The server page (../../app/(app)/account)
+// over one signed-in customer's data. The server page (../../app/(app)/(store)/account)
 // loads every tab's data owner-scoped and hands it in as props; this component
 // only chooses which tab is on screen.
 //
