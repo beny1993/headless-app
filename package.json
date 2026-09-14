@@ -12,6 +12,7 @@
     "app:dev": "docker compose --file docker-compose-dev.yaml up --wait && next dev",
     "postapp:dev": "docker compose --file docker-compose-dev.yaml down",
     "build": "next build",
+    "build:local": "node scripts/build-local.mjs",
     "start": "next start",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
