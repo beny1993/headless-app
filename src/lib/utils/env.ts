@@ -12,7 +12,7 @@ export enum VARS {
   // code is substituted into. Both are read only when the provider is `smsir`,
   // and both are required then — a missing one throws at construction rather
   // than letting every login report success while sending nothing. The template
-  // body must contain `#CODE#`.
+  // body must contain `#OTP#`.
   APP_CONFIG_SMSIR_API_KEY = 'APP_CONFIG_SMSIR_API_KEY',
   APP_CONFIG_SMSIR_TEMPLATE_ID = 'APP_CONFIG_SMSIR_TEMPLATE_ID',
   // `true` echoes the one-time code back in the send-otp response, so the login

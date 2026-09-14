@@ -62,9 +62,9 @@ const SMSIR_VERIFY_URL = 'https://api.sms.ir/v1/send/verify';
 
 /**
  * The parameter the panel template substitutes. The template body must contain
- * `#CODE#`.
+ * `#OTP#`.
  */
-const CODE_PARAMETER = 'CODE';
+const CODE_PARAMETER = 'OTP';
 
 /**
  * A login must not hang on a wedged provider. Better a visible failure the
