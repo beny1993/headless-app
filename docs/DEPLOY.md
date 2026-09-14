@@ -35,6 +35,7 @@ All runtime configuration is env-only. Names come from the `VARS` enum in
 | `APP_CONFIG_SMSIR_API_KEY` | when `=smsir` | SMS.ir web-service key, sent as `x-api-key`. A **secret** — Coolify env only, never a build arg. |
 | `APP_CONFIG_SMSIR_TEMPLATE_ID` | when `=smsir` | Numeric id of the SMS.ir panel template the code is substituted into. Its body must contain `#CODE#`. |
 | `APP_CONFIG_SHOW_OTP_IN_UI` | no | `true` prints the OTP on the login page for **staging/QA only**, where `console` codes reach nothing but the server log. Anything else is off, and it is ignored unless `APP_CONFIG_SMS_PROVIDER=console`. Never set it on the production app — it is a sign-in bypass. |
+| `APP_CONFIG_MAINTENANCE_MODE` | no | `true` shows every storefront page as the maintenance screen to everyone but a signed-in admin, who sees the real site. `/login` and `/admin-panel` stay open. Anything else is off. Restart after changing it — no rebuild. Hides the shop, does not lock it: `/api` stays reachable. |
 | `APP_CONFIG_ZARINPAL_PROVIDER` | yes | `mock` (default) simulates the full pay flow with no gateway account. Set to `zarinpal` at the real-gateway flip (see §6). |
 | `APP_CONFIG_ZARINPAL_MERCHANT_ID` | when `=zarinpal` | Merchant UUID from the Zarinpal panel. |
 | `APP_CONFIG_ZARINPAL_SANDBOX` | no | `true` routes the real driver at Zarinpal's sandbox host. Default `false`. |
@@ -194,6 +195,9 @@ and deliberately not baked into the image:
       edge address, and not the literal `no-trusted-ip`. Note that the
       "could not determine a client IP" warning does **not** fire in the
       Cloudflare-edge case, so log-grepping alone will not catch it.
+- [ ] **Maintenance mode off:** `APP_CONFIG_MAINTENANCE_MODE` unset (or
+      anything but `true`) on the production app, then restart — otherwise
+      launch day shows every customer «به‌زودی برمی‌گردیم».
 - [ ] **Real SMS driver:** set `APP_CONFIG_SMS_PROVIDER=smsir` plus
       `APP_CONFIG_SMSIR_API_KEY` and `APP_CONFIG_SMSIR_TEMPLATE_ID`. The
       `console` default logs every OTP to the server log. The driver posts to

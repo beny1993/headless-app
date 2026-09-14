@@ -22,6 +22,13 @@ export enum VARS {
   // (see `src/lib/auth/otp-echo.ts`) — on its own it is a full auth bypass.
   APP_CONFIG_SHOW_OTP_IN_UI = 'APP_CONFIG_SHOW_OTP_IN_UI',
 
+  // `true` closes the storefront: every public page shows the maintenance
+  // screen, except to a signed-in admin, who sees the real site. `/login` and
+  // the admin panel stay open so admins can sign in and stock the shop. Runtime,
+  // so flipping it is an env change plus a restart, never a rebuild. Anything
+  // but `true` is off. See `src/app/(app)/(store)/layout.tsx`.
+  APP_CONFIG_MAINTENANCE_MODE = 'APP_CONFIG_MAINTENANCE_MODE',
+
   // Which Zarinpal driver `src/lib/zarinpal` dispatches through. `mock` (the
   // default) simulates the whole request/redirect/callback/verify flow locally
   // with no gateway account — the shipped default. The real `zarinpal` v4 HTTP

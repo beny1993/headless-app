@@ -23,7 +23,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 
 | Path | What |
 | --- | --- |
-| `src/app/(app)/` | Public storefront (own root layout + `globals.css`) |
+| `src/app/(app)/` | Public storefront (own root layout + `globals.css`). Every page lives in `(store)`, whose layout is the `APP_CONFIG_MAINTENANCE_MODE` gate; only `login/` sits outside it, so admins can sign in while the shop is closed |
 | `src/app/(admin-panel)/` | Admin panel: `(protected)` pages behind `requireAdmin()`. Sign-in is the storefront's `/login` — there is one login for the whole site |
 | `src/app/api/[[...route]]/` | Hono catch-all; Better Auth at `src/app/api/auth/[...all]/` |
 | `src/db/schema/`, `src/db/dao/`, `src/db/migrations/` | Drizzle schema, DAOs, generated migrations |
@@ -223,8 +223,10 @@ fail, restore. Only a change with no user-facing flow (a helper, a migration,
 docs) is exempt.
 
 **Not covered — still walked by hand when a story touches them:** content
-areas other than the home headline, a wrong or resent login code, and anything
-visual (RTL layout, Persian font rendering).
+areas other than the home headline, a wrong or resent login code, maintenance
+mode switched on (the suite pins it off; the gate is unit-tested in
+`src/app/(app)/(store)/layout.test.ts`), and anything visual (RTL layout,
+Persian font rendering).
 
 - **It starts its own server**: `next dev` on :3100, never a running :3000 —
   that one may be another checkout on another branch. Before it: migrate,
