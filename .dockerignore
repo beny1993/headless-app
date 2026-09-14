@@ -24,8 +24,13 @@ coverage
 # by the app. Huge and irrelevant to the build.
 design
 
-# Local dev-only artifacts.
+# Local dev-only artifacts. The E2E suite runs against `next dev`, never the
+# image, and its output holds traces and saved sessions.
 uploads
+e2e
+playwright.config.ts
+playwright-report
+test-results
 docker-compose-dev.yaml
 Dockerfile
 .dockerignore
