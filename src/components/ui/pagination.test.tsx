@@ -52,6 +52,33 @@ describe('Pagination', () => {
     expect(next.getAttribute('data-umami-event')).toBe('list-pagination-next');
   });
 
+  it('links back when the URL points past a single page of results', () => {
+    // 1 to 20 matches plus `?page=2`: the empty-page message needs a way back.
+    render(pager(2, 1));
+
+    expect(pageLink(1).getAttribute('href')).toBe('/list?page=1');
+    expect(pageLink(1).getAttribute('aria-current')).toBeNull();
+    expect(
+      screen.getByRole('link', { name: 'صفحه قبل' }).getAttribute('href'),
+    ).toBe('/list?page=1');
+    expect(screen.queryByRole('link', { name: 'صفحه بعد' })).toBeNull();
+  });
+
+  it('steps back to the last real page from far past the end', () => {
+    render(pager(999, 3));
+
+    // Not 998, which does not exist either.
+    expect(
+      screen.getByRole('link', { name: 'صفحه قبل' }).getAttribute('href'),
+    ).toBe('/list?page=3');
+    expect(pageLink(3).getAttribute('aria-current')).toBeNull();
+  });
+
+  it('renders nothing when nothing matched, whatever the page', () => {
+    const { container } = render(pager(4, 0));
+    expect(container.innerHTML).toBe('');
+  });
+
   it('offers no step past either end', () => {
     const { rerender } = render(pager(1, 3));
     expect(screen.queryByRole('link', { name: 'صفحه قبل' })).toBeNull();

@@ -140,9 +140,10 @@ describe('paging', () => {
   });
 
   it('says a page past the end is empty, and still links back', async () => {
-    pageForAdmin.mockResolvedValue({ items: [], total: ADMIN_PAGE_SIZE + 1 });
+    // Fewer matches than one page, so page 2 is already past the end.
+    pageForAdmin.mockResolvedValue({ items: [], total: 3 });
 
-    await renderPage({ page: '9' });
+    await renderPage({ page: '2' });
 
     expect(screen.getByText('این صفحه محصولی ندارد.')).toBeTruthy();
     expect(

@@ -35,9 +35,14 @@ export function Pagination({
   event: string;
   className?: string;
 }) {
-  // One page is not a pagination, and zero pages means the empty state is
-  // already saying everything there is to say.
-  if (totalPages < 2) return null;
+  // Nothing matched: the empty state already says everything there is to say.
+  // One page needs no pager either, unless the URL points past it: then the
+  // pager is the way back.
+  if (totalPages < 1 || (totalPages === 1 && page <= 1)) return null;
+
+  // From past the end, step back to the last page that exists rather than to
+  // another that does not: `?page=999` of 3 goes back to 3, never to 998.
+  const previous = Math.min(page - 1, totalPages);
 
   return (
     <nav
@@ -45,7 +50,7 @@ export function Pagination({
       className={cn('flex items-center justify-center gap-2', className)}
     >
       <PageStep
-        href={hrefFor(page - 1)}
+        href={hrefFor(previous)}
         label="صفحه قبل"
         disabled={page <= 1}
         event={`${event}-prev`}
