@@ -416,7 +416,7 @@ export function CheckoutForm({
 
   return (
     <main className="bg-secondary/20 min-h-screen pt-20">
-      <div className="mx-auto max-w-4xl px-4 py-10 sm:px-8">
+      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-8">
         <a
           href={PATHS.SHOP}
           className="text-muted-foreground hover:text-foreground mb-8 flex items-center gap-2 text-sm"
@@ -472,8 +472,8 @@ export function CheckoutForm({
           })}
         </ol>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-          <div className="border-border bg-card rounded-2xl border p-6 lg:col-span-2">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
+          <div className="border-border bg-card rounded-2xl border p-6 lg:col-span-3">
             {topError && (
               <p
                 id={errorId}
@@ -816,7 +816,7 @@ export function CheckoutForm({
             )}
           </div>
 
-          <div className="bg-card border-border h-fit rounded-2xl border p-5">
+          <div className="bg-card border-border h-fit rounded-2xl border p-5 lg:col-span-2 lg:p-6">
             <h2 className="mb-4 font-bold">خلاصه سفارش</h2>
 
             <div className="mb-4">
@@ -850,7 +850,7 @@ export function CheckoutForm({
                     discountError ? `${fieldId}-discount-error` : undefined
                   }
                   className={cn(
-                    'bg-secondary focus-visible:border-accent-strong h-11 min-w-0 flex-1 rounded-xl border px-3 text-start transition-colors outline-none focus-visible:ring-2',
+                    'bg-secondary focus-visible:border-accent-strong h-11 min-w-0 flex-1 rounded-xl border px-3 text-end transition-colors outline-none focus-visible:ring-2',
                     discountError
                       ? 'border-destructive bg-destructive-soft/40'
                       : 'border-border',

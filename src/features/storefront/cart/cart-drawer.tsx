@@ -109,7 +109,7 @@ export function CartDrawer({ className }: { className?: string }) {
         // Pinned to the start edge — the right, in RTL — full height, undoing
         // the UA's centred-box defaults. Logical `start-0` keeps it correct in
         // both directions.
-        className="bg-background fixed inset-y-0 start-0 m-0 h-full max-h-none w-full max-w-none border-0 p-0 shadow-lg backdrop:bg-black/50 sm:w-96"
+        className="bg-background fixed inset-y-0 start-0 m-0 h-full max-h-none w-full max-w-none border-0 p-0 shadow-lg backdrop:bg-black/50 sm:w-120"
         aria-label="سبد خرید"
       >
         <div className="flex h-full flex-col">
@@ -150,10 +150,10 @@ export function CartDrawer({ className }: { className?: string }) {
 
               <div className="border-border space-y-4 border-t p-5">
                 <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">جمع اقلام</span>
                   <span className="nums text-lg font-bold">
                     {formatToman(cartTotal(lines))}
                   </span>
-                  <span className="text-muted-foreground">جمع اقلام</span>
                 </div>
                 <p className="text-muted-foreground text-xs">
                   هزینه ارسال در مرحله آدرس بر اساس استان محاسبه می‌شود.
@@ -220,7 +220,7 @@ function CartLineRow({
   const atMax = line.qty >= MAX_LINE_QTY;
 
   return (
-    <div className="bg-secondary/50 flex gap-3 rounded-xl p-3">
+    <div className="bg-secondary/50 flex gap-3 rounded-xl p-3 sm:gap-4 sm:p-4">
       {line.imageKey ? (
         // `alt=""`: the title is announced immediately after, so a described
         // thumbnail would only repeat it. `imageKey` is a storage key —
@@ -229,12 +229,12 @@ function CartLineRow({
         <img
           src={imageSrc(line.imageKey)}
           alt=""
-          width={80}
-          height={80}
-          className="bg-muted size-20 rounded-lg object-cover"
+          width={96}
+          height={96}
+          className="bg-muted size-20 rounded-lg object-cover sm:size-24"
         />
       ) : (
-        <div className="bg-muted flex size-20 items-center justify-center rounded-lg">
+        <div className="bg-muted flex size-20 items-center justify-center rounded-lg sm:size-24">
           <ShoppingBag
             size={24}
             className="text-muted-foreground"
@@ -247,10 +247,10 @@ function CartLineRow({
         {line.brand && (
           <p className="text-muted-foreground text-sm">{line.brand}</p>
         )}
-        <p className="line-clamp-2 text-base leading-snug font-semibold">
+        <p className="line-clamp-2 text-base leading-snug font-semibold sm:text-lg">
           {line.title}
         </p>
-        <p className="nums mt-1 text-base font-bold">
+        <p className="nums mt-1 text-base font-bold sm:text-lg">
           {formatToman(lineTotal(line))}
         </p>
         {line.qty > 1 && (
