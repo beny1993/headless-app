@@ -22,10 +22,14 @@ vi.mock('@/lib/auth/index', () => ({
 }));
 vi.mock('@/db/dao/CategoryDao', () => ({ CategoryDao: { list: mocks.read } }));
 vi.mock('@/db/dao/ProductDao', () => ({
-  ProductDao: { listForAdmin: mocks.read, findByIdForAdmin: mocks.read },
+  ProductDao: {
+    listForAdmin: mocks.read,
+    pageForAdmin: mocks.read,
+    findByIdForAdmin: mocks.read,
+  },
 }));
 vi.mock('@/db/dao/OrderDao', () => ({
-  OrderDao: { listForAdmin: mocks.read },
+  OrderDao: { pageForAdmin: mocks.read },
 }));
 vi.mock('@/db/dao/DiscountCodeDao', () => ({
   DiscountCodeDao: { listForAdmin: mocks.read },

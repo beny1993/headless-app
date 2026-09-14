@@ -26,6 +26,7 @@ import {
   PRODUCT_SORTS,
   type ProductSort,
 } from '@/lib/catalog/product-query';
+import { ADMIN_PAGE_SIZE } from '@/lib/pagination';
 import { normalizeSearchText } from '@/lib/catalog/search-text';
 import {
   categories,
@@ -257,10 +258,60 @@ export class ProductDao {
     return where;
   }
 
-  /** Admin panel listing — includes the products a soft delete hid. */
+  /**
+   * Admin panel listing, every matching row: includes the products a soft delete
+   * hid. The content editor's link picker reads all of them; the products table
+   * pages through {@link pageForAdmin} instead.
+   */
   static async listForAdmin(
     filters: AdminProductFilters = {},
   ): Promise<ProductWithImages[]> {
+    const rows = await ProductDao.adminRows(ProductDao.adminWhere(filters));
+    return ProductDao.withImages(rows);
+  }
+
+  /**
+   * One page of the admin listing plus the size of the whole filtered result,
+   * for the products table's pager. Same filters and order as
+   * {@link listForAdmin}. The page and the count run in parallel: the admin
+   * search is a plain ILIKE, so it needs no transaction.
+   */
+  static async pageForAdmin({
+    page = 1,
+    limit = ADMIN_PAGE_SIZE,
+    ...filters
+  }: AdminProductFilters & {
+    /** One-based. */
+    page?: number;
+    limit?: number;
+  } = {}): Promise<ProductPage> {
+    const where = ProductDao.adminWhere(filters);
+    const [rows, [counted]] = await Promise.all([
+      ProductDao.adminRows(where)
+        .limit(limit)
+        .offset((page - 1) * limit),
+      db
+        .select({ value: count() })
+        .from(products)
+        .innerJoin(categories, eq(products.categoryId, categories.id))
+        .where(where),
+    ]);
+
+    return { items: await ProductDao.withImages(rows), total: counted.value };
+  }
+
+  /** The admin listing's rows, newest first, before any paging. */
+  private static adminRows(where: SQL | undefined) {
+    return db
+      .select(getTableColumns(products))
+      .from(products)
+      .innerJoin(categories, eq(products.categoryId, categories.id))
+      .where(where)
+      .orderBy(desc(products.createdAt), asc(products.sku));
+  }
+
+  /** The admin listing's where clause, shared by the full and the paged read. */
+  private static adminWhere(filters: AdminProductFilters): SQL | undefined {
     const where: SQL[] = [];
     // The one filter that separates this from the storefront read: `active`
     // undefined means *both* — the admin sees soft-deleted rows by default, and
@@ -282,15 +333,7 @@ export class ProductDao {
     if (search) {
       where.push(ilike(products.searchText, `%${search}%`));
     }
-
-    const rows = await db
-      .select(getTableColumns(products))
-      .from(products)
-      .innerJoin(categories, eq(products.categoryId, categories.id))
-      .where(where.length > 0 ? and(...where) : undefined)
-      .orderBy(desc(products.createdAt), asc(products.sku));
-
-    return ProductDao.withImages(rows);
+    return where.length > 0 ? and(...where) : undefined;
   }
 
   /**
