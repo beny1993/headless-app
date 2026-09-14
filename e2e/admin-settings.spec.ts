@@ -1,8 +1,10 @@
+import { SEED_CATEGORIES } from '@/db/seed/catalog-data';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
 import {
   PATHS,
   PROTECTED_PATHS,
   adminContentAreaPath,
+  shopPath,
 } from '@/lib/constant/paths';
 import { formatToman, toAsciiDigits } from '@/lib/format';
 import { ADMIN_STATE, expect, openCheckout, test } from './support';
@@ -73,5 +75,65 @@ test('a headline an admin edits is what the home page shows', async ({
     );
   } finally {
     await saveHeadline(original);
+  }
+});
+
+test('a destination an admin picks is where the about page button goes', async ({
+  page,
+  shopper,
+}) => {
+  const category = SEED_CATEGORIES[0];
+  const external = 'https://example.com/e2e-about';
+
+  await page.goto(adminContentAreaPath('about'));
+  const block = page.locator('form', {
+    has: page.getByRole('heading', { name: 'فراخوان پایانی' }),
+  });
+  const type = block.locator(
+    '[data-umami-event="admin-panel-content-link-type-change"]',
+  );
+  // Only a button still on its default destination can be put back exactly.
+  test.skip(
+    (await type.inputValue()) !== '',
+    'the about button already has a saved destination',
+  );
+  const label = await block
+    .getByLabel('دکمه فراخوان', { exact: true })
+    .inputValue();
+  const button = shopper.getByRole('main').getByRole('link', { name: label });
+
+  const save = async () => {
+    await block
+      .locator('[data-umami-event="admin-panel-content-save"]')
+      .click();
+    await expect(block.getByText('ذخیره شد')).toBeVisible();
+  };
+
+  try {
+    // Stored by id, shown as the category's current slug.
+    await type.selectOption('shop');
+    await block
+      .locator('[data-umami-event="admin-panel-content-link-category-change"]')
+      .selectOption({ label: category.title });
+    await save();
+    await shopper.goto(PATHS.ABOUT);
+    await expect(button).toHaveAttribute(
+      'href',
+      shopPath({ category: category.slug }),
+    );
+
+    // An external destination opens in a new tab and leaks no opener.
+    await type.selectOption('external');
+    await block
+      .locator('[data-umami-event="admin-panel-content-link-url-input"]')
+      .fill(external);
+    await save();
+    await shopper.reload();
+    await expect(button).toHaveAttribute('href', external);
+    await expect(button).toHaveAttribute('target', '_blank');
+    await expect(button).toHaveAttribute('rel', 'noopener noreferrer');
+  } finally {
+    await type.selectOption('');
+    await save();
   }
 });

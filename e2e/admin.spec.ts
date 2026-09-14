@@ -1,3 +1,4 @@
+import { SEED_PRODUCTS } from '@/db/seed/catalog-data';
 import { PATHS, PROTECTED_PATHS, adminOrderPath } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import {
@@ -93,5 +94,40 @@ test.describe('an admin', () => {
 
     await shopper.goto(path);
     await expect(stockLeft(stock)).toBeVisible();
+  });
+
+  test('pages past the end of a list still lead back to it', async ({
+    page,
+    shopper,
+  }) => {
+    // At least one order, so the orders list has a page to come back to.
+    await placeOrder(shopper, 'cod');
+    await resultOrderId(shopper);
+
+    for (const { pastTheEnd, empty, row } of [
+      {
+        pastTheEnd: `${PROTECTED_PATHS.ORDERS}?page=999`,
+        empty: 'این صفحه سفارشی ندارد.',
+        row: 'admin-panel-orders-view',
+      },
+      {
+        // Narrowed to one seeded product, the list has exactly one page however
+        // many products the database holds: the case the pager used to hide on.
+        pastTheEnd: `${PROTECTED_PATHS.PRODUCTS}?${new URLSearchParams({
+          q: SEED_PRODUCTS[0].title,
+          page: '999',
+        })}`,
+        empty: 'این صفحه محصولی ندارد.',
+        row: 'admin-panel-products-edit',
+      },
+    ]) {
+      await page.goto(pastTheEnd);
+      await expect(page.getByText(empty)).toBeVisible();
+      // Back to the last page that exists, whether the list has one page or many.
+      await page.getByRole('link', { name: 'صفحه قبل' }).click();
+      await expect(
+        page.locator(`[data-umami-event="${row}"]`).first(),
+      ).toBeVisible();
+    }
   });
 });
