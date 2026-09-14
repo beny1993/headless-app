@@ -57,6 +57,17 @@ const DIGIT_TABLE = '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹';
 const ZERO_WIDTH = /[\u200B-\u200D\uFEFF]/g;
 
 /**
+ * Arabic yeh/alef maksura → ی and Arabic kaf → ک, nothing else. Exported for
+ * display names that need the same letter folding without the search-only rules
+ * (digit folding, ZWNJ → space): `normalizeProvinceName` builds on it.
+ */
+export function foldPersianLetters(value: string): string {
+  return value
+    .replace(ARABIC_YEH, PERSIAN_YEH)
+    .replace(ARABIC_KAF, PERSIAN_KEHEH);
+}
+
+/**
  * Product text and search terms, reduced to the form the trigram index holds.
  *
  * Idempotent — running it over already-normalized text returns that text — so a
@@ -69,10 +80,7 @@ const ZERO_WIDTH = /[\u200B-\u200D\uFEFF]/g;
  * product is actually called.
  */
 export function normalizeSearchText(value: string): string {
-  return value
-    .replace(SILENT_MARKS, '')
-    .replace(ARABIC_YEH, PERSIAN_YEH)
-    .replace(ARABIC_KAF, PERSIAN_KEHEH)
+  return foldPersianLetters(value.replace(SILENT_MARKS, ''))
     .replace(NON_ASCII_DIGITS, (digit) =>
       String(DIGIT_TABLE.indexOf(digit) % 10),
     )

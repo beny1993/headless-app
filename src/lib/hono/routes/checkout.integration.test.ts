@@ -228,6 +228,28 @@ describe.skipIf(!databaseReachable)('POST /api/checkout', () => {
     expect(await ordersFor(product.id)).toBe(0);
   });
 
+  it('422s an inactive province with the invalid-province message, pricing nothing', async () => {
+    // Deactivated provinces are never priced: `getByProvinceId` hides them, so
+    // the existing CheckoutError answers — a 422, never a 500, no order row.
+    const user = await fx.user();
+    asUser(user.id);
+    const prov = await province();
+    await ShippingRateDao.setActive(prov.provinceId, false);
+    const category = await fx.category();
+    const product = await fx.product(category, { stock: 5 });
+
+    const response = await post(
+      body(prov.provinceId, [{ productId: product.id, qty: 1 }]),
+    );
+    const payload = (await response.json()) as ApiResponse<unknown>;
+
+    expect(response.status).toBe(422);
+    expect(payload.status === 'error' && payload.errors).toEqual([
+      'address.provinceId: استان انتخاب\u200Cشده نامعتبر است.',
+    ]);
+    expect(await ordersFor(product.id)).toBe(0);
+  });
+
   it('422s an unknown province', async () => {
     const user = await fx.user();
     asUser(user.id);

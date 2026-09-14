@@ -4,18 +4,33 @@
 // the joined `{ provinceId, name, fee }` is the shape every caller wants — the
 // checkout fee preview, the province <select>, and the admin rate editor.
 // Never write raw SQL.
-import { asc, eq } from 'drizzle-orm';
+//
+// The read split is the soft delete: storefront reads (`listActive`,
+// `getByProvinceId`) see only active provinces, so a deactivated one is neither
+// offered nor priced; admin reads (`list`, `getByProvinceIdForAdmin`,
+// `findByName`) see every province with its `isActive` flag. Every write stores
+// the name through `normalizeProvinceName`, so the unique constraint on
+// `provinces.name` is the real duplicate backstop.
+import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { provinces, shippingRates } from '@/db/schema/shipping';
+import { normalizeProvinceName } from '@/lib/shipping/province-input';
 
-/** A province and its current fee, the joined shape the API serves. */
+/** A province and its current fee, the joined shape the storefront API serves. */
 export type ShippingRateRow = { provinceId: number; name: string; fee: number };
+
+/** The admin view: the storefront row plus whether the province is active. */
+export type AdminProvinceRow = ShippingRateRow & { isActive: boolean };
 
 const rateColumns = {
   provinceId: provinces.id,
   name: provinces.name,
   fee: shippingRates.fee,
 };
+
+const adminColumns = { ...rateColumns, isActive: provinces.isActive };
+
+const hasRate = eq(shippingRates.provinceId, provinces.id);
 
 export class ShippingRateDao {
   /**
@@ -24,21 +39,23 @@ export class ShippingRateDao {
    * and the rate is inserted only if missing (`onConflictDoNothing`) — so a
    * re-seed never resets a fee an admin has tuned through `updateFee`. Returns
    * the resulting joined row.
+   *
+   * The conflict set is `{ name }` ONLY, and that is load-bearing: it leaves
+   * `is_active` alone, so a re-seed never reactivates a province the admin
+   * deactivated (pinned in the integration test).
    */
   static async upsertProvinceWithRate(input: {
     name: string;
     fee: number;
   }): Promise<ShippingRateRow> {
+    const name = normalizeProvinceName(input.name);
     return db.transaction(async (tx) => {
       const [province] = await tx
         .insert(provinces)
-        .values({ name: input.name })
+        .values({ name })
         // Update name to itself so the row (and its id) always comes back,
         // whether it was just inserted or already existed.
-        .onConflictDoUpdate({
-          target: provinces.name,
-          set: { name: input.name },
-        })
+        .onConflictDoUpdate({ target: provinces.name, set: { name } })
         .returning({ id: provinces.id, name: provinces.name });
 
       await tx
@@ -56,64 +73,134 @@ export class ShippingRateDao {
   }
 
   /**
-   * Every province with its fee, for the checkout province <select>. Ordered by
-   * ascending id — the seed insertion order, which is the intended UX order
-   * (Tehran first). Not by name: Postgres Persian collation is unreliable.
+   * Admin create: a new province and its rate in one transaction. Returns `null`
+   * when the (normalized) name is already taken — active or not — and then the
+   * rate is never inserted. The insert itself decides the race
+   * (`onConflictDoNothing`), so there is no check-then-insert window. Unlike
+   * `upsertProvinceWithRate`, it never touches an existing row.
    */
-  static async list(): Promise<ShippingRateRow[]> {
+  static async create(input: {
+    name: string;
+    fee: number;
+  }): Promise<AdminProvinceRow | null> {
+    return db.transaction(async (tx) => {
+      const [province] = await tx
+        .insert(provinces)
+        .values({ name: normalizeProvinceName(input.name) })
+        .onConflictDoNothing({ target: provinces.name })
+        .returning({
+          provinceId: provinces.id,
+          name: provinces.name,
+          isActive: provinces.isActive,
+        });
+      if (!province) return null;
+
+      const [rate] = await tx
+        .insert(shippingRates)
+        .values({ provinceId: province.provinceId, fee: input.fee })
+        .returning({ fee: shippingRates.fee });
+
+      return { ...province, fee: rate.fee };
+    });
+  }
+
+  /**
+   * Every province with its fee and flag, for the admin rate editor. Ordered by
+   * ascending id — the seed insertion order, which is the intended UX order
+   * (Tehran first), and a new province simply appends. Not by name: Postgres
+   * Persian collation is unreliable.
+   */
+  static async list(): Promise<AdminProvinceRow[]> {
+    return db
+      .select(adminColumns)
+      .from(provinces)
+      .innerJoin(shippingRates, hasRate)
+      .orderBy(asc(provinces.id));
+  }
+
+  /** The active provinces with their fees, id order — the storefront selects and public list. */
+  static async listActive(): Promise<ShippingRateRow[]> {
     return db
       .select(rateColumns)
       .from(provinces)
-      .innerJoin(shippingRates, eq(shippingRates.provinceId, provinces.id))
+      .innerJoin(shippingRates, hasRate)
+      .where(eq(provinces.isActive, true))
       .orderBy(asc(provinces.id));
   }
 
   /**
-   * Whether a province row with this id exists — the `provinces` table alone, no
-   * rate join. An address's `province_id` FK points at `provinces`, so a saved
-   * address is valid for any existing province whether or not a rate has been set
-   * for it; callers use this to turn a well-formed-but-unknown id into a 422
-   * instead of letting it hit the FK as a 500. (Distinct from `getByProvinceId`,
-   * which additionally requires a rate — the shape checkout's fee lookup needs.)
+   * One active province's rate by id, or `null` when it is unknown OR inactive —
+   * so checkout refuses (422) and the fee preview rejects (400) a deactivated
+   * province, and an address cannot be saved against one.
    */
-  static async provinceExists(provinceId: number): Promise<boolean> {
-    const [row] = await db
-      .select({ id: provinces.id })
-      .from(provinces)
-      .where(eq(provinces.id, provinceId))
-      .limit(1);
-    return row !== undefined;
-  }
-
-  /** One province's rate by id, or `null` when no such province exists. */
   static async getByProvinceId(
     provinceId: number,
   ): Promise<ShippingRateRow | null> {
     const [row] = await db
       .select(rateColumns)
       .from(provinces)
-      .innerJoin(shippingRates, eq(shippingRates.provinceId, provinces.id))
+      .innerJoin(shippingRates, hasRate)
+      .where(and(eq(provinces.id, provinceId), eq(provinces.isActive, true)))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /** One province by id, active or not, with its flag — or `null` when unknown. */
+  static async getByProvinceIdForAdmin(
+    provinceId: number,
+  ): Promise<AdminProvinceRow | null> {
+    const [row] = await db
+      .select(adminColumns)
+      .from(provinces)
+      .innerJoin(shippingRates, hasRate)
       .where(eq(provinces.id, provinceId))
       .limit(1);
     return row ?? null;
   }
 
+  /** A province by name (normalized first), active or not — the duplicate classifier. */
+  static async findByName(name: string): Promise<AdminProvinceRow | null> {
+    const [row] = await db
+      .select(adminColumns)
+      .from(provinces)
+      .innerJoin(shippingRates, hasRate)
+      .where(eq(provinces.name, normalizeProvinceName(name)))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /** Deactivate or reactivate a province. `null` when no such province exists. */
+  static async setActive(
+    provinceId: number,
+    isActive: boolean,
+  ): Promise<AdminProvinceRow | null> {
+    const [updated] = await db
+      .update(provinces)
+      .set({ isActive })
+      .where(eq(provinces.id, provinceId))
+      .returning({ id: provinces.id });
+    if (!updated) return null;
+    return ShippingRateDao.getByProvinceIdForAdmin(provinceId);
+  }
+
   /**
-   * Admin rate update: set a province's fee. Returns the updated joined row, or
+   * Admin rate update: set a province's fee. Returns the updated admin row, or
    * `null` when the province has no rate to update (an unknown province) — which
    * the admin route turns into its "unknown province" answer. A negative fee is
    * refused by the `shipping_rates_fee_non_negative` CHECK, not silently stored.
+   * Re-reads through the unfiltered admin lookup, so an inactive province's fee
+   * stays editable.
    */
   static async updateFee(
     provinceId: number,
     fee: number,
-  ): Promise<ShippingRateRow | null> {
+  ): Promise<AdminProvinceRow | null> {
     const [updated] = await db
       .update(shippingRates)
       .set({ fee })
       .where(eq(shippingRates.provinceId, provinceId))
       .returning({ provinceId: shippingRates.provinceId });
     if (!updated) return null;
-    return ShippingRateDao.getByProvinceId(provinceId);
+    return ShippingRateDao.getByProvinceIdForAdmin(provinceId);
   }
 }

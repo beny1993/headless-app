@@ -43,6 +43,12 @@ import {
   productUpdateRoute,
 } from './routes/admin-products';
 import {
+  provinceCreateHandler,
+  provinceCreateRoute,
+  provinceToggleHandler,
+  provinceToggleRoute,
+} from './routes/admin-provinces';
+import {
   categoryListHandler,
   categoryListRoute,
   productDetailHandler,
@@ -216,6 +222,11 @@ admin.openapi(adminOrderTransitionRoute, adminOrderTransitionHandler);
 // active/inactive. Same `/admin/*` guard — covered by the wildcard above.
 admin.openapi(discountCreateRoute, discountCreateHandler);
 admin.openapi(discountToggleRoute, discountToggleHandler);
+// Admin province management (`Story - Admin Province Management`): add a province
+// and deactivate/reactivate one. Same `/admin/*` guard — covered by the wildcard
+// above. The fee update stays on `PUT /shipping/rates/{provinceId}`.
+admin.openapi(provinceCreateRoute, provinceCreateHandler);
+admin.openapi(provinceToggleRoute, provinceToggleHandler);
 // Admin categories (`Story - Admin Category Management`): create, update and
 // delete. Same `/admin/*` guard — covered by the wildcard above, so no new mount,
 // and the public `GET /categories` stays outside it.

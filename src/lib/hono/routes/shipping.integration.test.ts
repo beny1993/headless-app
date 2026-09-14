@@ -17,6 +17,7 @@ import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { API_PATHS, apiShippingRatePath } from '@/lib/constant/paths';
 import type { ApiResponse } from '@/lib/hono/envelope';
 import type { ShippingRateResponse } from '@/lib/hono/routes/shipping';
+import { SHIPPING_FEE_MESSAGE } from '@/lib/shipping/shipping-query';
 
 const mocks = vi.hoisted(() => ({ getSession: vi.fn() }));
 vi.mock('@/lib/auth', () => ({ isAuthenticatedUser: mocks.getSession }));
@@ -153,6 +154,7 @@ describe.skipIf(!databaseReachable)('shipping API', () => {
         provinceId: created.provinceId,
         name: created.name,
         fee: 72_000,
+        isActive: true,
       });
       // Persisted, not just echoed.
       expect(
@@ -196,11 +198,16 @@ describe.skipIf(!databaseReachable)('shipping API', () => {
       expect((await putRate(2_147_483_600, { fee: 30_000 })).status).toBe(400);
     });
 
-    it('rejects a negative fee from an admin with 400', async () => {
+    it('rejects a negative fee from an admin with 400, in Persian', async () => {
       const created = await throwaway(40_000);
       asRole(ROLES.ADMIN);
 
-      expect((await putRate(created.provinceId, { fee: -1 })).status).toBe(400);
+      const response = await putRate(created.provinceId, { fee: -1 });
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as ApiResponse<never>;
+      expect(body.status === 'error' && body.errors).toEqual([
+        `fee: ${SHIPPING_FEE_MESSAGE}`,
+      ]);
     });
   });
 });

@@ -42,11 +42,23 @@ export const provinceIdParamSchema = z.coerce
   .max(INT4_MAX);
 
 /**
+ * The one fee message, Persian because it is user-facing: the API's `errors[]`
+ * (the rate PUT and the province create) and the admin form both show it, so
+ * `PROVINCE_MESSAGES.fee` derives from this rather than restating it.
+ */
+export const SHIPPING_FEE_MESSAGE =
+  'هزینه ارسال باید عددی صحیح و صفر یا بیشتر باشد (تومان).';
+
+/**
  * The admin rate-update fee: integer Toman, zero allowed.
  *
  * A JSON body carries a real number, so no coercion — a fee sent as a string is
  * a bug worth a 400, not something to silently coerce. `.nonnegative()` matches
  * the `shipping_rates.fee >= 0` CHECK: free shipping is a valid rate, only a
- * negative one is illegal. `.int()` keeps it whole and safe.
+ * negative one is illegal. `.int()` keeps it whole and safe. The message sits on
+ * the base type too, or a string/null/NaN fee falls back to zod's English text.
  */
-export const shippingFeeSchema = z.number().int().nonnegative();
+export const shippingFeeSchema = z
+  .number({ error: SHIPPING_FEE_MESSAGE })
+  .int(SHIPPING_FEE_MESSAGE)
+  .nonnegative(SHIPPING_FEE_MESSAGE);

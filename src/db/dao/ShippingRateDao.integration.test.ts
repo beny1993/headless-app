@@ -6,7 +6,7 @@
 // Every row is a throwaway province («استان آزمایشی-<token>») cleaned up in
 // afterEach — the 31 seeded provinces are never mutated, so the suite is correct
 // against the shared dev database and leaves the seed untouched.
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { provinces, shippingRates } from '@/db/schema/shipping';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
@@ -16,6 +16,14 @@ const { ShippingRateDao } = await importWithDb(
 );
 
 const token = () => crypto.randomUUID().slice(0, 12);
+
+/** Named code points, so a failure reads as «which letter», not two identical glyphs. */
+const ARABIC_KAF = '\u0643';
+const PERSIAN_KEHEH = '\u06A9';
+const NBSP = '\u00A0';
+const ZWSP = '\u200B';
+const RLM = '\u200F';
+const ZWNJ = '\u200C';
 
 describe.skipIf(!databaseReachable)('ShippingRateDao', () => {
   const createdProvinceIds: number[] = [];
@@ -82,6 +90,35 @@ describe.skipIf(!databaseReachable)('ShippingRateDao', () => {
 
       expect(reseeded.fee).toBe(99_000);
     });
+
+    it('never reactivates a province the admin deactivated', async () => {
+      // The conflict set is `{ name }` only — load-bearing now: a staging re-seed
+      // must not undo the admin's deactivation (nor the tuned fee). Read back
+      // through the admin lookup, since the storefront one hides inactive rows.
+      const seeded = await seedOne(42_000);
+      await ShippingRateDao.updateFee(seeded.provinceId, 99_000);
+      await ShippingRateDao.setActive(seeded.provinceId, false);
+
+      await ShippingRateDao.upsertProvinceWithRate({
+        name: seeded.name,
+        fee: 42_000,
+      });
+
+      expect(
+        await ShippingRateDao.getByProvinceIdForAdmin(seeded.provinceId),
+      ).toEqual({ ...seeded, fee: 99_000, isActive: false });
+    });
+
+    it('stores the name normalized', async () => {
+      const t = token();
+      const row = await ShippingRateDao.upsertProvinceWithRate({
+        name: ` ${ARABIC_KAF}رمان${NBSP}${NBSP}آزمایشی-${t} `,
+        fee: 1,
+      });
+      createdProvinceIds.push(row.provinceId);
+
+      expect(row.name).toBe(`${PERSIAN_KEHEH}رمان آزمایشی-${t}`);
+    });
   });
 
   describe('list', () => {
@@ -99,6 +136,33 @@ describe.skipIf(!databaseReachable)('ShippingRateDao', () => {
         createdProvinceIds.includes(r.provinceId),
       );
       expect(mine).toHaveLength(2);
+    });
+
+    it('includes an inactive province, flagged — the admin read', async () => {
+      const active = await seedOne();
+      const inactive = await seedOne();
+      await ShippingRateDao.setActive(inactive.provinceId, false);
+
+      const rows = await ShippingRateDao.list();
+
+      expect(rows).toContainEqual({ ...active, isActive: true });
+      expect(rows).toContainEqual({ ...inactive, isActive: false });
+    });
+  });
+
+  describe('listActive', () => {
+    it('excludes an inactive province, keeping the storefront shape and id order', async () => {
+      const active = await seedOne();
+      const inactive = await seedOne();
+      await ShippingRateDao.setActive(inactive.provinceId, false);
+
+      const rows = await ShippingRateDao.listActive();
+      const ids = rows.map((r) => r.provinceId);
+
+      expect(rows).toContainEqual(active);
+      expect(ids).not.toContain(inactive.provinceId);
+      expect(ids).toEqual([...ids].sort((a, b) => a - b));
+      expect(rows.every((r) => !('isActive' in r))).toBe(true);
     });
   });
 
@@ -120,6 +184,32 @@ describe.skipIf(!databaseReachable)('ShippingRateDao', () => {
       // "unknown province" answer.
       expect(await ShippingRateDao.getByProvinceId(2_147_483_600)).toBeNull();
     });
+
+    it('returns null for an inactive province — checkout never prices it', async () => {
+      const seeded = await seedOne();
+      await ShippingRateDao.setActive(seeded.provinceId, false);
+
+      expect(
+        await ShippingRateDao.getByProvinceId(seeded.provinceId),
+      ).toBeNull();
+    });
+  });
+
+  describe('getByProvinceIdForAdmin', () => {
+    it('returns an inactive province with its flag', async () => {
+      const seeded = await seedOne(50_000);
+      await ShippingRateDao.setActive(seeded.provinceId, false);
+
+      expect(
+        await ShippingRateDao.getByProvinceIdForAdmin(seeded.provinceId),
+      ).toEqual({ ...seeded, isActive: false });
+    });
+
+    it('returns null for an unknown id', async () => {
+      expect(
+        await ShippingRateDao.getByProvinceIdForAdmin(2_147_483_600),
+      ).toBeNull();
+    });
   });
 
   describe('updateFee', () => {
@@ -135,7 +225,17 @@ describe.skipIf(!databaseReachable)('ShippingRateDao', () => {
         provinceId: seeded.provinceId,
         name: seeded.name,
         fee: 60_000,
+        isActive: true,
       });
+    });
+
+    it('succeeds on an inactive province — the admin tunes it before reactivating', async () => {
+      const seeded = await seedOne(40_000);
+      await ShippingRateDao.setActive(seeded.provinceId, false);
+
+      expect(
+        await ShippingRateDao.updateFee(seeded.provinceId, 65_000),
+      ).toEqual({ ...seeded, fee: 65_000, isActive: false });
     });
 
     it('accepts a free (zero) fee', async () => {
@@ -156,6 +256,127 @@ describe.skipIf(!databaseReachable)('ShippingRateDao', () => {
       await expect(
         ShippingRateDao.updateFee(seeded.provinceId, -1),
       ).rejects.toThrow();
+    });
+  });
+
+  describe('create', () => {
+    /** Create a throwaway through `create`, remembered for teardown. */
+    const createOne = async (name: string, fee = 30_000) => {
+      const row = await ShippingRateDao.create({ name, fee });
+      if (row) createdProvinceIds.push(row.provinceId);
+      return row;
+    };
+
+    const rateCount = async () =>
+      (await testDb.select({ id: shippingRates.id }).from(shippingRates))
+        .length;
+
+    it('inserts an active province with its rate and returns the admin row', async () => {
+      const t = token();
+      const row = await createOne(` ${ARABIC_KAF}رمان-آزمایشی-${t} `, 0);
+
+      expect(row).toEqual({
+        provinceId: expect.any(Number),
+        name: `${PERSIAN_KEHEH}رمان-آزمایشی-${t}`,
+        fee: 0,
+        isActive: true,
+      });
+      expect(
+        await ShippingRateDao.getByProvinceIdForAdmin(row!.provinceId),
+      ).toEqual(row);
+    });
+
+    it('returns null on a duplicate name and writes no rate', async () => {
+      const existing = await createOne(`استان آزمایشی-${token()}`, 30_000);
+      const before = await rateCount();
+
+      expect(await createOne(existing!.name, 99_000)).toBeNull();
+
+      expect(await rateCount()).toBe(before);
+      expect(
+        (await ShippingRateDao.getByProvinceIdForAdmin(existing!.provinceId))
+          ?.fee,
+      ).toBe(30_000);
+    });
+
+    it('returns null when the existing duplicate is inactive — never reactivates it', async () => {
+      const existing = await createOne(`استان آزمایشی-${token()}`);
+      await ShippingRateDao.setActive(existing!.provinceId, false);
+
+      expect(await createOne(existing!.name)).toBeNull();
+      expect(
+        (await ShippingRateDao.getByProvinceIdForAdmin(existing!.provinceId))
+          ?.isActive,
+      ).toBe(false);
+    });
+
+    it('treats the name with an invisible character appended as the same name', async () => {
+      const existing = await createOne(`استان آزمایشی-${token()}`);
+      const before = await rateCount();
+
+      for (const invisible of [ZWSP, RLM, ZWNJ]) {
+        expect(await createOne(`${existing!.name}${invisible}`)).toBeNull();
+      }
+      expect(await rateCount()).toBe(before);
+    });
+
+    it('treats an Arabic-kaf spelling as the same name', async () => {
+      const t = token();
+      await createOne(`${PERSIAN_KEHEH}رمان-آزمایشی-${t}`);
+
+      expect(await createOne(`${ARABIC_KAF}رمان-آزمایشی-${t}`)).toBeNull();
+    });
+
+    it('is atomic — a rate the CHECK refuses leaves no province behind', async () => {
+      const name = `استان آزمایشی-${token()}`;
+
+      await expect(ShippingRateDao.create({ name, fee: -1 })).rejects.toThrow();
+
+      const leaked = await testDb
+        .select({ id: provinces.id })
+        .from(provinces)
+        .where(eq(provinces.name, name));
+      createdProvinceIds.push(...leaked.map((r) => r.id));
+      expect(leaked).toEqual([]);
+    });
+  });
+
+  describe('findByName', () => {
+    it('finds a province by an un-normalized spelling, with its flag', async () => {
+      const seeded = await seedOne();
+      const [head, tail] = [seeded.name.slice(0, 5), seeded.name.slice(5)];
+
+      // «استان» + NBSP + « آزمایشی-…»: the run collapses to the stored single space.
+      expect(
+        await ShippingRateDao.findByName(`  ${head}${NBSP}${tail}${NBSP}`),
+      ).toEqual({ ...seeded, isActive: true });
+    });
+
+    it('returns null for a name nobody has', async () => {
+      expect(
+        await ShippingRateDao.findByName(`استان ناموجود-${token()}`),
+      ).toBeNull();
+    });
+  });
+
+  describe('setActive', () => {
+    it('deactivates and reactivates, returning the admin row each time', async () => {
+      const seeded = await seedOne();
+
+      expect(await ShippingRateDao.setActive(seeded.provinceId, false)).toEqual(
+        { ...seeded, isActive: false },
+      );
+      expect(await ShippingRateDao.setActive(seeded.provinceId, true)).toEqual({
+        ...seeded,
+        isActive: true,
+      });
+      expect(await ShippingRateDao.getByProvinceId(seeded.provinceId)).toEqual(
+        seeded,
+      );
+    });
+
+    it('returns null for an unknown id', async () => {
+      expect(await ShippingRateDao.setActive(2_147_483_600, false)).toBeNull();
     });
   });
 });

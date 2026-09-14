@@ -23,6 +23,7 @@
 //     overrides; only `description` keeps tab and line breaks.
 import { z } from 'zod';
 import { toPersianDigits } from '@/lib/format';
+import { FORBIDDEN_TEXT_CHARS, VISIBLE_CHAR } from '@/lib/validation/text';
 import { PET_TYPES } from './product-query';
 import { MAX_SLUG_LENGTH } from './sku';
 
@@ -63,21 +64,11 @@ export const PRODUCT_MESSAGES = {
 /** Latin URL segment; the same shape the categories schema documents. */
 export const SLUG_PATTERN = /^[a-z0-9-]{3,}$/;
 
-/**
- * Characters no free-text field may carry, as escapes (never typed): every
- * control character — NUL among them, which Postgres refuses as a 500 — and the
- * bidi embeddings, overrides and isolates (U+202A–U+202E, U+2066–U+2069), which
- * reorder the text around them wherever it is shown. ZWNJ is deliberately
- * allowed: Persian words need it.
- */
-const FORBIDDEN_CHARS = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/u;
-
-/** At least one letter, digit, punctuation mark or symbol — `trim()` leaves ZWNJ. */
-const VISIBLE_CHAR = /[\p{L}\p{N}\p{P}\p{S}]/u;
-
 /** No forbidden characters; `multiline` lets tab, line feed and carriage return through. */
 const hasNoForbiddenChars = (multiline: boolean) => (value: string) =>
-  !FORBIDDEN_CHARS.test(multiline ? value.replace(/[\t\n\r]/g, '') : value);
+  !FORBIDDEN_TEXT_CHARS.test(
+    multiline ? value.replace(/[\t\n\r]/g, '') : value,
+  );
 
 /**
  * A required single-line text field: trimmed, `min`–`max` long, free of forbidden
