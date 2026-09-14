@@ -5,7 +5,7 @@
  *
  * It dispatches one throwaway code through the same `sendOtpSms` the login
  * endpoint calls, so a pass proves the whole chain: the key is accepted, the
- * template id exists, the `#CODE#` parameter substitutes, and the number is
+ * template id exists, the `#OTP#` parameter substitutes, and the number is
  * reachable. The mocked unit tests cannot check any of that.
  *
  * NOT part of `pnpm test` — it needs real credentials and sends a real message.
