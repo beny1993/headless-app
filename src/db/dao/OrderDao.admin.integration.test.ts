@@ -1,6 +1,6 @@
 // Admin/reporting reads on OrderDao — needs a live Postgres (src/db/test-db.ts).
 // These prove two money-critical things a mocked db cannot:
-//   · `listForAdmin` returns every order (not user-scoped), newest first, with a
+//   · `pageForAdmin` pages through every order (not user-scoped), newest first, with a
 //     correct line-item count and a paid-payment flag derived by subquery (never
 //     an attempt-multiplying join).
 //   · the revenue set is exactly «a booked, actually-paid sale» — status in
@@ -70,7 +70,7 @@ describe.skipIf(!databaseReachable)('OrderDao admin & reporting reads', () => {
     return order;
   };
 
-  describe('listForAdmin', () => {
+  describe('pageForAdmin', () => {
     it('lists orders (not user-scoped), newest first, with item counts and the paid flag', async () => {
       const paid = await makeOrder({
         status: ORDER_STATUSES.PAID,
@@ -83,7 +83,10 @@ describe.skipIf(!databaseReachable)('OrderDao admin & reporting reads', () => {
         payment: PAYMENT_STATUSES.PENDING,
       });
 
-      const rows = await OrderDao.listForAdmin();
+      const { items: rows } = await OrderDao.pageForAdmin({
+        page: 1,
+        limit: 50,
+      });
       const mine = rows.filter((r) => [paid.id, pending.id].includes(r.id));
       // Two different users' orders both show up — the list is store-wide.
       expect(mine).toHaveLength(2);
@@ -113,12 +116,49 @@ describe.skipIf(!databaseReachable)('OrderDao admin & reporting reads', () => {
         payment: PAYMENT_STATUSES.PENDING,
       });
 
-      const rows = await OrderDao.listForAdmin(ORDER_STATUSES.SHIPPED);
+      const { items: rows } = await OrderDao.pageForAdmin({
+        status: ORDER_STATUSES.SHIPPED,
+        page: 1,
+        limit: 50,
+      });
       const ids = rows.map((r) => r.id);
       expect(ids).toContain(shipped.id);
       expect(ids).not.toContain(processing.id);
       // Every returned row really is in the requested status.
       expect(rows.every((r) => r.status === ORDER_STATUSES.SHIPPED)).toBe(true);
+    });
+
+    it('pages newest first and counts every order in the filter', async () => {
+      const delivered = { status: ORDER_STATUSES.DELIVERED, limit: 2 };
+      // Baseline-delta: the dev DB already holds delivered orders from QA.
+      const { total: before } = await OrderDao.pageForAdmin({
+        ...delivered,
+        page: 1,
+      });
+      const oldest = await makeOrder({
+        status: ORDER_STATUSES.DELIVERED,
+        method: PAYMENT_METHODS.COD,
+      });
+      const middle = await makeOrder({
+        status: ORDER_STATUSES.DELIVERED,
+        method: PAYMENT_METHODS.COD,
+      });
+      const newest = await makeOrder({
+        status: ORDER_STATUSES.DELIVERED,
+        method: PAYMENT_METHODS.COD,
+      });
+
+      const first = await OrderDao.pageForAdmin({ ...delivered, page: 1 });
+      const second = await OrderDao.pageForAdmin({ ...delivered, page: 2 });
+
+      expect(first.total).toBe(before + 3);
+      expect(second.total).toBe(before + 3);
+      // The count is the filter's own: every delivered order and no other.
+      expect(first.total).toBe(
+        await OrderDao.countByStatus(ORDER_STATUSES.DELIVERED),
+      );
+      expect(first.items.map((row) => row.id)).toEqual([newest.id, middle.id]);
+      expect(second.items[0]?.id).toBe(oldest.id);
     });
   });
 

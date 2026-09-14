@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ROLES } from '@/db/schema/auth';
 
-const mocks = vi.hoisted(() => ({ getSession: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  getSession: vi.fn(),
+  captureException: vi.fn(),
+}));
+
+vi.mock('@sentry/nextjs', () => ({
+  captureException: mocks.captureException,
+  captureMessage: vi.fn(),
+}));
 
 // The module edge: the middleware's job is the decision, not Better Auth's
 // session lookup, which has its own coverage in auth.integration.test.ts.
@@ -105,6 +113,19 @@ describe('requireAdmin', () => {
     mocks.getSession.mockRejectedValue(new Error('connection refused'));
 
     expect((await call(requireAdmin)).status).toBe(401);
+  });
+
+  it('reports the failed session lookup rather than passing it off as a 401', async () => {
+    // The client sees the same 401 either way, so a database blip is otherwise
+    // indistinguishable from "not signed in" — invisible until someone reads
+    // the container log for an unrelated reason.
+    const failure = new Error('connection refused');
+    mocks.captureException.mockClear();
+    mocks.getSession.mockRejectedValue(failure);
+
+    await call(requireAdmin);
+
+    expect(mocks.captureException).toHaveBeenCalledWith(failure);
   });
 });
 

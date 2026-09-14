@@ -3,6 +3,7 @@ import {
   adminContentAreaPath,
   API_PATHS,
   apiAdminContentPath,
+  apiAdminProvincePath,
   PATHS,
   productPath,
   PROTECTED_PATHS,
@@ -75,5 +76,12 @@ describe('adminContentAreaPath', () => {
     expect(adminContentAreaPath('footer')).toBe(
       `${PROTECTED_PATHS.CONTENT}/footer`,
     );
+  });
+});
+
+describe('apiAdminProvincePath', () => {
+  it('builds the admin toggle path for a province id', () => {
+    expect(apiAdminProvincePath(7)).toBe(`${API_PATHS.ADMIN_PROVINCES}/7`);
+    expect(API_PATHS.ADMIN_PROVINCES).toBe('/api/admin/provinces');
   });
 });

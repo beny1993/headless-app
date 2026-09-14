@@ -737,3 +737,61 @@ describe('resending a code', () => {
     expect(screen.getByText('۵:۰۰')).toBeDefined();
   });
 });
+
+describe('the staging code echo', () => {
+  // On a deployed staging build the code is written to the server log and
+  // nowhere else, so the response carries it and the page prints it. In
+  // production the field is absent — nothing to render, no branch to disable.
+  const echo = (devCode: string) => ({
+    data: { message: 'code sent', devCode },
+    error: null,
+  });
+
+  it('shows the code the server echoed back', async () => {
+    sendOtp.mockResolvedValue(echo('482913'));
+    renderForm();
+
+    await requestCodeFor('09121234567');
+
+    expect(screen.getByText('482913')).toBeDefined();
+  });
+
+  it('shows nothing when the response carries no code — production', async () => {
+    renderForm();
+
+    await requestCodeFor('09121234567');
+
+    expect(screen.queryByText(/حالت آزمایشی/)).toBeNull();
+  });
+
+  it('replaces the code shown when a resend brings a new one', async () => {
+    sendOtp.mockResolvedValue(echo('482913'));
+    renderForm();
+    await requestCodeFor('09121234567');
+    for (let second = 0; second < RESEND_SECONDS; second++) {
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+      });
+    }
+    sendOtp.mockResolvedValue(echo('111111'));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /ارسال دوباره/ }));
+    });
+
+    expect(screen.queryByText('482913')).toBeNull();
+    expect(screen.getByText('111111')).toBeDefined();
+  });
+
+  it('drops the code when the shopper goes back to edit the number', async () => {
+    sendOtp.mockResolvedValue(echo('482913'));
+    renderForm();
+    await requestCodeFor('09121234567');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'ویرایش شماره' }));
+    });
+
+    expect(screen.queryByText('482913')).toBeNull();
+  });
+});

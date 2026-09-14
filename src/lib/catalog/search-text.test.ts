@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeSearchText } from './search-text';
+import { foldPersianLetters, normalizeSearchText } from './search-text';
 
 /**
  * Named code points, so a failure reads as «which character» rather than as two
@@ -160,5 +160,13 @@ describe('normalizeSearchText', () => {
       // matches nothing.
       expect(normalizeSearchText(`  ${ZWNJ} ${ZWNJ}  `)).toBe('');
     });
+  });
+});
+
+describe('foldPersianLetters', () => {
+  it('folds only the Arabic yeh/kaf letters — ZWNJ, digits and spacing survive', () => {
+    expect(
+      foldPersianLetters(`${ARABIC_KAF}${ALEF_MAKSURA}\u200C۲  ${ARABIC_YEH}`),
+    ).toBe(`${PERSIAN_KEHEH}${PERSIAN_YEH}\u200C۲  ${PERSIAN_YEH}`);
   });
 });

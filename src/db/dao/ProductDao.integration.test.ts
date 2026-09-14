@@ -71,6 +71,67 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
     createdCategoryIds.length = 0;
   });
 
+  describe('stock concurrency during admin edits', () => {
+    it('preserves a checkout reservation when a stale form changes only the title', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, { stock: 1 }),
+      );
+      await ProductDao.decrementStock(testDb, product.id, 1);
+
+      const saved = await ProductDao.update(
+        product.id,
+        { title: 'عنوان تازه', stock: 1 },
+        1,
+      );
+
+      expect(saved).toMatchObject({ title: 'عنوان تازه', stock: 0 });
+    });
+
+    it('rejects a deliberate stock edit after inventory changed, leaving other fields untouched', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, { stock: 1 }),
+      );
+      await ProductDao.decrementStock(testDb, product.id, 1);
+
+      await expect(
+        ProductDao.update(product.id, { title: 'عنوان تازه', stock: 5 }, 1),
+      ).rejects.toMatchObject({ name: 'StockConflictError' });
+      const [stored] = await testDb
+        .select()
+        .from(products)
+        .where(eq(products.id, product.id));
+      expect(stored).toMatchObject({ title: product.title, stock: 0 });
+    });
+
+    it('handles a stock-only no-op and a missing product without writing inventory', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, { stock: 1 }),
+      );
+      expect(
+        await ProductDao.update(product.id, { stock: 1 }, 1),
+      ).toMatchObject({ stock: 1 });
+      expect(
+        await ProductDao.update(crypto.randomUUID(), { stock: 2 }, 1),
+      ).toBeNull();
+      expect(
+        await ProductDao.update(crypto.randomUUID(), { stock: 1 }, 1),
+      ).toBeNull();
+    });
+
+    it('applies an intentional stock change when the observed inventory is current', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, { stock: 1 }),
+      );
+      expect(
+        await ProductDao.update(product.id, { stock: 5 }, 1),
+      ).toMatchObject({ stock: 5 });
+    });
+  });
+
   describe('list — the storefront read', () => {
     it('returns active products of the requested category', async () => {
       const category = await makeCategory();
@@ -594,6 +655,59 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
           }),
         ),
       ).toEqual([cat.id]);
+    });
+  });
+
+  describe('pageForAdmin', () => {
+    it('slices the admin listing into pages and counts the whole filtered result', async () => {
+      const category = await makeCategory();
+      const a = await ProductDao.create(makeProduct(category));
+      const b = await ProductDao.create(makeProduct(category));
+      const c = await ProductDao.create(makeProduct(category));
+      await ProductDao.softDelete(a.id);
+
+      const filter = { categorySlug: category.slug, limit: 2 };
+      const first = await ProductDao.pageForAdmin({ ...filter, page: 1 });
+      const second = await ProductDao.pageForAdmin({ ...filter, page: 2 });
+      const past = await ProductDao.pageForAdmin({ ...filter, page: 5 });
+
+      expect([first.total, second.total, past.total]).toEqual([3, 3, 3]);
+      expect(first.items).toHaveLength(2);
+      expect(second.items).toHaveLength(1);
+      expect(past.items).toEqual([]);
+      // Page after page is the full listing in its own order (newest first),
+      // the soft-deleted product included.
+      const all = await ProductDao.listForAdmin({
+        categorySlug: category.slug,
+      });
+      expect([...first.items, ...second.items].map((row) => row.id)).toEqual(
+        all.map((row) => row.id),
+      );
+      expect(all.map((row) => row.id).sort()).toEqual(
+        [a.id, b.id, c.id].sort(),
+      );
+    });
+
+    it('applies the same filters as the full listing', async () => {
+      const category = await makeCategory();
+      const active = await ProductDao.create(makeProduct(category));
+      const removed = await ProductDao.create(makeProduct(category));
+      await ProductDao.softDelete(removed.id);
+
+      const page = (active: boolean) =>
+        ProductDao.pageForAdmin({
+          categorySlug: category.slug,
+          active,
+          page: 1,
+          limit: 10,
+        });
+      const inactiveOnly = await page(false);
+      const activeOnly = await page(true);
+
+      expect(inactiveOnly.items.map((row) => row.id)).toEqual([removed.id]);
+      expect(inactiveOnly.total).toBe(1);
+      expect(activeOnly.items.map((row) => row.id)).toEqual([active.id]);
+      expect(activeOnly.total).toBe(1);
     });
   });
 

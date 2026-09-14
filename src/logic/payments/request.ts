@@ -6,6 +6,7 @@
 // order must belong to the SESSION user (passed by the route from `c.get('user')`,
 // never the body). A mismatch or a missing order is the SAME 404 — the read never
 // leaks that someone else's order exists.
+import { db } from '@/db';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { PaymentDao } from '@/db/dao/PaymentDao';
 import { API_PATHS } from '@/lib/constant/paths';
@@ -76,12 +77,23 @@ export async function requestZarinpalPayment(
   // failure here just means the shopper retries; nothing is charged.
   // ponytail: request throw → shared 500 for v1; a 502 mapping (gateway is down,
   // not us) is a nicety to add if request failures become common.
-  await PaymentDao.create({
-    orderId: order.id,
-    method: PAYMENT_METHODS.ZARINPAL,
-    status: PAYMENT_STATUSES.PENDING,
-    amount: order.total,
-    authority,
+  await db.transaction(async (tx) => {
+    // The network request above holds no DB lock. Expiry/cancellation/payment
+    // may have won meanwhile, so re-check under the same order lock expiry uses.
+    const status = await OrderDao.lockStatus(tx, order.id);
+    if (status !== ORDER_STATUSES.PENDING_PAYMENT) {
+      throw new PaymentRequestError(422, NOT_AWAITING_PAYMENT);
+    }
+    await PaymentDao.create(
+      {
+        orderId: order.id,
+        method: PAYMENT_METHODS.ZARINPAL,
+        status: PAYMENT_STATUSES.PENDING,
+        amount: order.total,
+        authority,
+      },
+      tx,
+    );
   });
 
   return { redirectUrl };

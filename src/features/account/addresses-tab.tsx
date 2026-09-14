@@ -1,13 +1,14 @@
 'use client';
 
 // The «آدرس‌ها» tab: the customer's saved address book, with add / edit / delete.
-// Same seeded-from-props, own-state, owner-scoped-API shape as the pets tab.
+// AccountView owns the saved list so it survives this tab unmounting; writes use
+// the same owner-scoped API shape as the pets tab.
 //
 // A saved address is a checkout delivery address plus a label, so the fields (and
 // their validation) match the checkout address step exactly — the same shared
 // contract drives both. The postal code is normalized to ASCII on save, as
 // checkout does, so a code typed on a Persian keyboard stores canonically.
-import { useState } from 'react';
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import { AlertCircle, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   delData,
@@ -20,6 +21,7 @@ import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiMeAddressPath } from '@/lib/constant/paths';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
 import { toAsciiDigits, toPersianDigits } from '@/lib/format';
+import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
 import {
   controlClass,
   FieldShell,
@@ -72,13 +74,14 @@ const toBody = (form: FormValues): AddressInput => ({
 });
 
 export function AddressesTab({
-  initialAddresses,
+  addresses,
+  onAddressesChange,
   provinces,
 }: {
-  initialAddresses: AddressResponse[];
+  addresses: AddressResponse[];
+  onAddressesChange: Dispatch<SetStateAction<AddressResponse[]>>;
   provinces: ProvinceOption[];
 }) {
-  const [addresses, setAddresses] = useState(initialAddresses);
   const [editing, setEditing] = useState<{ id: string | null } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
@@ -164,7 +167,10 @@ export function AddressesTab({
                 onCancel={() => setPendingDelete(null)}
                 onConfirm={async () => {
                   await delData(apiMeAddressPath(address.id));
-                  setAddresses((prev) =>
+                  setEditing((current) =>
+                    current?.id === address.id ? null : current,
+                  );
+                  onAddressesChange((prev) =>
                     prev.filter((a) => a.id !== address.id),
                   );
                   setPendingDelete(null);
@@ -186,7 +192,7 @@ export function AddressesTab({
           }
           onCancel={() => setEditing(null)}
           onSaved={(address) => {
-            setAddresses((prev) =>
+            onAddressesChange((prev) =>
               editing.id
                 ? prev.map((a) => (a.id === address.id ? address : a))
                 : [...prev, address],
@@ -273,6 +279,18 @@ function AddressForm({
   const [topError, setTopError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
 
+  // An address saved against a province the admin has since deactivated: its id
+  // is not among the (active) options, so React would display the first enabled
+  // one — which re-picking fires no change for. The select gets '' instead,
+  // showing its placeholder, while state keeps the stale id. Derived at render,
+  // and `save` refuses it — the API's 422 is the backstop, not the experience.
+  const staleProvince =
+    form.provinceId !== '' &&
+    !provinces.some((p) => String(p.provinceId) === form.provinceId);
+  const provinceError =
+    fieldErrors.provinceId ??
+    (staleProvince ? STALE_PROVINCE_MESSAGE : undefined);
+
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     setFieldErrors((prev) => {
@@ -295,6 +313,7 @@ function AddressForm({
     if (!form.recipientPhone.trim())
       errors.recipientPhone = 'شماره تماس گیرنده را وارد کن.';
     if (!form.provinceId) errors.provinceId = 'استان را انتخاب کن.';
+    else if (staleProvince) errors.provinceId = STALE_PROVINCE_MESSAGE;
     if (!form.city.trim()) errors.city = 'شهر را وارد کن.';
     if (form.addressLine.trim().length < 10)
       errors.addressLine = 'آدرس کامل را وارد کن (حداقل ۱۰ حرف).';
@@ -355,20 +374,14 @@ function AddressForm({
           hint="مثلاً خانه یا محل کار"
           umami="account-addresses-title"
         />
-        <FieldShell
-          id="addr-province"
-          label="استان"
-          error={fieldErrors.provinceId}
-        >
+        <FieldShell id="addr-province" label="استان" error={provinceError}>
           <select
             id="addr-province"
-            value={form.provinceId}
+            value={staleProvince ? '' : form.provinceId}
             onChange={(event) => set('provinceId', event.target.value)}
-            aria-invalid={Boolean(fieldErrors.provinceId)}
-            aria-describedby={
-              fieldErrors.provinceId ? 'addr-province-error' : undefined
-            }
-            className={controlClass(Boolean(fieldErrors.provinceId))}
+            aria-invalid={Boolean(provinceError)}
+            aria-describedby={provinceError ? 'addr-province-error' : undefined}
+            className={controlClass(Boolean(provinceError))}
             data-umami-event="account-addresses-province"
           >
             <option value="" disabled>

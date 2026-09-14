@@ -14,6 +14,7 @@ import {
 import { sendOtpSms } from '@/lib/sms';
 import { getAppBaseUrl, getEnvVariable, VARS } from '@/lib/utils/env';
 import { assertOtpSendAllowed } from './otp-guard';
+import { rememberOtp, takeOtp } from './otp-echo';
 import { OTP_CODE_LENGTH } from './otp-throttle';
 import {
   INVALID_PHONE_MESSAGE,
@@ -65,6 +66,37 @@ export const auth = betterAuth({
   },
   advanced: {
     cookiePrefix: 'token',
+    ipAddress: {
+      // Cloudflare proxies the domain, so the true client IP arrives in
+      // `CF-Connecting-IP` — Cloudflare sets it itself and overwrites any
+      // client-supplied copy, so it cannot be forged *through* Cloudflare.
+      //
+      // Without this the rate limiter below is useless here. Better Auth's
+      // default reads `x-forwarded-for` and trusts it only when it holds a
+      // SINGLE address; behind Cloudflare + Traefik it holds either the
+      // Cloudflare edge address (so every visitor through one Cloudflare colo
+      // shares a bucket) or two hops (so `getIp` returns null and EVERY request
+      // collapses into the one shared `no-trusted-ip` bucket — 3 OTP sends per
+      // minute for the entire shop). Neither failure is visible in a log.
+      //
+      // **This is only sound while the origin refuses non-Cloudflare traffic.**
+      // Reachable directly, the header is attacker-supplied and a forged value
+      // per request mints a fresh bucket each time. Lock 443 to Cloudflare's
+      // published ranges (or use a Tunnel). The per-phone `otp_send_log`
+      // throttle bounds the SMS bill either way; this axis bounds the noise.
+      //
+      // `x-forwarded-for` stays as the fallback for a grey-clouded (DNS-only)
+      // domain and for local/integration runs, which send it directly.
+      //
+      // Deliberately NO `trustedProxies`. It looks like the tidier fix, but it
+      // switches the forwarded-header branch to a right-to-left chain walk that
+      // treats every listed range as infrastructure — and naming the private
+      // ranges a Docker Traefik sits in (10.0.0.0/8) would then swallow the
+      // 10.99.x.x addresses `auth.integration.test.ts` uses as CLIENTS,
+      // resolving them to null and putting the whole suite in one bucket. The
+      // Cloudflare header removes the need to walk the chain at all.
+      ipAddressHeaders: ['cf-connecting-ip', 'x-forwarded-for'],
+    },
   },
   session: {
     // Thirty days. The back office's old six hours was an email-OTP setting;
@@ -133,6 +165,25 @@ export const auth = betterAuth({
 
       if (ctx.path === SEND_OTP_PATH) await assertOtpSendAllowed(phone);
     }),
+
+    /**
+     * Staging only: puts the code just sent into the response body, so the
+     * login form can show it (see ./otp-echo.ts for why that is safe to ship
+     * switched off, and only that).
+     *
+     * `takeOtp` answers `undefined` whenever the echo is off — which is also
+     * what makes the failure case correct: after hooks still run when the
+     * handler threw, and returning a body there would turn a failed send into
+     * a cheerful 200.
+     */
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== SEND_OTP_PATH) return;
+      const phone = (ctx.body as { phoneNumber?: string } | undefined)
+        ?.phoneNumber;
+      const devCode = phone ? takeOtp(phone) : undefined;
+      if (!devCode) return;
+      return ctx.json({ message: 'code sent', devCode });
+    }),
   },
   rateLimit: {
     // On by default only in production. Turned on everywhere so the limits are
@@ -155,7 +206,12 @@ export const auth = betterAuth({
     phoneNumber({
       // The throttle already passed *and counted this send* in `hooks.before`,
       // atomically — see `assertOtpSendAllowed`. Nothing to do here but send.
-      sendOTP: async ({ phoneNumber: phone, code }) => sendOtpSms(phone, code),
+      sendOTP: async ({ phoneNumber: phone, code }) => {
+        await sendOtpSms(phone, code);
+        // No-op unless the staging echo is switched on. After the send, so a
+        // provider that rejected never leaves a code to hand back.
+        rememberOtp(phone, code);
+      },
       // Two minutes. Long enough for a slow SMS route, short enough that the
       // window in which a code sits in the database is small.
       //

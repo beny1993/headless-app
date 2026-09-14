@@ -1,9 +1,10 @@
 import Image from 'next/image';
-import Link from 'next/link';
 import { Award, Check, Heart, Shield } from 'lucide-react';
 import type { ContentValue } from '@/lib/content/site-content';
 import { imageSrc } from '@/lib/storage/image-url';
 import { shopPath } from '@/lib/constant/paths';
+import { ContentLink } from '@/features/storefront/content-link';
+import { resolveLink, type LinkTargets } from '@/lib/content/link';
 import { toPersianDigits } from '@/lib/format';
 
 /**
@@ -14,9 +15,9 @@ import { toPersianDigits } from '@/lib/format';
  * typed props — rendered as plain text nodes, with headline line breaks from
  * `whitespace-pre-line` and the break before an accent line as a code `<br />`.
  * What stays in code is structure, not content: the section order, the CTA
- * button and its target (a label travels with its target), and the value cards'
- * icons — the four `lucide` icons below, matched to the four value items by
- * position.
+ * button's fallback destination (used until the admin saves a `ctaLink`), and
+ * the value cards' icons — the four `lucide` icons below, matched to the four
+ * value items by position.
  */
 
 /** The value-card icons, in page order — matched to `about.values.items` by index. */
@@ -167,9 +168,8 @@ function AboutValues({ content }: { content: ContentValue<'about.values'> }) {
 }
 
 /**
- * The closing call to action. The headline and the button label are admin
- * content; the button's *target* (the shop) stays in code — a label travels with
- * its target, and the editor shows that destination next to the label.
+ * The closing call to action. The headline, the button label and where the
+ * button goes (unset: the shop) are admin content.
  *
  * This is the only interactive element in the app that sits on an
  * `--accent-strong` surface, and the global focus ring is `--ring` (#C9623F) —
@@ -177,19 +177,25 @@ function AboutValues({ content }: { content: ContentValue<'about.values'> }) {
  * outline is white here (4.99:1) instead; every other button in the app is on
  * a light or `--ink` surface where the default ring still measures fine.
  */
-function AboutCta({ content }: { content: ContentValue<'about.cta'> }) {
+function AboutCta({
+  content,
+  targets,
+}: {
+  content: ContentValue<'about.cta'>;
+  targets: LinkTargets;
+}) {
   return (
     <section className="bg-accent-strong px-4 py-24 text-center">
       <h2 className="mb-4 text-4xl font-black whitespace-pre-line text-white">
         {content.headline}
       </h2>
-      <Link
-        href={shopPath()}
+      <ContentLink
+        {...resolveLink(content.ctaLink, shopPath(), targets)}
         className="text-accent-strong mt-4 inline-block rounded-xl bg-white px-8 py-4 font-bold transition-colors hover:bg-white/90 focus-visible:outline-white"
         data-umami-event="about-cta-shop-click"
       >
         {content.cta}
-      </Link>
+      </ContentLink>
     </section>
   );
 }

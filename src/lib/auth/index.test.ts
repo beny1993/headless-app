@@ -155,3 +155,21 @@ describe('sessions', () => {
 // in `rate_limit` after driving the real endpoint. (A missing model does not
 // fail quietly: the drizzle adapter throws `The model "rateLimit" was not found
 // in the schema object`. It just cannot be asserted from here.)
+
+describe('client IP resolution', () => {
+  const ipAddress = options.advanced?.ipAddress;
+
+  it('reads CF-Connecting-IP first — Cloudflare fronts the origin', () => {
+    // Cloudflare sets this itself and overwrites a client-supplied copy, so it
+    // is the only header carrying the true visitor IP once the domain is
+    // proxied. Better Auth walks `ipAddressHeaders` in order and takes the
+    // first that resolves, so position matters, not just membership.
+    expect(ipAddress?.ipAddressHeaders?.[0]).toBe('cf-connecting-ip');
+  });
+
+  it('keeps x-forwarded-for as the fallback', () => {
+    // A grey-clouded (DNS-only) domain sends no CF header, and the integration
+    // suite drives x-forwarded-for directly.
+    expect(ipAddress?.ipAddressHeaders).toContain('x-forwarded-for');
+  });
+});

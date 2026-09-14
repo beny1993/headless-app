@@ -17,7 +17,9 @@ echo "✅ Security check passed - no high/critical vulnerabilities found"
 
 echo ""
 echo "🏗️  Running production build..."
-pnpm build
+# `build:local` is `next build`, plus placeholder env only where this checkout
+# has none (every agent worktree); see scripts/build-local.mjs.
+pnpm build:local
 BUILD_EXIT=$?
 
 if [ $BUILD_EXIT -ne 0 ]; then

@@ -20,7 +20,7 @@ export const metadata: Metadata = { title: 'تکمیل خرید' };
 export default async function Page() {
   const session = await requireSession(PATHS.CHECKOUT);
   const [rates, addresses] = await Promise.all([
-    ShippingRateDao.list(),
+    ShippingRateDao.listActive(),
     // Owner-scoped saved addresses, for the "select a saved address" prefill.
     AddressDao.listByUser(session.user.id),
   ]);

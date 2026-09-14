@@ -17,10 +17,14 @@
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Context, Env } from 'hono';
 import { z } from 'zod';
-import { ProductDao } from '@/db/dao/ProductDao';
+import { ProductDao, StockConflictError } from '@/db/dao/ProductDao';
 import type { Product } from '@/db/schema/catalog';
-import { productInputSchema } from '@/lib/catalog/product-input';
+import {
+  productInputSchema,
+  productUpdateInputSchema,
+} from '@/lib/catalog/product-input';
 import { PET_TYPES } from '@/lib/catalog/product-query';
+import { generateSku } from '@/lib/catalog/sku';
 import { replaceProductImage } from '@/logic/admin/product-images';
 import { readImageUpload } from '../image-upload';
 import {
@@ -30,6 +34,7 @@ import {
   apiSuccessSchema,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
+import { pgErrorOf } from '../pg-error';
 
 /** User-facing copy, so Persian. */
 export const PRODUCT_NOT_FOUND_MESSAGE = 'محصول یافت نشد';
@@ -104,17 +109,6 @@ const errorResponse = (description: string) =>
 // map back onto its input — the "422 an unknown province, not a 500" stance the
 // address save established. Anything unrecognized is rethrown as the 500 it is.
 
-type PgError = { code?: string; constraint?: string };
-
-/** The pg error, whether raw or wrapped by drizzle at `.cause`. */
-const pgErrorOf = (error: unknown): PgError | null => {
-  for (const candidate of [error, (error as { cause?: unknown })?.cause]) {
-    const pg = candidate as PgError | null | undefined;
-    if (pg && typeof pg.code === 'string') return pg;
-  }
-  return null;
-};
-
 /** Field-scoped messages, keyed by the constraint name (from the migration). */
 const WRITE_ERROR_MESSAGES: Record<string, string> = {
   products_slug_unique: 'slug: این نشانی قبلاً برای محصول دیگری ثبت شده است.',
@@ -180,7 +174,12 @@ export const productCreateHandler: RouteHandler<
 > = async (c) => {
   const body = c.req.valid('json');
   try {
-    const created = await ProductDao.create(body);
+    // The SKU is server-owned: derived from the slug once, here. The body schema
+    // has no `sku`, and the update route never passes one, so it never changes.
+    const created = await ProductDao.create({
+      ...body,
+      sku: generateSku(body.slug),
+    });
     return c.json(apiSuccess(toAdminProduct(created)), 201);
   } catch (error) {
     const errors = productWriteErrors(error);
@@ -200,7 +199,7 @@ export const productUpdateRoute = createRoute({
   request: {
     params: IdParamSchema,
     body: {
-      content: { 'application/json': { schema: productInputSchema } },
+      content: { 'application/json': { schema: productUpdateInputSchema } },
       required: true,
     },
   },
@@ -217,6 +216,7 @@ export const productUpdateRoute = createRoute({
     401: errorResponse('No session'),
     403: errorResponse('Signed in, but not an admin'),
     404: errorResponse('No such product'),
+    409: errorResponse('Stock changed since the form was opened'),
   },
 });
 
@@ -225,12 +225,14 @@ export const productUpdateHandler: RouteHandler<
   Env & AuthedEnv
 > = async (c) => {
   const { id } = c.req.valid('param');
-  const body = c.req.valid('json');
+  const { expectedStock, ...body } = c.req.valid('json');
   try {
-    const updated = await ProductDao.update(id, body);
+    const updated = await ProductDao.update(id, body, expectedStock);
     if (!updated) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
     return c.json(apiSuccess(toAdminProduct(updated)), 200);
   } catch (error) {
+    if (error instanceof StockConflictError)
+      return c.json(apiError(error.message, [`stock: ${error.message}`]), 409);
     const errors = productWriteErrors(error);
     if (errors)
       return c.json(apiError(PRODUCT_SAVE_FAILED_MESSAGE, errors), 400);

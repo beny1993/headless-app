@@ -11,6 +11,7 @@
 // `Story - Admin Orders and Dashboard`) mount it the same way and inherit the
 // tests next to this file.
 import type { Env, MiddlewareHandler } from 'hono';
+import * as Sentry from '@sentry/nextjs';
 import { ROLES, type Role } from '@/db/schema/auth';
 import { isAuthenticatedUser } from '@/lib/auth';
 import { apiError } from '@/lib/hono/envelope';
@@ -37,6 +38,10 @@ const currentUser = async (headers: Headers) => {
     return session?.user ?? null;
   } catch (error) {
     console.error('[auth] session lookup failed', error);
+    // Failing closed is correct, and it is also indistinguishable from a genuine
+    // 401 at the client — a database blip would otherwise present as "customers
+    // are randomly signed out" with nothing to point at.
+    Sentry.captureException(error);
     return null;
   }
 };

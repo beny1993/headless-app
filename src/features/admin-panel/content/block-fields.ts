@@ -1,17 +1,18 @@
 // The editor's field map: for each content block, its Persian heading and the
-// ordered list of editable leaves — each with a label, how to render it
-// (`input`, `textarea`, or `image`), and, when the leaf is a link/button LABEL,
-// the fixed destination that label sits on (`target`, shown read-only under the
-// field so an editable label can never disguise where it goes). This is the ONE
-// place the schemas' fields are spelled out for the UI — `block-fields.test.ts`
-// asserts every descriptor path is a real leaf of that key's default and every
-// leaf has a descriptor, so this can never silently drift from the schema.
+// ordered list of editable fields — each with a label and how it renders: a text
+// leaf (`input`, `textarea`), an `image`, or a destination picker, for a link
+// (`link`) or for a routine tab's categories (`categories`). A picker sits right
+// after the label it sends somewhere and carries the code destination it previews
+// while nothing is saved (`fallback`), so an editable label never hides where it
+// goes. This is the ONE place the schemas' fields are spelled out for the UI —
+// `block-fields.test.ts` checks the text and image fields against each key's
+// default and the pickers against the schema itself, so neither can drift.
 //
 // Client-safe: only a type from the content contract, the Persian-digit
 // formatter, and the code-side link TARGETS (all client-safe: `paths.ts`, the
-// pure `nav-links.ts`, the type-only-import `home/content.ts`). No drizzle/pg/hono.
-// Paths are dotted, with numeric segments for the tuple entries (`slots.0.name`,
-// `cards.2.title`, `nav.0`), read/written by getPath/setPath.
+// pure `nav-links.ts`, `home/content.ts`). No drizzle/pg/hono.
+// Paths are dotted, with numeric segments for tuple and list entries
+// (`slots.0.name`, `cards.2.link`, `navLinks.0`), read/written by getPath/setPath.
 import type { ContentKey } from '@/lib/content/site-content';
 import { PATHS, shopPath } from '@/lib/constant/paths';
 import { toPersianDigits } from '@/lib/format';
@@ -24,26 +25,31 @@ import {
   NAV_TARGETS,
 } from '@/features/storefront/layout/nav-links';
 
-export type FieldKind = 'input' | 'textarea' | 'image';
+export type FieldKind = 'input' | 'textarea' | 'image' | 'link' | 'categories';
 
 export type FieldDescriptor = {
-  /** Dotted path into the block value, e.g. `image.key`, `slots.0.quote`, `nav.0`. */
+  /** Dotted path into the block value, e.g. `image.key`, `slots.0.quote`, `navLinks.0`. */
   path: string;
   label: string;
   kind: FieldKind;
   /**
-   * The fixed destination this label links to, shown read-only under the field
-   * («مقصد: …», LTR). Present only on labels that sit on a `<Link>`/button — nav,
-   * footer links, life-moment cards, routine tabs, and every CTA. The label is
-   * content; the target stays in code (`*_TARGETS` / `shopPath`), and this is how
-   * the editor makes that visible so a renamed label can't misroute.
+   * A picker's code destination: what the storefront uses while nothing is saved
+   * at `path` — the href for a `link` (a `*_TARGETS` entry or a section's inline
+   * path), the category slugs for `categories`. Only pickers carry one.
    */
-  target?: string;
+  fallback?: string;
 };
 
 export type BlockDescriptor = { title: string; fields: FieldDescriptor[] };
 
 const fa = toPersianDigits;
+
+/** A destination picker for the link at `path`, previewing `fallback` while unset. */
+const link = (
+  path: string,
+  label: string,
+  fallback: string,
+): FieldDescriptor => ({ path, label, kind: 'link', fallback });
 
 /** An image key + its alt text — the shape hero/guide/about-hero/about-story share. */
 const imageFields = (prefix: string): FieldDescriptor[] => [
@@ -51,7 +57,7 @@ const imageFields = (prefix: string): FieldDescriptor[] => [
   { path: `${prefix}.alt`, label: 'متن جایگزین تصویر', kind: 'input' },
 ];
 
-/** One «خرید بر اساس لحظه» card: title (the link label), description, photo. */
+/** One «خرید بر اساس لحظه» card: title, description, photo and destination. */
 const momentCard = (i: number): FieldDescriptor[] => {
   const n = fa(i + 1);
   return [
@@ -59,14 +65,18 @@ const momentCard = (i: number): FieldDescriptor[] => {
       path: `cards.${i}.title`,
       label: `عنوان کارت ${n}`,
       kind: 'input',
-      target: shopPath(LIFE_MOMENT_TARGETS[i].filters),
     },
     { path: `cards.${i}.desc`, label: `توضیح کارت ${n}`, kind: 'input' },
     { path: `cards.${i}.image`, label: `عکس کارت ${n}`, kind: 'image' },
+    link(
+      `cards.${i}.link`,
+      `مقصد کارت ${n}`,
+      shopPath(LIFE_MOMENT_TARGETS[i].filters),
+    ),
   ];
 };
 
-/** One «روتین روزانه» tab: its label (target = the category slugs) and sub-label. */
+/** One «روتین روزانه» tab: its label, sub-label, and the categories it opens. */
 const routineTab = (i: number): FieldDescriptor[] => {
   const n = fa(i + 1);
   return [
@@ -74,9 +84,14 @@ const routineTab = (i: number): FieldDescriptor[] => {
       path: `slots.${i}.label`,
       label: `عنوان تب ${n}`,
       kind: 'input',
-      target: ROUTINE_TARGETS[i].categories.join(', '),
     },
     { path: `slots.${i}.sub`, label: `زیرعنوان تب ${n}`, kind: 'input' },
+    {
+      path: `slots.${i}.categoryIds`,
+      label: `دسته‌بندی‌های تب ${n}`,
+      kind: 'categories',
+      fallback: ROUTINE_TARGETS[i].categories.join(', '),
+    },
   ];
 };
 
@@ -107,25 +122,34 @@ const valueFields = (i: number): FieldDescriptor[] => {
   ];
 };
 
-/** One header nav label; its href is `NAV_TARGETS[i]`. */
-const navField = (i: number): FieldDescriptor => ({
-  path: `nav.${i}`,
-  label: `عنوان منو ${fa(i + 1)}`,
-  kind: 'input',
-  target: NAV_TARGETS[i],
-});
+/** One header nav label, then its destination (code: `NAV_TARGETS[i]`). */
+const navField = (i: number): FieldDescriptor[] => {
+  const n = fa(i + 1);
+  return [
+    { path: `nav.${i}`, label: `عنوان منو ${n}`, kind: 'input' },
+    link(`navLinks.${i}`, `مقصد منو ${n}`, NAV_TARGETS[i]),
+  ];
+};
 
-/** One footer column: its title, then each link label (href = `FOOTER_TARGETS[c][l]`). */
+/**
+ * One footer column: its title, then each link label followed by its destination
+ * (code: `FOOTER_TARGETS[c][l]`).
+ */
 const footerColumn = (c: number): FieldDescriptor[] => {
   const cn = fa(c + 1);
   return [
     { path: `columns.${c}.title`, label: `عنوان ستون ${cn}`, kind: 'input' },
-    ...FOOTER_TARGETS[c].map((href, l) => ({
-      path: `columns.${c}.links.${l}`,
-      label: `پیوند ستون ${cn} — ${fa(l + 1)}`,
-      kind: 'input' as const,
-      target: href,
-    })),
+    ...FOOTER_TARGETS[c].flatMap((href, l): FieldDescriptor[] => {
+      const ln = `${cn} — ${fa(l + 1)}`;
+      return [
+        {
+          path: `columns.${c}.links.${l}`,
+          label: `پیوند ستون ${ln}`,
+          kind: 'input',
+        },
+        link(`columns.${c}.linkTargets.${l}`, `مقصد پیوند ستون ${ln}`, href),
+      ];
+    }),
   ];
 };
 
@@ -138,18 +162,10 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
       { path: 'accent', label: 'خط تأکید', kind: 'input' },
       { path: 'body', label: 'متن', kind: 'textarea' },
       ...imageFields('image'),
-      {
-        path: 'shopCta',
-        label: 'دکمه فروشگاه',
-        kind: 'input',
-        target: shopPath(),
-      },
-      {
-        path: 'aboutCta',
-        label: 'دکمه درباره ما',
-        kind: 'input',
-        target: PATHS.ABOUT,
-      },
+      { path: 'shopCta', label: 'دکمه فروشگاه', kind: 'input' },
+      link('shopCtaLink', 'مقصد دکمه فروشگاه', shopPath()),
+      { path: 'aboutCta', label: 'دکمه درباره ما', kind: 'input' },
+      link('aboutCtaLink', 'مقصد دکمه درباره ما', PATHS.ABOUT),
     ],
   },
   'home.moments': {
@@ -157,12 +173,8 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
     fields: [
       { path: 'eyebrow', label: 'عنوان کوچک', kind: 'input' },
       { path: 'headline', label: 'سرتیتر', kind: 'input' },
-      {
-        path: 'cta',
-        label: 'پیوند «مشاهده همه»',
-        kind: 'input',
-        target: shopPath(),
-      },
+      { path: 'cta', label: 'پیوند «مشاهده همه»', kind: 'input' },
+      link('ctaLink', 'مقصد پیوند «مشاهده همه»', shopPath()),
       ...[0, 1, 2, 3, 4].flatMap(momentCard),
     ],
   },
@@ -189,12 +201,8 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
       { path: 'headline', label: 'سرتیتر', kind: 'textarea' },
       { path: 'body', label: 'متن', kind: 'textarea' },
       ...imageFields('image'),
-      {
-        path: 'cta',
-        label: 'دکمه فراخوان',
-        kind: 'input',
-        target: shopPath({ category: 'wet-food' }),
-      },
+      { path: 'cta', label: 'دکمه فراخوان', kind: 'input' },
+      link('ctaLink', 'مقصد دکمه فراخوان', shopPath({ category: 'wet-food' })),
     ],
   },
   'home.routine': {
@@ -211,19 +219,15 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
     fields: [
       { path: 'eyebrow', label: 'عنوان کوچک', kind: 'input' },
       { path: 'headline', label: 'سرتیتر', kind: 'input' },
-      ...[0, 1, 2, 3, 4].flatMap(familySlot),
+      ...[0, 1, 2, 3, 4, 5].flatMap(familySlot),
     ],
   },
   'home.categories': {
     title: 'دسته‌بندی‌ها',
     fields: [
       { path: 'headline', label: 'سرتیتر', kind: 'input' },
-      {
-        path: 'cta',
-        label: 'پیوند «همه دسته‌بندی‌ها»',
-        kind: 'input',
-        target: shopPath(),
-      },
+      { path: 'cta', label: 'پیوند «همه دسته‌بندی‌ها»', kind: 'input' },
+      link('ctaLink', 'مقصد پیوند «همه دسته‌بندی‌ها»', shopPath()),
     ],
   },
   'home.philosophy': {
@@ -233,12 +237,8 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
       { path: 'headline', label: 'سرتیتر', kind: 'textarea' },
       { path: 'accent', label: 'خط تأکید', kind: 'input' },
       { path: 'body', label: 'متن', kind: 'textarea' },
-      {
-        path: 'cta',
-        label: 'پیوند فراخوان',
-        kind: 'input',
-        target: PATHS.ABOUT,
-      },
+      { path: 'cta', label: 'پیوند فراخوان', kind: 'input' },
+      link('ctaLink', 'مقصد پیوند فراخوان', PATHS.ABOUT),
     ],
   },
   'about.hero': {
@@ -280,7 +280,8 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
     // whitespace-pre-line, so an admin newline becomes a line break.
     fields: [
       { path: 'headline', label: 'سرتیتر', kind: 'textarea' },
-      { path: 'cta', label: 'دکمه فراخوان', kind: 'input', target: shopPath() },
+      { path: 'cta', label: 'دکمه فراخوان', kind: 'input' },
+      link('ctaLink', 'مقصد دکمه فراخوان', shopPath()),
     ],
   },
   header: {
@@ -288,7 +289,7 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
     fields: [
       { path: 'brand', label: 'نام‌واژه (لوگو متنی)', kind: 'input' },
       { path: 'tagline', label: 'زیرعنوان', kind: 'input' },
-      ...[0, 1, 2].map(navField),
+      ...[0, 1, 2].flatMap(navField),
     ],
   },
   footer: {
@@ -318,18 +319,25 @@ export function getPath(obj: unknown, path: string): unknown {
 /**
  * Return a copy of `obj` with the leaf at `path` set to `value`, cloning only the
  * objects/arrays along the path (so React state updates stay immutable). Arrays
- * are cloned as arrays, preserving the tuple shape the schema expects.
+ * are cloned as arrays, preserving the tuple shape the schema expects. A missing
+ * parent is created as what its segment indexes: a list for a numeric one (a
+ * destination list on a row saved before destinations existed), else an object.
  */
 export function setPath<T>(obj: T, path: string, value: unknown): T {
   const [head, ...rest] = path.split('.');
-  const clone: Record<string, unknown> = Array.isArray(obj)
-    ? ([...obj] as unknown as Record<string, unknown>)
-    : { ...(obj as Record<string, unknown>) };
+  const source = obj ?? (/^\d+$/.test(head) ? [] : {});
+  const clone: Record<string, unknown> = Array.isArray(source)
+    ? ([...source] as unknown as Record<string, unknown>)
+    : { ...(source as Record<string, unknown>) };
 
   clone[head] =
     rest.length === 0
       ? value
-      : setPath((obj as Record<string, unknown>)[head], rest.join('.'), value);
+      : setPath(
+          (source as Record<string, unknown>)[head],
+          rest.join('.'),
+          value,
+        );
 
   return clone as T;
 }

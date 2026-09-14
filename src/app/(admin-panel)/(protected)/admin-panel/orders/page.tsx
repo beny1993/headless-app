@@ -1,17 +1,21 @@
+import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Eye } from 'lucide-react';
 import { z } from 'zod';
+import { Pagination } from '@/components/ui/pagination';
 import { OrderDao } from '@/db/dao/OrderDao';
-import { adminOrderPath } from '@/lib/constant/paths';
+import { adminOrderPath, PROTECTED_PATHS } from '@/lib/constant/paths';
 import { formatJalali, formatToman, toPersianDigits } from '@/lib/format';
 import {
   ORDER_STATUS_VALUES,
   orderStatusSchema,
   PAYMENT_METHODS,
+  type OrderStatus,
   type PaymentMethod,
 } from '@/lib/orders/order-status';
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
+import { ADMIN_PAGE_SIZE, pageParamSchema } from '@/lib/pagination';
 
 export const metadata: Metadata = { title: 'سفارش‌ها' };
 
@@ -22,7 +26,19 @@ export const dynamic = 'force-dynamic';
 // bad `status` falls back to "no filter" via `.catch`, never throws.
 const filterSchema = z.object({
   status: orderStatusSchema.optional().catch(undefined),
+  page: pageParamSchema,
 });
+
+/** The list's URL for one page, keeping the status; page one has no `page`. */
+const ordersHref = (status: OrderStatus | undefined, page: number): string => {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (page > 1) params.set('page', String(page));
+  const search = params.toString();
+  return search
+    ? `${PROTECTED_PATHS.ORDERS}?${search}`
+    : PROTECTED_PATHS.ORDERS;
+};
 
 const methodLabel = (method: PaymentMethod): string =>
   method === PAYMENT_METHODS.COD ? 'پرداخت در محل' : 'زرین‌پال';
@@ -32,8 +48,14 @@ export default async function AdminOrdersPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requireAdmin();
   const filters = filterSchema.parse(await searchParams);
-  const orders = await OrderDao.listForAdmin(filters.status);
+  const { items: orders, total } = await OrderDao.pageForAdmin({
+    status: filters.status,
+    page: filters.page,
+    limit: ADMIN_PAGE_SIZE,
+  });
+  const totalPages = Math.ceil(total / ADMIN_PAGE_SIZE);
 
   return (
     <div className="flex flex-col gap-6">
@@ -100,7 +122,11 @@ export default async function AdminOrdersPage({
                     colSpan={8}
                     className="text-muted-foreground px-4 py-10 text-center"
                   >
-                    سفارشی با این فیلتر پیدا نشد.
+                    {/* Past the last page is not the same as nothing matching:
+                        the pager below still links back. */}
+                    {total > 0
+                      ? 'این صفحه سفارشی ندارد.'
+                      : 'سفارشی با این فیلتر پیدا نشد.'}
                   </td>
                 </tr>
               ) : (
@@ -162,6 +188,14 @@ export default async function AdminOrdersPage({
           </table>
         </div>
       </div>
+
+      <Pagination
+        page={filters.page}
+        totalPages={totalPages}
+        hrefFor={(page) => ordersHref(filters.status, page)}
+        label="صفحه‌بندی سفارش‌ها"
+        event="admin-panel-orders-pagination"
+      />
     </div>
   );
 }

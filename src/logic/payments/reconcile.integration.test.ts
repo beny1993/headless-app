@@ -21,10 +21,21 @@ import {
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 
+const mocks = vi.hoisted(() => ({ captureException: vi.fn() }));
+
+vi.mock('@sentry/nextjs', () => ({
+  captureException: mocks.captureException,
+  captureMessage: vi.fn(),
+}));
+
 const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
 const { PaymentDao } = await importWithDb(() => import('@/db/dao/PaymentDao'));
 const { reconcilePayments } = await importWithDb(
   () => import('@/logic/payments/reconcile'),
+);
+
+const { requestZarinpalPayment } = await importWithDb(
+  () => import('@/logic/payments/request'),
 );
 
 const MIN = 60_000;
@@ -54,6 +65,73 @@ describe.skipIf(!databaseReachable)('reconcilePayments', () => {
       .update(payments)
       .set({ createdAt: new Date(Date.now() - ms) })
       .where(eq(payments.id, id));
+
+  it('keeps an expired candidate pending when a fresh retry commits before its attempt check', async () => {
+    const user = await fx.user();
+    const category = await fx.category();
+    const product = await fx.product(category, { stock: 10 });
+    const order = await OrderDao.create(
+      fx.buildOrder(user, [{ product, qty: 2 }]),
+    );
+    fx.remember(order.id);
+    await testDb
+      .update(products)
+      .set({ stock: 8 })
+      .where(eq(products.id, product.id));
+    await ageOrder(order.id, 120 * MIN);
+    const original = OrderDao.listExpiredPendingPayment.bind(OrderDao);
+    vi.spyOn(OrderDao, 'listExpiredPendingPayment').mockImplementation(
+      async (cutoff) => {
+        const candidates = await original(cutoff);
+        await requestZarinpalPayment(user.id, order.id);
+        return candidates;
+      },
+    );
+
+    await reconcilePayments(mockDriver);
+
+    expect(await orderStatus(order.id)).toBe(ORDER_STATUSES.PENDING_PAYMENT);
+    expect(await stockOf(product.id)).toBe(8);
+    const attempts = await PaymentDao.listByOrder(order.id);
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0].status).toBe(PAYMENT_STATUSES.PENDING);
+  });
+
+  it('holds the order lock while reading attempts so a retry cannot insert into the expiry window', async () => {
+    const user = await fx.user();
+    const category = await fx.category();
+    const product = await fx.product(category, { stock: 10 });
+    const order = await OrderDao.create(
+      fx.buildOrder(user, [{ product, qty: 2 }]),
+    );
+    fx.remember(order.id);
+    await ageOrder(order.id, 120 * MIN);
+    const original = PaymentDao.listByOrder.bind(PaymentDao);
+    let checked = false;
+    vi.spyOn(PaymentDao, 'listByOrder').mockImplementation(
+      async (id, executor) => {
+        if (id === order.id) {
+          // A second connection tries the same order-row lock needed to insert a
+          // retry. NOWAIT makes the interleaving deterministic, with no sleeps.
+          await expect(
+            testDb.transaction((tx) =>
+              tx
+                .select()
+                .from(orders)
+                .where(eq(orders.id, id))
+                .for('update', { noWait: true }),
+            ),
+          ).rejects.toMatchObject({ cause: { code: '55P03' } });
+          checked = true;
+        }
+        return original(id, executor);
+      },
+    );
+
+    await reconcilePayments(mockDriver);
+    expect(checked).toBe(true);
+    expect(await orderStatus(order.id)).toBe(ORDER_STATUSES.FAILED);
+  });
 
   /** A pending_payment Zarinpal order + a pending attempt, stock reserved. */
   const scenario = async ({
@@ -254,9 +332,16 @@ describe.skipIf(!databaseReachable)('reconcilePayments', () => {
       },
     });
 
+    mocks.captureException.mockClear();
     const result = await reconcilePayments(throwingFor(a.payment.authority!));
 
     expect(result.errored).toBe(1); // a's verify threw, counted and skipped
+    // The row stays `pending` and the sweep reports success overall, so a
+    // payment that fails EVERY run is silent without this — and the money may
+    // already have left the shopper's account.
+    expect(mocks.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      extra: { paymentId: a.payment.id, orderId: a.order.id },
+    });
     expect(result.expired).toBe(1); // b was still processed after a threw
     // a is untouched and stays retryable; its order is not expired (live attempt).
     expect((await paymentRow(a.payment.id)).status).toBe(

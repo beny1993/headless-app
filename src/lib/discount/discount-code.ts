@@ -64,7 +64,9 @@ export const computeDiscount = (
 ): number => {
   const raw =
     code.type === DISCOUNT_TYPES.PERCENT
-      ? Math.floor((subtotal * code.value) / 100)
+      ? // Inputs and the result fit a safe integer, but the intermediate product
+        // can exceed it. Divide as bigint before converting back to integer Toman.
+        Number((BigInt(subtotal) * BigInt(code.value)) / 100n)
       : code.value;
   return Math.min(Math.max(raw, 0), subtotal);
 };
@@ -110,6 +112,7 @@ const sharedFields = {
     .number()
     .int(MESSAGES.usageLimit)
     .positive(MESSAGES.usageLimit)
+    .max(2_147_483_647, MESSAGES.usageLimit)
     .nullish(),
   minOrderAmount: z
     .number()

@@ -14,6 +14,7 @@
 // safe because it keys only off the stored authority, verifies with the stored
 // amount, and settles through the CAS in src/logic/payments/verify.ts.
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
+import * as Sentry from '@sentry/nextjs';
 import type { Context, Env } from 'hono';
 import { z } from 'zod';
 import { PaymentDao } from '@/db/dao/PaymentDao';
@@ -184,6 +185,9 @@ export const paymentCallbackHandler = async (c: Context) => {
       '[payments] callback settle failed; left for reconcile',
       error,
     );
+    Sentry.captureException(error, {
+      extra: { paymentId: payment.id, orderId: payment.orderId },
+    });
   }
   // Both success and failure land on the result page for the order; it renders
   // from GET /api/orders/:id, so it shows the real settled status, not the query.

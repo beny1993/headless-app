@@ -37,6 +37,7 @@ import type {
 import type { ShippingRateResponse } from '@/lib/hono/routes/shipping';
 import { PAYMENT_METHODS, type PaymentMethod } from '@/lib/orders/order-status';
 import { toAsciiDigits, toPersianDigits } from '@/lib/format';
+import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
 import { cn } from '@/lib/utils';
 
 /** idle → submitting → redirecting. The button disables off `idle`. */
@@ -145,6 +146,18 @@ export function CheckoutForm({
 
   const selectedFee =
     rates.find((rate) => String(rate.provinceId) === provinceId)?.fee ?? null;
+  // A saved-address prefill onto a province the admin has since deactivated:
+  // `rates` holds only active provinces, so no option matches the stale id and
+  // React would display the first enabled one («تهران») — which re-picking fires
+  // no change for. The select gets '' instead, showing its placeholder. Derived
+  // at render; `validateStep(2)` blocks «ادامه» on it — `POST /api/checkout`'s
+  // 422 is the backstop.
+  const staleProvince =
+    provinceId !== '' &&
+    !rates.some((rate) => String(rate.provinceId) === provinceId);
+  const provinceError =
+    fieldErrors['address.provinceId'] ??
+    (staleProvince ? STALE_PROVINCE_MESSAGE : undefined);
   const clientSubtotal = cartTotal(lines);
 
   // A stable signature of the cart contents. The applied preview is valid only
@@ -270,6 +283,8 @@ export function CheckoutForm({
     }
     if (which === 2) {
       if (!provinceId) errors['address.provinceId'] = 'استان را انتخاب کن.';
+      else if (staleProvince)
+        errors['address.provinceId'] = STALE_PROVINCE_MESSAGE;
       if (!city.trim()) errors['address.city'] = 'شهر را وارد کن.';
       if (addressLine.trim().length < 10)
         errors['address.addressLine'] = 'آدرس کامل را وارد کن (حداقل ۱۰ حرف).';
@@ -554,22 +569,20 @@ export function CheckoutForm({
                   </label>
                   <select
                     id={`${fieldId}-province`}
-                    value={provinceId}
+                    value={staleProvince ? '' : provinceId}
                     onChange={(event) => {
                       setProvinceId(event.target.value);
                       clearError('address.provinceId');
                     }}
-                    aria-invalid={Boolean(fieldErrors['address.provinceId'])}
+                    aria-invalid={Boolean(provinceError)}
                     aria-describedby={
-                      fieldErrors['address.provinceId']
+                      provinceError
                         ? `${fieldId}-province-error`
                         : `${fieldId}-province-hint`
                     }
                     className={cn(
                       'bg-secondary focus-visible:border-accent-strong h-12 w-full rounded-xl border px-4 transition-colors outline-none focus-visible:ring-2',
-                      fieldErrors['address.provinceId']
-                        ? 'border-destructive'
-                        : 'border-border',
+                      provinceError ? 'border-destructive' : 'border-border',
                     )}
                     data-umami-event="checkout-province-change"
                   >
@@ -582,13 +595,13 @@ export function CheckoutForm({
                       </option>
                     ))}
                   </select>
-                  {fieldErrors['address.provinceId'] ? (
+                  {provinceError ? (
                     <p
                       id={`${fieldId}-province-error`}
                       className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
                     >
                       <AlertCircle size={12} aria-hidden="true" />{' '}
-                      {fieldErrors['address.provinceId']}
+                      {provinceError}
                     </p>
                   ) : (
                     <p

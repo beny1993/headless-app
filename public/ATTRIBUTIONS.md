@@ -27,6 +27,30 @@ admin upload (`Story - Admin Product Management`).
 
 ### `public/site/` — editorial imagery
 
+The eight named-pet files below were created from photographs supplied by the
+shop owner and edited with OpenAI image generation on 2026-09-10. They are
+bundled first-party assets rather than stock photography. The portraits and
+earlier heroes are WebP; the centered hero revision is an optimized JPEG.
+The two heroes keep their native 1672px width — they render `fill` with
+`sizes="100vw"` as the page's LCP element, so a smaller source would be
+upscaled. The portraits are capped at 1200px: they render at 384-640px, and
+`next/image` re-encodes per request, so beyond that a larger source only costs
+repo weight.
+
+| File | Subject / source |
+| --- | --- |
+| `smokey-hero.webp` | Smokey — owner-supplied photo, identity-preserving editorial edit |
+| `smokey-hero-v3.webp` | Smokey — second owner-supplied reference, identity-preserving campaign edit |
+| `smokey-hero-v4.jpg` | Smokey — centered composition revision of the identity-preserving campaign edit |
+| `smokey-v2.webp` | Smokey — second owner-supplied reference, identity-preserving portrait edit |
+| `khepelo.webp` | Khepelo — owner-supplied photo, identity-preserving portrait edit |
+| `fiuna.webp` | Fiuna — owner-supplied photo, identity-preserving portrait edit |
+| `melis.webp` | Melis — owner-supplied photo, identity-preserving portrait edit |
+| `lili.webp` | Lili — owner-supplied photo, identity-preserving portrait edit |
+| `sansa.webp` | Sansa — owner-supplied photo, identity-preserving portrait edit |
+
+Legacy stock stand-ins retained for existing stored content values:
+
 | File | Source |
 | --- | --- |
 | `cat-hygiene.jpg` | https://unsplash.com/photos/photo-1548802673-380ab8ebc7b7 |

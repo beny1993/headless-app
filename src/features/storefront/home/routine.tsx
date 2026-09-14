@@ -12,8 +12,9 @@ import { shopPath } from '@/lib/constant/paths';
  * it. Client only for the active tab.
  *
  * The eyebrow, headline, body and the four tabs' label/sub are admin content
- * (`home.routine`); each tab's emoji and the category slugs it opens stay in code
- * (`ROUTINE_TARGETS`), zipped with the slots by index. The tile titles come from
+ * (`home.routine`), and so are the categories each tab opens (`categoryIds`, by
+ * id; unset, the slugs in `ROUTINE_TARGETS`, zipped by index). Each tab's emoji
+ * stays in code. The tile titles come from
  * the database, the «مشاهده محصولات ←» and empty state stay in code — so nothing
  * here can name a category that does not exist, and no editable label rides a
  * fixed link.
@@ -27,14 +28,18 @@ export function RoutineSection({
 }) {
   const [active, setActive] = useState(0);
 
+  const byId = new Map(categories.map((category) => [category.id, category]));
   const bySlug = new Map(
     categories.map((category) => [category.slug, category]),
   );
   const slot = content.slots[active];
   const target = ROUTINE_TARGETS[active];
-  const tiles = target.categories
-    .map((slug) => bySlug.get(slug))
-    .filter((category): category is CategoryTile => category !== undefined);
+  // The saved categories in the saved order, else the code slugs; a category
+  // deleted since it was picked simply drops out.
+  const tiles = (
+    slot.categoryIds?.map((id) => byId.get(id)) ??
+    target.categories.map((slug) => bySlug.get(slug))
+  ).filter((category): category is CategoryTile => category !== undefined);
 
   return (
     <section className="py-24">

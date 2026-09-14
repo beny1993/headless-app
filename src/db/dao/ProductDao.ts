@@ -26,6 +26,7 @@ import {
   PRODUCT_SORTS,
   type ProductSort,
 } from '@/lib/catalog/product-query';
+import { ADMIN_PAGE_SIZE } from '@/lib/pagination';
 import { normalizeSearchText } from '@/lib/catalog/search-text';
 import {
   categories,
@@ -48,6 +49,13 @@ export type ProductInput = Omit<
   NewProduct,
   'id' | 'createdAt' | 'updatedAt' | 'searchText'
 >;
+
+export class StockConflictError extends Error {
+  constructor() {
+    super('موجودی محصول تغییر کرده است؛ صفحه را تازه‌سازی و دوباره تلاش کن.');
+    this.name = 'StockConflictError';
+  }
+}
 
 /** The fields a shopper can find a product by. */
 const SEARCHABLE_FIELDS = ['title', 'brand', 'benefit'] as const;
@@ -250,10 +258,60 @@ export class ProductDao {
     return where;
   }
 
-  /** Admin panel listing — includes the products a soft delete hid. */
+  /**
+   * Admin panel listing, every matching row: includes the products a soft delete
+   * hid. The content editor's link picker reads all of them; the products table
+   * pages through {@link pageForAdmin} instead.
+   */
   static async listForAdmin(
     filters: AdminProductFilters = {},
   ): Promise<ProductWithImages[]> {
+    const rows = await ProductDao.adminRows(ProductDao.adminWhere(filters));
+    return ProductDao.withImages(rows);
+  }
+
+  /**
+   * One page of the admin listing plus the size of the whole filtered result,
+   * for the products table's pager. Same filters and order as
+   * {@link listForAdmin}. The page and the count run in parallel: the admin
+   * search is a plain ILIKE, so it needs no transaction.
+   */
+  static async pageForAdmin({
+    page = 1,
+    limit = ADMIN_PAGE_SIZE,
+    ...filters
+  }: AdminProductFilters & {
+    /** One-based. */
+    page?: number;
+    limit?: number;
+  } = {}): Promise<ProductPage> {
+    const where = ProductDao.adminWhere(filters);
+    const [rows, [counted]] = await Promise.all([
+      ProductDao.adminRows(where)
+        .limit(limit)
+        .offset((page - 1) * limit),
+      db
+        .select({ value: count() })
+        .from(products)
+        .innerJoin(categories, eq(products.categoryId, categories.id))
+        .where(where),
+    ]);
+
+    return { items: await ProductDao.withImages(rows), total: counted.value };
+  }
+
+  /** The admin listing's rows, newest first, before any paging. */
+  private static adminRows(where: SQL | undefined) {
+    return db
+      .select(getTableColumns(products))
+      .from(products)
+      .innerJoin(categories, eq(products.categoryId, categories.id))
+      .where(where)
+      .orderBy(desc(products.createdAt), asc(products.sku));
+  }
+
+  /** The admin listing's where clause, shared by the full and the paged read. */
+  private static adminWhere(filters: AdminProductFilters): SQL | undefined {
     const where: SQL[] = [];
     // The one filter that separates this from the storefront read: `active`
     // undefined means *both* — the admin sees soft-deleted rows by default, and
@@ -275,15 +333,7 @@ export class ProductDao {
     if (search) {
       where.push(ilike(products.searchText, `%${search}%`));
     }
-
-    const rows = await db
-      .select(getTableColumns(products))
-      .from(products)
-      .innerJoin(categories, eq(products.categoryId, categories.id))
-      .where(where.length > 0 ? and(...where) : undefined)
-      .orderBy(desc(products.createdAt), asc(products.sku));
-
-    return ProductDao.withImages(rows);
+    return where.length > 0 ? and(...where) : undefined;
   }
 
   /**
@@ -335,16 +385,49 @@ export class ProductDao {
   static async update(
     id: string,
     patch: Partial<ProductInput>,
+    expectedStock?: number,
   ): Promise<Product | null> {
     return db.transaction(async (tx) => {
+      // A form round-trips stock even when only its title was edited. Preserve
+      // concurrent reservations unless the operator actually changed inventory.
+      const update = { ...patch };
+      let stockGuard: number | undefined;
+      if (expectedStock !== undefined && update.stock !== undefined) {
+        if (update.stock === expectedStock) {
+          delete update.stock;
+        } else {
+          stockGuard = expectedStock;
+        }
+      }
+      if (Object.keys(update).length === 0) {
+        const [current] = await tx
+          .select()
+          .from(products)
+          .where(eq(products.id, id));
+        return current ?? null;
+      }
       const [row] = await tx
         .update(products)
-        .set(patch)
-        .where(eq(products.id, id))
+        .set(update)
+        .where(
+          stockGuard === undefined
+            ? eq(products.id, id)
+            : and(eq(products.id, id), eq(products.stock, stockGuard)),
+        )
         .returning();
 
-      if (!row) return null;
-      if (!SEARCHABLE_FIELDS.some((field) => field in patch)) return row;
+      if (!row) {
+        if (stockGuard === undefined) return null;
+        // The CAS intentionally combines "missing" and "stale" into zero rows;
+        // split them only on this failure path for the API's 404/409 contract.
+        const [existing] = await tx
+          .select({ id: products.id })
+          .from(products)
+          .where(eq(products.id, id));
+        if (!existing) return null;
+        throw new StockConflictError();
+      }
+      if (!SEARCHABLE_FIELDS.some((field) => field in update)) return row;
 
       const [rewritten] = await tx
         .update(products)

@@ -5,8 +5,22 @@ export enum VARS {
 
   // Which SMS driver `src/lib/sms` dispatches through. `console` (the default)
   // writes codes to the server log instead of sending them — the mock the
-  // project ships with until Kavenegar or SMS.ir is picked.
+  // project ships with, so a fresh clone logs in with no provider account.
+  // `smsir` is the real provider; it needs the two variables below.
   APP_CONFIG_SMS_PROVIDER = 'APP_CONFIG_SMS_PROVIDER',
+  // SMS.ir web-service key (`x-api-key`) and the id of the panel template the
+  // code is substituted into. Both are read only when the provider is `smsir`,
+  // and both are required then — a missing one throws at construction rather
+  // than letting every login report success while sending nothing. The template
+  // body must contain `#CODE#`.
+  APP_CONFIG_SMSIR_API_KEY = 'APP_CONFIG_SMSIR_API_KEY',
+  APP_CONFIG_SMSIR_TEMPLATE_ID = 'APP_CONFIG_SMSIR_TEMPLATE_ID',
+  // `true` echoes the one-time code back in the send-otp response, so the login
+  // form can show it on screen. For staging/QA deployments, where the console
+  // SMS driver means the code only ever reaches the server log. Anything but
+  // `true` is off, and it does nothing unless the SMS provider is `console`
+  // (see `src/lib/auth/otp-echo.ts`) — on its own it is a full auth bypass.
+  APP_CONFIG_SHOW_OTP_IN_UI = 'APP_CONFIG_SHOW_OTP_IN_UI',
 
   // Which Zarinpal driver `src/lib/zarinpal` dispatches through. `mock` (the
   // default) simulates the whole request/redirect/callback/verify flow locally
@@ -53,6 +67,30 @@ export enum VARS {
   APP_CONFIG_SMTP_PASSWORD = 'APP_CONFIG_SMTP_PASSWORD',
   APP_CONFIG_SMTP_SENDER_EMAIL = 'APP_CONFIG_SMTP_SENDER_EMAIL',
 
+  // ── Error monitoring (Sentry) ───────────────────────────────────────────────
+  // Sentry DSN. Empty (the default) disables the SDK entirely, which is what a
+  // fresh clone and every `pnpm test` run should get. A DSN is public by design
+  // — it identifies the project and nothing else — so NEXT_PUBLIC_ is correct.
+  // The browser reads it inlined at BUILD time; the server reads it from the
+  // process at RUNTIME, so a deployment has to set it in both places.
+  NEXT_PUBLIC_SENTRY_DSN = 'NEXT_PUBLIC_SENTRY_DSN',
+  // Which deployment an event came from: `staging` or `production`. Staging and
+  // production share one Sentry project, so without this every staging error
+  // looks like a customer hitting a bug. Build-time, like the DSN.
+  NEXT_PUBLIC_SENTRY_ENVIRONMENT = 'NEXT_PUBLIC_SENTRY_ENVIRONMENT',
+
+  // ── Web analytics (self-hosted Umami) ───────────────────────────────────────
+  // Full URL of the tracker script on our own Umami instance, e.g.
+  // `https://analytics.bendev.ir/script.js`. One instance serves every project,
+  // so the host is config, not a constant — it has already moved once.
+  NEXT_PUBLIC_UMAMI_SCRIPT_URL = 'NEXT_PUBLIC_UMAMI_SCRIPT_URL',
+  // The website id Umami issues per site. Not a secret (it ships in the page
+  // source), but it is per-deployment: staging and production are separate sites
+  // in the dashboard, or staging traffic pollutes the real numbers. EITHER of
+  // these two empty ⇒ no script tag at all, which is what a fresh clone, every
+  // `pnpm test` run and local dev get. Both are inlined at BUILD time.
+  NEXT_PUBLIC_UMAMI_WEBSITE_ID = 'NEXT_PUBLIC_UMAMI_WEBSITE_ID',
+
   NODE_ENV = 'NODE_ENV',
   NEXT_PUBLIC_APP_URL = 'NEXT_PUBLIC_APP_URL',
 }
@@ -70,6 +108,11 @@ const STATIC_INLINED_VARS: Partial<Record<VARS, string | undefined>> = {
   [VARS.NODE_ENV]: process.env.NODE_ENV,
   [VARS.NEXT_PUBLIC_APP_URL]: process.env.NEXT_PUBLIC_APP_URL,
   [VARS.NEXT_PUBLIC_STORAGE_BASE_URL]: process.env.NEXT_PUBLIC_STORAGE_BASE_URL,
+  [VARS.NEXT_PUBLIC_SENTRY_DSN]: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  [VARS.NEXT_PUBLIC_SENTRY_ENVIRONMENT]:
+    process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT,
+  [VARS.NEXT_PUBLIC_UMAMI_SCRIPT_URL]: process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL,
+  [VARS.NEXT_PUBLIC_UMAMI_WEBSITE_ID]: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID,
 };
 
 export const getEnvVariable: Func = (

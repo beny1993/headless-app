@@ -6,7 +6,7 @@ import { imageSrc } from '@/lib/storage/image-url';
  * «خانواده اسموکی» — a static photo wall, by the story's own acceptance
  * criteria (there is no community feature behind it).
  *
- * The eyebrow, the section heading and the five positional slots (photo, name,
+ * The eyebrow, the section heading and the six positional slots (photo, name,
  * owner, quote) are admin content; the count and the `tall` mosaic layout (the
  * first and fourth tiles — indices 0 and 3 — run tall) stay in code as layout.
  * Each slot's alt text is derived in code from its name and owner, so a swapped
@@ -32,14 +32,14 @@ export function CommunitySection({
           <h2 className="text-4xl font-black">{content.headline}</h2>
         </div>
 
-        <div className="grid auto-rows-[180px] grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+        <div className="grid auto-rows-[180px] grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
           {content.slots.map((pet, index) => (
             <figure
               // Index key, not the name: names are editable content and may repeat.
               key={index}
               className={`group relative overflow-hidden rounded-2xl ${
                 // The two portraits that run tall in the mosaic — layout, in code.
-                index === 0 || index === 3 ? 'row-span-2' : ''
+                index === 0 || index === 4 ? 'row-span-2' : ''
               }`}
             >
               <Image

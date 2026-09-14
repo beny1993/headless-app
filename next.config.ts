@@ -1,3 +1,6 @@
+// From `/config`, not the package root: the root re-export is deprecated and
+// stops working in SDK v11.
+import { withSentryConfig } from '@sentry/nextjs/config';
 import type { NextConfig } from 'next';
 
 // When uploads live in object storage (production `s3`), `next/image` must be
@@ -63,4 +66,37 @@ const nextConfig: NextConfig = {
   ],
 };
 
-export default nextConfig;
+// Source-map upload, release creation and the plugin's own telemetry are the
+// three things that make `next build` talk to sentry.io. The build runs inside
+// the Docker image ON the Iranian VPS, where sentry.io answers 403 (see
+// docs/DEPLOY.md), so all three are off unless a SENTRY_AUTH_TOKEN is present —
+// which is also the only way to have readable production stack traces. Leaving
+// them on without a token just prints a warning on every build, and this repo
+// treats a build warning as a failed gate.
+const hasSentryAuthToken = Boolean(process.env.SENTRY_AUTH_TOKEN);
+
+export default withSentryConfig(nextConfig, {
+  org: 'benyamin-chehrazi',
+  project: 'javascript-nextjs',
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  telemetry: false,
+  sourcemaps: { disable: !hasSentryAuthToken },
+  release: { create: hasSentryAuthToken },
+  // Minified client frames are unreadable without these; harmless when upload
+  // is off, since nothing is uploaded either way.
+  widenClientFileUpload: true,
+  // Without a token the plugin's only output is "no auth token, will not create
+  // release" on every single build — it warns before it ever consults
+  // `release.create`. Nothing it could say in that state is actionable, and this
+  // repo treats a build warning as a failed gate. With a token, its warnings are
+  // about real upload failures, so let them through.
+  silent: !hasSentryAuthToken,
+  // No `tunnelRoute`: it only ever existed to route browser events around
+  // sentry.io's block on Iranian IPs, and the backend is GlitchTip now, which
+  // answers from Iran. Browsers post to it directly. Re-add it only if a future
+  // backend becomes unreachable from a shopper's browser.
+  // Deliberately absent: `disableLogger` and `automaticVercelMonitors`. Both are
+  // deprecated in favour of `webpack.*` equivalents that Turbopack — which is
+  // what `next build` uses on Next 16 — does not support, so setting either only
+  // buys a deprecation warning. Vercel is not a deploy target here anyway.
+});

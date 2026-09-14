@@ -16,6 +16,8 @@ export const PATHS = {
   LOGIN: '/login',
 } as const;
 
+export const API_ROOT = '/api';
+
 /** The storefront's product page for one product: `/product/cat-dry-food`. */
 export const productPath = (slug: string) =>
   `${PATHS.PRODUCT}/${encodeURIComponent(slug)}`;
@@ -70,6 +72,9 @@ export function shopPath(filters: ShopFilters = {}): string {
 export const PROTECTED_PATHS = {
   INDEX: '/admin-panel',
   PRODUCTS: '/admin-panel/products',
+  /** The category manager — «دسته‌بندی‌ها», nested under Products. A static
+   *  segment, so Next resolves it ahead of the sibling `products/[id]` route. */
+  CATEGORIES: '/admin-panel/products/categories',
   ORDERS: '/admin-panel/orders',
   /** The discount-code manager — «کدهای تخفیف» in the sidebar. */
   DISCOUNTS: '/admin-panel/discounts',
@@ -106,11 +111,18 @@ export const API_PATHS = {
   // agnostic — and guarding `/products/:id` that way would also 403 the public
   // `GET /products/{slug}`. Nothing public lives under `/admin`.
   ADMIN_PRODUCTS: '/api/admin/products',
+  // Admin category CRUD — create, update, delete. Same `/admin/*` guard; the
+  // public list stays at `CATEGORIES` above, which that guard never reaches.
+  ADMIN_CATEGORIES: '/api/admin/categories',
   // Admin order management — read one order (admin projection) and transition it.
   // Same `/admin/*` prefix and `requireAdmin` guard as the product routes.
   ADMIN_ORDERS: '/api/admin/orders',
   // Admin discount codes — create + toggle active. Same `/admin/*` guard.
   ADMIN_DISCOUNTS: '/api/admin/discounts',
+  // Admin province management — create + activate/deactivate. Same `/admin/*`
+  // guard; deliberately not under `/shipping/rates`, where a method-agnostic
+  // guard would also 403 the public `GET /shipping/rates` checkout reads.
+  ADMIN_PROVINCES: '/api/admin/provinces',
   // Admin storefront content — replace one block by key, and a shared image
   // upload. Same `/admin/*` guard. No public content GET: the storefront reads
   // through the DAO in server components, as the home page already does.
@@ -167,6 +179,13 @@ export const API_ADMIN_DISCOUNT_TEMPLATE = `${API_PATHS.ADMIN_DISCOUNTS}/{id}`;
 export const apiAdminDiscountPath = (id: string) =>
   `${API_PATHS.ADMIN_DISCOUNTS}/${encodeURIComponent(id)}`;
 
+/** `/api/admin/provinces/{id}` — the OpenAPI template for the province toggle. */
+export const API_ADMIN_PROVINCE_TEMPLATE = `${API_PATHS.ADMIN_PROVINCES}/{id}`;
+
+/** The admin activate/deactivate path for one province, by id. */
+export const apiAdminProvincePath = (id: number) =>
+  `${API_PATHS.ADMIN_PROVINCES}/${id}`;
+
 /** `/api/admin/content/{key}` — the OpenAPI template for the content block update. */
 export const API_ADMIN_CONTENT_TEMPLATE = `${API_PATHS.ADMIN_CONTENT}/{key}`;
 
@@ -190,6 +209,10 @@ export const API_ADMIN_PRODUCT_TEMPLATE = `${API_PATHS.ADMIN_PRODUCTS}/{id}`;
 /** The admin update/delete path for one product, by id. */
 export const apiAdminProductPath = (id: string) =>
   `${API_PATHS.ADMIN_PRODUCTS}/${encodeURIComponent(id)}`;
+
+/** The admin update/delete path for one category, by id. */
+export const apiAdminCategoryPath = (id: string) =>
+  `${API_PATHS.ADMIN_CATEGORIES}/${encodeURIComponent(id)}`;
 
 /** `/api/admin/products/{id}/images` — the OpenAPI template for image upload. */
 export const API_ADMIN_PRODUCT_IMAGES_TEMPLATE = `${API_PATHS.ADMIN_PRODUCTS}/{id}/images`;

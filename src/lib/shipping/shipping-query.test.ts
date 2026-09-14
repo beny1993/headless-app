@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   provinceIdParamSchema,
+  SHIPPING_FEE_MESSAGE,
   shippingFeeSchema,
 } from '@/lib/shipping/shipping-query';
 
@@ -50,5 +51,22 @@ describe('shippingFeeSchema — the admin rate-update fee', () => {
 
   it('rejects a fee sent as a string — the JSON body must carry a number', () => {
     expect(shippingFeeSchema.safeParse('25000').success).toBe(false);
+  });
+
+  it.each([
+    ['a negative fee', -1],
+    ['a fractional fee', 1500.5],
+    ['a string', '25000'],
+    ['null', null],
+    ['a missing fee', undefined],
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['a fee past the safe-integer range', 2 ** 60],
+  ])('answers %s with the one Persian fee message', (_label, value) => {
+    const result = shippingFeeSchema.safeParse(value);
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.message)).toEqual([
+      SHIPPING_FEE_MESSAGE,
+    ]);
   });
 });

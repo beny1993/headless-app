@@ -12,6 +12,7 @@
     "app:dev": "docker compose --file docker-compose-dev.yaml up --wait && next dev",
     "postapp:dev": "docker compose --file docker-compose-dev.yaml down",
     "build": "next build",
+    "build:local": "node scripts/build-local.mjs",
     "start": "next start",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
@@ -19,6 +20,7 @@
     "format:check": "prettier --ignore-unknown --check ./src",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "dev:email": "email dev --dir ./src/emails",
     "prepare": "husky",
     "migration:generate": "drizzle-kit generate",
@@ -31,6 +33,7 @@
     "seed-catalog": "tsx scripts/seed-catalog.ts",
     "seed-shipping": "tsx scripts/seed-shipping.ts",
     "verify-s3": "tsx scripts/verify-s3-storage.ts",
+    "verify-sms": "tsx scripts/verify-sms.ts",
     "security:check": "pnpm audit --audit-level=high"
   },
   "dependencies": {
@@ -41,19 +44,21 @@
     "@react-email/components": "^1.0.12",
     "@react-email/render": "^2.1.0",
     "@scalar/hono-api-reference": "^0.9.48",
+    "@sentry/nextjs": "^10.73.0",
     "@tailwindcss/postcss": "^4.3.3",
     "better-auth": "^1.6.26",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.13.0",
+    "hono": "^4.13.7",
     "lucide-react": "^0.563.0",
-    "next": "^16.3.0",
-    "nodemailer": "^9.0.5",
+    "next": "^16.3.4",
+    "nodemailer": "^9.1.1",
     "pg": "^8.22.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3"
   },
@@ -62,6 +67,7 @@
     "@commitlint/config-conventional": "^21.2.0",
     "@eslint/js": "^9.39.5",
     "@faker-js/faker": "^10.5.0",
+    "@playwright/test": "^1.63.0",
     "@react-email/ui": "^6.9.2",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.3",
@@ -88,7 +94,7 @@
     "tsx": "^4.23.9",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.66.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "packageManager": "pnpm@11.20.0"
 }

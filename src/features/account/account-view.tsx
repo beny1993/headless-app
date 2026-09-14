@@ -57,6 +57,8 @@ export function AccountView({
   provinces: ProvinceOption[];
 }) {
   const [tab, setTab] = useState<Tab>('orders');
+  const [savedPets, setSavedPets] = useState(pets);
+  const [savedAddresses, setSavedAddresses] = useState(addresses);
 
   return (
     <main className="min-h-screen pt-4">
@@ -100,10 +102,13 @@ export function AccountView({
 
           <div className="flex-1">
             {tab === 'orders' && <OrdersTab orders={orders} />}
-            {tab === 'pets' && <PetsTab initialPets={pets} />}
+            {tab === 'pets' && (
+              <PetsTab pets={savedPets} onPetsChange={setSavedPets} />
+            )}
             {tab === 'addresses' && (
               <AddressesTab
-                initialAddresses={addresses}
+                addresses={savedAddresses}
+                onAddressesChange={setSavedAddresses}
                 provinces={provinces}
               />
             )}

@@ -1,7 +1,12 @@
 // Pure schema behaviour — no database. The null byte is CONSTRUCTED with
 // `String.fromCharCode(0)`, never typed, per the project's control-character rule.
 import { describe, expect, it } from 'vitest';
-import { boundedText, optionalBoundedText } from '@/lib/validation/text';
+import {
+  boundedText,
+  FORBIDDEN_TEXT_CHARS,
+  optionalBoundedText,
+  VISIBLE_CHAR,
+} from '@/lib/validation/text';
 
 const NUL = String.fromCharCode(0);
 
@@ -55,5 +60,21 @@ describe('optionalBoundedText', () => {
 
   it('rejects a null byte', () => {
     expect(schema.safeParse(`a${NUL}b`).success).toBe(false);
+  });
+});
+
+describe('FORBIDDEN_TEXT_CHARS', () => {
+  it('flags control characters and bidi overrides/isolates, but not ZWNJ', () => {
+    expect(FORBIDDEN_TEXT_CHARS.test(`a${NUL}b`)).toBe(true);
+    expect(FORBIDDEN_TEXT_CHARS.test('a\u202Eb')).toBe(true);
+    expect(FORBIDDEN_TEXT_CHARS.test('a\u2066b')).toBe(true);
+    expect(FORBIDDEN_TEXT_CHARS.test('اسباب\u200Cبازی')).toBe(false);
+  });
+});
+
+describe('VISIBLE_CHAR', () => {
+  it('needs at least one letter, digit, punctuation mark or symbol', () => {
+    expect(VISIBLE_CHAR.test('\u200C\u200C')).toBe(false);
+    expect(VISIBLE_CHAR.test('قم')).toBe(true);
   });
 });
