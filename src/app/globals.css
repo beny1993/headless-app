@@ -238,3 +238,20 @@
     line-height: 1.5;
   }
 }
+
+/* Native selects stay native (the design review's ruling), but the browser's own
+   arrow sits flush against the border in RTL and ignores padding. Draw the
+   chevron instead, inset from the inline end. Deliberately outside @layer base:
+   the room it reserves has to survive the px-* utility every select sets. */
+select:not([multiple]) {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232a2118' stroke-opacity='.5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 1rem;
+  background-position: right 0.75rem center;
+  padding-inline-end: 2.25rem;
+}
+
+select:not([multiple]):dir(rtl) {
+  background-position: left 0.75rem center;
+}
