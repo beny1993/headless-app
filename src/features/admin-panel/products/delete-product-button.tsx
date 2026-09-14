@@ -3,14 +3,16 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Loader2, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { delData } from '@/lib/api-client';
 import { apiAdminProductPath } from '@/lib/constant/paths';
 
 /**
  * Soft-deletes (deactivates) a product. It does not remove the row — the API
  * only flips `is_active` so past order snapshots stay intact — so after a
- * refresh the product is still listed, now marked غیرفعال. The confirm copy
- * says exactly that, so "delete" is never mistaken for a hard delete.
+ * refresh the product is still listed, now marked غیرفعال, and the list stops
+ * offering this button on it. The confirm copy says exactly that, so "delete" is
+ * never mistaken for a hard delete. A failure is an error toast.
  */
 export function DeleteProductButton({
   id,
@@ -36,7 +38,7 @@ export function DeleteProductButton({
       router.refresh();
     } catch {
       setBusy(false);
-      window.alert('غیرفعال کردن محصول ناموفق بود. دوباره تلاش کن.');
+      toast.error('غیرفعال کردن محصول ناموفق بود. دوباره تلاش کن.');
     }
   };
 

@@ -2,6 +2,7 @@
 
 import { useId, useRef, useState } from 'react';
 import { AlertCircle, Check, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { z } from 'zod';
 import { ApiRequestError, putData } from '@/lib/api-client';
 import { parseFieldErrors } from '@/lib/checkout/field-errors';
@@ -117,7 +118,6 @@ function BlockForm({
   const [files, setFiles] = useState<Record<string, File>>({});
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [topError, setTopError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const saving = useRef(false);
   const [justSaved, setJustSaved] = useState(false);
@@ -174,7 +174,6 @@ function BlockForm({
   const onSubmit = async (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (saving.current) return;
-    setTopError(undefined);
 
     // (1) Validate the current value. Pending image picks are not yet in it, but
     // their fields still hold the previous (valid) key, so the schema passes and
@@ -213,7 +212,7 @@ function BlockForm({
       setPreviews(remainingPreviews);
       saving.current = false;
       setBusy(false);
-      setTopError(error instanceof Error ? error.message : IMAGE_UPLOAD_FAILED);
+      toast.error(error instanceof Error ? error.message : IMAGE_UPLOAD_FAILED);
       return;
     }
 
@@ -244,16 +243,17 @@ function BlockForm({
       ) {
         const { fields, unmapped } = parseFieldErrors(error.errors);
         setFieldErrors(fields);
-        setTopError(
+        // A refusal no field can show is the request's own failure: a toast.
+        const message =
           unmapped.length > 0
             ? unmapped.join(' ')
             : Object.keys(fields).length === 0
               ? error.message
-              : undefined,
-        );
+              : undefined;
+        if (message) toast.error(message);
         return;
       }
-      setTopError(error instanceof Error ? error.message : GENERIC_ERROR);
+      toast.error(error instanceof Error ? error.message : GENERIC_ERROR);
     }
   };
 
@@ -286,16 +286,6 @@ function BlockForm({
             />
             نمایش این بخش در سایت
           </label>
-        )}
-
-        {topError && (
-          <p
-            role="alert"
-            className="text-destructive border-destructive/30 bg-destructive-soft/40 mb-4 flex items-center gap-2 rounded-xl border p-3 text-sm"
-          >
-            <AlertCircle size={16} className="shrink-0" aria-hidden="true" />
-            {topError}
-          </p>
         )}
 
         <div className="space-y-5">

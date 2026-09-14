@@ -44,11 +44,15 @@ const OPTIONS: LinkOptions = {
   ],
 };
 
-const { putData } = vi.hoisted(() => ({ putData: vi.fn() }));
+const { putData, toast } = vi.hoisted(() => ({
+  putData: vi.fn(),
+  toast: { error: vi.fn() },
+}));
 vi.mock('@/lib/api-client', async (original) => ({
   ...(await original<typeof import('@/lib/api-client')>()),
   putData,
 }));
+vi.mock('sonner', () => ({ toast }));
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -76,7 +80,7 @@ describe('content editor save boundary', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }));
     });
-    expect(screen.getByRole('alert').textContent).toContain('upload failed');
+    expect(toast.error).toHaveBeenCalledWith('upload failed');
     expect(putData).not.toHaveBeenCalled();
     expect(document.querySelector('fieldset')?.disabled).toBe(false);
     await act(async () => {
@@ -125,8 +129,7 @@ describe('content editor save boundary', () => {
       expect(
         fields.every((field) => field.closest('fieldset')?.disabled === false),
       ).toBe(true);
-      if (!succeeds)
-        expect(screen.getByRole('alert').textContent).toContain('save failed');
+      if (!succeeds) expect(toast.error).toHaveBeenCalledWith('save failed');
     });
   }
 });

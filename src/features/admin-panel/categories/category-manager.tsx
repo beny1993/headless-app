@@ -11,6 +11,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { ApiRequestError, delData, postData, putData } from '@/lib/api-client';
 import {
   type CategoryInputBody,
@@ -126,7 +127,6 @@ function CreateForm({
   const id = useId();
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [topError, setTopError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [justCreated, setJustCreated] = useState<string | null>(null);
 
@@ -134,7 +134,6 @@ function CreateForm({
     if (busy) return;
     setBusy(true);
     setErrors({});
-    setTopError(undefined);
     setJustCreated(null);
     const result = await saveCategory(draft, (body) =>
       postData<CategoryView>(API_PATHS.ADMIN_CATEGORIES, body),
@@ -142,7 +141,7 @@ function CreateForm({
     setBusy(false);
     if (!result.ok) {
       setErrors(result.fields);
-      setTopError(result.message);
+      if (result.message) toast.error(result.message);
       return;
     }
     onCreated(result.category);
@@ -162,8 +161,6 @@ function CreateForm({
         <Layers size={18} className="text-accent-strong" aria-hidden="true" />
         <h2 className="font-bold">ساخت دسته‌بندی</h2>
       </div>
-
-      {topError && <ErrorLine message={topError} boxed />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <CategoryField
@@ -291,13 +288,9 @@ function CategoryRow({
   // `null` outside edit mode — see the component note above.
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
-  const clearErrors = () => {
-    setErrors({});
-    setError(undefined);
-  };
+  const clearErrors = () => setErrors({});
 
   const startEdit = () => {
     clearErrors();
@@ -323,7 +316,7 @@ function CategoryRow({
     setBusy(false);
     if (!result.ok) {
       setErrors(result.fields);
-      setError(result.message);
+      if (result.message) toast.error(result.message);
       return;
     }
     setDraft(null);
@@ -340,13 +333,12 @@ function CategoryRow({
       return;
     }
     setBusy(true);
-    setError(undefined);
     try {
       await delData(apiAdminCategoryPath(category.id));
       onDeleted(category.id);
     } catch (requestError) {
       // A 409 carries the server's Persian refusal, naming the product count.
-      setError(
+      toast.error(
         requestError instanceof Error
           ? requestError.message
           : 'حذف دسته‌بندی ناموفق بود.',
@@ -482,26 +474,8 @@ function CategoryRow({
             </>
           )}
         </div>
-        {error && <ErrorLine message={error} />}
       </td>
     </tr>
-  );
-}
-
-function ErrorLine({ message, boxed }: { message: string; boxed?: boolean }) {
-  return (
-    <p
-      role="alert"
-      className={cn(
-        'text-destructive flex items-center gap-2 text-xs',
-        boxed
-          ? 'border-destructive/30 bg-destructive-soft/40 rounded-xl border p-3 text-sm'
-          : 'mt-2 max-w-72',
-      )}
-    >
-      <AlertCircle size={14} className="shrink-0" aria-hidden="true" />
-      {message}
-    </p>
   );
 }
 

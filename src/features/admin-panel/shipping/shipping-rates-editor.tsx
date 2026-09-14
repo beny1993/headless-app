@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertCircle, Check, Loader2 } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import type { ShippingRateRow } from '@/db/dao/ShippingRateDao';
 import { putData } from '@/lib/api-client';
 import { apiShippingRatePath } from '@/lib/constant/paths';
@@ -57,7 +58,6 @@ function RateRow({ rate }: { rate: ShippingRateRow }) {
   const [value, setValue] = useState(String(rate.fee));
   const [savedFee, setSavedFee] = useState(rate.fee);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
 
   const ascii = toAsciiDigits(value.trim());
@@ -73,7 +73,6 @@ function RateRow({ rate }: { rate: ShippingRateRow }) {
   const save = async () => {
     if (fee === null) return;
     setBusy(true);
-    setError(null);
     setJustSaved(false);
     try {
       const updated = await putData<ShippingRateRow>(
@@ -84,7 +83,7 @@ function RateRow({ rate }: { rate: ShippingRateRow }) {
       setValue(String(updated.fee));
       setJustSaved(true);
     } catch (requestError) {
-      setError(
+      toast.error(
         requestError instanceof Error
           ? requestError.message
           : 'ذخیره نرخ ناموفق بود. دوباره تلاش کن.',
@@ -144,14 +143,6 @@ function RateRow({ rate }: { rate: ShippingRateRow }) {
           {justSaved && !dirty && (
             <span className="text-success-strong flex items-center gap-1 text-xs">
               <Check size={14} aria-hidden="true" /> ذخیره شد
-            </span>
-          )}
-          {error && (
-            <span
-              role="alert"
-              className="text-destructive flex items-center gap-1 text-xs"
-            >
-              <AlertCircle size={14} aria-hidden="true" /> {error}
             </span>
           )}
         </div>

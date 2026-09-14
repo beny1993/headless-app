@@ -6,19 +6,25 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PROTECTED_PATHS } from '@/lib/constant/paths';
 import { ProductForm, type ProductFormInitial } from './product-form';
 
 const api = vi.hoisted(() => ({ putData: vi.fn() }));
+const { router, toast } = vi.hoisted(() => ({
+  router: { push: vi.fn(), refresh: vi.fn() },
+  toast: { error: vi.fn(), warning: vi.fn() },
+}));
 vi.mock('@/lib/api-client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api-client')>()),
   putData: api.putData,
 }));
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
-}));
+vi.mock('next/navigation', () => ({ useRouter: () => router }));
+vi.mock('sonner', () => ({ toast }));
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('product price preview', () => {
@@ -88,4 +94,65 @@ it('previews a read-only SKU from the slug while creating', () => {
     target: { value: 'royal-canin' },
   });
   expect(sku.value).toBe('ROYAL-CANIN-????');
+});
+
+const EDIT_PRODUCT: ProductFormInitial = {
+  id: '123e4567-e89b-12d3-a456-426614174000',
+  title: 'غذای گربه',
+  slug: 'cat-food',
+  sku: 'CAT-FOOD',
+  brand: null,
+  description: null,
+  benefit: null,
+  price: 100_000,
+  oldPrice: null,
+  stock: 5,
+  categoryId: '123e4567-e89b-12d3-a456-426614174001',
+  petType: 'cat',
+  isActive: true,
+  imageKey: null,
+};
+
+describe('product save failures', () => {
+  const renderEdit = () =>
+    render(
+      <ProductForm
+        product={EDIT_PRODUCT}
+        categories={[{ id: EDIT_PRODUCT.categoryId, title: 'گربه' }]}
+      />,
+    );
+
+  it('reports a failed save as an error toast and stays on the form', async () => {
+    api.putData.mockRejectedValue(new Error('server down'));
+    renderEdit();
+
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('server down'),
+    );
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('lands on the list with a warning toast when the photo fails after the save', async () => {
+    api.putData.mockResolvedValue({ id: EDIT_PRODUCT.id });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+    renderEdit();
+
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['image'], 'cat.png', { type: 'image/png' })],
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        'محصول ذخیره شد اما بارگذاری تصویر ناموفق بود. از فهرست محصولات دوباره تلاش کن.',
+      ),
+    );
+    expect(router.push).toHaveBeenCalledWith(PROTECTED_PATHS.PRODUCTS);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
 });

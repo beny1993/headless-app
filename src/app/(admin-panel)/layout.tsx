@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Toaster } from '@/components/ui/sonner';
 import { DEFAULT_SITE_NAME } from '@/constants';
 
 export const metadata: Metadata = {
@@ -17,5 +18,13 @@ export default function AdminPanelLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return children;
+  // One toast region for the whole panel. It lives in this layout rather than a
+  // page, so a toast raised just before a client navigation (the product form's
+  // "saved, but the photo did not upload") survives onto the next page.
+  return (
+    <>
+      {children}
+      <Toaster />
+    </>
+  );
 }

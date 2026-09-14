@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
 import { AlertCircle, ChevronRight, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { z } from 'zod';
 import { ApiRequestError, postData, putData } from '@/lib/api-client';
 import {
@@ -119,7 +120,6 @@ export function ProductForm({
     product?.imageKey ? imageSrc(product.imageKey) : null,
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [topError, setTopError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
 
   const update = (key: keyof typeof form, value: string | boolean) => {
@@ -155,7 +155,6 @@ export function ProductForm({
 
   const onSubmit = async (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setTopError(undefined);
 
     const parsed = product
       ? productUpdateInputSchema.safeParse({
@@ -186,7 +185,7 @@ export function ProductForm({
         } catch {
           router.push(PROTECTED_PATHS.PRODUCTS);
           router.refresh();
-          window.alert(
+          toast.warning(
             'محصول ذخیره شد اما بارگذاری تصویر ناموفق بود. از فهرست محصولات دوباره تلاش کن.',
           );
           return;
@@ -203,16 +202,17 @@ export function ProductForm({
       ) {
         const { fields, unmapped } = parseFieldErrors(error.errors);
         setFieldErrors(fields);
-        setTopError(
+        // A refusal no field can show is the request's own failure: a toast.
+        const message =
           unmapped.length > 0
             ? unmapped.join(' ')
             : Object.keys(fields).length === 0
               ? error.message
-              : undefined,
-        );
+              : undefined;
+        if (message) toast.error(message);
         return;
       }
-      setTopError(error instanceof Error ? error.message : GENERIC_ERROR);
+      toast.error(error instanceof Error ? error.message : GENERIC_ERROR);
     }
   };
 
@@ -235,16 +235,6 @@ export function ProductForm({
       <h1 className="mb-6 text-2xl font-black">
         {isEdit ? 'ویرایش محصول' : 'محصول جدید'}
       </h1>
-
-      {topError && (
-        <p
-          role="alert"
-          className="text-destructive border-destructive/30 bg-destructive-soft/40 mb-4 flex items-center gap-2 rounded-xl border p-3 text-sm"
-        >
-          <AlertCircle size={16} className="shrink-0" aria-hidden="true" />
-          {topError}
-        </p>
-      )}
 
       <form
         onSubmit={onSubmit}

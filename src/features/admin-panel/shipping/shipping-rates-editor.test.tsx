@@ -12,6 +12,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiShippingRatePath } from '@/lib/constant/paths';
 import { ShippingRatesEditor } from './shipping-rates-editor';
 
+const { toast } = vi.hoisted(() => ({ toast: { error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast }));
+
 const RATES = [
   { provinceId: 1, name: 'تهران', fee: 25_000 },
   { provinceId: 7, name: 'اصفهان', fee: 42_000 },
@@ -32,6 +35,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   fetchMock.mockReset();
+  toast.error.mockReset();
   vi.unstubAllGlobals();
 });
 
@@ -102,5 +106,21 @@ describe('ShippingRatesEditor', () => {
         .disabled,
     ).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('reports a refused save as an error toast', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ status: 'error', message: 'دسترسی ندارید.' }),
+    } as Response);
+    render(<ShippingRatesEditor rates={RATES} />);
+
+    fireEvent.change(feeInput('تهران'), { target: { value: '30000' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'ذخیره' })[0]);
+    await act(async () => {});
+
+    expect(toast.error).toHaveBeenCalledWith('دسترسی ندارید.');
+    expect(screen.queryByText('ذخیره شد')).toBeNull();
   });
 });
