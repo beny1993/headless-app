@@ -34,7 +34,7 @@ import { LINK_MESSAGES, linkSchema } from './link';
  *  a key is released, a new field needs a compat plan: `.optional()` with a
  *  code-side fallback, or a data migration script. */
 export const CONTENT_KEYS = [
-  // Home, in page order (matches `src/app/(app)/page.tsx`).
+  // Home, in page order (matches `src/app/(app)/(store)/page.tsx`).
   'home.hero',
   'home.moments',
   'home.recommends',

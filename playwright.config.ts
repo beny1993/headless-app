@@ -70,6 +70,9 @@ export default defineConfig({
       APP_CONFIG_SHOW_OTP_IN_UI: 'true',
       APP_CONFIG_ZARINPAL_PROVIDER: 'mock',
       APP_CONFIG_EMAIL_ENABLED: 'false',
+      // Off whatever .env says, or every storefront spec meets the maintenance
+      // screen instead of the shop.
+      APP_CONFIG_MAINTENANCE_MODE: '',
       // A test run never touches the real bucket, error tracker or analytics.
       APP_CONFIG_STORAGE_PROVIDER: 'local',
       NEXT_PUBLIC_STORAGE_BASE_URL: '',
