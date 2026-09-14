@@ -12,14 +12,12 @@
  * Requires, in `.env`: APP_CONFIG_SMSIR_API_KEY and APP_CONFIG_SMSIR_TEMPLATE_ID.
  * It forces the `smsir` driver regardless of APP_CONFIG_SMS_PROVIDER, so the
  * console default stays the local login path and this stays an explicit act.
+ * If the SMS.ir panel's IP restriction is on, this machine's IP must be listed.
  */
 import 'dotenv/config';
 import { normalizeIranPhone } from '@/lib/auth/phone';
 import { sendOtpSms } from '@/lib/sms';
 import { getEnvVariable, VARS } from '@/lib/utils/env';
-
-/** SMS.ir's stock sandbox template. A real account never has this id. */
-const SANDBOX_TEMPLATE_ID = '123456';
 
 const input = process.argv[2];
 if (!input) {
@@ -56,16 +54,7 @@ const main = async () => {
   await sendOtpSms(phone, code);
 
   console.log(`\n✓ SMS.ir accepted the send (code ${code}).`);
-
-  if (templateId === SANDBOX_TEMPLATE_ID) {
-    console.log(
-      '\n⚠ Template 123456 is SMS.ir’s SANDBOX template. The sandbox key returns a\n' +
-        '  canned success (always messageId 89545112) and dispatches NOTHING — no SMS\n' +
-        '  will arrive. Swap in the production key and your own approved template id.',
-    );
-  } else {
-    console.log('  Check the handset: it should arrive within a minute.');
-  }
+  console.log('  Check the handset: it should arrive within a minute.');
 };
 
 main().catch((error: Error) => {

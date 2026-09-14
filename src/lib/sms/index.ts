@@ -53,8 +53,8 @@ export const consoleSmsDriver: OtpSender = async (to, code) => {
 };
 
 // ── The real SMS.ir driver ───────────────────────────────────────────────────
-// Verified live against the sandbox key on 2026-09-12: success is HTTP 200 with
-// `{"status":1,...}`; an invalid key is HTTP 401 `status 10`, an unknown
+// Response shapes as observed from api.sms.ir on 2026-09-12: success is HTTP 200
+// with `{"status":1,...}`; an invalid key is HTTP 401 `status 10`, an unknown
 // template HTTP 400 `status 113`. Both HTTP status and body status therefore
 // carry the answer, and the body is JSON either way.
 
@@ -62,7 +62,7 @@ const SMSIR_VERIFY_URL = 'https://api.sms.ir/v1/send/verify';
 
 /**
  * The parameter the panel template substitutes. The template body must contain
- * `#CODE#`; the sandbox's stock template 123456 already does.
+ * `#CODE#`.
  */
 const CODE_PARAMETER = 'CODE';
 

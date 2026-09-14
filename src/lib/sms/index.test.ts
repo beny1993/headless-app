@@ -134,7 +134,7 @@ describe('getSmsSender', () => {
   it('builds the SMS.ir driver when the provider names it', () => {
     vi.stubEnv('APP_CONFIG_SMS_PROVIDER', 'smsir');
     vi.stubEnv('APP_CONFIG_SMSIR_API_KEY', 'test-key');
-    vi.stubEnv('APP_CONFIG_SMSIR_TEMPLATE_ID', '123456');
+    vi.stubEnv('APP_CONFIG_SMSIR_TEMPLATE_ID', '100200');
     expect(getSmsSender()).not.toBe(consoleSmsDriver);
   });
 });
@@ -170,7 +170,7 @@ describe('createSmsIrDriver', () => {
   const KEY = 'test-key';
   let fetchMock: ReturnType<typeof vi.fn>;
 
-  /** One SMS.ir reply, in the envelope the live sandbox actually returns. */
+  /** One SMS.ir reply, in the envelope api.sms.ir actually returns. */
   const reply = (status: number, httpStatus = 200, message = 'موفق') =>
     new Response(JSON.stringify({ data: null, status, message }), {
       status: httpStatus,
@@ -181,7 +181,7 @@ describe('createSmsIrDriver', () => {
 
   beforeEach(() => {
     vi.stubEnv('APP_CONFIG_SMSIR_API_KEY', KEY);
-    vi.stubEnv('APP_CONFIG_SMSIR_TEMPLATE_ID', '123456');
+    vi.stubEnv('APP_CONFIG_SMSIR_TEMPLATE_ID', '100200');
     fetchMock = vi.fn(async () => reply(1));
     vi.stubGlobal('fetch', fetchMock);
   });
@@ -258,7 +258,7 @@ describe('createSmsIrDriver', () => {
     it('sends the template id as a number, as SMS.ir expects', async () => {
       await createSmsIrDriver()(PHONE, '482913');
 
-      expect(body().templateId).toBe(123456);
+      expect(body().templateId).toBe(100200);
     });
 
     it('passes the code as the CODE template parameter', async () => {
@@ -284,7 +284,7 @@ describe('createSmsIrDriver', () => {
     });
 
     it('rejects on a non-success status, carrying SMS.ir’s reason', async () => {
-      // Live sandbox: an invalid key is HTTP 401 status 10.
+      // api.sms.ir answers an invalid key with HTTP 401, status 10.
       fetchMock.mockResolvedValueOnce(
         reply(10, 401, 'کلید وب سرویس نامعتبر است'),
       );
@@ -295,7 +295,7 @@ describe('createSmsIrDriver', () => {
     });
 
     it('rejects on an unknown template rather than reporting a send', async () => {
-      // Live sandbox: HTTP 400 status 113.
+      // api.sms.ir answers an unknown template with HTTP 400, status 113.
       fetchMock.mockResolvedValueOnce(reply(113, 400, 'قالب یافت نشد'));
 
       await expect(createSmsIrDriver()(PHONE, '482913')).rejects.toThrow(/113/);

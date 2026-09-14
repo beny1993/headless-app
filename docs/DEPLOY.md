@@ -201,7 +201,12 @@ and deliberately not baked into the image:
       routed — the bulk/line-number API is for marketing sends and carriers
       filter codes on it. Create the template in the SMS.ir panel first: its
       body must contain `#CODE#`, and the driver sends that parameter as `CODE`.
-      A missing or malformed key/template throws at boot, not at send time.
+      A missing or malformed key/template does **not** fail the deploy — the
+      driver is built when a code is sent, so it fails the first login instead.
+      Run `pnpm verify-sms <phone>` with the production values before switching.
+      If the SMS.ir panel's IP restriction is on, list the server's outbound
+      IPv4 (app → Terminal in Coolify: `wget -qO- https://api.ipify.org`), plus
+      the IP of whatever machine runs `verify-sms`; anything unlisted is refused.
 - [ ] **`APP_CONFIG_SHOW_OTP_IN_UI` unset (or `false`) on production.** Staging
       sets it to `true` to read codes off the login page; production must not,
       and the real SMS driver above also disarms it.
