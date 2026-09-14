@@ -30,6 +30,14 @@ describe('provinces schema', () => {
     // re-run updates the row rather than inserting a duplicate تهران.
     expect(provinces.name.isUnique).toBe(true);
   });
+
+  it('soft-deletes through an is_active flag that defaults to active', () => {
+    // Three restrict FKs point at provinces.id, so a province is never deleted —
+    // the admin deactivates it. Existing rows (and the seed) land active.
+    expect(provinces.isActive.name).toBe('is_active');
+    expect(provinces.isActive.default).toBe(true);
+    expect(provinces.isActive.notNull).toBe(true);
+  });
 });
 
 describe('shipping_rates schema', () => {

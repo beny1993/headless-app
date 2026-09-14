@@ -1,8 +1,9 @@
 // The province shipping-rate API:
-//   · GET /api/shipping/rates            — every province + fee (checkout's
+//   · GET /api/shipping/rates            — every ACTIVE province + fee (checkout's
 //     province <select>); with `?province=<id>`, just that one (the fee preview).
 //     Public and read-only — checkout is behind auth, but the fee preview it
-//     shows is not.
+//     shows is not. A deactivated province is absent from both, by the DAO's
+//     storefront reads, so the response shape never carries the flag.
 //   · PUT /api/shipping/rates/{provinceId} — update one province's fee. Admin
 //     only; the guard is mounted in ../index.ts (`requireAdmin`), and the
 //     rate-edit UI lands in a later admin story.
@@ -34,7 +35,7 @@ import {
  */
 export const INVALID_PROVINCE_MESSAGE = 'استان نامعتبر است';
 
-const ShippingRateSchema = z
+export const ShippingRateSchema = z
   .object({
     provinceId: z.number().int().positive(),
     /** Canonical Persian province name — what the <select> renders. */
@@ -44,8 +45,19 @@ const ShippingRateSchema = z
   })
   .openapi('ShippingRate');
 
-/** The rate payloads the checkout and admin screens read. Import, don't restate. */
+/** The rate payloads the checkout screens read. Import, don't restate. */
 export type ShippingRateResponse = z.infer<typeof ShippingRateSchema>;
+
+/**
+ * The admin view of a province: the public rate plus its active flag. Spread
+ * from `.shape` rather than `.extend` over the `.openapi()`-tagged object.
+ */
+export const AdminProvinceSchema = z
+  .object({ ...ShippingRateSchema.shape, isActive: z.boolean() })
+  .openapi('AdminProvince');
+
+/** The payload the admin province routes and the rate update return. */
+export type AdminProvinceResponse = z.infer<typeof AdminProvinceSchema>;
 
 const RatesQuerySchema = z.object({
   province: provinceIdParamSchema.optional().meta({
@@ -106,7 +118,7 @@ export const shippingRatesHandler: RouteHandler<
   const { province } = c.req.valid('query');
 
   if (province === undefined) {
-    return c.json(apiSuccess(await ShippingRateDao.list()), 200);
+    return c.json(apiSuccess(await ShippingRateDao.listActive()), 200);
   }
 
   // Well-formed id, but no such province — the "unknown province is a validation
@@ -134,7 +146,7 @@ export const shippingRateUpdateRoute = createRoute({
     200: {
       content: {
         'application/json': {
-          schema: apiSuccessSchema(ShippingRateSchema, 'ShippingRateResponse'),
+          schema: apiSuccessSchema(AdminProvinceSchema, 'ShippingRateResponse'),
         },
       },
       description: 'The updated province rate',

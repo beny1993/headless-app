@@ -13,6 +13,9 @@ vi.mock('@/lib/auth', () => ({ isAuthenticatedUser: mocks.getSession }));
 
 const { app } = await importWithDb(() => import('@/lib/hono'));
 const { AddressDao } = await importWithDb(() => import('@/db/dao/AddressDao'));
+const { ShippingRateDao } = await importWithDb(
+  () => import('@/db/dao/ShippingRateDao'),
+);
 
 describe.skipIf(!databaseReachable)('/api/me/addresses', () => {
   const fx = new AccountFixtures();
@@ -102,7 +105,7 @@ describe.skipIf(!databaseReachable)('/api/me/addresses', () => {
     it('422s a create with a well-formed but unknown province, not a 500', async () => {
       // In int4 range so it passes the schema, but no such province exists — must
       // be a clean 422, never the province_id FK-violation 500 it would become if
-      // it reached the insert. (Revert the provinceExists guard and this 500s.)
+      // it reached the insert. (Revert the getByProvinceId guard and this 500s.)
       const user = await fx.user();
       asUser(user.id);
       expect((await post(body(2_000_000_000))).status).toBe(422);
@@ -113,6 +116,33 @@ describe.skipIf(!databaseReachable)('/api/me/addresses', () => {
       const address = await seed(user.id);
       asUser(user.id);
       expect((await patch(address.id, body(2_000_000_000))).status).toBe(422);
+    });
+
+    it('422s a create on an inactive province — the shop no longer ships there', async () => {
+      const user = await fx.user();
+      const province = await fx.province();
+      await ShippingRateDao.setActive(province.id, false);
+      asUser(user.id);
+
+      expect((await post(body(province.id))).status).toBe(422);
+      expect(await AddressDao.listByUser(user.id)).toEqual([]);
+    });
+
+    it('422s an update of an address whose province was deactivated, even unchanged', async () => {
+      // Decided default: the customer must repick. The storefront warns first;
+      // this is the backstop.
+      const user = await fx.user();
+      const address = await seed(user.id, { city: 'تهران' });
+      await ShippingRateDao.setActive(address.provinceId, false);
+      asUser(user.id);
+
+      expect(
+        (await patch(address.id, body(address.provinceId, { city: 'کرج' })))
+          .status,
+      ).toBe(422);
+      expect((await AddressDao.getOwned(address.id, user.id))?.city).toBe(
+        'تهران',
+      );
     });
   });
 

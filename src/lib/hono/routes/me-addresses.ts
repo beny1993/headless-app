@@ -32,11 +32,12 @@ export const MAX_ADDRESSES_PER_USER = 20;
 const TOO_MANY_ADDRESSES_MESSAGE = 'به سقف تعداد آدرس‌ها رسیده‌ای.';
 
 /**
- * A well-formed but unknown `provinceId` (passes the schema's int4 cap, no such
- * province) is a 422, not the FK-violation 500 it would otherwise become — the
- * same "no 500 on well-formed input" stance checkout takes. Checked against the
- * `provinces` table (`provinceExists`), the address FK's target, so a province
- * without a shipping rate is still a valid place to save an address.
+ * A province must be active and rated to take a new or edited address
+ * (`ShippingRateDao.getByProvinceId`). Anything else is a 422: a well-formed but
+ * unknown id (which would otherwise hit the FK as a 500), and a province the
+ * admin deactivated — the shop no longer ships there. An update is refused even
+ * when `provinceId` is unchanged, so the customer repicks; the storefront forms
+ * warn before this backstop is reached.
  */
 const INVALID_PROVINCE_MESSAGE = 'استان انتخاب‌شده نامعتبر است.';
 
@@ -141,7 +142,9 @@ export const meAddressCreateRoute = createRoute({
     200: addressResponse('The created address'),
     400: errorResponse('Malformed body (failed schema validation)'),
     401: errorResponse('No session'),
-    422: errorResponse('Per-user address cap reached, or unknown province'),
+    422: errorResponse(
+      'Per-user address cap reached, or an unknown or inactive province',
+    ),
   },
 });
 
@@ -156,7 +159,7 @@ export const meAddressCreateHandler: RouteHandler<
     return c.json(apiError(TOO_MANY_ADDRESSES_MESSAGE), 422);
   }
 
-  if (!(await ShippingRateDao.provinceExists(input.provinceId))) {
+  if (!(await ShippingRateDao.getByProvinceId(input.provinceId))) {
     return c.json(apiError(INVALID_PROVINCE_MESSAGE), 422);
   }
 
@@ -176,7 +179,7 @@ export const meAddressUpdateRoute = createRoute({
     400: errorResponse('Invalid id or malformed body'),
     401: errorResponse('No session'),
     404: errorResponse('No such address for this user (missing or not owned)'),
-    422: errorResponse('Unknown province'),
+    422: errorResponse('Unknown or inactive province'),
   },
 });
 
@@ -188,7 +191,7 @@ export const meAddressUpdateHandler: RouteHandler<
   const { id } = c.req.valid('param');
   const input = c.req.valid('json');
 
-  if (!(await ShippingRateDao.provinceExists(input.provinceId))) {
+  if (!(await ShippingRateDao.getByProvinceId(input.provinceId))) {
     return c.json(apiError(INVALID_PROVINCE_MESSAGE), 422);
   }
 

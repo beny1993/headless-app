@@ -8,7 +8,7 @@
 // definition plus a separate typed `RouteHandler`. `z` from `zod`, not from
 // `@hono/zod-openapi` (see ../envelope.ts).
 //
-// The admin orders LIST is not here: the list page reads `OrderDao.listForAdmin`
+// The admin orders LIST is not here: the list page reads `OrderDao.pageForAdmin`
 // directly server-side (the products-page precedent), so there is no list API to
 // keep in step. What must be an API is the transition (a client mutation) and the
 // by-id read (the projection the security pass probes).

@@ -244,26 +244,3 @@ export const toggleShopCategory = (query: ShopQuery, slug: string): ShopQuery =>
 /** Same single-select semantics for the pet type. */
 export const toggleShopPet = (query: ShopQuery, pet: ShopPet): ShopQuery =>
   updateShopQuery(query, { pet: query.pet === pet ? undefined : pet });
-
-/**
- * The page numbers to draw links for: at most `size` of them, centred on the
- * current page and never pointing outside the catalog — including when the URL
- * asks for a page that does not exist, which is exactly when the shopper needs
- * a way back.
- */
-export function shopPageWindow(
-  page: number,
-  totalPages: number,
-  size = 5,
-): number[] {
-  if (totalPages < 1) return [];
-
-  const span = Math.min(size, totalPages);
-  const current = Math.min(Math.max(page, 1), totalPages);
-  const start = Math.min(
-    Math.max(current - Math.floor(span / 2), 1),
-    totalPages - span + 1,
-  );
-
-  return Array.from({ length: span }, (_, index) => start + index);
-}

@@ -31,7 +31,7 @@ export default async function Page() {
     PetDao.listByUser(userId),
     AddressDao.listByUser(userId),
     OrderDao.listByUser(userId),
-    ShippingRateDao.list(),
+    ShippingRateDao.listActive(),
   ]);
 
   return (

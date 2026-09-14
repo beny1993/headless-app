@@ -30,7 +30,8 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    // scripts/ as well: a script's test sits next to it, like everything else.
+    include: ['src/**/*.{test,spec}.{ts,tsx}', 'scripts/**/*.test.ts'],
     // Run as the deployed container does — UTC — not as the developer's machine
     // does. On a Tehran-local host the Jalali formatter's `Asia/Tehran` pin is
     // invisible: its tests pass even when the pin is removed.

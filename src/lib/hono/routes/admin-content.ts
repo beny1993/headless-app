@@ -20,6 +20,7 @@ import {
 } from '@/lib/content/site-content';
 import { getStorageDriver } from '@/lib/storage';
 import { objectKeyFor } from '@/lib/storage/image-upload';
+import { findBrokenLinks } from '@/logic/content/link-targets';
 import { INVALID_INPUT_MESSAGE } from '../create-router';
 import {
   apiError,
@@ -80,7 +81,9 @@ export const contentUpdateRoute = createRoute({
       },
       description: 'The stored block value',
     },
-    400: errorResponse('A body failing that key’s schema, or an unknown key'),
+    400: errorResponse(
+      'A body failing that key’s schema, a link to a missing category or product, or an unknown key',
+    ),
     401: errorResponse('No session'),
     403: errorResponse('Signed in, but not an admin'),
   },
@@ -106,6 +109,14 @@ export const contentUpdateHandler: RouteHandler<
       apiError(INVALID_INPUT_MESSAGE, formatZodIssues(parsed.error)),
       400,
     );
+  }
+
+  // The schema proved each link id is a uuid; whether it names a category or an
+  // active product is a catalog question, answered before anything is stored —
+  // in the same envelope, so the editor maps `cards.2.link: …` onto the card.
+  const brokenLinks = await findBrokenLinks(parsed.data);
+  if (brokenLinks.length > 0) {
+    return c.json(apiError(INVALID_INPUT_MESSAGE, brokenLinks), 400);
   }
 
   // `set` re-parses (its own last-boundary), so the cast only bridges the

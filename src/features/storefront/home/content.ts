@@ -3,8 +3,9 @@
 // Under the v2 CMS rule the editorial *labels* (the moment cards' title/desc/photo,
 // the routine tabs' label/sub) moved into `DEFAULT_CONTENT` (`src/lib/content/`);
 // what stays here is everything catalog-coupled or destination-bearing: the
-// category photography, and the fixed link TARGETS the sections zip with their
-// editable labels by index. Kept in one module so the checks that matter run
+// category photography, and the link TARGETS the sections zip with their editable
+// labels by index (since destinations became content too, the fallbacks for a
+// card or tab with no saved destination). Kept in one module so the checks that matter run
 // without a browser: every category photo is a committed local file (the design
 // review's blocker 1), and every deep link names a category that really exists
 // (its "no dead navigation" rule) — `content.test.ts` asserts both on these arrays.
@@ -16,6 +17,7 @@
 // checked against `PetType` by the `satisfies` on `LIFE_MOMENT_TARGETS`, so a
 // renamed enum value still breaks `pnpm type-check`.
 import type { PetType } from '@/db/schema/catalog';
+import { LINK_TYPES, type Link } from '@/lib/content/link';
 
 /**
  * The category strip's photography, by category slug.
@@ -42,7 +44,7 @@ export type LifeMomentTarget = {
 };
 
 /**
- * «خرید بر اساس لحظه» — the five cards' fixed destinations, zipped by index with
+ * «خرید بر اساس لحظه» — the five cards' code destinations, zipped by index with
  * the editable `home.moments.cards` labels. Each card links at the filter its own
  * copy promises. `as const satisfies` keeps the tuple length fixed (for the parity
  * test) AND checks each `pet` against `PetType`.
@@ -63,7 +65,8 @@ export type RoutineTarget = {
 
 /**
  * «روتین روزانه» — the four times of day, each pointing at the categories that
- * serve it, zipped by index with the editable `home.routine.slots` labels. The
+ * serve it unless the tab saved its own `categoryIds`, zipped by index with the
+ * editable `home.routine.slots` labels. The
  * prototype listed invented product names here; real categories keep the section's
  * shape without shipping fake products or dead links.
  */
@@ -73,3 +76,18 @@ export const ROUTINE_TARGETS = [
   { emoji: '🌤️', categories: ['supplements', 'hygiene'] },
   { emoji: '🌙', categories: ['treats', 'wet-food'] },
 ] as const satisfies readonly RoutineTarget[];
+
+const PET_EMOJI: Record<PetType, string> = { cat: '🐱', dog: '🐶' };
+
+/**
+ * The emoji on moment card `index`: the code one (`LIFE_MOMENT_TARGETS`) until a
+ * destination is saved, then that destination's pet — 🐾 when it names none — so
+ * a card re-pointed from cat food to dog treats stops wearing a cat.
+ */
+export function momentEmoji(
+  link: Link | null | undefined,
+  index: number,
+): string {
+  if (!link) return LIFE_MOMENT_TARGETS[index].emoji;
+  return link.type === LINK_TYPES.SHOP && link.pet ? PET_EMOJI[link.pet] : '🐾';
+}

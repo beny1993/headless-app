@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CATEGORY_IMAGES,
   LIFE_MOMENT_TARGETS,
+  momentEmoji,
   ROUTINE_TARGETS,
 } from '@/features/storefront/home/content';
 import {
@@ -13,6 +14,7 @@ import {
   NAV_TARGETS,
 } from '@/features/storefront/layout/nav-links';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
+import { CONTENT_SCHEMAS } from '@/lib/content/site-content';
 import { SEED_CATEGORIES } from '@/db/seed/catalog-data';
 import { PET_TYPES } from '@/db/schema/catalog';
 
@@ -132,5 +134,58 @@ describe('label ↔ target parity', () => {
     expect(DEFAULT_CONTENT['home.routine'].slots).toHaveLength(
       ROUTINE_TARGETS.length,
     );
+  });
+});
+
+// The destination lists (`navLinks`, a footer column's `linkTargets`) zip with the
+// same label tuples by index; unlike a label tuple they may be shorter, but never
+// longer, or a destination would sit on no label at all.
+describe('destination list ↔ label parity', () => {
+  it('stores one header destination per nav label, and no more', () => {
+    const fits = (n: number) =>
+      CONTENT_SCHEMAS.header.safeParse({
+        ...DEFAULT_CONTENT.header,
+        navLinks: Array(n).fill(null),
+      }).success;
+    expect(fits(NAV_TARGETS.length)).toBe(true);
+    expect(fits(NAV_TARGETS.length + 1)).toBe(false);
+  });
+
+  it('stores one footer destination per link label in each column, and no more', () => {
+    FOOTER_TARGETS.forEach((targets, c) => {
+      const fits = (n: number) => {
+        const columns: unknown[] = [...DEFAULT_CONTENT.footer.columns];
+        columns[c] = {
+          ...DEFAULT_CONTENT.footer.columns[c],
+          linkTargets: Array(n).fill(null),
+        };
+        return CONTENT_SCHEMAS.footer.safeParse({
+          ...DEFAULT_CONTENT.footer,
+          columns,
+        }).success;
+      };
+      expect(fits(targets.length), `column ${c}`).toBe(true);
+      expect(fits(targets.length + 1), `column ${c}`).toBe(false);
+    });
+  });
+});
+
+describe('momentEmoji', () => {
+  it('keeps each card’s code emoji until a destination is saved', () => {
+    LIFE_MOMENT_TARGETS.forEach((target, i) => {
+      expect(momentEmoji(undefined, i)).toBe(target.emoji);
+      expect(momentEmoji(null, i)).toBe(target.emoji);
+    });
+  });
+
+  it('follows the pet of a saved destination, 🐾 when it names none', () => {
+    // Card 2's code emoji is 🐶, so the saved cat is what shows.
+    expect(momentEmoji({ type: 'shop', pet: 'cat' }, 2)).toBe('🐱');
+    expect(momentEmoji({ type: 'shop', pet: 'dog' }, 0)).toBe('🐶');
+    expect(momentEmoji({ type: 'shop' }, 0)).toBe('🐾');
+    expect(momentEmoji({ type: 'page', page: 'about' }, 0)).toBe('🐾');
+    expect(
+      momentEmoji({ type: 'external', url: 'https://example.com/' }, 0),
+    ).toBe('🐾');
   });
 });
