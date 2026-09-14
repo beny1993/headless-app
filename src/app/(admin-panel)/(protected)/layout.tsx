@@ -15,7 +15,10 @@ export default async function ProtectedLayout({
   const session = await requireAdmin();
 
   return (
-    <div className="bg-background flex h-screen overflow-hidden">
+    // `relative`, so this clips absolutely positioned content too: the tables'
+    // `sr-only` text otherwise sits against the page, beyond every clip, and at
+    // a phone's width pans the whole admin sideways.
+    <div className="bg-background relative flex h-screen overflow-hidden">
       <AdminSidebar />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
