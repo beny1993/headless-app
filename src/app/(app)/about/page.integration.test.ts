@@ -10,10 +10,13 @@
 // The five about keys are cleared in beforeEach AND afterEach: the storefront
 // and the admin editor share this table on the shared dev database, so a crashed
 // prior run must not leak a row into the "empty table" case.
-import { inArray } from 'drizzle-orm';
+import { faker } from '@faker-js/faker';
+import { eq, inArray } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { categories } from '@/db/schema/catalog';
 import { siteContent } from '@/db/schema/site-content';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
+import { PATHS, shopPath } from '@/lib/constant/paths';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 
 const { SiteContentDao } = await importWithDb(
@@ -126,6 +129,31 @@ describe.skipIf(!databaseReachable)('the About page', () => {
       expect(strings).not.toContain(DEFAULT_CONTENT['about.cta'].headline);
     });
 
+    it('sends the closing button to its saved destination (the shop until then)', async () => {
+      expect((await inspect()).strings).toContain(PATHS.SHOP);
+
+      const [category] = await testDb
+        .insert(categories)
+        .values({
+          title: 'دسته درباره',
+          slug: `about-${faker.string.alphanumeric(10).toLowerCase()}`,
+        })
+        .returning();
+      try {
+        await SiteContentDao.set('about.cta', {
+          ...DEFAULT_CONTENT['about.cta'],
+          ctaLink: { type: 'shop', categoryId: category.id },
+        });
+        const { strings } = await inspect();
+        // Stored by id, resolved to the category's current slug on the page.
+        expect(strings).toContain(shopPath({ category: category.slug }));
+        expect(strings).not.toContain(PATHS.SHOP);
+      } finally {
+        await clear();
+        await testDb.delete(categories).where(eq(categories.id, category.id));
+      }
+    });
+
     it('makes the Smokey identity fixable end to end (title, alt and photo)', async () => {
       await SiteContentDao.set('about.story', {
         title: 'این واقعاً اسموکی است',
@@ -198,6 +226,29 @@ describe.skipIf(!databaseReachable)('the About page', () => {
       expect(strings).toContain(DEFAULT_CONTENT['about.hero'].eyebrow);
       expect(strings).toContain(`/${DEFAULT_CONTENT['about.hero'].image.key}`);
       expect(strings.join(' ')).not.toContain('evil.example');
+      expect(warn).toHaveBeenCalled();
+    });
+
+    it('keeps a stored non-https destination off the page: the whole block falls back', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      // A row edited outside the app (psql, a restore) to carry a `javascript:`
+      // destination under its own label. The save route and the DAO's `set` both
+      // refuse one; the parse on read is what keeps a planted one off the page.
+      await testDb.insert(siteContent).values({
+        key: 'about.cta',
+        value: {
+          ...DEFAULT_CONTENT['about.cta'],
+          cta: 'برچسب جعلی',
+          ctaLink: { type: 'external', url: 'javascript:alert(1)' },
+        },
+      });
+
+      const { strings, text } = await inspect();
+      expect(text).not.toContain('javascript:');
+      // The default closing button, on its code destination.
+      expect(strings).not.toContain('برچسب جعلی');
+      expect(strings).toContain(DEFAULT_CONTENT['about.cta'].cta);
+      expect(strings).toContain(PATHS.SHOP);
       expect(warn).toHaveBeenCalled();
     });
   });

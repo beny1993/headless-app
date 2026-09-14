@@ -1,8 +1,10 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
 import { AlertCircle, ChevronRight, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { z } from 'zod';
 import { ApiRequestError, postData, putData } from '@/lib/api-client';
 import {
@@ -10,6 +12,7 @@ import {
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
 import { PET_TYPES, type PetType } from '@/lib/catalog/product-query';
+import { SKU_SUFFIX_LENGTH, skuPreview } from '@/lib/catalog/sku';
 import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import {
   API_PATHS,
@@ -17,7 +20,7 @@ import {
   apiAdminProductPath,
   PROTECTED_PATHS,
 } from '@/lib/constant/paths';
-import { formatToman, toAsciiDigits } from '@/lib/format';
+import { formatToman, toAsciiDigits, toPersianDigits } from '@/lib/format';
 import { IMAGE_FIELD_NAME } from '@/lib/storage/image-upload';
 import { imageSrc } from '@/lib/storage/image-url';
 import {
@@ -102,7 +105,6 @@ export function ProductForm({
   const [form, setForm] = useState({
     title: product?.title ?? '',
     slug: product?.slug ?? '',
-    sku: product?.sku ?? '',
     brand: product?.brand ?? '',
     description: product?.description ?? '',
     benefit: product?.benefit ?? '',
@@ -118,7 +120,6 @@ export function ProductForm({
     product?.imageKey ? imageSrc(product.imageKey) : null,
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [topError, setTopError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
 
   const update = (key: keyof typeof form, value: string | boolean) => {
@@ -141,7 +142,6 @@ export function ProductForm({
   const buildBody = () => ({
     title: form.title,
     slug: form.slug,
-    sku: form.sku,
     brand: form.brand,
     description: form.description,
     benefit: form.benefit,
@@ -153,9 +153,8 @@ export function ProductForm({
     isActive: form.isActive,
   });
 
-  const onSubmit = async (event: React.FormEvent) => {
+  const onSubmit = async (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setTopError(undefined);
 
     const parsed = product
       ? productUpdateInputSchema.safeParse({
@@ -186,7 +185,7 @@ export function ProductForm({
         } catch {
           router.push(PROTECTED_PATHS.PRODUCTS);
           router.refresh();
-          window.alert(
+          toast.warning(
             'محصول ذخیره شد اما بارگذاری تصویر ناموفق بود. از فهرست محصولات دوباره تلاش کن.',
           );
           return;
@@ -203,16 +202,17 @@ export function ProductForm({
       ) {
         const { fields, unmapped } = parseFieldErrors(error.errors);
         setFieldErrors(fields);
-        setTopError(
+        // A refusal no field can show is the request's own failure: a toast.
+        const message =
           unmapped.length > 0
             ? unmapped.join(' ')
             : Object.keys(fields).length === 0
               ? error.message
-              : undefined,
-        );
+              : undefined;
+        if (message) toast.error(message);
         return;
       }
-      setTopError(error instanceof Error ? error.message : GENERIC_ERROR);
+      toast.error(error instanceof Error ? error.message : GENERIC_ERROR);
     }
   };
 
@@ -235,16 +235,6 @@ export function ProductForm({
       <h1 className="mb-6 text-2xl font-black">
         {isEdit ? 'ویرایش محصول' : 'محصول جدید'}
       </h1>
-
-      {topError && (
-        <p
-          role="alert"
-          className="text-destructive border-destructive/30 bg-destructive-soft/40 mb-4 flex items-center gap-2 rounded-xl border p-3 text-sm"
-        >
-          <AlertCircle size={16} className="shrink-0" aria-hidden="true" />
-          {topError}
-        </p>
-      )}
 
       <form
         onSubmit={onSubmit}
@@ -273,7 +263,17 @@ export function ProductForm({
           <Field
             id={fid('slug')}
             label="نشانی یکتا (slug)"
-            hint="در آدرس صفحه محصول استفاده می‌شود"
+            hint={
+              // The SKU is derived from this, so the convention matters: brand,
+              // pet, product, then size, so two sizes never share a slug. The
+              // example sits in <bdi> so the RTL sentence cannot reorder it.
+              <>
+                به ترتیب از چپ: برند، حیوان، نام محصول، وزن یا اندازه — با حروف
+                کوچک انگلیسی و خط تیره؛ مثل{' '}
+                <bdi className="font-mono">royal-canin-cat-sensible-2kg</bdi>.
+                کد کالا از همین ساخته می‌شود.
+              </>
+            }
             error={fieldErrors.slug}
           >
             <input
@@ -281,22 +281,28 @@ export function ProductForm({
               dir="ltr"
               value={form.slug}
               onChange={(e) => update('slug', e.target.value)}
-              placeholder="royal-canin-adult-cat"
+              placeholder="royal-canin-cat-sensible-2kg"
               className={`${inputClass(fieldErrors.slug)} text-start`}
             />
           </Field>
           <Field
             id={fid('sku')}
             label="کد کالا (SKU)"
-            hint="روی اقلام سفارش ثبت (snapshot) می‌شود"
+            hint={
+              isEdit
+                ? 'بعد از ساخت ثابت می‌ماند و روی اقلام سفارش ثبت می‌شود'
+                : `از نشانی ساخته می‌شود؛ هنگام ذخیره ${toPersianDigits(SKU_SUFFIX_LENGTH)} نویسه تصادفی به آن اضافه می‌شود`
+            }
             error={fieldErrors.sku}
           >
+            {/* Server-owned: derived from the slug at create and never sent, so
+                the field only shows it — a preview now, the saved code on edit. */}
             <input
               id={fid('sku')}
               dir="ltr"
-              value={form.sku}
-              onChange={(e) => update('sku', e.target.value)}
-              className={`${inputClass(fieldErrors.sku)} text-start`}
+              readOnly
+              value={product ? product.sku : skuPreview(form.slug)}
+              className={`${inputClass(fieldErrors.sku)} text-muted-foreground text-start`}
             />
           </Field>
         </div>
@@ -328,6 +334,20 @@ export function ProductForm({
                 </option>
               ))}
             </select>
+            {/* ponytail: leaving the form drops what was typed; an inline
+                create beside the select is the upgrade if that bites. */}
+            {categories.length === 0 && (
+              <p className="text-muted-foreground mt-1.5 text-xs">
+                هنوز دسته‌بندی‌ای ساخته نشده است.{' '}
+                <Link
+                  href={PROTECTED_PATHS.CATEGORIES}
+                  data-umami-event="admin-panel-product-form-categories-link"
+                  className="text-accent-strong font-medium underline"
+                >
+                  ساخت دسته‌بندی
+                </Link>
+              </p>
+            )}
           </Field>
         </div>
 
@@ -496,7 +516,7 @@ function Field({
 }: {
   id: string;
   label: string;
-  hint?: string;
+  hint?: React.ReactNode;
   error?: string;
   children: React.ReactNode;
 }) {

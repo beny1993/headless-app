@@ -36,6 +36,7 @@ import {
   apiProductPath,
 } from '@/lib/constant/paths';
 import { PRODUCT_MESSAGES } from '@/lib/catalog/product-input';
+import { SKU_ALPHABET, SKU_SUFFIX_LENGTH } from '@/lib/catalog/sku';
 import type { ApiResponse } from '@/lib/hono/envelope';
 import { MAX_UPLOAD_BYTES } from '@/lib/storage/image-upload';
 import { VARS } from '@/lib/utils/env';
@@ -295,6 +296,55 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       expect(res.status).toBe(400);
       if (res.body.status !== 'error') throw new Error('expected error');
       expect(res.body.errors).toContain(`title: ${PRODUCT_MESSAGES.textChars}`);
+    });
+  });
+
+  // ── SKU generation ────────────────────────────────────────────────────────
+
+  describe('SKU generation', () => {
+    const skuPattern = (slug: string) =>
+      new RegExp(
+        `^${slug.toUpperCase()}-[${SKU_ALPHABET}]{${SKU_SUFFIX_LENGTH}}$`,
+      );
+
+    it('derives the SKU from the slug and ignores one the client sends', async () => {
+      const category = await makeCategory();
+      asAdmin();
+      const sent = body(category, { sku: 'CLIENT-CHOSEN' });
+      const res = await parse<{ id: string; sku: string }>(
+        await json(API_PATHS.ADMIN_PRODUCTS, 'POST', sent),
+      );
+      expect(res.status).toBe(201);
+      if (res.body.status !== 'success') throw new Error(res.body.message);
+      expect(res.body.data.sku).toMatch(skuPattern(sent.slug));
+      const [stored] = await testDb
+        .select()
+        .from(products)
+        .where(eq(products.id, res.body.data.id));
+      expect(stored.sku).toBe(res.body.data.sku);
+    });
+
+    it('never changes the SKU on update, even when the slug is renamed', async () => {
+      const category = await makeCategory();
+      asAdmin();
+      const created = await parse<{ id: string; sku: string }>(
+        await json(API_PATHS.ADMIN_PRODUCTS, 'POST', body(category)),
+      );
+      if (created.body.status !== 'success')
+        throw new Error(created.body.message);
+      const renamed = `r-${faker.string.alphanumeric(8).toLowerCase()}`;
+      const res = await parse<{ slug: string; sku: string }>(
+        await json(apiAdminProductPath(created.body.data.id), 'PUT', {
+          ...body(category),
+          slug: renamed,
+          sku: 'CLIENT-CHOSEN',
+          expectedStock: 12,
+        }),
+      );
+      expect(res.status).toBe(200);
+      if (res.body.status !== 'success') throw new Error(res.body.message);
+      expect(res.body.data.slug).toBe(renamed);
+      expect(res.body.data.sku).toBe(created.body.data.sku);
     });
   });
 

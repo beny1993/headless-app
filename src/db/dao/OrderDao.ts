@@ -19,6 +19,7 @@ import {
   type OrderStatus,
   type PaymentMethod,
 } from '@/lib/orders/order-status';
+import { ADMIN_PAGE_SIZE } from '@/lib/pagination';
 
 /**
  * One row of a customer's order history — the summary the account orders tab
@@ -322,16 +323,28 @@ export class OrderDao {
   }
 
   /**
-   * The admin orders list: every order in the store, newest first, each with its
-   * line-item count and a settled-payment flag. Optionally filtered to one
-   * status. Store-wide by design — unlike `listByUser`, it is not owner-scoped,
-   * because the admin can and must see everyone's orders; the `requireAdmin`
-   * guard on the route is what authorizes it. `groupBy(orders.id)` is sound (the
-   * PK), so `isPaid` (a per-order correlated subquery) and every order column are
-   * functionally dependent on the group key.
+   * One page of the admin orders list: every order in the store, newest first,
+   * each with its line-item count and a settled-payment flag, optionally filtered
+   * to one status, plus the size of that whole set for the pager. Store-wide by
+   * design — unlike `listByUser`, it is not owner-scoped, because the admin can
+   * and must see everyone's orders; the `requireAdmin` guard on the page is what
+   * authorizes it. `groupBy(orders.id)` is sound (the PK), so `isPaid` (a
+   * per-order correlated subquery) and every order column are functionally
+   * dependent on the group key. The count reads `orders` alone: joining the items
+   * would not change how many orders there are.
    */
-  static async listForAdmin(status?: OrderStatus): Promise<AdminOrderRow[]> {
-    return db
+  static async pageForAdmin({
+    status,
+    page = 1,
+    limit = ADMIN_PAGE_SIZE,
+  }: {
+    status?: OrderStatus;
+    /** One-based. */
+    page?: number;
+    limit?: number;
+  } = {}): Promise<{ items: AdminOrderRow[]; total: number }> {
+    const where = status ? eq(orders.status, status) : undefined;
+    const pageQuery = db
       .select({
         id: orders.id,
         orderNo: orders.orderNo,
@@ -345,9 +358,17 @@ export class OrderDao {
       })
       .from(orders)
       .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
-      .where(status ? eq(orders.status, status) : undefined)
+      .where(where)
       .groupBy(orders.id)
-      .orderBy(desc(orders.createdAt), desc(orders.orderNo));
+      .orderBy(desc(orders.createdAt), desc(orders.orderNo))
+      .limit(limit)
+      .offset((page - 1) * limit);
+
+    const [items, [counted]] = await Promise.all([
+      pageQuery,
+      db.select({ value: count() }).from(orders).where(where),
+    ]);
+    return { items, total: counted.value };
   }
 
   /**

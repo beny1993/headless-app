@@ -6,6 +6,7 @@ import {
   productInputSchema,
   productUpdateInputSchema,
 } from './product-input';
+import { MAX_SLUG_LENGTH } from './sku';
 
 const valid = {
   title: 'غذای خشک گربه',
@@ -161,18 +162,11 @@ describe('productInputSchema', () => {
     const RLO = String.fromCharCode(0x202e);
     const LRI = String.fromCharCode(0x2066);
 
-    const TEXT_FIELDS = [
-      'title',
-      'sku',
-      'brand',
-      'benefit',
-      'description',
-    ] as const;
+    const TEXT_FIELDS = ['title', 'brand', 'benefit', 'description'] as const;
     type TextField = (typeof TEXT_FIELDS)[number];
 
     const LENGTH_MESSAGE: Record<TextField, string> = {
       title: PRODUCT_MESSAGES.titleLength,
-      sku: PRODUCT_MESSAGES.skuLength,
       brand: PRODUCT_MESSAGES.brandLength,
       benefit: PRODUCT_MESSAGES.benefitLength,
       description: PRODUCT_MESSAGES.descriptionLength,
@@ -236,7 +230,7 @@ describe('productInputSchema', () => {
       expect(parsedField('description', multiline)).toBe(multiline);
     });
 
-    it.each(['title', 'sku', 'brand', 'benefit'] as const)(
+    it.each(['title', 'brand', 'benefit'] as const)(
       'rejects a newline in the single-line field %s',
       (field) => {
         expect(messageFor(field, `abc${LF}def`)).toBe(
@@ -247,10 +241,6 @@ describe('productInputSchema', () => {
 
     it('rejects a title of only invisible characters as missing', () => {
       expect(messageFor('title', ZWNJ.repeat(5))).toBe(PRODUCT_MESSAGES.title);
-    });
-
-    it('rejects an SKU of only invisible characters as missing', () => {
-      expect(messageFor('sku', ZWNJ.repeat(2))).toBe(PRODUCT_MESSAGES.sku);
     });
 
     it('gives the Persian title message, not zod English, for a missing title', () => {
@@ -284,5 +274,37 @@ describe('stock storage bounds and concurrency input', () => {
       productUpdateInputSchema.safeParse({ ...valid, expectedStock: 0 })
         .success,
     ).toBe(true);
+  });
+});
+
+describe('SKU is server-owned', () => {
+  it('strips an SKU the client sends on create', () => {
+    expect(
+      productInputSchema.parse({ ...valid, sku: 'CLIENT-CHOSEN' }),
+    ).not.toHaveProperty('sku');
+  });
+
+  it('strips an SKU the client sends on update', () => {
+    expect(
+      productUpdateInputSchema.parse({
+        ...valid,
+        expectedStock: 0,
+        sku: 'CLIENT-CHOSEN',
+      }),
+    ).not.toHaveProperty('sku');
+  });
+});
+
+describe('slug length', () => {
+  it('accepts a slug at the cap that keeps the SKU within its column', () => {
+    const slug = 'a'.repeat(MAX_SLUG_LENGTH);
+    expect(productInputSchema.parse({ ...valid, slug }).slug).toBe(slug);
+  });
+
+  it('rejects a slug one past the cap with its Persian message', () => {
+    const issue = productInputSchema
+      .safeParse({ ...valid, slug: 'a'.repeat(MAX_SLUG_LENGTH + 1) })
+      .error?.issues.find((i) => i.path[0] === 'slug');
+    expect(issue?.message).toBe(PRODUCT_MESSAGES.slugLength);
   });
 });

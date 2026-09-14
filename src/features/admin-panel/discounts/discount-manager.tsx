@@ -2,6 +2,7 @@
 
 import { useId, useState } from 'react';
 import { AlertCircle, Check, Loader2, Plus, Tag } from 'lucide-react';
+import { toast } from 'sonner';
 import { ApiRequestError, patchData, postData } from '@/lib/api-client';
 import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiAdminDiscountPath } from '@/lib/constant/paths';
@@ -67,7 +68,6 @@ function CreateForm({
   const [usageLimit, setUsageLimit] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [topError, setTopError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [justCreated, setJustCreated] = useState<string | null>(null);
 
@@ -87,7 +87,6 @@ function CreateForm({
   const submit = async () => {
     if (busy) return;
     setErrors({});
-    setTopError(undefined);
     setJustCreated(null);
 
     // Build the body with the shared contract's shape; client-validate for inline
@@ -126,10 +125,10 @@ function CreateForm({
       if (error instanceof ApiRequestError && error.status === 400) {
         const { fields, unmapped } = parseFieldErrors(error.errors);
         setErrors(fields);
-        if (Object.keys(fields).length === 0) setTopError(error.message);
-        else if (unmapped.length > 0) setTopError(unmapped.join(' '));
+        if (Object.keys(fields).length === 0) toast.error(error.message);
+        else if (unmapped.length > 0) toast.error(unmapped.join(' '));
       } else {
-        setTopError(
+        toast.error(
           error instanceof Error
             ? error.message
             : 'ساخت کد تخفیف ناموفق بود. دوباره تلاش کن.',
@@ -152,16 +151,6 @@ function CreateForm({
         <Tag size={18} className="text-accent-strong" aria-hidden="true" />
         <h2 className="font-bold">ساخت کد تخفیف</h2>
       </div>
-
-      {topError && (
-        <p
-          role="alert"
-          className="text-destructive border-destructive/30 bg-destructive-soft/40 flex items-center gap-2 rounded-xl border p-3 text-sm"
-        >
-          <AlertCircle size={16} className="shrink-0" aria-hidden="true" />
-          {topError}
-        </p>
-      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field
@@ -338,7 +327,6 @@ function CodeRow({
   onToggled: (updated: DiscountCodeView) => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const discountLabel =
     code.type === DISCOUNT_TYPES.PERCENT
@@ -353,7 +341,6 @@ function CodeRow({
   const toggle = async () => {
     if (busy) return;
     setBusy(true);
-    setError(null);
     try {
       const updated = await patchData<DiscountCodeView>(
         apiAdminDiscountPath(code.id),
@@ -361,7 +348,7 @@ function CodeRow({
       );
       onToggled(updated);
     } catch (requestError) {
-      setError(
+      toast.error(
         requestError instanceof Error
           ? requestError.message
           : 'تغییر وضعیت ناموفق بود.',
@@ -411,14 +398,6 @@ function CodeRow({
             )}
             {code.isActive ? 'غیرفعال کن' : 'فعال کن'}
           </button>
-          {error && (
-            <span
-              role="alert"
-              className="text-destructive flex items-center gap-1 text-xs"
-            >
-              <AlertCircle size={14} aria-hidden="true" /> {error}
-            </span>
-          )}
         </div>
       </td>
     </tr>

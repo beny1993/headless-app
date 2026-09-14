@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { z } from 'zod';
+import { SKU_SUFFIX_LENGTH, skuPreview } from '@/lib/catalog/sku';
 import {
   API_PATHS,
   PROTECTED_PATHS,
@@ -39,7 +40,10 @@ test('an admin adds a product with a photo, reprices it and takes it off the sho
   await page.goto(adminNewProductPath());
   await page.getByLabel('عنوان محصول', { exact: true }).fill(title);
   await page.getByLabel('نشانی یکتا (slug)', { exact: true }).fill(slug);
-  await page.getByLabel('کد کالا (SKU)', { exact: true }).fill(`E2E-${id}`);
+  // The SKU is generated from the slug on save; the field only previews it.
+  const sku = page.getByLabel('کد کالا (SKU)', { exact: true });
+  await expect(sku).toHaveJSProperty('readOnly', true);
+  await expect(sku).toHaveValue(skuPreview(slug));
   // The category label carries a ZWNJ; matching its start avoids typing one.
   await page.getByLabel(/^دسته/).selectOption({ index: 1 });
   await page.getByLabel('قیمت (تومان)', { exact: true }).fill('150000');
@@ -75,6 +79,11 @@ test('an admin adds a product with a photo, reprices it and takes it off the sho
     .toBeGreaterThan(0);
 
   await page.goto(adminEditProductPath(productId));
+  // Saved as the slug's code plus a random suffix, and still not editable.
+  await expect(sku).toHaveValue(
+    new RegExp(`^${slug.toUpperCase()}-[A-Z0-9]{${SKU_SUFFIX_LENGTH}}$`),
+  );
+  await expect(sku).toHaveJSProperty('readOnly', true);
   await page.getByLabel('قیمت (تومان)', { exact: true }).fill('175000');
   await page.locator('[data-umami-event="admin-panel-product-save"]').click();
   await expect(page).toHaveURL(
@@ -94,6 +103,12 @@ test('an admin adds a product with a photo, reprices it and takes it off the sho
     ),
     page.getByRole('button', { name: `غیرفعال کردن ${title}` }).click(),
   ]);
+  // A soft delete: the row stays, marked inactive, and stops offering it.
+  const row = page.locator('tr', { hasText: title });
+  await expect(row.getByText('غیرفعال', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: `غیرفعال کردن ${title}` }),
+  ).toHaveCount(0);
   // Fetched rather than visited: the watch would count a 404 document.
   expect((await page.request.get(productPath(slug))).status()).toBe(404);
 });

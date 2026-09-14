@@ -24,7 +24,7 @@ export default async function NotFound() {
 
   return (
     <>
-      <Navbar content={chrome.header} />
+      <Navbar content={chrome.header} targets={chrome.targets} />
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 pt-16 text-center">
         <p className="text-muted-foreground text-sm font-medium">۴۰۴</p>
         <h1 className="text-2xl font-semibold">صفحه پیدا نشد</h1>
@@ -39,7 +39,7 @@ export default async function NotFound() {
           بازگشت به خانه
         </Link>
       </main>
-      <Footer content={chrome.footer} />
+      <Footer content={chrome.footer} targets={chrome.targets} />
     </>
   );
 }

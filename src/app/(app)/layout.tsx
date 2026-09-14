@@ -17,12 +17,12 @@ export default async function StorefrontLayout({
 
   return (
     <>
-      <Navbar content={chrome.header} />
+      <Navbar content={chrome.header} targets={chrome.targets} />
       {/* The navbar is fixed at h-16; this offset keeps page content clear
           of it without every page having to remember. */}
       <div className="flex min-h-screen flex-col pt-16">
         <div className="flex-1">{children}</div>
-        <Footer content={chrome.footer} />
+        <Footer content={chrome.footer} targets={chrome.targets} />
       </div>
     </>
   );
