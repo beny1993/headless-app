@@ -229,14 +229,14 @@ function CartLineRow({
         <img
           src={imageSrc(line.imageKey)}
           alt=""
-          width={64}
-          height={64}
-          className="bg-muted size-16 rounded-lg object-cover"
+          width={80}
+          height={80}
+          className="bg-muted size-20 rounded-lg object-cover"
         />
       ) : (
-        <div className="bg-muted flex size-16 items-center justify-center rounded-lg">
+        <div className="bg-muted flex size-20 items-center justify-center rounded-lg">
           <ShoppingBag
-            size={20}
+            size={24}
             className="text-muted-foreground"
             aria-hidden="true"
           />
@@ -245,16 +245,16 @@ function CartLineRow({
 
       <div className="min-w-0 flex-1">
         {line.brand && (
-          <p className="text-muted-foreground text-xs">{line.brand}</p>
+          <p className="text-muted-foreground text-sm">{line.brand}</p>
         )}
-        <p className="line-clamp-2 text-sm leading-tight font-semibold">
+        <p className="line-clamp-2 text-base leading-snug font-semibold">
           {line.title}
         </p>
-        <p className="nums mt-1 text-sm font-bold">
+        <p className="nums mt-1 text-base font-bold">
           {formatToman(lineTotal(line))}
         </p>
         {line.qty > 1 && (
-          <p className="nums text-muted-foreground text-xs">
+          <p className="nums text-muted-foreground text-sm">
             {formatNumber(line.qty)} × {formatToman(line.unitPrice)}
           </p>
         )}
@@ -264,11 +264,15 @@ function CartLineRow({
             removeFromCart(line.productId);
             onRemoved();
           }}
-          className="text-destructive -mx-1 mt-1.5 flex items-center gap-1 px-1 py-1.5 text-xs hover:underline"
+          // `min-h-11` is the 44px hit area, spent as padding around a label
+          // that is only ~18px tall. `inline-flex` keeps the target on the
+          // words instead of spanning the whole text column, where it would
+          // sit one stray tap under the price.
+          className="text-destructive -ms-2 mt-1 inline-flex min-h-11 items-center gap-1.5 px-2 text-sm hover:underline"
           aria-label={`حذف ${line.title} از سبد خرید`}
           data-umami-event="cart-line-remove"
         >
-          <Trash2 size={12} aria-hidden="true" /> حذف
+          <Trash2 size={16} aria-hidden="true" /> حذف
         </button>
       </div>
 

@@ -59,28 +59,40 @@ export function OrderSummary({
               <img
                 src={imageSrc(line.imageKey)}
                 alt=""
-                width={48}
-                height={48}
-                className="bg-muted size-12 rounded-lg object-cover"
+                width={64}
+                height={64}
+                className="bg-muted size-16 rounded-lg object-cover"
               />
             ) : (
-              <div className="bg-muted flex size-12 items-center justify-center rounded-lg">
+              <div className="bg-muted flex size-16 items-center justify-center rounded-lg">
                 <ShoppingBag
-                  size={18}
+                  size={20}
                   className="text-muted-foreground"
                   aria-hidden="true"
                 />
               </div>
             )}
+            {/* Price and quantity sit UNDER the title, not beside it: the
+                checkout sidebar column is ~216px inside its padding, and a
+                price on the same row left the title about 60px — two clamped
+                half-words. Stacked, the title gets the whole text column. */}
             <div className="min-w-0 flex-1">
-              <p className="line-clamp-2 text-xs font-medium">{line.title}</p>
-              <p className="nums text-muted-foreground text-xs">
-                ×{toPersianDigits(line.qty)}
-              </p>
+              <p className="line-clamp-2 text-sm font-medium">{line.title}</p>
+              <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
+                {/* `shrink-0` on both: a price's only break opportunity is the
+                    space before «تومان», and letting it take one orphans the
+                    currency word under the amount. When the row genuinely does
+                    not fit (a nine-digit total in the 138px checkout sidebar)
+                    `flex-wrap` drops the quantity to its own line instead of
+                    pushing past the card. */}
+                <p className="nums shrink-0 text-sm font-bold">
+                  {formatToman(line.lineTotal)}
+                </p>
+                <p className="nums text-muted-foreground shrink-0 text-sm">
+                  ×{toPersianDigits(line.qty)}
+                </p>
+              </div>
             </div>
-            <p className="nums shrink-0 text-xs font-bold">
-              {formatToman(line.lineTotal)}
-            </p>
           </li>
         ))}
       </ul>
