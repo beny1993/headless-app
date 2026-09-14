@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Edit, Eye, Plus } from 'lucide-react';
 import { z } from 'zod';
+import { Pagination } from '@/components/ui/pagination';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import type { ProductWithImages } from '@/db/schema/catalog';
@@ -12,8 +13,10 @@ import {
   adminEditProductPath,
   adminNewProductPath,
   productPath,
+  PROTECTED_PATHS,
 } from '@/lib/constant/paths';
 import { formatToman, toPersianDigits } from '@/lib/format';
+import { ADMIN_PAGE_SIZE, pageParamSchema } from '@/lib/pagination';
 import { imageSrc } from '@/lib/storage/image-url';
 import { DeleteProductButton } from '@/features/admin-panel/products/delete-product-button';
 
@@ -33,7 +36,25 @@ const filterSchema = z.object({
   category: z.string().trim().min(1).optional().catch(undefined),
   pet: z.enum([PET_TYPES.CAT, PET_TYPES.DOG]).optional().catch(undefined),
   active: z.enum(ACTIVE_VALUES).catch('all'),
+  page: pageParamSchema,
 });
+
+/** The list's URL for one page, keeping the filters; page one has no `page`. */
+const productsHref = (
+  filters: z.infer<typeof filterSchema>,
+  page: number,
+): string => {
+  const params = new URLSearchParams();
+  if (filters.q) params.set('q', filters.q);
+  if (filters.category) params.set('category', filters.category);
+  if (filters.pet) params.set('pet', filters.pet);
+  if (filters.active !== 'all') params.set('active', filters.active);
+  if (page > 1) params.set('page', String(page));
+  const search = params.toString();
+  return search
+    ? `${PROTECTED_PATHS.PRODUCTS}?${search}`
+    : PROTECTED_PATHS.PRODUCTS;
+};
 
 const activeToFilter = (value: ActiveValue): boolean | undefined =>
   value === 'all' ? undefined : value === 'active';
@@ -69,15 +90,18 @@ export default async function AdminProductsPage({
   await requireAdmin();
   const filters = filterSchema.parse(await searchParams);
 
-  const [items, categories] = await Promise.all([
-    ProductDao.listForAdmin({
+  const [{ items, total }, categories] = await Promise.all([
+    ProductDao.pageForAdmin({
       search: filters.q,
       categorySlug: filters.category,
       petType: filters.pet,
       active: activeToFilter(filters.active),
+      page: filters.page,
+      limit: ADMIN_PAGE_SIZE,
     }),
     CategoryDao.list(),
   ]);
+  const totalPages = Math.ceil(total / ADMIN_PAGE_SIZE);
 
   const categoryTitle = new Map(categories.map((c) => [c.id, c.title]));
 
@@ -201,7 +225,11 @@ export default async function AdminProductsPage({
                     colSpan={8}
                     className="text-muted-foreground px-4 py-10 text-center"
                   >
-                    محصولی با این فیلترها پیدا نشد.
+                    {/* Past the last page is not the same as nothing matching:
+                        the pager below still links back. */}
+                    {total > 0
+                      ? 'این صفحه محصولی ندارد.'
+                      : 'محصولی با این فیلترها پیدا نشد.'}
                   </td>
                 </tr>
               ) : (
@@ -217,6 +245,14 @@ export default async function AdminProductsPage({
           </table>
         </div>
       </div>
+
+      <Pagination
+        page={filters.page}
+        totalPages={totalPages}
+        hrefFor={(page) => productsHref(filters, page)}
+        label="صفحه‌بندی محصولات"
+        event="admin-panel-products-pagination"
+      />
     </div>
   );
 }
@@ -285,7 +321,11 @@ function ProductRow({
           >
             <Edit size={14} aria-hidden="true" />
           </Link>
-          <DeleteProductButton id={product.id} title={product.title} />
+          {/* Deactivating is a soft delete: an inactive product has nothing left
+              to deactivate, and reactivating is the edit form's checkbox. */}
+          {product.isActive && (
+            <DeleteProductButton id={product.id} title={product.title} />
+          )}
         </div>
       </td>
     </tr>

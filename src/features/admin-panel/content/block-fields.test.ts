@@ -1,12 +1,23 @@
 // The drift catcher: the editor's field map and the content schema must describe
-// exactly the same set of leaves. If a schema field gains, loses or renames a
-// leaf and the descriptors are not updated, this fails — so the editor can never
-// silently stop editing a field or point a control at a path that no longer
-// exists. Plus getPath/setPath behaviour, including immutability.
+// exactly the same fields. Text and image fields are checked against the leaves of
+// each key's default; destinations — which no default carries — against the
+// schema itself, so a link field added to a schema without a picker fails here
+// too. Plus getPath/setPath behaviour, including immutability.
 import { describe, expect, it } from 'vitest';
-import { CONTENT_KEYS, type ContentKey } from '@/lib/content/site-content';
+import { z } from 'zod';
+import { linkSchema } from '@/lib/content/link';
+import {
+  CONTENT_KEYS,
+  CONTENT_SCHEMAS,
+  type ContentKey,
+} from '@/lib/content/site-content';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
-import { BLOCK_FIELDS, getPath, setPath } from './block-fields';
+import {
+  BLOCK_FIELDS,
+  getPath,
+  setPath,
+  type FieldDescriptor,
+} from './block-fields';
 
 /** Every dotted leaf path of a value (a leaf is a string; images/tuples recurse). */
 function leafPaths(value: unknown, prefix = ''): string[] {
@@ -24,20 +35,103 @@ function leafPaths(value: unknown, prefix = ''): string[] {
   return [];
 }
 
+/**
+ * Every dotted path where a schema can store a destination: a link, or a routine
+ * tab's `categoryIds`. Read from the schema itself — the defaults carry none — and
+ * a destination list (`navLinks`, `linkTargets`) holds up to its `.max()`.
+ * `_zod.bag.maximum` is zod's internal check metadata: a zod upgrade that moves it
+ * breaks this test, not the app.
+ */
+function destinationPaths(schema: z.ZodType, prefix = ''): string[] {
+  const at = (segment: string | number) =>
+    prefix ? `${prefix}.${segment}` : String(segment);
+  if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable) {
+    return destinationPaths(schema.unwrap() as z.ZodType, prefix);
+  }
+  if (schema === linkSchema) return [prefix];
+  if (schema instanceof z.ZodObject) {
+    return Object.entries(schema.shape).flatMap(([key, child]) =>
+      key === 'categoryIds'
+        ? [at(key)]
+        : destinationPaths(child as z.ZodType, at(key)),
+    );
+  }
+  if (schema instanceof z.ZodTuple) {
+    return schema.def.items.flatMap((item, i) =>
+      destinationPaths(item as z.ZodType, at(i)),
+    );
+  }
+  if (schema instanceof z.ZodArray) {
+    const { maximum = 0 } = schema._zod.bag as { maximum?: number };
+    return Array.from({ length: maximum }, (_, i) =>
+      destinationPaths(schema.element as z.ZodType, at(i)),
+    ).flat();
+  }
+  return [];
+}
+
+const isPicker = (field: FieldDescriptor) =>
+  field.kind === 'link' || field.kind === 'categories';
+
 describe('BLOCK_FIELDS', () => {
   it('has a block descriptor for every content key', () => {
     expect(Object.keys(BLOCK_FIELDS).sort()).toEqual([...CONTENT_KEYS].sort());
   });
 
-  it('describes exactly the leaves of each key’s default — no drift', () => {
+  it('describes exactly the text and image leaves of each key’s default — no drift', () => {
     for (const key of CONTENT_KEYS as readonly ContentKey[]) {
-      const descriptorPaths = BLOCK_FIELDS[key].fields.map((f) => f.path);
+      const descriptorPaths = BLOCK_FIELDS[key].fields
+        .filter((field) => !isPicker(field))
+        .map((f) => f.path);
       const leaves = leafPaths(DEFAULT_CONTENT[key]);
 
       // No duplicate descriptors.
       expect(new Set(descriptorPaths).size, key).toBe(descriptorPaths.length);
       // Same set both ways: every descriptor is a real leaf, every leaf described.
       expect(new Set(descriptorPaths), key).toEqual(new Set(leaves));
+    }
+  });
+
+  it('describes exactly the destinations each key’s schema can store — no drift', () => {
+    for (const key of CONTENT_KEYS as readonly ContentKey[]) {
+      const pickers = BLOCK_FIELDS[key].fields.filter(isPicker);
+      const paths = pickers.map((field) => field.path);
+
+      expect(new Set(paths).size, key).toBe(paths.length);
+      expect(new Set(paths), key).toEqual(
+        new Set(destinationPaths(CONTENT_SCHEMAS[key] as z.ZodType)),
+      );
+      for (const field of pickers) {
+        expect(field.kind, `${key} ${field.path}`).toBe(
+          field.path.endsWith('categoryIds') ? 'categories' : 'link',
+        );
+      }
+    }
+  });
+
+  it('offers a picker for each of the 21 links and the 4 routine tabs', () => {
+    const fields = CONTENT_KEYS.flatMap((key) => BLOCK_FIELDS[key].fields);
+    expect(fields.filter((field) => field.kind === 'link')).toHaveLength(21);
+    expect(fields.filter((field) => field.kind === 'categories')).toHaveLength(
+      4,
+    );
+  });
+
+  it('saves a destination at every picker path (setPath, then the schema)', () => {
+    const link = { type: 'page', page: 'about' };
+    const categoryIds = ['5f0c6a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f'];
+    for (const key of CONTENT_KEYS as readonly ContentKey[]) {
+      for (const field of BLOCK_FIELDS[key].fields.filter(isPicker)) {
+        const sample = field.kind === 'link' ? link : categoryIds;
+        const parsed = CONTENT_SCHEMAS[key].safeParse(
+          setPath(DEFAULT_CONTENT[key], field.path, sample),
+        );
+        expect(parsed.success, `${key} ${field.path}`).toBe(true);
+        expect(
+          getPath(parsed.data, field.path),
+          `${key} ${field.path}`,
+        ).toEqual(sample);
+      }
     }
   });
 
@@ -54,47 +148,48 @@ describe('BLOCK_FIELDS', () => {
     }
   });
 
-  it('gives every target a non-empty string, and puts targets on the link labels', () => {
+  it('gives every picker the code destination it shows while nothing is saved', () => {
     for (const key of CONTENT_KEYS as readonly ContentKey[]) {
       for (const field of BLOCK_FIELDS[key].fields) {
-        if (field.target !== undefined) {
+        if (isPicker(field)) {
           expect(
-            field.target.length,
-            `${key} ${field.path} target`,
+            field.fallback?.length,
+            `${key} ${field.path}`,
           ).toBeGreaterThan(0);
+        } else {
+          expect(field.fallback, `${key} ${field.path}`).toBeUndefined();
         }
       }
     }
 
-    // The label-with-a-fixed-target AC: the CTA / nav / footer-link / card / tab
-    // labels each show a destination. Spot-check one of each kind — a label that
-    // sits on a link but forgets its target would slip the AC otherwise.
-    const targetOf = (key: ContentKey, path: string) =>
-      BLOCK_FIELDS[key].fields.find((f) => f.path === path)?.target;
+    // One of each kind: a picker whose fallback drifted from the storefront's
+    // would preview a destination the page does not use.
+    const fallbackOf = (key: ContentKey, path: string) =>
+      BLOCK_FIELDS[key].fields.find((f) => f.path === path)?.fallback;
 
-    expect(targetOf('home.hero', 'shopCta')).toBe('/shop');
-    expect(targetOf('home.hero', 'aboutCta')).toBe('/about');
-    expect(targetOf('home.guide', 'cta')).toBe('/shop?category=wet-food');
-    expect(targetOf('home.philosophy', 'cta')).toBe('/about');
-    expect(targetOf('about.cta', 'cta')).toBe('/shop');
-    expect(targetOf('home.categories', 'cta')).toBe('/shop');
-    expect(targetOf('home.moments', 'cta')).toBe('/shop');
-    // A moment card's title carries its own deep-link destination.
-    expect(targetOf('home.moments', 'cards.0.title')).toBe(
+    expect(fallbackOf('home.hero', 'shopCtaLink')).toBe('/shop');
+    expect(fallbackOf('home.hero', 'aboutCtaLink')).toBe('/about');
+    expect(fallbackOf('home.guide', 'ctaLink')).toBe('/shop?category=wet-food');
+    expect(fallbackOf('home.philosophy', 'ctaLink')).toBe('/about');
+    expect(fallbackOf('about.cta', 'ctaLink')).toBe('/shop');
+    expect(fallbackOf('home.categories', 'ctaLink')).toBe('/shop');
+    expect(fallbackOf('home.moments', 'ctaLink')).toBe('/shop');
+    expect(fallbackOf('home.moments', 'cards.0.link')).toBe(
       '/shop?category=dry-food&pet=cat',
     );
-    expect(targetOf('header', 'nav.0')).toBe('/');
-    expect(targetOf('header', 'nav.1')).toBe('/shop');
-    expect(targetOf('footer', 'columns.1.links.0')).toBe('/about');
-    // A routine tab shows its category slugs.
-    expect(targetOf('home.routine', 'slots.2.label')).toBe(
+    expect(fallbackOf('header', 'navLinks.0')).toBe('/');
+    expect(fallbackOf('header', 'navLinks.1')).toBe('/shop');
+    expect(fallbackOf('footer', 'columns.1.linkTargets.0')).toBe('/about');
+    expect(fallbackOf('home.routine', 'slots.2.categoryIds')).toBe(
       'supplements, hygiene',
     );
   });
 
-  it('every descriptor path resolves to a string in the default', () => {
+  it('every text and image descriptor path resolves to a string in the default', () => {
     for (const key of CONTENT_KEYS as readonly ContentKey[]) {
-      for (const field of BLOCK_FIELDS[key].fields) {
+      for (const field of BLOCK_FIELDS[key].fields.filter(
+        (f) => !isPicker(f),
+      )) {
         expect(
           typeof getPath(DEFAULT_CONTENT[key], field.path),
           `${key} ${field.path}`,
@@ -143,6 +238,19 @@ describe('setPath', () => {
     expect(after.slots).toHaveLength(6);
     // Untouched siblings are carried over.
     expect(after.slots[0]).toEqual(before.slots[0]);
+  });
+
+  it('builds an array under a missing parent when the next segment is an index', () => {
+    const link = { type: 'page', page: 'about' } as const;
+    const after = setPath(DEFAULT_CONTENT.header, 'navLinks.1', link);
+
+    // A destination list, not `{ "1": … }` — which the schema would refuse.
+    expect(Array.isArray(after.navLinks)).toBe(true);
+    expect(after.navLinks?.[1]).toEqual(link);
+    // A missing parent under a named segment is still an object.
+    expect(setPath({}, 'ctaLink.type', 'page')).toEqual({
+      ctaLink: { type: 'page' },
+    });
   });
 
   it('round-trips with getPath', () => {

@@ -658,6 +658,59 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
     });
   });
 
+  describe('pageForAdmin', () => {
+    it('slices the admin listing into pages and counts the whole filtered result', async () => {
+      const category = await makeCategory();
+      const a = await ProductDao.create(makeProduct(category));
+      const b = await ProductDao.create(makeProduct(category));
+      const c = await ProductDao.create(makeProduct(category));
+      await ProductDao.softDelete(a.id);
+
+      const filter = { categorySlug: category.slug, limit: 2 };
+      const first = await ProductDao.pageForAdmin({ ...filter, page: 1 });
+      const second = await ProductDao.pageForAdmin({ ...filter, page: 2 });
+      const past = await ProductDao.pageForAdmin({ ...filter, page: 5 });
+
+      expect([first.total, second.total, past.total]).toEqual([3, 3, 3]);
+      expect(first.items).toHaveLength(2);
+      expect(second.items).toHaveLength(1);
+      expect(past.items).toEqual([]);
+      // Page after page is the full listing in its own order (newest first),
+      // the soft-deleted product included.
+      const all = await ProductDao.listForAdmin({
+        categorySlug: category.slug,
+      });
+      expect([...first.items, ...second.items].map((row) => row.id)).toEqual(
+        all.map((row) => row.id),
+      );
+      expect(all.map((row) => row.id).sort()).toEqual(
+        [a.id, b.id, c.id].sort(),
+      );
+    });
+
+    it('applies the same filters as the full listing', async () => {
+      const category = await makeCategory();
+      const active = await ProductDao.create(makeProduct(category));
+      const removed = await ProductDao.create(makeProduct(category));
+      await ProductDao.softDelete(removed.id);
+
+      const page = (active: boolean) =>
+        ProductDao.pageForAdmin({
+          categorySlug: category.slug,
+          active,
+          page: 1,
+          limit: 10,
+        });
+      const inactiveOnly = await page(false);
+      const activeOnly = await page(true);
+
+      expect(inactiveOnly.items.map((row) => row.id)).toEqual([removed.id]);
+      expect(inactiveOnly.total).toBe(1);
+      expect(activeOnly.items.map((row) => row.id)).toEqual([active.id]);
+      expect(activeOnly.total).toBe(1);
+    });
+  });
+
   describe('findByIdForAdmin', () => {
     it('loads an inactive product the storefront read would hide', async () => {
       const category = await makeCategory();

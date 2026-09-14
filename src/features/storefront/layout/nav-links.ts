@@ -1,17 +1,17 @@
 import { PATHS } from '@/lib/constant/paths';
 
 /**
- * The storefront chrome's link *targets* — the fixed destinations the header nav
- * and the footer columns point at. Under the v2 CMS rule, a link's LABEL is
- * editable content (it lives in `header.nav` / `footer.columns[c].links`), but
- * its TARGET stays in code and travels with the layout: an editable label over a
- * fixed target is exactly how «مشاهده غذای خشک» could be made to land on wet food.
+ * The storefront chrome's code-side link *targets* — where the header nav and the
+ * footer columns point when no destination is saved for a label
+ * (`header.navLinks` / `footer.columns[c].linkTargets`, resolved with
+ * `resolveLink` in the components). Every row saved before destinations became
+ * content has none, so these keep those links exactly where they were.
  *
  * The component zips a label tuple with the same-index target tuple; a unit test
  * asserts the lengths match (`DEFAULT_CONTENT.header.nav.length === NAV_TARGETS.length`,
- * and the two footer columns likewise), and `block-fields.ts` builds each label
- * field's read-only «مقصد» hint from these arrays — so the editor always shows an
- * editable label's real destination.
+ * and the two footer columns likewise), and `block-fields.ts` gives each destination picker its
+ * entry here as the fallback it previews — so the editor always shows where an
+ * unsaved destination really goes.
  *
  * Both live here (not in `footer.tsx`) so this module stays pure and client-safe:
  * `block-fields.ts` is admin-client code and imports these, and must not drag the

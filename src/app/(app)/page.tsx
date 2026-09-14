@@ -2,6 +2,7 @@ import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { SiteContentDao } from '@/db/dao/SiteContentDao';
 import { CONTENT_AREAS, isVisible } from '@/lib/content/site-content';
+import { loadLinkTargets } from '@/logic/content/link-targets';
 import { CategoriesSection } from '@/features/storefront/home/categories';
 import { CommunitySection } from '@/features/storefront/home/community';
 import { FeaturedStorySection } from '@/features/storefront/home/featured-story';
@@ -38,9 +39,13 @@ export default async function HomePage() {
     SiteContentDao.getMany(CONTENT_AREAS.home.keys),
   ]);
 
+  // Saved destinations store catalog ids: resolve them once for every linked
+  // section, reusing the categories just read (so only linked products query).
+  const targets = await loadLinkTargets(Object.values(content), categories);
+
   // Narrow rows to what the sections render: `Category` also carries
   // timestamps, and several of these sections are client components.
-  const tiles = categories.map(({ title, slug }) => ({ title, slug }));
+  const tiles = categories.map(({ id, title, slug }) => ({ id, title, slug }));
 
   // Every section is editable now, and each renders unless the admin has
   // explicitly hidden it (`isVisible` = "shown unless visible === false"); an
@@ -49,10 +54,13 @@ export default async function HomePage() {
   return (
     <main>
       {isVisible(content['home.hero']) && (
-        <HeroSection content={content['home.hero']} />
+        <HeroSection content={content['home.hero']} targets={targets} />
       )}
       {isVisible(content['home.moments']) && (
-        <LifeMomentsSection content={content['home.moments']} />
+        <LifeMomentsSection
+          content={content['home.moments']}
+          targets={targets}
+        />
       )}
       {isVisible(content['home.recommends']) && (
         <RecommendsSection
@@ -64,7 +72,10 @@ export default async function HomePage() {
         <JourneySection content={content['home.journey']} />
       )}
       {isVisible(content['home.guide']) && (
-        <FeaturedStorySection content={content['home.guide']} />
+        <FeaturedStorySection
+          content={content['home.guide']}
+          targets={targets}
+        />
       )}
       {isVisible(content['home.routine']) && (
         <RoutineSection content={content['home.routine']} categories={tiles} />
@@ -76,10 +87,14 @@ export default async function HomePage() {
         <CategoriesSection
           content={content['home.categories']}
           categories={tiles}
+          targets={targets}
         />
       )}
       {isVisible(content['home.philosophy']) && (
-        <PhilosophySection content={content['home.philosophy']} />
+        <PhilosophySection
+          content={content['home.philosophy']}
+          targets={targets}
+        />
       )}
     </main>
   );

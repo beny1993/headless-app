@@ -13,10 +13,11 @@
 //     constraints; `.int()` also caps values at Number.MAX_SAFE_INTEGER (zod 4),
 //     the ceiling `bigint`-as-`number` columns can represent without precision
 //     loss — so no float, no overflow, reaches Postgres.
-//   · Server-owned fields are absent. `id`, `searchText`, `createdAt`,
+//   · Server-owned fields are absent. `id`, `sku`, `searchText`, `createdAt`,
 //     `updatedAt` are not in the object, so a body carrying them has them
-//     stripped rather than applied — the DAO owns `searchText`, the database
-//     owns the id and the timestamps.
+//     stripped rather than applied — the create route derives `sku` from the
+//     slug (`./sku.ts`), the DAO owns `searchText`, and the database owns the
+//     id and the timestamps.
 //   · Free text is bounded and printable. Every text field is length-capped and
 //     refuses control characters (a NUL reaches Postgres as a 500) and bidi
 //     overrides; only `description` keeps tab and line breaks.
@@ -24,6 +25,7 @@ import { z } from 'zod';
 import { toPersianDigits } from '@/lib/format';
 import { FORBIDDEN_TEXT_CHARS, VISIBLE_CHAR } from '@/lib/validation/text';
 import { PET_TYPES } from './product-query';
+import { MAX_SLUG_LENGTH } from './sku';
 
 /**
  * The longest value each free-text field accepts, measured after trimming. Every
@@ -31,7 +33,6 @@ import { PET_TYPES } from './product-query';
  */
 export const PRODUCT_TEXT_LIMITS = {
   title: 150,
-  sku: 64,
   brand: 100,
   benefit: 200,
   description: 5000,
@@ -48,8 +49,7 @@ export const PRODUCT_MESSAGES = {
   title: 'عنوان محصول الزامی است.',
   titleLength: tooLong('عنوان محصول', PRODUCT_TEXT_LIMITS.title),
   slug: 'نشانی فقط با حروف کوچک انگلیسی، عدد و خط تیره (حداقل ۳ نویسه).',
-  sku: 'کد کالا (SKU) الزامی است — روی اقلام سفارش ثبت می‌شود.',
-  skuLength: tooLong('کد کالا (SKU)', PRODUCT_TEXT_LIMITS.sku),
+  slugLength: tooLong('نشانی یکتا (slug)', MAX_SLUG_LENGTH),
   brandLength: tooLong('برند', PRODUCT_TEXT_LIMITS.brand),
   benefitLength: tooLong('جمله مزیت', PRODUCT_TEXT_LIMITS.benefit),
   descriptionLength: tooLong('توضیحات', PRODUCT_TEXT_LIMITS.description),
@@ -122,13 +122,11 @@ export const productInputSchema = z
       PRODUCT_MESSAGES.title,
       PRODUCT_MESSAGES.titleLength,
     ),
-    slug: z.string().trim().regex(SLUG_PATTERN, PRODUCT_MESSAGES.slug),
-    sku: requiredText(
-      1,
-      PRODUCT_TEXT_LIMITS.sku,
-      PRODUCT_MESSAGES.sku,
-      PRODUCT_MESSAGES.skuLength,
-    ),
+    slug: z
+      .string()
+      .trim()
+      .max(MAX_SLUG_LENGTH, PRODUCT_MESSAGES.slugLength)
+      .regex(SLUG_PATTERN, PRODUCT_MESSAGES.slug),
     brand: optionalText(
       PRODUCT_TEXT_LIMITS.brand,
       PRODUCT_MESSAGES.brandLength,

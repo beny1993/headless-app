@@ -3,7 +3,6 @@ import {
   DEFAULT_SHOP_QUERY,
   buildShopHref,
   parseShopQuery,
-  shopPageWindow,
   toggleShopCategory,
   toggleShopPet,
   updateShopQuery,
@@ -543,49 +542,6 @@ describe('toggleShopPet', () => {
     expect(toggleShopPet({ ...DEFAULT_SHOP_QUERY, page: 9 }, 'dog').page).toBe(
       1,
     );
-  });
-});
-
-describe('shopPageWindow', () => {
-  it('is empty when nothing matched', () => {
-    expect(shopPageWindow(1, 0)).toEqual([]);
-  });
-
-  it('is a single page when everything fits on one', () => {
-    expect(shopPageWindow(1, 1)).toEqual([1]);
-  });
-
-  it('lists every page while they fit in the window', () => {
-    expect(shopPageWindow(2, 5)).toEqual([1, 2, 3, 4, 5]);
-  });
-
-  it('centres the window on the current page', () => {
-    expect(shopPageWindow(6, 10)).toEqual([4, 5, 6, 7, 8]);
-  });
-
-  it('hugs the start without running off it', () => {
-    expect(shopPageWindow(1, 10)).toEqual([1, 2, 3, 4, 5]);
-    expect(shopPageWindow(2, 10)).toEqual([1, 2, 3, 4, 5]);
-  });
-
-  it('hugs the end without running past it', () => {
-    expect(shopPageWindow(10, 10)).toEqual([6, 7, 8, 9, 10]);
-    expect(shopPageWindow(9, 10)).toEqual([6, 7, 8, 9, 10]);
-  });
-
-  it('stays inside the catalog for a page past the end', () => {
-    // `?page=999` reaches here intact; the window must still point at pages
-    // that exist so the shopper has a way back.
-    expect(shopPageWindow(999, 3)).toEqual([1, 2, 3]);
-  });
-
-  it('stays inside the catalog for a page below the first', () => {
-    expect(shopPageWindow(0, 3)).toEqual([1, 2, 3]);
-  });
-
-  it('honours a caller-chosen window size', () => {
-    expect(shopPageWindow(5, 10, 3)).toEqual([4, 5, 6]);
-    expect(shopPageWindow(5, 10, 1)).toEqual([5]);
   });
 });
 

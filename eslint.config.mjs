@@ -18,6 +18,9 @@ const config = [
       '**.json',
       // Vendored Figma design prototype — reference material, not app code.
       'design/**',
+      // Playwright output: the HTML report ships the trace viewer's own bundle.
+      'playwright-report/**',
+      'test-results/**',
       // Agent worktrees: a second checkout of this same repo under .claude/.
       // Linting it double-reports every file and drags in `design/` again from a
       // path the ignore above does not match.

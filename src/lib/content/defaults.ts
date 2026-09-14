@@ -1,9 +1,10 @@
 // Today's hardcoded storefront copy, moved here verbatim from the section
 // components (`home/content.ts`, `home/*.tsx`, `about/about-sections.tsx`) and,
 // in v2, the chrome (`layout/navbar.tsx`, `layout/footer.tsx`, `layout/nav-links.ts`).
-// The link/card/tab *labels* moved here; their fixed *targets* (hrefs, shop
+// The link/card/tab *labels* moved here; their code *targets* (hrefs, shop
 // filters, category slugs) stay in code as the `*_TARGETS` tuples the components
-// zip with by index. These serve as BOTH the
+// zip with by index — the fallback wherever no destination is saved, which is
+// every default (none carries a link field). These serve as BOTH the
 // implicit seed and the fallback: with an empty `site_content` table every page
 // renders byte-identical to before this story, and no SQL migration carries a
 // second, driftable copy of the Persian copy.

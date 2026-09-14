@@ -1,7 +1,8 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { AlertCircle, Check, Loader2, Plus } from 'lucide-react';
+import { Check, Loader2, Plus } from 'lucide-react';
+import { toast } from 'sonner';
 import type { AdminProvinceRow } from '@/db/dao/ShippingRateDao';
 import { TextField } from '@/features/account/account-fields';
 import {
@@ -120,14 +121,12 @@ function CreateProvinceForm({
   const [name, setName] = useState('');
   const [fee, setFee] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [topError, setTopError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [justCreated, setJustCreated] = useState<string | null>(null);
 
   const submit = async () => {
     if (busy) return;
     setErrors({});
-    setTopError(undefined);
     setJustCreated(null);
 
     const feeValue = parseFee(fee);
@@ -152,13 +151,16 @@ function CreateProvinceForm({
       setName('');
       setFee('');
     } catch (error) {
-      // A 400 carries `field: message` errors; a 409 duplicate only a message.
-      const { fields } = parseFieldErrors(
-        error instanceof ApiRequestError ? error.errors : undefined,
-      );
-      setErrors(fields);
-      if (Object.keys(fields).length === 0) {
-        setTopError(
+      // A 400 carries `field: message` errors, shown by their fields; any other
+      // failure (a 409 duplicate, 401/403, the network) is a request failure and
+      // goes to a toast, like the rest of the admin panel.
+      if (error instanceof ApiRequestError && error.status === 400) {
+        const { fields, unmapped } = parseFieldErrors(error.errors);
+        setErrors(fields);
+        if (Object.keys(fields).length === 0) toast.error(error.message);
+        else if (unmapped.length > 0) toast.error(unmapped.join(' '));
+      } else {
+        toast.error(
           error instanceof Error
             ? error.message
             : 'افزودن استان ناموفق بود. دوباره تلاش کن.',
@@ -178,16 +180,6 @@ function CreateProvinceForm({
       className="border-border bg-card flex flex-col gap-4 rounded-2xl border p-6"
     >
       <h2 className="font-bold">استان جدید</h2>
-
-      {topError && (
-        <p
-          role="alert"
-          className="text-destructive border-destructive/30 bg-destructive-soft/40 flex items-center gap-2 rounded-xl border p-3 text-sm"
-        >
-          <AlertCircle size={16} className="shrink-0" aria-hidden="true" />
-          {topError}
-        </p>
-      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <TextField
@@ -248,7 +240,6 @@ function RateRow({
   const [savedFee, setSavedFee] = useState(rate.fee);
   const [busy, setBusy] = useState(false);
   const [toggling, setToggling] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
 
   const fee = parseFee(value);
@@ -258,7 +249,6 @@ function RateRow({
   const save = async () => {
     if (fee === null) return;
     setBusy(true);
-    setError(null);
     setJustSaved(false);
     try {
       const updated = await putData<AdminProvinceRow>(
@@ -269,7 +259,7 @@ function RateRow({
       setValue(String(updated.fee));
       setJustSaved(true);
     } catch (requestError) {
-      setError(
+      toast.error(
         requestError instanceof Error
           ? requestError.message
           : 'ذخیره نرخ ناموفق بود. دوباره تلاش کن.',
@@ -282,7 +272,6 @@ function RateRow({
   const toggle = async () => {
     if (toggling) return;
     setToggling(true);
-    setError(null);
     try {
       onToggled(
         await patchData<AdminProvinceRow>(
@@ -293,7 +282,7 @@ function RateRow({
         ),
       );
     } catch (requestError) {
-      setError(
+      toast.error(
         requestError instanceof Error
           ? requestError.message
           : 'تغییر وضعیت ناموفق بود.',
@@ -378,14 +367,6 @@ function RateRow({
           {justSaved && !dirty && (
             <span className="text-success-strong flex items-center gap-1 text-xs">
               <Check size={14} aria-hidden="true" /> ذخیره شد
-            </span>
-          )}
-          {error && (
-            <span
-              role="alert"
-              className="text-destructive flex items-center gap-1 text-xs"
-            >
-              <AlertCircle size={14} aria-hidden="true" /> {error}
             </span>
           )}
         </div>

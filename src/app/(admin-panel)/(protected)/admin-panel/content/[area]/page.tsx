@@ -1,9 +1,12 @@
 import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { CategoryDao } from '@/db/dao/CategoryDao';
+import { ProductDao } from '@/db/dao/ProductDao';
 import { SiteContentDao } from '@/db/dao/SiteContentDao';
 import { CONTENT_AREAS, contentAreaSchema } from '@/lib/content/site-content';
 import { ContentEditor } from '@/features/admin-panel/content/content-editor';
+import type { LinkOption } from '@/features/admin-panel/content/link-picker';
 
 // Reads live content per request; the page checks the role before data access.
 export const dynamic = 'force-dynamic';
@@ -36,7 +39,21 @@ export default async function AdminContentAreaPage({
   if (!parsed.success) notFound();
 
   const area = CONTENT_AREAS[parsed.data];
-  const values = await SiteContentDao.getMany(area.keys);
+  // Independent reads: the blocks, and what their destination pickers offer —
+  // every category and the active products (saving a link to a hidden product
+  // is refused), narrowed to id/title/slug for the client editor.
+  const [values, categories, products] = await Promise.all([
+    SiteContentDao.getMany(area.keys),
+    CategoryDao.list(),
+    // ponytail: listForAdmin also loads images the picker never shows; a slim
+    // id/title/slug listing when the catalog grows.
+    ProductDao.listForAdmin({ active: true }),
+  ]);
+  const option = ({ id, title, slug }: LinkOption): LinkOption => ({
+    id,
+    title,
+    slug,
+  });
 
   return (
     <div className="max-w-3xl">
@@ -47,7 +64,14 @@ export default async function AdminContentAreaPage({
           بلافاصله در فروشگاه دیده می‌شوند.
         </p>
       </div>
-      <ContentEditor keys={area.keys} values={values} />
+      <ContentEditor
+        keys={area.keys}
+        values={values}
+        options={{
+          categories: categories.map(option),
+          products: products.map(option),
+        }}
+      />
     </div>
   );
 }

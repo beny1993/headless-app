@@ -24,6 +24,7 @@ import {
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
 import { PET_TYPES } from '@/lib/catalog/product-query';
+import { generateSku } from '@/lib/catalog/sku';
 import { replaceProductImage } from '@/logic/admin/product-images';
 import { readImageUpload } from '../image-upload';
 import {
@@ -33,6 +34,7 @@ import {
   apiSuccessSchema,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
+import { pgErrorOf } from '../pg-error';
 
 /** User-facing copy, so Persian. */
 export const PRODUCT_NOT_FOUND_MESSAGE = 'محصول یافت نشد';
@@ -107,17 +109,6 @@ const errorResponse = (description: string) =>
 // map back onto its input — the "422 an unknown province, not a 500" stance the
 // address save established. Anything unrecognized is rethrown as the 500 it is.
 
-type PgError = { code?: string; constraint?: string };
-
-/** The pg error, whether raw or wrapped by drizzle at `.cause`. */
-const pgErrorOf = (error: unknown): PgError | null => {
-  for (const candidate of [error, (error as { cause?: unknown })?.cause]) {
-    const pg = candidate as PgError | null | undefined;
-    if (pg && typeof pg.code === 'string') return pg;
-  }
-  return null;
-};
-
 /** Field-scoped messages, keyed by the constraint name (from the migration). */
 const WRITE_ERROR_MESSAGES: Record<string, string> = {
   products_slug_unique: 'slug: این نشانی قبلاً برای محصول دیگری ثبت شده است.',
@@ -183,7 +174,12 @@ export const productCreateHandler: RouteHandler<
 > = async (c) => {
   const body = c.req.valid('json');
   try {
-    const created = await ProductDao.create(body);
+    // The SKU is server-owned: derived from the slug once, here. The body schema
+    // has no `sku`, and the update route never passes one, so it never changes.
+    const created = await ProductDao.create({
+      ...body,
+      sku: generateSku(body.slug),
+    });
     return c.json(apiSuccess(toAdminProduct(created)), 201);
   } catch (error) {
     const errors = productWriteErrors(error);

@@ -379,3 +379,122 @@ describe('isVisible', () => {
     }
   });
 });
+
+describe('CONTENT_SCHEMAS link fields (every one optional: compat)', () => {
+  const IDS = [
+    '5f0c6a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f',
+    '0b9e8d7c-6a5f-4e3d-8c2b-1a0f9e8d7c6b',
+    '7e6d5c4b-3a2f-4e1d-9c0b-a9f8e7d6c5b4',
+    '2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f',
+    '8f7e6d5c-4b3a-4f2e-8d1c-0b9a8f7e6d5c',
+  ];
+  const shop = { type: 'shop', categoryId: IDS[0], pet: 'cat' };
+  const external = { type: 'external', url: 'https://example.com/' };
+  const d = DEFAULT_CONTENT;
+
+  it('parses every block saved before links were editable to itself', () => {
+    // Each default is a pre-change row: no link field anywhere. Nothing may be
+    // required or defaulted in, or every live row would change or fall back.
+    for (const key of CONTENT_KEYS) {
+      expect(CONTENT_SCHEMAS[key].parse(DEFAULT_CONTENT[key]), key).toEqual(
+        DEFAULT_CONTENT[key],
+      );
+    }
+  });
+
+  it('keeps a link, or null for "the code destination", at every link field', () => {
+    const cases: [ContentKey, unknown][] = [
+      [
+        'home.hero',
+        { ...d['home.hero'], shopCtaLink: shop, aboutCtaLink: null },
+      ],
+      [
+        'home.moments',
+        {
+          ...d['home.moments'],
+          ctaLink: external,
+          cards: d['home.moments'].cards.map((card, i) => ({
+            ...card,
+            link: i === 0 ? null : shop,
+          })),
+        },
+      ],
+      ['home.guide', { ...d['home.guide'], ctaLink: shop }],
+      [
+        'home.categories',
+        { ...d['home.categories'], ctaLink: { type: 'page', page: 'shop' } },
+      ],
+      [
+        'home.philosophy',
+        { ...d['home.philosophy'], ctaLink: { type: 'page', page: 'about' } },
+      ],
+      ['about.cta', { ...d['about.cta'], ctaLink: external }],
+      ['header', { ...d.header, navLinks: [null, shop, external] }],
+      [
+        'footer',
+        {
+          ...d.footer,
+          columns: [
+            {
+              ...d.footer.columns[0],
+              linkTargets: [shop, null, null, null, external],
+            },
+            { ...d.footer.columns[1], linkTargets: [external] },
+          ],
+        },
+      ],
+    ];
+    for (const [key, value] of cases) {
+      expect(CONTENT_SCHEMAS[key].safeParse(value).data, key).toEqual(value);
+    }
+  });
+
+  it('refuses a link list longer than its labels, and allows a shorter one', () => {
+    expect(
+      CONTENT_SCHEMAS.header.safeParse({
+        ...d.header,
+        navLinks: [null, null, null, external],
+      }).success,
+    ).toBe(false);
+    expect(
+      CONTENT_SCHEMAS.footer.safeParse({
+        ...d.footer,
+        columns: [
+          d.footer.columns[0],
+          { ...d.footer.columns[1], linkTargets: [external, external] },
+        ],
+      }).success,
+    ).toBe(false);
+    // A missing entry keeps its code destination.
+    expect(
+      CONTENT_SCHEMAS.header.safeParse({ ...d.header, navLinks: [shop] })
+        .success,
+    ).toBe(true);
+  });
+
+  it('reports a malformed link on the link field’s own path', () => {
+    const result = CONTENT_SCHEMAS['about.cta'].safeParse({
+      ...d['about.cta'],
+      ctaLink: { type: 'external', url: 'javascript:alert(1)' },
+    });
+    expect(result.error?.issues.map((i) => i.path.join('.'))).toEqual([
+      'ctaLink.url',
+    ]);
+  });
+
+  it('lets a routine tab pick one to four distinct categories', () => {
+    const routine = d['home.routine'];
+    const withIds = (categoryIds: unknown) => ({
+      ...routine,
+      slots: [{ ...routine.slots[0], categoryIds }, ...routine.slots.slice(1)],
+    });
+    const parse = (categoryIds: unknown) =>
+      CONTENT_SCHEMAS['home.routine'].safeParse(withIds(categoryIds));
+
+    expect(parse([IDS[0]]).data).toEqual(withIds([IDS[0]]));
+    expect(parse(IDS.slice(0, 4)).success).toBe(true);
+    for (const bad of [[], IDS, [IDS[0], IDS[0]], ['dry-food']]) {
+      expect(parse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+});

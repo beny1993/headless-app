@@ -22,6 +22,9 @@ import {
 import { PROVINCE_MESSAGES } from '@/lib/shipping/province-input';
 import { ShippingRatesEditor } from './shipping-rates-editor';
 
+const { toast } = vi.hoisted(() => ({ toast: { error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast }));
+
 const RATES = [
   { provinceId: 1, name: 'تهران', fee: 25_000, isActive: true },
   { provinceId: 7, name: 'اصفهان', fee: 42_000, isActive: true },
@@ -57,6 +60,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   fetchMock.mockReset();
+  toast.error.mockReset();
   vi.unstubAllGlobals();
 });
 
@@ -201,7 +205,7 @@ describe('ShippingRatesEditor', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('surfaces a 409 duplicate message and keeps the input', async () => {
+    it('reports a 409 duplicate as an error toast and keeps the input', async () => {
       fetchMock.mockResolvedValue(
         errorEnvelope(409, 'این استان غیرفعال است — فعالش کن'),
       );
@@ -212,7 +216,7 @@ describe('ShippingRatesEditor', () => {
       fireEvent.click(addButton());
       await act(async () => {});
 
-      expect(screen.getByRole('alert').textContent).toContain(
+      expect(toast.error).toHaveBeenCalledWith(
         'این استان غیرفعال است — فعالش کن',
       );
       expect(nameInput().value).toBe('قم');
@@ -293,5 +297,21 @@ describe('ShippingRatesEditor', () => {
     ).toBeTruthy();
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.getByRole('button', { name: 'افزودن استان' })).toBeTruthy();
+  });
+
+  it('reports a refused save as an error toast', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ status: 'error', message: 'دسترسی ندارید.' }),
+    } as Response);
+    render(<ShippingRatesEditor rates={RATES} />);
+
+    fireEvent.change(feeInput('تهران'), { target: { value: '30000' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'ذخیره' })[0]);
+    await act(async () => {});
+
+    expect(toast.error).toHaveBeenCalledWith('دسترسی ندارید.');
+    expect(screen.queryByText('ذخیره شد')).toBeNull();
   });
 });

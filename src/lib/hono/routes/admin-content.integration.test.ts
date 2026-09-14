@@ -28,6 +28,7 @@ import {
   apiProductPath,
 } from '@/lib/constant/paths';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
+import { LINK_MESSAGES } from '@/lib/content/link';
 import type { ApiResponse } from '@/lib/hono/envelope';
 import { MAX_UPLOAD_BYTES } from '@/lib/storage/image-upload';
 import { VARS } from '@/lib/utils/env';
@@ -36,6 +37,7 @@ const mocks = vi.hoisted(() => ({ getSession: vi.fn() }));
 vi.mock('@/lib/auth', () => ({ isAuthenticatedUser: mocks.getSession }));
 
 const { app } = await importWithDb(() => import('@/lib/hono'));
+const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
 const { readLocalUpload } = await importWithDb(
   () => import('@/lib/storage/local-driver'),
 );
@@ -141,6 +143,24 @@ describe.skipIf(!databaseReachable)('admin content API', () => {
       expect(res.status).toBe(403);
     });
 
+    it('refuses a customer before any link lookup: no catalog read, no link error', async () => {
+      asCustomer();
+      // The link check reads the catalog, so it must sit behind the guard: a
+      // customer probing product ids learns nothing and costs no query.
+      const getByIds = vi.spyOn(ProductDao, 'getByIds');
+      try {
+        const res = await putJson('about.cta', {
+          ...DEFAULT_CONTENT['about.cta'],
+          ctaLink: { type: 'product', productId: crypto.randomUUID() },
+        });
+        expect(res.status).toBe(403);
+        expect(await res.text()).not.toContain(LINK_MESSAGES.missingProduct);
+        expect(getByIds).not.toHaveBeenCalled();
+      } finally {
+        getByIds.mockRestore();
+      }
+    });
+
     it('leaves the public product read reachable unauthenticated after the mount', async () => {
       anon();
       // A slug that does not exist still proves the route is not behind the admin
@@ -237,6 +257,77 @@ describe.skipIf(!databaseReachable)('admin content API', () => {
         .select()
         .from(siteContent)
         .where(eq(siteContent.key, 'header'));
+      expect(rows).toHaveLength(0);
+    });
+
+    it('stores a destination with its block, normalized (200)', async () => {
+      asAdmin();
+      const { status, body } = await parse<{ value: unknown }>(
+        await putJson('about.cta', {
+          ...DEFAULT_CONTENT['about.cta'],
+          ctaLink: { type: 'external', url: ' HTTPS://Example.com/guide ' },
+        }),
+      );
+      expect(status).toBe(200);
+      if (body.status !== 'success') throw new Error(body.message);
+      expect(body.data.value).toEqual({
+        ...DEFAULT_CONTENT['about.cta'],
+        ctaLink: { type: 'external', url: 'https://example.com/guide' },
+      });
+    });
+
+    it('400s an external link that is not plain https, on the link field (security)', async () => {
+      asAdmin();
+      for (const url of [
+        'javascript:alert(1)',
+        'http://example.com',
+        '//evil.example',
+        'https://user:pass@example.com',
+      ]) {
+        const { status, body } = await parse(
+          await putJson('about.cta', {
+            ...DEFAULT_CONTENT['about.cta'],
+            ctaLink: { type: 'external', url },
+          }),
+        );
+        expect(status, url).toBe(400);
+        if (body.status !== 'error') throw new Error('expected error');
+        expect(body.errors, url).toEqual([`ctaLink.url: ${LINK_MESSAGES.url}`]);
+      }
+      const rows = await testDb
+        .select()
+        .from(siteContent)
+        .where(eq(siteContent.key, 'about.cta'));
+      expect(rows).toHaveLength(0);
+    });
+
+    it('400s a link to a category or product that does not exist, writing nothing', async () => {
+      asAdmin();
+      const cases = [
+        [
+          { type: 'shop', categoryId: crypto.randomUUID(), pet: 'cat' },
+          LINK_MESSAGES.missingCategory,
+        ],
+        [
+          { type: 'product', productId: crypto.randomUUID() },
+          LINK_MESSAGES.missingProduct,
+        ],
+      ] as const;
+      for (const [ctaLink, message] of cases) {
+        const { status, body } = await parse(
+          await putJson('about.cta', {
+            ...DEFAULT_CONTENT['about.cta'],
+            ctaLink,
+          }),
+        );
+        expect(status).toBe(400);
+        if (body.status !== 'error') throw new Error('expected error');
+        expect(body.errors).toEqual([`ctaLink: ${message}`]);
+      }
+      const rows = await testDb
+        .select()
+        .from(siteContent)
+        .where(eq(siteContent.key, 'about.cta'));
       expect(rows).toHaveLength(0);
     });
   });

@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { AlertCircle, Check, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { postData } from '@/lib/api-client';
 import { apiAdminOrderTransitionsPath } from '@/lib/constant/paths';
 import {
@@ -21,7 +22,8 @@ import { cn } from '@/lib/utils';
  * calls `router.refresh()` and the server re-renders it with the order's new
  * status, which is the single source of truth. (Local state derived from a prop
  * that this component then changes is exactly the state-sync bug class the
- * component-test rule guards; keeping only `busy`/`error` local avoids it.)
+ * component-test rule guards; keeping only `busy` local avoids it; a refused
+ * transition is an error toast, not state.)
  *
  * `busy` is cleared in `finally`, not left set on success: `router.refresh()`
  * updates the server tree but PRESERVES this client component's state (it does
@@ -41,7 +43,6 @@ export function OrderTransition({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<OrderStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const next = adminNextStatuses(status);
 
@@ -56,7 +57,6 @@ export function OrderTransition({
   }
 
   const move = async (to: OrderStatus) => {
-    setError(null);
     setBusy(to);
     try {
       await postData(apiAdminOrderTransitionsPath(orderId), { to });
@@ -64,7 +64,7 @@ export function OrderTransition({
       // the new status locally.
       router.refresh();
     } catch (requestError) {
-      setError(
+      toast.error(
         requestError instanceof Error
           ? requestError.message
           : 'تغییر وضعیت سفارش ناموفق بود. دوباره تلاش کن.',
@@ -117,15 +117,6 @@ export function OrderTransition({
           />
           لغو سفارش موجودی اقلام را برمی‌گرداند؛ اگر پرداخت انجام شده باشد
           بازپرداخت دستی لازم است.
-        </p>
-      )}
-
-      {error && (
-        <p
-          role="alert"
-          className="text-destructive bg-destructive-soft mt-4 flex items-center gap-2 rounded-xl px-4 py-3 text-sm"
-        >
-          <AlertCircle size={16} aria-hidden="true" /> {error}
         </p>
       )}
     </div>

@@ -9,6 +9,14 @@ import { apiError } from './envelope';
 import { IMAGE_TOO_LARGE_MESSAGE } from './image-upload';
 import { requireAdmin, requireAuth, type AuthedEnv } from './middleware/auth';
 import {
+  categoryCreateHandler,
+  categoryCreateRoute,
+  categoryDeleteHandler,
+  categoryDeleteRoute,
+  categoryUpdateHandler,
+  categoryUpdateRoute,
+} from './routes/admin-categories';
+import {
   discountCreateHandler,
   discountCreateRoute,
   discountToggleHandler,
@@ -219,6 +227,12 @@ admin.openapi(discountToggleRoute, discountToggleHandler);
 // above. The fee update stays on `PUT /shipping/rates/{provinceId}`.
 admin.openapi(provinceCreateRoute, provinceCreateHandler);
 admin.openapi(provinceToggleRoute, provinceToggleHandler);
+// Admin categories (`Story - Admin Category Management`): create, update and
+// delete. Same `/admin/*` guard — covered by the wildcard above, so no new mount,
+// and the public `GET /categories` stays outside it.
+admin.openapi(categoryCreateRoute, categoryCreateHandler);
+admin.openapi(categoryUpdateRoute, categoryUpdateHandler);
+admin.openapi(categoryDeleteRoute, categoryDeleteHandler);
 // Admin storefront content (`Story - Storefront Content Management`): replace one
 // block by key, and a shared image upload. Same `/admin/*` guard as above; the
 // image path additionally carries the `bodyLimit` mounted earlier. No public
