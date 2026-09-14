@@ -33,6 +33,7 @@
     "seed-catalog": "tsx scripts/seed-catalog.ts",
     "seed-shipping": "tsx scripts/seed-shipping.ts",
     "verify-s3": "tsx scripts/verify-s3-storage.ts",
+    "verify-sms": "tsx scripts/verify-sms.ts",
     "security:check": "pnpm audit --audit-level=high"
   },
   "dependencies": {

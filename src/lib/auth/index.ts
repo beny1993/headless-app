@@ -66,6 +66,37 @@ export const auth = betterAuth({
   },
   advanced: {
     cookiePrefix: 'token',
+    ipAddress: {
+      // Cloudflare proxies the domain, so the true client IP arrives in
+      // `CF-Connecting-IP` — Cloudflare sets it itself and overwrites any
+      // client-supplied copy, so it cannot be forged *through* Cloudflare.
+      //
+      // Without this the rate limiter below is useless here. Better Auth's
+      // default reads `x-forwarded-for` and trusts it only when it holds a
+      // SINGLE address; behind Cloudflare + Traefik it holds either the
+      // Cloudflare edge address (so every visitor through one Cloudflare colo
+      // shares a bucket) or two hops (so `getIp` returns null and EVERY request
+      // collapses into the one shared `no-trusted-ip` bucket — 3 OTP sends per
+      // minute for the entire shop). Neither failure is visible in a log.
+      //
+      // **This is only sound while the origin refuses non-Cloudflare traffic.**
+      // Reachable directly, the header is attacker-supplied and a forged value
+      // per request mints a fresh bucket each time. Lock 443 to Cloudflare's
+      // published ranges (or use a Tunnel). The per-phone `otp_send_log`
+      // throttle bounds the SMS bill either way; this axis bounds the noise.
+      //
+      // `x-forwarded-for` stays as the fallback for a grey-clouded (DNS-only)
+      // domain and for local/integration runs, which send it directly.
+      //
+      // Deliberately NO `trustedProxies`. It looks like the tidier fix, but it
+      // switches the forwarded-header branch to a right-to-left chain walk that
+      // treats every listed range as infrastructure — and naming the private
+      // ranges a Docker Traefik sits in (10.0.0.0/8) would then swallow the
+      // 10.99.x.x addresses `auth.integration.test.ts` uses as CLIENTS,
+      // resolving them to null and putting the whole suite in one bucket. The
+      // Cloudflare header removes the need to walk the chain at all.
+      ipAddressHeaders: ['cf-connecting-ip', 'x-forwarded-for'],
+    },
   },
   session: {
     // Thirty days. The back office's old six hours was an email-OTP setting;
