@@ -50,7 +50,7 @@ export function OrderSummary({
     (typeof discount === 'bigint' ? discount > 0n : discount > 0);
   return (
     <>
-      <ul className="mb-4 space-y-3">
+      <ul className="mb-4 space-y-3 lg:space-y-4">
         {lines.map((line) => (
           <li key={line.id} className="flex items-center gap-3">
             {line.imageKey ? (
@@ -59,46 +59,64 @@ export function OrderSummary({
               <img
                 src={imageSrc(line.imageKey)}
                 alt=""
-                width={48}
-                height={48}
-                className="bg-muted size-12 rounded-lg object-cover"
+                width={96}
+                height={96}
+                className="bg-muted size-16 rounded-lg object-cover lg:size-24"
               />
             ) : (
-              <div className="bg-muted flex size-12 items-center justify-center rounded-lg">
+              <div className="bg-muted flex size-16 items-center justify-center rounded-lg lg:size-24">
                 <ShoppingBag
-                  size={18}
+                  size={20}
                   className="text-muted-foreground"
                   aria-hidden="true"
                 />
               </div>
             )}
+            {/* Price and quantity sit UNDER the title, not beside it: the
+                checkout sidebar column is ~216px inside its padding, and a
+                price on the same row left the title about 60px — two clamped
+                half-words. Stacked, the title gets the whole text column. */}
             <div className="min-w-0 flex-1">
-              <p className="line-clamp-2 text-xs font-medium">{line.title}</p>
-              <p className="nums text-muted-foreground text-xs">
-                ×{toPersianDigits(line.qty)}
+              <p className="line-clamp-2 text-sm font-medium lg:text-base">
+                {line.title}
               </p>
+              <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
+                {/* `shrink-0` on both: a price's only break opportunity is the
+                    space before «تومان», and letting it take one orphans the
+                    currency word under the amount. When the row genuinely does
+                    not fit (a nine-digit total in the 138px checkout sidebar)
+                    `flex-wrap` drops the quantity to its own line instead of
+                    pushing past the card. */}
+                <p className="nums shrink-0 text-sm font-bold lg:text-base">
+                  {formatToman(line.lineTotal)}
+                </p>
+                <p className="nums text-muted-foreground shrink-0 text-sm">
+                  ×{toPersianDigits(line.qty)}
+                </p>
+              </div>
             </div>
-            <p className="nums shrink-0 text-xs font-bold">
-              {formatToman(line.lineTotal)}
-            </p>
           </li>
         ))}
       </ul>
 
-      <dl className="border-border space-y-2 border-t pt-4">
-        <div className="flex justify-between text-sm">
-          <dd className="nums">{formatToman(subtotal)}</dd>
+      {/* Label at the start (right), amount at the end: the Persian
+          receipt order (Benyamin, 2026-09-15). The desktop size sits on the
+          list so every row inherits it; the total row steps up once more. */}
+      <dl className="border-border space-y-2 border-t pt-4 text-sm lg:text-base">
+        <div className="flex justify-between">
           <dt className="text-muted-foreground">جمع اقلام</dt>
+          <dd className="nums">{formatToman(subtotal)}</dd>
         </div>
         {hasDiscount && (
-          <div className="flex justify-between text-sm">
+          <div className="flex justify-between">
+            <dt className="text-muted-foreground">تخفیف</dt>
             <dd className="nums text-success-strong">
               −{formatToman(discount ?? 0)}
             </dd>
-            <dt className="text-muted-foreground">تخفیف</dt>
           </div>
         )}
-        <div className="flex justify-between text-sm">
+        <div className="flex justify-between">
+          <dt className="text-muted-foreground">ارسال</dt>
           <dd
             className={shippingFee === null ? 'text-muted-foreground' : 'nums'}
           >
@@ -106,11 +124,10 @@ export function OrderSummary({
               ? 'بعد از انتخاب استان'
               : formatToman(shippingFee)}
           </dd>
-          <dt className="text-muted-foreground">ارسال</dt>
         </div>
-        <div className="border-border mt-2 flex justify-between border-t pt-2 font-bold">
-          <dd className="nums">{formatToman(total)}</dd>
+        <div className="border-border mt-2 flex justify-between border-t pt-2 text-base font-bold lg:text-lg">
           <dt>جمع کل</dt>
+          <dd className="nums">{formatToman(total)}</dd>
         </div>
       </dl>
     </>
