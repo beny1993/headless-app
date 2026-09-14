@@ -285,7 +285,11 @@ function ProductRow({
           >
             <Edit size={14} aria-hidden="true" />
           </Link>
-          <DeleteProductButton id={product.id} title={product.title} />
+          {/* Deactivating is a soft delete: an inactive product has nothing left
+              to deactivate, and reactivating is the edit form's checkbox. */}
+          {product.isActive && (
+            <DeleteProductButton id={product.id} title={product.title} />
+          )}
         </div>
       </td>
     </tr>
