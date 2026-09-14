@@ -67,7 +67,7 @@ export const isHttpsUrl = (
 export const optionalHttpsUrl = z
   .string()
   .trim()
-  .max(MAX_PHOTO_URL, { message: 'نشانی تصویر بیش از حد طولانی است.' })
+  .max(MAX_PHOTO_URL, { error: 'نشانی تصویر بیش از حد طولانی است.' })
   .refine(
     (value) => {
       if (value === '') return true;
@@ -77,7 +77,7 @@ export const optionalHttpsUrl = z
         return false;
       }
     },
-    { message: 'نشانی تصویر باید با https:// شروع شود.' },
+    { error: 'نشانی تصویر باید با https:// شروع شود.' },
   )
   .transform((value) => (value === '' ? undefined : value))
   .optional();

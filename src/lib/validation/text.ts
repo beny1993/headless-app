@@ -29,10 +29,10 @@ export const boundedText = (max: number) =>
   z
     .string()
     .trim()
-    .min(1, { message: 'این فیلد را وارد کن.' })
-    .max(max, { message: 'مقدار واردشده بیش از حد طولانی است.' })
+    .min(1, { error: 'این فیلد را وارد کن.' })
+    .max(max, { error: 'مقدار واردشده بیش از حد طولانی است.' })
     .refine((value) => !value.includes(NUL), {
-      message: 'مقدار واردشده نامعتبر است.',
+      error: 'مقدار واردشده نامعتبر است.',
     });
 
 /**
@@ -46,9 +46,9 @@ export const optionalBoundedText = (max: number) =>
   z
     .string()
     .trim()
-    .max(max, { message: 'مقدار واردشده بیش از حد طولانی است.' })
+    .max(max, { error: 'مقدار واردشده بیش از حد طولانی است.' })
     .refine((value) => !value.includes(NUL), {
-      message: 'مقدار واردشده نامعتبر است.',
+      error: 'مقدار واردشده نامعتبر است.',
     })
     .transform((value) => (value === '' ? undefined : value))
     .optional();

@@ -77,7 +77,7 @@ export const imageKeySchema = z
       BUNDLED_IMAGE_KEY.test(k) ||
       (k.startsWith(`${UPLOAD_KEY_PREFIX}/`) &&
         UPLOAD_FILENAME_PATTERN.test(k.slice(UPLOAD_KEY_PREFIX.length + 1))),
-    { message: 'کلید تصویر نامعتبر است.' },
+    { error: 'کلید تصویر نامعتبر است.' },
   );
 
 // `t` is the trimmed, NUL-refusing, length-capped string; the ceilings are 2–4×
