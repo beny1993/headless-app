@@ -193,7 +193,7 @@ export function LoginForm({ next }: { next: string }) {
     }
   };
 
-  const submitPhone = async (event: React.FormEvent) => {
+  const submitPhone = async (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const canonical = normalizeIranPhone(phone);
     if (!canonical) {

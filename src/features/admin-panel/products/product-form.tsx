@@ -153,7 +153,7 @@ export function ProductForm({
     isActive: form.isActive,
   });
 
-  const onSubmit = async (event: React.FormEvent) => {
+  const onSubmit = async (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     setTopError(undefined);
 

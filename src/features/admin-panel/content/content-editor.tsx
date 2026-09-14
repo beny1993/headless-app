@@ -171,7 +171,7 @@ function BlockForm({
     setJustSaved(false);
   };
 
-  const onSubmit = async (event: React.FormEvent) => {
+  const onSubmit = async (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (saving.current) return;
     setTopError(undefined);
