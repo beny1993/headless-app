@@ -5,6 +5,7 @@ import {
   MAX_SORT_ORDER,
   MAX_TITLE_LENGTH,
 } from './category-input';
+import { MAX_SLUG_LENGTH } from './sku';
 
 const valid = { title: 'غذای خشک', slug: 'dry-food', sortOrder: 1 };
 
@@ -106,6 +107,25 @@ describe('categoryInputSchema', () => {
       expect(
         categoryInputSchema.safeParse({ ...valid, slug: 'toy' }).success,
       ).toBe(true);
+    });
+
+    it('accepts a slug exactly at the catalog slug cap', () => {
+      expect(
+        categoryInputSchema.safeParse({
+          ...valid,
+          slug: 'a'.repeat(MAX_SLUG_LENGTH),
+        }).success,
+      ).toBe(true);
+    });
+
+    it('refuses one character past the cap, with the Persian length message', () => {
+      const slug = 'a'.repeat(MAX_SLUG_LENGTH + 1);
+      expect(categoryInputSchema.safeParse({ ...valid, slug }).success).toBe(
+        false,
+      );
+      expect(messageFor({ ...valid, slug }, 'slug')).toBe(
+        CATEGORY_MESSAGES.slugLength,
+      );
     });
   });
 

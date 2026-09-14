@@ -10,6 +10,7 @@
 import { z } from 'zod';
 import { toPersianDigits } from '@/lib/format';
 import { SLUG_PATTERN } from './product-input';
+import { MAX_SLUG_LENGTH } from './sku';
 
 /**
  * A category title is rendered on every storefront page (the category strip) and
@@ -38,6 +39,7 @@ export const CATEGORY_MESSAGES = {
   titleLength: `عنوان دسته‌بندی حداکثر ${toPersianDigits(MAX_TITLE_LENGTH)} نویسه است.`,
   titleChars: 'عنوان دسته‌بندی نویسه‌های نامعتبر دارد.',
   slug: 'نشانی فقط با حروف کوچک انگلیسی، عدد و خط تیره (حداقل ۳ نویسه).',
+  slugLength: `نشانی حداکثر ${toPersianDigits(MAX_SLUG_LENGTH)} نویسه است.`,
   sortOrder: 'ترتیب نمایش باید عددی صحیح و صفر یا بیشتر باشد.',
 } as const;
 
@@ -57,9 +59,13 @@ export const categoryInputSchema = z.object({
     .refine((value) => VISIBLE_CHAR.test(value), {
       error: CATEGORY_MESSAGES.title,
     }),
+  // Capped like a product slug (MAX_SLUG_LENGTH): it becomes a storefront URL
+  // segment and ships in the public category API, so one bad paste must not
+  // turn into an oversized row, link and response.
   slug: z
     .string({ error: CATEGORY_MESSAGES.slug })
     .trim()
+    .max(MAX_SLUG_LENGTH, CATEGORY_MESSAGES.slugLength)
     .regex(SLUG_PATTERN, CATEGORY_MESSAGES.slug),
   sortOrder: z
     .number({ error: CATEGORY_MESSAGES.sortOrder })
