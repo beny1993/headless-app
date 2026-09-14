@@ -261,12 +261,12 @@ describe('createSmsIrDriver', () => {
       expect(body().templateId).toBe(100200);
     });
 
-    it('passes the code as the CODE template parameter', async () => {
-      // The panel template substitutes #CODE#; a renamed parameter delivers an
+    it('passes the code as the OTP template parameter', async () => {
+      // The panel template substitutes #OTP#; a renamed parameter delivers an
       // SMS with the placeholder still in it.
       await createSmsIrDriver()(PHONE, '482913');
 
-      expect(body().parameters).toEqual([{ name: 'CODE', value: '482913' }]);
+      expect(body().parameters).toEqual([{ name: 'OTP', value: '482913' }]);
     });
 
     it('bounds the request so a wedged provider cannot hang the login', async () => {

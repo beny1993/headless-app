@@ -33,7 +33,7 @@ All runtime configuration is env-only. Names come from the `VARS` enum in
 | `APP_CONFIG_AUTH_SECRET` | yes | Better Auth signing secret. Generate once with `openssl rand -hex 32`; rotating it invalidates all sessions. |
 | `APP_CONFIG_SMS_PROVIDER` | yes | OTP SMS driver. `console` (default) logs codes to the server log — **fine for a soft launch, not for real customers**. Set to `smsir` before launch (see §6). |
 | `APP_CONFIG_SMSIR_API_KEY` | when `=smsir` | SMS.ir web-service key, sent as `x-api-key`. A **secret** — Coolify env only, never a build arg. |
-| `APP_CONFIG_SMSIR_TEMPLATE_ID` | when `=smsir` | Numeric id of the SMS.ir panel template the code is substituted into. Its body must contain `#CODE#`. |
+| `APP_CONFIG_SMSIR_TEMPLATE_ID` | when `=smsir` | Numeric id of the SMS.ir panel template the code is substituted into. Its body must contain `#OTP#`. |
 | `APP_CONFIG_SHOW_OTP_IN_UI` | no | `true` prints the OTP on the login page for **staging/QA only**, where `console` codes reach nothing but the server log. Anything else is off, and it is ignored unless `APP_CONFIG_SMS_PROVIDER=console`. Never set it on the production app — it is a sign-in bypass. |
 | `APP_CONFIG_MAINTENANCE_MODE` | no | `true` shows every storefront page as the maintenance screen to everyone but a signed-in admin, who sees the real site. `/login` and `/admin-panel` stay open. Anything else is off. Restart after changing it — no rebuild. Hides the shop, does not lock it: `/api` stays reachable. |
 | `APP_CONFIG_ZARINPAL_PROVIDER` | yes | `mock` (default) simulates the full pay flow with no gateway account. Set to `zarinpal` at the real-gateway flip (see §6). |
@@ -204,7 +204,7 @@ and deliberately not baked into the image:
       SMS.ir's **verify** service (`/v1/send/verify`), which is where OTP is
       routed — the bulk/line-number API is for marketing sends and carriers
       filter codes on it. Create the template in the SMS.ir panel first: its
-      body must contain `#CODE#`, and the driver sends that parameter as `CODE`.
+      body must contain `#OTP#`, and the driver sends that parameter as `OTP`.
       A missing or malformed key/template does **not** fail the deploy — the
       driver is built when a code is sent, so it fails the first login instead.
       Run `pnpm verify-sms <phone>` with the production values before switching.
