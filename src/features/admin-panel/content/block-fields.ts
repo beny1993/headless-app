@@ -305,10 +305,14 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
       ...[0, 1, 2].flatMap(cardSlot),
       {
         path: 'instagram',
-        label: 'نام کاربری اینستاگرام (بدون @)',
+        label: 'نام کاربری اینستاگرام (یا لینک پروفایل)',
         kind: 'input',
       },
-      { path: 'telegram', label: 'نام کاربری تلگرام (بدون @)', kind: 'input' },
+      {
+        path: 'telegram',
+        label: 'نام کاربری تلگرام (یا لینک پروفایل)',
+        kind: 'input',
+      },
     ],
   },
   header: {
@@ -331,6 +335,21 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
         kind: 'input',
       },
       { path: 'credit', label: 'خط اعتبار', kind: 'input' },
+      {
+        path: 'social.instagram',
+        label: 'نام کاربری اینستاگرام فروشگاه (یا لینک پروفایل)',
+        kind: 'input',
+      },
+      {
+        path: 'social.instagramDailies',
+        label: 'نام کاربری اینستاگرام آموزش و سرگرمی (یا لینک پروفایل)',
+        kind: 'input',
+      },
+      {
+        path: 'social.telegram',
+        label: 'نام کاربری تلگرام (یا لینک پروفایل)',
+        kind: 'input',
+      },
     ],
   },
 };

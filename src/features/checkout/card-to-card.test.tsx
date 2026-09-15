@@ -13,6 +13,7 @@ import {
 } from './card-to-card';
 
 const base = DEFAULT_CONTENT['checkout.payment'];
+// The default now ships the shop's handles, so "nothing set" clears them too.
 const empty: CardToCardContent = {
   ...base,
   bankCards: [
@@ -20,6 +21,8 @@ const empty: CardToCardContent = {
     { bank: '', number: '', holder: '' },
     { bank: '', number: '', holder: '' },
   ],
+  instagram: '',
+  telegram: '',
 };
 const filled: CardToCardContent = {
   ...base,
@@ -62,7 +65,7 @@ describe('CardToCardPanel', () => {
     }
   });
 
-  it('links Instagram and Telegram from bare handles, in a new tab', () => {
+  it('links «اینستاگرام» and «تلگرام» in the sentence from bare handles, in a new tab', () => {
     render(<CardToCardPanel payment={filled} />);
     const instagram = screen.getByRole('link', { name: 'اینستاگرام' });
     const telegram = screen.getByRole('link', { name: 'تلگرام' });
@@ -79,7 +82,8 @@ describe('CardToCardPanel', () => {
   it('renders the note and the contact sentence, but no card and no link, when nothing is set', () => {
     render(<CardToCardPanel payment={empty} />);
     expect(screen.getByText(base.note)).toBeTruthy();
-    expect(screen.getByText(/اینستاگرام یا تلگرام/)).toBeTruthy();
+    // The sentence is intact, its platform names plain words, not links.
+    expect(screen.getByText(/از طریق اینستاگرام یا تلگرام با ما/)).toBeTruthy();
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
     expect(screen.queryAllByRole('link')).toHaveLength(0);
   });
