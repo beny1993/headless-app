@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   boundedText,
   FORBIDDEN_TEXT_CHARS,
+  blankableText,
   optionalBoundedText,
   VISIBLE_CHAR,
 } from '@/lib/validation/text';
@@ -35,6 +36,24 @@ describe('boundedText', () => {
   it('rejects a non-string', () => {
     expect(schema.safeParse(42).success).toBe(false);
     expect(schema.safeParse(null).success).toBe(false);
+  });
+});
+
+describe('blankableText', () => {
+  const schema = blankableText(10);
+
+  it('keeps an empty or whitespace-only value as the empty string', () => {
+    expect(schema.parse('')).toBe('');
+    expect(schema.parse('   ')).toBe('');
+  });
+
+  it('trims and keeps a present value', () => {
+    expect(schema.parse('  ملت ')).toBe('ملت');
+  });
+
+  it('rejects a value over the cap and a null byte', () => {
+    expect(schema.safeParse('a'.repeat(11)).success).toBe(false);
+    expect(schema.safeParse(`a${String.fromCharCode(0)}b`).success).toBe(false);
   });
 });
 

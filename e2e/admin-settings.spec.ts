@@ -7,7 +7,14 @@ import {
   shopPath,
 } from '@/lib/constant/paths';
 import { formatToman, toAsciiDigits } from '@/lib/format';
-import { ADMIN_STATE, expect, openCheckout, test } from './support';
+import {
+  ADMIN_STATE,
+  expect,
+  openCheckout,
+  reachPayment,
+  resultOrderId,
+  test,
+} from './support';
 
 test.use({ storageState: ADMIN_STATE });
 
@@ -75,6 +82,67 @@ test('a headline an admin edits is what the home page shows', async ({
     );
   } finally {
     await saveHeadline(original);
+  }
+});
+
+test('a card an admin saves is what card-to-card checkout shows', async ({
+  page,
+  shopper,
+}) => {
+  await page.goto(adminContentAreaPath('checkout'));
+  const block = page.locator('form', {
+    has: page.getByRole('heading', { name: 'پرداخت کارت به کارت' }),
+  });
+  const number = block.getByLabel('شماره کارت ۱', { exact: true });
+  const holder = block.getByLabel('نام صاحب کارت ۱', { exact: true });
+  const instagram = block.getByLabel(/نام کاربری اینستاگرام/);
+  const original = {
+    number: await number.inputValue(),
+    holder: await holder.inputValue(),
+    instagram: await instagram.inputValue(),
+  };
+  // A letters-only tag: the result page must show no ASCII digit at all.
+  const tag = Date.now()
+    .toString(36)
+    .replace(/\d/g, (d) => 'ghijklmnop'[Number(d)]);
+  const edited = {
+    number: '6037-9975-1234-5678',
+    holder: `آزمایشی ${tag}`,
+    instagram: 'smokey.e2e',
+  };
+
+  const save = async (values: typeof original) => {
+    await number.fill(values.number);
+    await holder.fill(values.holder);
+    await instagram.fill(values.instagram);
+    await block
+      .locator('[data-umami-event="admin-panel-content-save"]')
+      .click();
+    await expect(block.getByText('ذخیره شد')).toBeVisible();
+  };
+
+  await save(edited);
+  try {
+    // The number is stored bare and shown grouped, in Persian digits.
+    await expect(number).toHaveValue('6037997512345678');
+    const shown = '۶۰۳۷ ۹۹۷۵ ۱۲۳۴ ۵۶۷۸';
+
+    await openCheckout(shopper);
+    await reachPayment(shopper);
+    await shopper.locator('[data-umami-event="checkout-payment-cod"]').check();
+    await expect(shopper.getByText(shown)).toBeVisible();
+    await expect(shopper.getByText(edited.holder)).toBeVisible();
+    await expect(
+      shopper.locator('[data-umami-event="checkout-card-instagram"]'),
+    ).toHaveAttribute('href', 'https://instagram.com/smokey.e2e');
+
+    // The result page repeats it: that is where the shopper pays from.
+    await shopper.locator('[data-umami-event="checkout-submit-order"]').click();
+    await resultOrderId(shopper);
+    await expect(shopper.getByText(shown)).toBeVisible();
+    await expect(shopper.getByRole('main')).not.toContainText(/\d/);
+  } finally {
+    await save(original);
   }
 });
 

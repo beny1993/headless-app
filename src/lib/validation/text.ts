@@ -48,6 +48,21 @@ export const boundedText = (max: number) =>
     });
 
 /**
+ * {@link boundedText} that may be blank: trimmed, capped and null-byte checked,
+ * but `''` is a value — for a fixed slot that is simply unused (a content
+ * block's spare bank card), where the stored row, the code default and the
+ * editor's own empty field must all read the same.
+ */
+export const blankableText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max, { error: 'مقدار واردشده بیش از حد طولانی است.' })
+    .refine((value) => !value.includes(NUL), {
+      error: 'مقدار واردشده نامعتبر است.',
+    });
+
+/**
  * The optional twin of {@link boundedText}: an absent field, or an empty string,
  * both become `undefined`; a present value is trimmed, capped and null-byte
  * checked. Empty-to-undefined is deliberate — a form posts `''` for a cleared
@@ -55,12 +70,6 @@ export const boundedText = (max: number) =>
  * "no value", not as a blank string that later renders as an empty line.
  */
 export const optionalBoundedText = (max: number) =>
-  z
-    .string()
-    .trim()
-    .max(max, { error: 'مقدار واردشده بیش از حد طولانی است.' })
-    .refine((value) => !value.includes(NUL), {
-      error: 'مقدار واردشده نامعتبر است.',
-    })
+  blankableText(max)
     .transform((value) => (value === '' ? undefined : value))
     .optional();

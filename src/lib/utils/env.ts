@@ -38,6 +38,9 @@ export enum VARS {
   APP_CONFIG_ZARINPAL_MERCHANT_ID = 'APP_CONFIG_ZARINPAL_MERCHANT_ID',
   // `true` routes the real driver at Zarinpal's sandbox host instead of live.
   APP_CONFIG_ZARINPAL_SANDBOX = 'APP_CONFIG_ZARINPAL_SANDBOX',
+  // `true` offers online payment at checkout; anything else (the default) shows
+  // the Zarinpal option disabled and preselects card to card. Runtime, no rebuild.
+  APP_CONFIG_ZARINPAL_ENABLED = 'APP_CONFIG_ZARINPAL_ENABLED',
 
   // Which storage driver `src/lib/storage` dispatches through for product image
   // uploads. `local` (the default) writes files under APP_CONFIG_STORAGE_LOCAL_ROOT

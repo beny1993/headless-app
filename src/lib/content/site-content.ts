@@ -13,7 +13,8 @@
 // "what is a valid image key" rule is derived from the uploader, not restated —
 // and `linkSchema` (`link.ts`), the one definition of a saved destination.
 import { z } from 'zod';
-import { boundedText } from '@/lib/validation/text';
+import { blankableText, boundedText } from '@/lib/validation/text';
+import { toAsciiDigits } from '@/lib/format';
 import {
   UPLOAD_FILENAME_PATTERN,
   UPLOAD_KEY_PREFIX,
@@ -50,6 +51,8 @@ export const CONTENT_KEYS = [
   'about.process',
   'about.values',
   'about.cta',
+  // Checkout — the card-to-card payment block (cards, contact handles).
+  'checkout.payment',
   // Site chrome — flat keys (no page order); each is its own area.
   'header',
   'footer',
@@ -130,6 +133,39 @@ const routineSlot = z.object({
 });
 // The header's three nav labels; `navLinks` holds their destinations.
 const nav = z.tuple([t(30), t(30), t(30)]);
+
+// A bank card number a shopper transfers money TO — a money path, so it is
+// normalized and checked on write and on read: Persian/Arabic digits → ASCII,
+// spaces and dashes dropped, then exactly sixteen digits. `''` is an unused
+// slot (kept as `''`, like every blank here, so a default, a stored row and the
+// editor's empty field all parse to themselves). The message is digit-free,
+// like every Persian message here.
+const CARD_NUMBER_MESSAGE = 'شماره کارت باید شانزده رقم باشد.';
+const cardNumber = z
+  .string()
+  .trim()
+  .transform((v) => toAsciiDigits(v).replace(/[\s-]/g, ''))
+  .refine((v) => v === '' || /^\d{16}$/.test(v), {
+    error: CARD_NUMBER_MESSAGE,
+  });
+// A social username, stored bare: a leading `@` is dropped, and only the
+// characters Instagram and Telegram allow pass — so a pasted URL never becomes
+// `https://instagram.com/https://…`. `''` means no link is rendered.
+const HANDLE_MESSAGE =
+  'نام کاربری فقط می‌تواند حروف انگلیسی، رقم، نقطه و خط زیر داشته باشد.';
+const handle = z
+  .string()
+  .trim()
+  .transform((v) => v.replace(/^@/, ''))
+  .refine((v) => v === '' || /^[A-Za-z0-9._]{1,32}$/.test(v), {
+    error: HANDLE_MESSAGE,
+  });
+/** One card-to-card destination; a slot with an empty `number` is not shown. */
+const bankCard = z.object({
+  bank: blankableText(40),
+  number: cardNumber,
+  holder: blankableText(60),
+});
 
 // Per-block visibility. **Optional**, and read as "hidden only when explicitly
 // false": absent (every default, every pre-existing row) or `true` renders the
@@ -252,6 +288,14 @@ export const CONTENT_SCHEMAS = {
     ctaLink: link,
     visible,
   }),
+  // ── Checkout. No `visible`: the payment step always renders; the admin only
+  // fills in where the money goes (up to three cards) and how to reach the shop.
+  'checkout.payment': z.object({
+    note: t(300),
+    bankCards: z.tuple([bankCard, bankCard, bankCard]),
+    instagram: handle,
+    telegram: handle,
+  }),
   // ── Site chrome. No `visible`: the header and footer are structural, always
   // rendered — the toggle is derived from the schema (`'visible' in shape`), so
   // its absence here is what hides it in the editor for these two blocks.
@@ -325,6 +369,7 @@ export const CONTENT_AREAS = {
       'about.cta',
     ],
   },
+  checkout: { title: 'پرداخت', keys: ['checkout.payment'] },
   header: { title: 'هدر', keys: ['header'] },
   footer: { title: 'فوتر', keys: ['footer'] },
 } as const satisfies Record<
@@ -332,7 +377,13 @@ export const CONTENT_AREAS = {
   { title: string; keys: readonly ContentKey[] }
 >;
 
-export const contentAreaSchema = z.enum(['home', 'about', 'header', 'footer']);
+export const contentAreaSchema = z.enum([
+  'home',
+  'about',
+  'checkout',
+  'header',
+  'footer',
+]);
 export type ContentArea = z.infer<typeof contentAreaSchema>;
 
 /**

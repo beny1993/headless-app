@@ -1,7 +1,7 @@
 # Smokey Shop
 
 Persian (RTL) pet-shop e-commerce for Iran — Toman pricing, Jalali dates, phone
-OTP sign-in, Zarinpal and cash on delivery.
+OTP sign-in, Zarinpal and card-to-card transfer.
 
 **Stack**: Next.js 16 (App Router, React 19) · TypeScript strict · Hono
 (`@hono/zod-openapi` + Scalar) · PostgreSQL + Drizzle · Better Auth ·
