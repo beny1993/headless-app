@@ -122,6 +122,20 @@ const valueFields = (i: number): FieldDescriptor[] => {
   ];
 };
 
+/** One card-to-card slot: bank name, the sixteen-digit number, the holder. */
+const cardSlot = (i: number): FieldDescriptor[] => {
+  const n = fa(i + 1);
+  return [
+    { path: `bankCards.${i}.bank`, label: `نام بانک کارت ${n}`, kind: 'input' },
+    { path: `bankCards.${i}.number`, label: `شماره کارت ${n}`, kind: 'input' },
+    {
+      path: `bankCards.${i}.holder`,
+      label: `نام صاحب کارت ${n}`,
+      kind: 'input',
+    },
+  ];
+};
+
 /** One header nav label, then its destination (code: `NAV_TARGETS[i]`). */
 const navField = (i: number): FieldDescriptor[] => {
   const n = fa(i + 1);
@@ -282,6 +296,19 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
       { path: 'headline', label: 'سرتیتر', kind: 'textarea' },
       { path: 'cta', label: 'دکمه فراخوان', kind: 'input' },
       link('ctaLink', 'مقصد دکمه فراخوان', shopPath()),
+    ],
+  },
+  'checkout.payment': {
+    title: 'پرداخت کارت به کارت',
+    fields: [
+      { path: 'note', label: 'توضیح پرداخت', kind: 'textarea' },
+      ...[0, 1, 2].flatMap(cardSlot),
+      {
+        path: 'instagram',
+        label: 'نام کاربری اینستاگرام (بدون @)',
+        kind: 'input',
+      },
+      { path: 'telegram', label: 'نام کاربری تلگرام (بدون @)', kind: 'input' },
     ],
   },
   header: {

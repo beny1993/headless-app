@@ -1,10 +1,12 @@
 import type { Metadata } from 'next';
 import { AddressDao } from '@/db/dao/AddressDao';
 import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
+import { SiteContentDao } from '@/db/dao/SiteContentDao';
 import { CheckoutForm } from '@/features/checkout/checkout-form';
 import { toLocalIranPhone } from '@/lib/auth/phone';
 import { requireSession } from '@/lib/auth/session';
 import { PATHS } from '@/lib/constant/paths';
+import { getEnvVariable, VARS } from '@/lib/utils/env';
 import { toAddressResponse } from '@/lib/hono/routes/me-addresses';
 
 export const metadata: Metadata = { title: 'تکمیل خرید' };
@@ -19,10 +21,12 @@ export const metadata: Metadata = { title: 'تکمیل خرید' };
  */
 export default async function Page() {
   const session = await requireSession(PATHS.CHECKOUT);
-  const [rates, addresses] = await Promise.all([
+  const [rates, addresses, content] = await Promise.all([
     ShippingRateDao.listActive(),
     // Owner-scoped saved addresses, for the "select a saved address" prefill.
     AddressDao.listByUser(session.user.id),
+    // The card-to-card cards and contact handles the payment step shows.
+    SiteContentDao.getMany(['checkout.payment']),
   ]);
 
   return (
@@ -31,6 +35,10 @@ export default async function Page() {
       defaultName={session.user.name ?? ''}
       defaultPhone={toLocalIranPhone(session.user.phoneNumber ?? '')}
       savedAddresses={addresses.map(toAddressResponse)}
+      payment={content['checkout.payment']}
+      zarinpalEnabled={
+        getEnvVariable(VARS.APP_CONFIG_ZARINPAL_ENABLED, false, '') === 'true'
+      }
     />
   );
 }

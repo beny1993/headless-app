@@ -13,7 +13,7 @@ test.use({ storageState: CUSTOMER_STATE });
 const gatewayButton = (action: 'pay' | 'fail') =>
   `button[name="action"][value="${action}"]`;
 
-test('cash on delivery: the order is confirmed and listed in the account', async ({
+test('card to card: the order is confirmed and listed in the account', async ({
   page,
 }) => {
   await placeOrder(page, 'cod');

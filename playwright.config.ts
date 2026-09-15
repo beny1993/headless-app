@@ -69,6 +69,8 @@ export default defineConfig({
       APP_CONFIG_SMS_PROVIDER: 'console',
       APP_CONFIG_SHOW_OTP_IN_UI: 'true',
       APP_CONFIG_ZARINPAL_PROVIDER: 'mock',
+      // Online payment is off by default; the gateway specs need the option.
+      APP_CONFIG_ZARINPAL_ENABLED: 'true',
       APP_CONFIG_EMAIL_ENABLED: 'false',
       // Off whatever .env says, or every storefront spec meets the maintenance
       // screen instead of the shop.

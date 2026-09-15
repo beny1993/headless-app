@@ -12,6 +12,7 @@ import { act } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CheckoutForm } from './checkout-form';
+import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import { addToCart, clearCart } from '@/features/storefront/cart/cart';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
 import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
@@ -67,6 +68,7 @@ beforeEach(() => {
       defaultName=""
       defaultPhone=""
       savedAddresses={[STALE_ADDRESS]}
+      payment={DEFAULT_CONTENT['checkout.payment']}
     />,
   );
 });

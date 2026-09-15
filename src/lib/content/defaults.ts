@@ -216,6 +216,19 @@ export const DEFAULT_CONTENT: ContentValues = {
     ],
   },
   'about.cta': { headline: 'به خانواده اسموکی خوش اومدی.', cta: 'کشف محصولات' },
+  // Ships with the shop's card in slot 1 (already in the schema's stored form:
+  // sixteen ASCII digits) and no handle; `''` is an unused slot, the same in the
+  // default, a stored row and the editor. The storefront shows only filled slots.
+  'checkout.payment': {
+    note: 'مبلغ سفارش را به یکی از کارت‌های زیر واریز کن و رسید را برای ما بفرست. سفارش پس از تأیید واریز ارسال می‌شود.',
+    bankCards: [
+      { bank: '', number: '6129861927666866', holder: '' },
+      { bank: '', number: '', holder: '' },
+      { bank: '', number: '', holder: '' },
+    ],
+    instagram: '',
+    telegram: '',
+  },
   header: {
     // A display wordmark, independent of DEFAULT_SITE_NAME (which is «اسموکی» and
     // drives page <title>s and emails) — today's latin bar wordmark, verbatim.

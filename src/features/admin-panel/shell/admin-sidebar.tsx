@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Fragment, useState } from 'react';
 import {
+  CreditCard,
   Home,
   Info,
   Layers,
@@ -85,7 +86,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: Settings,
     match: 'prefix',
   },
-  // «محتوای سایت» — four area editors. `exact`, because no area has sub-routes;
+  // «محتوای سایت» — five area editors. `exact`, because no area has sub-routes;
   // each links to `/admin-panel/content/[area]`.
   {
     href: adminContentAreaPath('home'),
@@ -98,6 +99,13 @@ const NAV_ITEMS: NavItem[] = [
     href: adminContentAreaPath('about'),
     label: 'درباره ما',
     icon: Info,
+    match: 'exact',
+    group: CONTENT_GROUP,
+  },
+  {
+    href: adminContentAreaPath('checkout'),
+    label: 'پرداخت',
+    icon: CreditCard,
     match: 'exact',
     group: CONTENT_GROUP,
   },

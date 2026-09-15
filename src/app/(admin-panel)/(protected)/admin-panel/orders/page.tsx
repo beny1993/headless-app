@@ -41,7 +41,7 @@ const ordersHref = (status: OrderStatus | undefined, page: number): string => {
 };
 
 const methodLabel = (method: PaymentMethod): string =>
-  method === PAYMENT_METHODS.COD ? 'پرداخت در محل' : 'زرین‌پال';
+  method === PAYMENT_METHODS.COD ? 'کارت به کارت' : 'زرین‌پال';
 
 export default async function AdminOrdersPage({
   searchParams,

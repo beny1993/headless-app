@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ChevronRight, Clock } from 'lucide-react';
 import { z } from 'zod';
+import { SiteContentDao } from '@/db/dao/SiteContentDao';
+import { CardToCardPanel } from '@/features/checkout/card-to-card';
 import {
   OrderSummary,
   type SummaryLine,
@@ -12,7 +14,11 @@ import { requireSession } from '@/lib/auth/session';
 import { resultView } from '@/lib/checkout/result-view';
 import { accountOrderPath, PATHS } from '@/lib/constant/paths';
 import { formatJalali, toPersianDigits } from '@/lib/format';
-import { PAYMENT_METHODS, PAYMENT_STATUSES } from '@/lib/orders/order-status';
+import {
+  ORDER_STATUSES,
+  PAYMENT_METHODS,
+  PAYMENT_STATUSES,
+} from '@/lib/orders/order-status';
 import {
   orderStatusBadge,
   paymentStatusBadge,
@@ -64,6 +70,15 @@ export default async function Page({
   const payment =
     order.payments.find((p) => p.status === PAYMENT_STATUSES.PAID) ??
     order.payments.at(-1);
+  // Where to send the money, for a card-to-card order still waiting on the
+  // transfer — the one page a shopper can come back to for the card number. A
+  // COD order starts in `processing`; shipping it is the shop's confirmation,
+  // and its payment row flips to `paid` only on delivery, so the order status
+  // is the gate, not the payment status.
+  const cardToCard =
+    isCod && order.status === ORDER_STATUSES.PROCESSING
+      ? (await SiteContentDao.getMany(['checkout.payment']))['checkout.payment']
+      : null;
 
   return (
     <main className="min-h-screen pt-4">
@@ -112,6 +127,10 @@ export default async function Page({
           </div>
         )}
 
+        {cardToCard && (
+          <CardToCardPanel payment={cardToCard} className="mb-5" />
+        )}
+
         <div className="bg-card border-border mb-5 rounded-2xl border p-5">
           <h2 className="mb-3 font-bold">اقلام سفارش</h2>
           <OrderSummary
@@ -143,7 +162,7 @@ export default async function Page({
             <div className="space-y-2.5 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <span className="font-medium">
-                  {isCod ? 'پرداخت در محل' : 'زرین‌پال'}
+                  {isCod ? 'کارت به کارت' : 'زرین‌پال'}
                 </span>
                 <span className="text-muted-foreground">روش</span>
               </div>

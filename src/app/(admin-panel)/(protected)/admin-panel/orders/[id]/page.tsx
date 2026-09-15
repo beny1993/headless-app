@@ -176,7 +176,7 @@ export default async function AdminOrderDetailPage({
                         label="روش"
                         value={
                           payment.method === PAYMENT_METHODS.COD
-                            ? 'پرداخت در محل'
+                            ? 'کارت به کارت'
                             : 'زرین‌پال'
                         }
                       />

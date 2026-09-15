@@ -15,6 +15,7 @@ import { act } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CheckoutForm } from './checkout-form';
+import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import {
   addToCart,
   clearCart,
@@ -80,7 +81,14 @@ const submitButton = () =>
 beforeEach(() => {
   clearCart();
   addToCart(CAT_TOY, 2);
-  render(<CheckoutForm rates={RATES} defaultName="" defaultPhone="" />);
+  render(
+    <CheckoutForm
+      rates={RATES}
+      defaultName=""
+      defaultPhone=""
+      payment={DEFAULT_CONTENT['checkout.payment']}
+    />,
+  );
 });
 
 afterEach(() => {
@@ -179,7 +187,7 @@ describe('the checkout submit state machine', () => {
 
     // Choose cash on delivery — the branch that navigates straight to the result
     // page (no gateway hop).
-    fireEvent.click(screen.getByRole('radio', { name: /پرداخت در محل/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /کارت به کارت/ }));
 
     await act(async () => {
       fireEvent.click(submitButton());
@@ -260,9 +268,42 @@ describe('the checkout submit state machine', () => {
     // on, and no accidental second order.
     cleanup();
     clearCart();
-    render(<CheckoutForm rates={RATES} defaultName="" defaultPhone="" />);
+    render(
+      <CheckoutForm
+        rates={RATES}
+        defaultName=""
+        defaultPhone=""
+        payment={DEFAULT_CONTENT['checkout.payment']}
+      />,
+    );
 
     expect(replace).toHaveBeenCalledWith('/shop');
+  });
+
+  it('with Zarinpal switched off, disables that option and preselects card to card', () => {
+    cleanup();
+    render(
+      <CheckoutForm
+        rates={RATES}
+        defaultName=""
+        defaultPhone=""
+        payment={DEFAULT_CONTENT['checkout.payment']}
+        zarinpalEnabled={false}
+      />,
+    );
+    advanceToPayment();
+
+    const zarinpal = screen.getByRole('radio', {
+      name: /زرین‌پال/,
+    }) as HTMLInputElement;
+    const card = screen.getByRole('radio', {
+      name: /کارت به کارت/,
+    }) as HTMLInputElement;
+    expect(zarinpal.disabled).toBe(true);
+    expect(zarinpal.checked).toBe(false);
+    expect(card.checked).toBe(true);
+    // No gateway hop is offered: the button is the plain "place order".
+    expect(submitButton().textContent).toBe('ثبت سفارش');
   });
 
   it('saves the address to the account when opted in, then still navigates', async () => {
@@ -277,7 +318,7 @@ describe('the checkout submit state machine', () => {
       total: 410_000,
     });
     advanceToPayment({ saveAddress: true });
-    fireEvent.click(screen.getByRole('radio', { name: /پرداخت در محل/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /کارت به کارت/ }));
 
     await act(async () => {
       fireEvent.click(submitButton());
@@ -318,7 +359,7 @@ describe('the checkout submit state machine', () => {
         new ApiRequestError(422, 'به سقف تعداد آدرس‌ها رسیده‌ای.'),
       );
     advanceToPayment({ saveAddress: true });
-    fireEvent.click(screen.getByRole('radio', { name: /پرداخت در محل/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /کارت به کارت/ }));
 
     await act(async () => {
       fireEvent.click(submitButton());
@@ -366,7 +407,7 @@ describe('the checkout submit state machine', () => {
     expect(screen.getByText('کد تخفیف اعمال شد.')).toBeTruthy();
 
     advanceToPayment();
-    fireEvent.click(screen.getByRole('radio', { name: /پرداخت در محل/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /کارت به کارت/ }));
     await act(async () => {
       fireEvent.click(submitButton());
     });
@@ -407,7 +448,7 @@ describe('the checkout submit state machine', () => {
       target: { value: 'BADCODE' },
     });
     advanceToPayment();
-    fireEvent.click(screen.getByRole('radio', { name: /پرداخت در محل/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /کارت به کارت/ }));
 
     await act(async () => {
       fireEvent.click(submitButton());
