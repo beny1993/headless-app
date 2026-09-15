@@ -95,8 +95,10 @@ test('a province an admin adds is offered at checkout until it is switched off',
     await expect(badge(active ? 'فعال' : 'غیرفعال')).toBeVisible();
   };
 
-  // The shopper's delivery step, reached from a fresh load of checkout with
-  // the address they saved — the cart stays in localStorage between loads.
+  // Checkout from a fresh load, with the address they saved picked — the cart
+  // stays in localStorage between loads. Returns the delivery step's province
+  // select: on the page while the province is off, since a saved address on an
+  // active province skips that step for payment.
   const checkoutWithSavedAddress = async () => {
     await shopper.goto(PATHS.CHECKOUT);
     await shopper
@@ -149,7 +151,24 @@ test('a province an admin adds is offered at checkout until it is switched off',
       .locator('[data-umami-event="checkout-saved-address-select"]')
       .selectOption({ index: 1 });
     await shopper.locator('[data-umami-event="checkout-step-next"]').click();
+    // A saved address has nothing left to ask: the address step is skipped and
+    // payment comes next, the province's fee already in the summary.
+    await expect(
+      shopper.locator('[data-umami-event="checkout-payment-cod"]'),
+    ).toBeVisible();
+    await expect(
+      shopper.getByRole('heading', { name: 'آدرس تحویل' }),
+    ).toHaveCount(0);
     await expect(shopper.getByText(formatToman(fee)).first()).toBeVisible();
+    // Back lands on the first step, and «آدرس جدید» puts the address step back.
+    await shopper.locator('[data-umami-event="checkout-step-back"]').click();
+    await shopper
+      .locator('[data-umami-event="checkout-saved-address-select"]')
+      .selectOption({ index: 0 });
+    await shopper.locator('[data-umami-event="checkout-step-next"]').click();
+    await expect(
+      shopper.getByRole('heading', { name: 'آدرس تحویل' }),
+    ).toBeVisible();
     expect(await publicProvinceNames(shopper)).toContain(name);
 
     const activeDuplicate = await refuseDuplicate();
