@@ -163,9 +163,9 @@ export function sentryOptions() {
     // Read through STATIC_INLINED_VARS, so it is baked in at build time for the
     // server as well as the browser: a runtime-only value never arrives.
     dsn: dsn || undefined,
-    // Staging and production report into the SAME Sentry project. Without this
-    // they are indistinguishable and every staging error reads as a customer
-    // hitting a bug. Inlined at build time, so it is a build ARG (docs/DEPLOY.md).
+    // Tags each event with the deployment it came from. Only production reports
+    // (staging leaves the DSN unset, docs/DEPLOY.md §9), so this is `production`
+    // there and empty elsewhere. Inlined at build time, so it is a build ARG.
     environment:
       getEnvVariable(VARS.NEXT_PUBLIC_SENTRY_ENVIRONMENT, false, '').trim() ||
       undefined,

@@ -55,10 +55,10 @@ All runtime configuration is env-only. Names come from the `VARS` enum in
 | Variable | Required | What it is |
 | --- | --- | --- |
 | `NEXT_PUBLIC_APP_URL` | yes | The real `https://` origin, no trailing slash (e.g. `https://shop.example.com`). **Inlined into the client bundle at build time** — it is a Docker build ARG, so it must be marked *available at build time* in Coolify, not just a runtime var. It drives the `Secure` session-cookie flag and Better Auth's CSRF trusted-origins list; `getAppBaseUrl()` throws in production if unset. A change here requires a **rebuild**, not just a restart. |
-| `NEXT_PUBLIC_SENTRY_DSN` | no | Sentry DSN. **Build-time only** — it is inlined into both the client *and* the server bundles, so setting it as a plain runtime variable does nothing at all. Empty ⇒ Sentry is off everywhere. A change needs a **rebuild**. See §9. |
-| `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | no | `staging` or `production`. Both apps report into one Sentry project; without this, staging noise is indistinguishable from customer-facing errors. Build-time, like the DSN. |
-| `NEXT_PUBLIC_UMAMI_SCRIPT_URL` | no | Tracker URL on our self-hosted Umami, `https://analytics.bendev.ir/script.js`. **Build-time only** — inlined into the client bundle, so a runtime-only variable does nothing. |
-| `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | no | Website id from the Umami dashboard. **Use a different website for staging than for production**, or staging traffic lands in the real numbers. Either this or the script URL empty ⇒ no tracker at all. Build-time; a change needs a **rebuild**. |
+| `NEXT_PUBLIC_SENTRY_DSN` | no | GlitchTip DSN. **Production app only** — leave it unset on staging, which then reports nothing (decision 2026-09-15). **Build-time only** — it is inlined into both the client *and* the server bundles, so setting it as a plain runtime variable does nothing at all. Empty ⇒ Sentry is off everywhere. A change needs a **rebuild**. See §9. |
+| `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | no | `production`. Tags each event with the deployment it came from. Set on the production app alone — staging has no DSN, so it has nothing to tag. Build-time, like the DSN. |
+| `NEXT_PUBLIC_UMAMI_SCRIPT_URL` | no | Tracker URL on our self-hosted Umami, `https://analytics.bendev.ir/script.js`. **Production app only** — leave it unset on staging. **Build-time only** — inlined into the client bundle, so a runtime-only variable does nothing. |
+| `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | no | Website id from the Umami dashboard. **Production app only** — staging leaves both Umami vars unset, so it ships no tracker and its traffic never lands in the real numbers. Either this or the script URL empty ⇒ no tracker at all. Build-time; a change needs a **rebuild**. |
 
 **Not needed in Coolify** — these are consumed only by `docker-compose-dev.yaml`
 for the local dev database and have no role in production:
@@ -297,7 +297,9 @@ Anything that needs an IP allow-list is therefore not an option here.
 `NEXT_PUBLIC_SENTRY_DSN` holds the **GlitchTip** DSN; the variable keeps its name
 because the SDK reads it. Both it and `NEXT_PUBLIC_SENTRY_ENVIRONMENT` are
 **build-time** (§1) — they are inlined into the client *and* server bundles, so a
-runtime-only value does nothing.
+runtime-only value does nothing. Both are set on the **production** app only;
+staging leaves them empty and reports nothing (decision 2026-09-15), so the
+project only ever shows customer-facing errors.
 
 **Tracing is off** (no `tracesSampleRate` in `src/lib/sentry.ts`). GlitchTip's
 performance support is partial, and transactions are the high-volume signal —

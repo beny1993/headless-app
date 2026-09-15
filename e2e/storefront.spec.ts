@@ -33,7 +33,11 @@ test('a shopper browses from home to a product and into the cart', async ({
 
   await drawer.locator('[data-umami-event="cart-line-increase"]').click();
   await expect(drawer).toContainText('سبد خرید (۲)');
-  await drawer.locator('[data-umami-event="cart-line-remove"]').click();
+  // The remove control is a touch target, not a caption link: 44px tall,
+  // the sizing fix of 2026-09-15. Drop `min-h-11` from it and this fails.
+  const remove = drawer.locator('[data-umami-event="cart-line-remove"]');
+  expect((await remove.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await remove.click();
   await expect(drawer).toContainText('سبد خرید شما خالی است');
 });
 
