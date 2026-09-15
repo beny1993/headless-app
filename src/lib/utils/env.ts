@@ -81,9 +81,8 @@ export enum VARS {
   // The browser reads it inlined at BUILD time; the server reads it from the
   // process at RUNTIME, so a deployment has to set it in both places.
   NEXT_PUBLIC_SENTRY_DSN = 'NEXT_PUBLIC_SENTRY_DSN',
-  // Which deployment an event came from: `staging` or `production`. Staging and
-  // production share one Sentry project, so without this every staging error
-  // looks like a customer hitting a bug. Build-time, like the DSN.
+  // Which deployment an event came from: `production`. Only the production app
+  // reports — staging leaves the DSN and this unset. Build-time, like the DSN.
   NEXT_PUBLIC_SENTRY_ENVIRONMENT = 'NEXT_PUBLIC_SENTRY_ENVIRONMENT',
 
   // ── Web analytics (self-hosted Umami) ───────────────────────────────────────
@@ -92,8 +91,8 @@ export enum VARS {
   // so the host is config, not a constant — it has already moved once.
   NEXT_PUBLIC_UMAMI_SCRIPT_URL = 'NEXT_PUBLIC_UMAMI_SCRIPT_URL',
   // The website id Umami issues per site. Not a secret (it ships in the page
-  // source), but it is per-deployment: staging and production are separate sites
-  // in the dashboard, or staging traffic pollutes the real numbers. EITHER of
+  // source). Set on production only — staging leaves both empty, so its traffic
+  // never lands in the real numbers. EITHER of
   // these two empty ⇒ no script tag at all, which is what a fresh clone, every
   // `pnpm test` run and local dev get. Both are inlined at BUILD time.
   NEXT_PUBLIC_UMAMI_WEBSITE_ID = 'NEXT_PUBLIC_UMAMI_WEBSITE_ID',
