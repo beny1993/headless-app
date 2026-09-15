@@ -74,9 +74,13 @@ const stepOfField = (path: string) => STEP_OF_FIELD[path] ?? 3;
  *
  * `rates`, the prefilled name/phone and any `savedAddresses` come from the server
  * page; the form validates the shape it sends against the shared `CheckoutInput`
- * type so it cannot drift from the route. Saved addresses power a "select a saved
- * address" prefill and a "save this address" option — both pure conveniences: the
- * order still snapshots whatever address is in the fields at submit, untouched.
+ * type so it cannot drift from the route. A saved address is a complete
+ * `CheckoutAddressInput`, so picking one on the first step fills every field AND
+ * skips the address step (payment comes next; «مرحله قبل» returns to the first
+ * step) — unless its province has since been deactivated, in which case the
+ * address step stays to say so. «آدرس جدید», the default, keeps the address step.
+ * That and the "save this address" option are pure conveniences: the order still
+ * snapshots whatever address is in the fields at submit, untouched.
  */
 export function CheckoutForm({
   rates,
@@ -105,6 +109,10 @@ export function CheckoutForm({
   );
 
   const [step, setStep] = useState(1);
+  // '' is «آدرس جدید»; otherwise the index into `savedAddresses` of the picked
+  // one. Only the pick is remembered — the fields it filled are the state the
+  // order is built from, and stay editable on the address step.
+  const [savedIndex, setSavedIndex] = useState('');
   const [recipientName, setRecipientName] = useState(defaultName);
   const [recipientPhone, setRecipientPhone] = useState(defaultPhone);
   const [provinceId, setProvinceId] = useState('');
@@ -158,6 +166,10 @@ export function CheckoutForm({
   const provinceError =
     fieldErrors['address.provinceId'] ??
     (staleProvince ? STALE_PROVINCE_MESSAGE : undefined);
+  // A picked saved address on an active province leaves the address step
+  // nothing to ask, so the wizard steps over it in both directions. A stale
+  // province keeps the step: the shopper has to pick another one there.
+  const skipAddress = savedIndex !== '' && !staleProvince;
   const clientSubtotal = cartTotal(lines);
 
   // A stable signature of the cart contents. The applied preview is valid only
@@ -256,12 +268,16 @@ export function CheckoutForm({
     });
 
   /**
-   * Fill every address field from a saved address. A saved address is a
-   * `CheckoutAddressInput` plus an id/title, so this is a field-for-field copy —
-   * the shared contract is what makes it one. Clears any errors on the fields it
-   * touches; leaves "save this address" off (the address is already saved).
+   * Fill every address field from the saved address at `index`. A saved address
+   * is a `CheckoutAddressInput` plus an id/title, so this is a field-for-field
+   * copy — the shared contract is what makes it one. Clears any errors on the
+   * fields it touches; leaves "save this address" off (the address is already
+   * saved).
    */
-  const applySavedAddress = (address: AddressResponse) => {
+  const applySavedAddress = (index: string) => {
+    const address = savedAddresses[Number(index)];
+    if (!address) return;
+    setSavedIndex(index);
     setRecipientName(address.recipientName);
     setRecipientPhone(address.recipientPhone);
     setProvinceId(String(address.provinceId));
@@ -269,6 +285,20 @@ export function CheckoutForm({
     setPostalCode(address.postalCode);
     setAddressLine(address.addressLine);
     setSaveAddress(false);
+    setFieldErrors({});
+  };
+
+  /**
+   * «آدرس جدید» after a saved address: the address step is back, so it starts
+   * blank rather than showing the saved address it no longer means. Name and
+   * phone stay — they sit on this step, in view and editable.
+   */
+  const startNewAddress = () => {
+    setSavedIndex('');
+    setProvinceId('');
+    setCity('');
+    setPostalCode('');
+    setAddressLine('');
     setFieldErrors({});
   };
 
@@ -296,8 +326,12 @@ export function CheckoutForm({
   };
 
   const goNext = () => {
-    if (validateStep(step)) setStep((s) => Math.min(s + 1, STEPS.length));
+    if (!validateStep(step)) return;
+    setStep(step === 1 && skipAddress ? 3 : Math.min(step + 1, STEPS.length));
   };
+
+  const goBack = () =>
+    setStep(step === 3 && skipAddress ? 1 : Math.max(1, step - 1));
 
   const submit = async () => {
     if (inFlight.current) return; // authoritative double-submit guard
@@ -501,22 +535,20 @@ export function CheckoutForm({
                       htmlFor={`${fieldId}-saved`}
                       className="mb-1.5 block text-sm font-medium"
                     >
-                      انتخاب از آدرس‌های ذخیره‌شده
+                      آدرس تحویل
                     </label>
                     <select
                       id={`${fieldId}-saved`}
-                      defaultValue=""
-                      onChange={(event) => {
-                        const address =
-                          savedAddresses[Number(event.target.value)];
-                        if (address) applySavedAddress(address);
-                      }}
+                      value={savedIndex}
+                      onChange={(event) =>
+                        event.target.value === ''
+                          ? startNewAddress()
+                          : applySavedAddress(event.target.value)
+                      }
                       className="bg-secondary focus-visible:border-accent-strong border-border h-12 w-full rounded-xl border px-4 transition-colors outline-none focus-visible:ring-2"
                       data-umami-event="checkout-saved-address-select"
                     >
-                      <option value="" disabled>
-                        یک آدرس ذخیره‌شده را انتخاب کن
-                      </option>
+                      <option value="">آدرس جدید</option>
                       {savedAddresses.map((address, index) => (
                         <option key={address.id} value={index}>
                           {address.title ? `${address.title} — ` : ''}
@@ -525,7 +557,7 @@ export function CheckoutForm({
                       ))}
                     </select>
                     <p className="text-muted-foreground mt-1.5 text-xs">
-                      فیلدهای آدرس با انتخاب پر می‌شوند و قابل ویرایش‌اند.
+                      با انتخاب آدرس ذخیره‌شده، مستقیم به مرحله پرداخت می‌روی.
                     </p>
                   </div>
                 )}
@@ -806,7 +838,7 @@ export function CheckoutForm({
             {step > 1 && (
               <button
                 type="button"
-                onClick={() => setStep((s) => Math.max(1, s - 1))}
+                onClick={goBack}
                 disabled={busy}
                 className="border-border hover:bg-secondary mt-3 w-full rounded-xl border-2 py-3 font-medium transition-colors disabled:opacity-60"
                 data-umami-event="checkout-step-back"
