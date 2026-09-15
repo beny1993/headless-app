@@ -359,6 +359,89 @@ describe('CONTENT_SCHEMAS chrome + new home blocks', () => {
   });
 });
 
+describe('CONTENT_SCHEMAS checkout.payment', () => {
+  const base = DEFAULT_CONTENT['checkout.payment'];
+  const schema = CONTENT_SCHEMAS['checkout.payment'];
+  const withCard = (number: string) => ({
+    ...base,
+    bankCards: [
+      { bank: 'ملت', number, holder: 'سارا محمدی' },
+      base.bankCards[1],
+      base.bankCards[2],
+    ],
+  });
+
+  it('normalizes a card number to sixteen ASCII digits', () => {
+    for (const typed of [
+      '6037997512345678',
+      '6037-9975-1234-5678',
+      '6037 9975 1234 5678',
+      '۶۰۳۷۹۹۷۵۱۲۳۴۵۶۷۸',
+      ' ۶۰۳۷-۹۹۷۵ ۱۲۳۴-۵۶۷۸ ',
+    ]) {
+      const parsed = schema.parse(withCard(typed));
+      expect(parsed.bankCards[0].number, typed).toBe('6037997512345678');
+      expect(parsed.bankCards[0].bank).toBe('ملت');
+      expect(parsed.bankCards[0].holder).toBe('سارا محمدی');
+    }
+  });
+
+  it('rejects a card number that is not sixteen digits, on its own path', () => {
+    for (const bad of [
+      '603799751234567',
+      '60379975123456789',
+      '6037-9975-1234-567x',
+    ]) {
+      const result = schema.safeParse(withCard(bad));
+      expect(result.success, bad).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0].path).toEqual(['bankCards', 0, 'number']);
+      }
+    }
+  });
+
+  it('keeps an empty slot and empty handles blank — the shipped spares are', () => {
+    const parsed = schema.parse({
+      ...base,
+      bankCards: [
+        base.bankCards[0],
+        { bank: ' ', number: '  ', holder: '' },
+        base.bankCards[2],
+      ],
+      instagram: '  ',
+    });
+    expect(parsed).toEqual(base);
+    // The default ships one card, already normalized, and two blank spares.
+    expect(base.bankCards[0].number).toMatch(/^\d{16}$/);
+    expect(base.bankCards.slice(1).every((card) => card.number === '')).toBe(
+      true,
+    );
+  });
+
+  it('stores a social handle bare and refuses anything but a username', () => {
+    expect(schema.parse({ ...base, instagram: '@smokey.shop' }).instagram).toBe(
+      'smokey.shop',
+    );
+    expect(schema.parse({ ...base, telegram: ' smokey_shop ' }).telegram).toBe(
+      'smokey_shop',
+    );
+    for (const bad of [
+      'https://instagram.com/smokey',
+      'smokey shop',
+      'smokey/shop',
+      'a'.repeat(33),
+    ]) {
+      expect(schema.safeParse({ ...base, instagram: bad }).success, bad).toBe(
+        false,
+      );
+    }
+  });
+
+  it('requires the note', () => {
+    expect(schema.safeParse({ ...base, note: '  ' }).success).toBe(false);
+  });
+});
+
 describe('isVisible', () => {
   it('shows when visible is absent or true, hides only on explicit false', () => {
     expect(isVisible({})).toBe(true);

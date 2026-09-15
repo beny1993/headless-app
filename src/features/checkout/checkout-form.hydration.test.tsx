@@ -17,6 +17,7 @@ import { hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CheckoutForm } from './checkout-form';
+import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import {
   addToCart,
   clearCart,
@@ -65,7 +66,12 @@ describe('the checkout form, hydrating', () => {
   it('shows a returning shopper their cart without contradicting the server', () => {
     // The server has no cart, so its summary shows no line.
     const serverHtml = renderToString(
-      <CheckoutForm rates={RATES} defaultName="" defaultPhone="" />,
+      <CheckoutForm
+        rates={RATES}
+        defaultName=""
+        defaultPhone=""
+        payment={DEFAULT_CONTENT['checkout.payment']}
+      />,
     );
     expect(serverHtml).not.toContain(CAT_TOY.title);
 
@@ -78,7 +84,12 @@ describe('the checkout form, hydrating', () => {
     act(() => {
       const root = hydrateRoot(
         container,
-        <CheckoutForm rates={RATES} defaultName="" defaultPhone="" />,
+        <CheckoutForm
+          rates={RATES}
+          defaultName=""
+          defaultPhone=""
+          payment={DEFAULT_CONTENT['checkout.payment']}
+        />,
         { onRecoverableError: (error) => recovered.push(error) },
       );
       unmount = () => root.unmount();

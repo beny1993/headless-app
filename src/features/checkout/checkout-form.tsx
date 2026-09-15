@@ -24,6 +24,7 @@ import {
   lineTotal,
   subscribe,
 } from '@/features/storefront/cart/cart';
+import { CardToCardPanel, type CardToCardContent } from './card-to-card';
 import { OrderSummary, type SummaryLine } from './order-summary';
 import { ApiRequestError, postData } from '@/lib/api-client';
 import { parseFieldErrors } from '@/lib/checkout/field-errors';
@@ -81,17 +82,28 @@ const stepOfField = (path: string) => STEP_OF_FIELD[path] ?? 3;
  * address step stays to say so. «آدرس جدید», the default, keeps the address step.
  * That and the "save this address" option are pure conveniences: the order still
  * snapshots whatever address is in the fields at submit, untouched.
+ *
+ * `payment` is the `checkout.payment` content block: the card-to-card cards and
+ * contact handles the last step shows under that option. The stored method stays
+ * `cod` — the order is created unpaid and the admin confirms the transfer.
+ * `zarinpalEnabled` (`APP_CONFIG_ZARINPAL_ENABLED`, read by the page) is the
+ * online-payment switch: off, the Zarinpal option renders disabled and card to
+ * card is preselected — a display gate only; the API still accepts both methods.
  */
 export function CheckoutForm({
   rates,
   defaultName,
   defaultPhone,
   savedAddresses = [],
+  payment,
+  zarinpalEnabled = true,
 }: {
   rates: ShippingRateResponse[];
   defaultName: string;
   defaultPhone: string;
   savedAddresses?: AddressResponse[];
+  payment: CardToCardContent;
+  zarinpalEnabled?: boolean;
 }) {
   const router = useRouter();
   const fieldId = useId();
@@ -120,7 +132,7 @@ export function CheckoutForm({
   const [postalCode, setPostalCode] = useState('');
   const [addressLine, setAddressLine] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
-    PAYMENT_METHODS.ZARINPAL,
+    zarinpalEnabled ? PAYMENT_METHODS.ZARINPAL : PAYMENT_METHODS.COD,
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [topError, setTopError] = useState<string | undefined>();
@@ -736,14 +748,18 @@ export function CheckoutForm({
                       {
                         id: PAYMENT_METHODS.ZARINPAL,
                         label: 'پرداخت آنلاین (زرین‌پال)',
-                        sub: 'انتقال به درگاه امن بانکی',
+                        sub: zarinpalEnabled
+                          ? 'انتقال به درگاه امن بانکی'
+                          : 'در حال حاضر غیرفعال است',
                         icon: <CreditCard size={18} aria-hidden="true" />,
+                        disabled: !zarinpalEnabled,
                       },
                       {
                         id: PAYMENT_METHODS.COD,
-                        label: 'پرداخت در محل',
-                        sub: 'نقدی یا کارتخوان هنگام تحویل',
+                        label: 'پرداخت توسط کارت به کارت',
+                        sub: 'واریز به کارت فروشگاه و ارسال رسید',
                         icon: <Wallet size={18} aria-hidden="true" />,
+                        disabled: false,
                       },
                     ] as const
                   ).map((option) => (
@@ -751,10 +767,12 @@ export function CheckoutForm({
                       key={option.id}
                       htmlFor={`${fieldId}-pay-${option.id}`}
                       className={cn(
-                        'flex cursor-pointer items-center gap-3 rounded-xl border-2 p-4 transition-colors',
-                        paymentMethod === option.id
-                          ? 'border-accent-strong bg-accent/5'
-                          : 'border-border hover:border-accent/50',
+                        'flex items-center gap-3 rounded-xl border-2 p-4 transition-colors',
+                        option.disabled
+                          ? 'border-border cursor-not-allowed opacity-60'
+                          : paymentMethod === option.id
+                            ? 'border-accent-strong bg-accent/5 cursor-pointer'
+                            : 'border-border hover:border-accent/50 cursor-pointer',
                       )}
                     >
                       <input
@@ -763,6 +781,7 @@ export function CheckoutForm({
                         id={`${fieldId}-pay-${option.id}`}
                         value={option.id}
                         checked={paymentMethod === option.id}
+                        disabled={option.disabled}
                         onChange={() => setPaymentMethod(option.id)}
                         className="accent-accent-strong size-5"
                         data-umami-event={`checkout-payment-${option.id}`}
@@ -793,17 +812,7 @@ export function CheckoutForm({
                     </p>
                   </div>
                 ) : (
-                  <div className="bg-warning-soft border-warning/30 mt-5 flex items-center gap-3 rounded-2xl border p-5">
-                    <AlertCircle
-                      size={20}
-                      className="text-warning shrink-0"
-                      aria-hidden="true"
-                    />
-                    <p className="text-sm">
-                      مبلغ سفارش هنگام تحویل دریافت می‌شود. لطفاً در زمان ارسال
-                      در دسترس باش.
-                    </p>
-                  </div>
+                  <CardToCardPanel payment={payment} className="mt-5" />
                 )}
               </div>
             )}

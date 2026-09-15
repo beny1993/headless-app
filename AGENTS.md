@@ -1,7 +1,7 @@
 # Smokey Shop — agent guide
 
 Persian (RTL) pet-shop e-commerce for Iran. Prices in Toman, Jalali dates,
-phone-OTP customers, Zarinpal + cash on delivery. This file is the repo's source
+phone-OTP customers, Zarinpal + card-to-card transfer. This file is the repo's source
 of truth for agents; `CLAUDE.md` is a symlink to it.
 
 Planning lives in the Obsidian vault: `Projects/smokey shop/` — board
@@ -199,7 +199,7 @@ covered by their pure modules' unit tests plus browser verification.
 `pnpm test:e2e` (Playwright, `e2e/`) is the regression walk QA used to do by
 hand, run at 1280px and again at 375px. Storefront: phone-OTP sign-in for a
 customer and an admin; home → shop → product → cart drawer (quantity, removal,
-empty state) and a sold-out product; checkout by cash on delivery — Jalali date
+empty state) and a sold-out product; checkout by card to card — Jalali date
 and `format.ts`-formatted numbers on the result page, the order in `/account` —
 and through the mock Zarinpal gateway (paid, and failed → retry → paid). Admin:
 anonymous visitors and customers turned away; the dashboard figures; an order
@@ -225,15 +225,18 @@ docs) is exempt.
 **Not covered — still walked by hand when a story touches them:** content
 areas other than the home headline, a wrong or resent login code, maintenance
 mode switched on (the suite pins it off; the gate is unit-tested in
-`src/app/(app)/(store)/layout.test.ts`), and anything visual (RTL layout,
-Persian font rendering).
+`src/app/(app)/(store)/layout.test.ts`), Zarinpal switched off at checkout (the
+suite pins it on; the disabled option is component-tested in
+`src/features/checkout/checkout-form.submit.test.tsx`), and anything visual
+(RTL layout, Persian font rendering).
 
 - **It starts its own server**: `next dev` on :3100, never a running :3000 —
   that one may be another checkout on another branch. Before it: migrate,
   `seed-catalog` and `seed-shipping`, all idempotent (the seed also puts back
   the stock the specs spend). `webServer.env` pins console SMS with the code on
-  the login page, mock Zarinpal and local storage, and blanks Sentry, Umami and
-  the S3 image base URL over whatever `.env` says. Only the dev Postgres has to
+  the login page, mock Zarinpal switched on (`APP_CONFIG_ZARINPAL_ENABLED`,
+  off by default) and local storage, and blanks Sentry, Umami and the S3 image
+  base URL over whatever `.env` says. Only the dev Postgres has to
   be up already. Next allows one `next dev` per checkout: if `pnpm dev` is
   running in the same checkout, the suite stops at "Another next dev server is
   already running" — stop that server, or run the suite from a worktree.
@@ -248,7 +251,9 @@ Persian font rendering).
   few orders, one inactive `e2e-…` product (its photo stays under `uploads/`),
   one switched-off `E2E…` discount code and one inactive «استان آزمایشی …»
   province with the customer's address on it — those three specs run at 1280px
-  only, since none of those rows can be deleted. The shipping-rate and headline
+  only, since none of those rows can be deleted. The card-to-card spec leaves a
+  `checkout.payment` content row equal to the default (it puts the old values
+  back in a `finally`). The shipping-rate and headline
   specs put the old value back, and the province spec switches its province
   off, even when they fail.
 - **Uploaded images never count as failed requests.** A dev database keeps the

@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Check, Clock, XCircle } from 'lucide-react';
 import { z } from 'zod';
+import { SiteContentDao } from '@/db/dao/SiteContentDao';
+import { CardToCardPanel } from '@/features/checkout/card-to-card';
 import {
   OrderSummary,
   type SummaryLine,
@@ -46,6 +48,12 @@ export default async function Page({
 
   const view = resultView(order.status);
   const isCod = order.paymentMethod === PAYMENT_METHODS.COD;
+  // A card-to-card order is created unpaid: show where to send the money again,
+  // but only on the success view — a cancelled one has nothing left to pay.
+  const cardToCard =
+    isCod && view.kind === 'success'
+      ? (await SiteContentDao.getMany(['checkout.payment']))['checkout.payment']
+      : null;
 
   const copy = {
     success: {
@@ -53,7 +61,7 @@ export default async function Page({
       ring: 'bg-success-soft',
       title: isCod ? 'سفارش ثبت شد!' : 'پرداخت موفق بود!',
       sub: isCod
-        ? 'مبلغ سفارش هنگام تحویل دریافت می‌شود.'
+        ? 'مبلغ سفارش را کارت به کارت کن و رسید را برای ما بفرست تا سفارش ارسال شود.'
         : 'پرداخت شما با موفقیت تایید شد.',
     },
     pending: {
@@ -103,7 +111,7 @@ export default async function Page({
               <span className="text-muted-foreground">تاریخ ثبت</span>
             </div>
             <div className="border-border flex items-center justify-between gap-3 border-t px-4 py-3 text-sm">
-              <span>{isCod ? 'پرداخت در محل' : 'زرین‌پال'}</span>
+              <span>{isCod ? 'کارت به کارت' : 'زرین‌پال'}</span>
               <span className="text-muted-foreground">روش پرداخت</span>
             </div>
             <div className="border-border border-t p-4">
@@ -116,6 +124,10 @@ export default async function Page({
               />
             </div>
           </div>
+
+          {cardToCard && (
+            <CardToCardPanel payment={cardToCard} className="mb-7" />
+          )}
 
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             {view.showRetry && <RetryPaymentButton orderId={order.id} />}

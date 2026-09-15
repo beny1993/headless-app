@@ -150,11 +150,10 @@ export async function openCheckout(page: Page, product = IN_STOCK_PRODUCT) {
 }
 
 /**
- * Walks the open checkout wizard, delivering to the first seeded province,
- * and submits it. Returns wherever that leads: the result page for cash on
- * delivery, the mock gateway for Zarinpal.
+ * Walks the open checkout wizard to its payment step, delivering to the first
+ * seeded province — for a spec that reads that step before submitting.
  */
-export async function completeCheckout(page: Page, payment: PaymentMethod) {
+export async function reachPayment(page: Page) {
   // Step 1, the recipient, arrives prefilled from the account.
   await page.locator('[data-umami-event="checkout-step-next"]').click();
 
@@ -169,7 +168,14 @@ export async function completeCheckout(page: Page, payment: PaymentMethod) {
     .locator('[data-umami-event="checkout-postal-code"]')
     .fill('1234567890');
   await page.locator('[data-umami-event="checkout-step-next"]').click();
+}
 
+/**
+ * Walks the open checkout wizard and submits it. Returns wherever that leads:
+ * the result page for card to card, the mock gateway for Zarinpal.
+ */
+export async function completeCheckout(page: Page, payment: PaymentMethod) {
+  await reachPayment(page);
   await page
     .locator(`[data-umami-event="checkout-payment-${payment}"]`)
     .check();
