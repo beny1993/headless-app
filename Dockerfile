@@ -20,13 +20,20 @@ WORKDIR /app
 # HUSKY=0 disables the `prepare: husky` git hook install — .git is not in the
 # build context, so husky would otherwise error. It is the documented CI escape.
 ENV HUSKY=0
+# pnpm derives its content-addressable store from PNPM_HOME ($PNPM_HOME/store),
+# which is where the BuildKit cache mount below lands. Measured on the Coolify
+# box: the install layer misses more often than the manifests change, and every
+# miss re-downloaded all ~740 packages from npm (~2 min on 2 vCPU). With the
+# store persisted across builds a miss resolves from disk instead.
+ENV PNPM_HOME=/pnpm
 RUN corepack enable
 
 # Only the manifests, so this layer caches until dependencies actually change.
 # pnpm-workspace.yaml carries `overrides` + `allowBuilds` + `enablePrePostScripts`
 # — omitting it silently changes resolution and skips native builds.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm install --frozen-lockfile
 
 # ─────────────────────────────────────────────────────────────────────────────
 # build — compile the app into .next/standalone.
