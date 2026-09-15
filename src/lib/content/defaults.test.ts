@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CONTENT_KEYS,
   CONTENT_SCHEMAS,
+  FOOTER_SOCIAL_DEFAULT,
   imageKeySchema,
   type ContentKey,
 } from './site-content';
@@ -151,5 +152,18 @@ describe('resolveContent', () => {
     for (const key of CONTENT_KEYS as readonly ContentKey[]) {
       expect(resolveContent(key, undefined)).toEqual(DEFAULT_CONTENT[key]);
     }
+  });
+});
+
+describe('the shop’s social handles', () => {
+  it('are the footer’s default pills and the card-to-card contact', () => {
+    expect(DEFAULT_CONTENT.footer.social).toEqual(FOOTER_SOCIAL_DEFAULT);
+    // The receipt inbox is the shop account, not the education one.
+    expect(DEFAULT_CONTENT['checkout.payment'].instagram).toBe(
+      FOOTER_SOCIAL_DEFAULT.instagram,
+    );
+    expect(DEFAULT_CONTENT['checkout.payment'].telegram).toBe(
+      FOOTER_SOCIAL_DEFAULT.telegram,
+    );
   });
 });
