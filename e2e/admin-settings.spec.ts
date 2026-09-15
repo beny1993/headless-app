@@ -108,22 +108,29 @@ test('the social handles an admin edits are what the footer links to', async ({
     await expect(block.getByText('ذخیره شد')).toBeVisible();
   };
 
-  // A pasted URL is refused on its own field, before anything is sent.
-  await dailies.fill('https://instagram.com/smokey.dailies');
+  // Another network's URL is refused on its own field, before anything is sent.
+  await dailies.fill('https://t.me/smokeypetshop');
   await block.locator('[data-umami-event="admin-panel-content-save"]').click();
-  await expect(block.getByText(/نام کاربری فقط/)).toBeVisible();
+  await expect(block.getByText(/لینک باید آدرس پروفایل/)).toBeVisible();
 
-  // One handle changed, one cleared: the pill follows, the other pill is gone.
-  const edited = { dailies: `e2e.${Date.now().toString(36)}`, telegram: '' };
+  // One handle pasted as the profile URL (share token and all), one cleared:
+  // the pill links the clean profile, the other pill is gone.
+  const handle = `e2e.${Date.now().toString(36)}`;
+  const edited = {
+    dailies: `https://www.instagram.com/${handle}?stkn=NWkxMDlrYWtqY2Jn`,
+    telegram: '',
+  };
   await save(edited);
   try {
+    // The editor shows what was stored: the bare handle.
+    await expect(dailies).toHaveValue(handle);
     await shopper.goto(PATHS.HOME);
     const pill = shopper.locator(
       '[data-umami-event="footer-social-instagram-dailies"]',
     );
     await expect(pill).toHaveAttribute(
       'href',
-      `https://instagram.com/${edited.dailies}`,
+      `https://instagram.com/${handle}`,
     );
     await expect(pill).toHaveAttribute('target', '_blank');
     await expect(pill).toHaveAttribute('rel', 'noopener noreferrer');

@@ -149,18 +149,41 @@ const cardNumber = z
   .refine((v) => v === '' || /^\d{16}$/.test(v), {
     error: CARD_NUMBER_MESSAGE,
   });
-// A social username, stored bare: a leading `@` is dropped, and only the
-// characters Instagram and Telegram allow pass — so a pasted URL never becomes
-// `https://instagram.com/https://…`. `''` means no link is rendered.
-const HANDLE_MESSAGE =
-  'نام کاربری فقط می‌تواند حروف انگلیسی، رقم، نقطه و خط زیر داشته باشد.';
-const handle = z
-  .string()
-  .trim()
-  .transform((v) => v.replace(/^@/, ''))
-  .refine((v) => v === '' || /^[A-Za-z0-9._]{1,32}$/.test(v), {
-    error: HANDLE_MESSAGE,
-  });
+// A social username, stored bare. Admins paste what they have — `@name`, or
+// the profile URL straight from the app, share token and all
+// (`https://www.instagram.com/smokey.dailies?stkn=…`) — so a URL on one of the
+// network's own hosts is reduced to its first path segment, and only the
+// characters Instagram and Telegram allow may remain; the stored value never
+// becomes `https://instagram.com/https://…` and never carries a tracking
+// token. A URL from any other host is refused with its own message: a Telegram
+// link in the Instagram field would otherwise silently link the wrong network.
+// `''` means no link is rendered.
+export const HANDLE_MESSAGES = {
+  username:
+    'نام کاربری فقط می‌تواند حروف انگلیسی، رقم، نقطه و خط زیر داشته باشد.',
+  host: 'لینک باید آدرس پروفایل در همین شبکه باشد.',
+} as const;
+// `host/segment…`, with or without a scheme or `www.`; the host must be dotted,
+// so `smokey/shop` is a bad username, not a URL.
+const PROFILE_URL =
+  /^(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)\/@?([^/?#\s]+)/i;
+const handleOn = (hosts: readonly string[]) =>
+  z
+    .string()
+    .trim()
+    .transform((v) => {
+      const url = PROFILE_URL.exec(v);
+      if (url && hosts.includes(url[1].toLowerCase())) return url[2];
+      return v.replace(/^@/, '');
+    })
+    .refine((v) => v === '' || /^[A-Za-z0-9._]{1,32}$/.test(v), {
+      error: (issue) =>
+        PROFILE_URL.test(String(issue.input))
+          ? HANDLE_MESSAGES.host
+          : HANDLE_MESSAGES.username,
+    });
+const instagramHandle = handleOn(['instagram.com']);
+const telegramHandle = handleOn(['t.me', 'telegram.me']);
 /** Where a stored handle links to — the one place each host is spelled. */
 export const instagramUrl = (handle: string) =>
   `https://instagram.com/${handle}`;
@@ -168,8 +191,8 @@ export const telegramUrl = (handle: string) => `https://t.me/${handle}`;
 /**
  * The footer's social pills as shipped: the shop's Instagram, the education-and-
  * fun Instagram («smokey.dailies») and the Telegram channel. Already in stored
- * form (bare, no `@`) — `.default()` short-circuits and never runs `handle` over
- * it (a test proves it would pass). Lives here, not in `defaults.ts`, because
+ * form (bare, no `@`) — `.default()` short-circuits and never runs the handle
+ * schema over it (a test proves it would pass). Lives here, not in `defaults.ts`, because
  * that module imports this one.
  */
 export const FOOTER_SOCIAL_DEFAULT = {
@@ -310,8 +333,8 @@ export const CONTENT_SCHEMAS = {
   'checkout.payment': z.object({
     note: t(300),
     bankCards: z.tuple([bankCard, bankCard, bankCard]),
-    instagram: handle,
-    telegram: handle,
+    instagram: instagramHandle,
+    telegram: telegramHandle,
   }),
   // ── Site chrome. No `visible`: the header and footer are structural, always
   // rendered — the toggle is derived from the schema (`'visible' in shape`), so
@@ -351,7 +374,11 @@ export const CONTENT_SCHEMAS = {
     // which seeds from the parsed value, so an unrelated save round-trips them
     // instead of writing `''`. A saved `''` stays `''`: an admin can remove one.
     social: z
-      .object({ instagram: handle, instagramDailies: handle, telegram: handle })
+      .object({
+        instagram: instagramHandle,
+        instagramDailies: instagramHandle,
+        telegram: telegramHandle,
+      })
       .default(() => ({ ...FOOTER_SOCIAL_DEFAULT })),
   }),
 } as const satisfies Record<ContentKey, z.ZodType>;

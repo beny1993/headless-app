@@ -8,6 +8,7 @@ import {
   CONTENT_KEYS,
   CONTENT_SCHEMAS,
   FOOTER_SOCIAL_DEFAULT,
+  HANDLE_MESSAGES,
   contentAreaSchema,
   contentKeySchema,
   imageKeySchema,
@@ -422,23 +423,61 @@ describe('CONTENT_SCHEMAS checkout.payment', () => {
     );
   });
 
-  it('stores a social handle bare and refuses anything but a username', () => {
+  it('stores a social handle bare — typed, with an @, or pasted as the profile URL', () => {
     expect(schema.parse({ ...base, instagram: '@smokey.shop' }).instagram).toBe(
       'smokey.shop',
     );
     expect(schema.parse({ ...base, telegram: ' smokey_shop ' }).telegram).toBe(
       'smokey_shop',
     );
+    // What an admin pastes from the app: share token, www, trailing slash,
+    // no scheme, an @ in the path, upper-case host — all reduce to the handle.
+    for (const pasted of [
+      'https://www.instagram.com/smokey.dailies?stkn=NWkxMDlrYWtqY2Jn',
+      'https://instagram.com/smokey.dailies/',
+      'instagram.com/@smokey.dailies',
+      'HTTPS://WWW.INSTAGRAM.COM/smokey.dailies#top',
+    ]) {
+      expect(
+        schema.parse({ ...base, instagram: pasted }).instagram,
+        pasted,
+      ).toBe('smokey.dailies');
+    }
+    for (const pasted of [
+      'https://t.me/smokeypetshop',
+      'telegram.me/smokeypetshop?start=x',
+    ]) {
+      expect(schema.parse({ ...base, telegram: pasted }).telegram, pasted).toBe(
+        'smokeypetshop',
+      );
+    }
+  });
+
+  it('refuses anything but a username, and another network’s URL with its own message', () => {
+    const message = (value: string, field: 'instagram' | 'telegram') => {
+      const result = schema.safeParse({ ...base, [field]: value });
+      expect(result.success, value).toBe(false);
+      return result.success ? '' : result.error.issues[0].message;
+    };
     for (const bad of [
-      'https://instagram.com/smokey',
       'smokey shop',
       'smokey/shop',
       'a'.repeat(33),
+      'https://instagram.com/',
     ]) {
-      expect(schema.safeParse({ ...base, instagram: bad }).success, bad).toBe(
-        false,
-      );
+      expect(message(bad, 'instagram'), bad).toBe(HANDLE_MESSAGES.username);
     }
+    // A Telegram link in the Instagram field (and the reverse) is not silently
+    // rehosted; nor is any other site's URL.
+    expect(message('https://t.me/smokeypetshop', 'instagram')).toBe(
+      HANDLE_MESSAGES.host,
+    );
+    expect(message('https://instagram.com/smokey.petshop', 'telegram')).toBe(
+      HANDLE_MESSAGES.host,
+    );
+    expect(message('https://example.com/smokey', 'instagram')).toBe(
+      HANDLE_MESSAGES.host,
+    );
   });
 
   it('requires the note', () => {
@@ -615,24 +654,39 @@ describe('CONTENT_SCHEMAS footer.social (a shipped key: defaulted, not required)
     ).toEqual(FOOTER_SOCIAL_DEFAULT);
   });
 
-  it('stores each handle bare and refuses a URL on its own path', () => {
-    const parsed = schema.parse({
-      ...legacyRow,
-      social: {
-        instagram: '@smokey.petshop',
-        instagramDailies: ' smokey.dailies ',
-        telegram: '@smokeypetshop',
-      },
-    });
-    expect(parsed.social).toEqual(FOOTER_SOCIAL_DEFAULT);
+  it('stores each handle bare — an @, or the pasted profile URL — and refuses another network’s URL on its own path', () => {
+    expect(
+      schema.parse({
+        ...legacyRow,
+        social: {
+          instagram: '@smokey.petshop',
+          instagramDailies: ' smokey.dailies ',
+          telegram: '@smokeypetshop',
+        },
+      }).social,
+    ).toEqual(FOOTER_SOCIAL_DEFAULT);
+    // The three links exactly as Benyamin pasted them.
+    expect(
+      schema.parse({
+        ...legacyRow,
+        social: {
+          instagram:
+            'https://www.instagram.com/smokey.petshop?stkn=OG9qN2ljaHNmeWU=',
+          instagramDailies:
+            'https://www.instagram.com/smokey.dailies?stkn=NWkxMDlrYWtqY2Jn',
+          telegram: 'https://t.me/smokeypetshop',
+        },
+      }).social,
+    ).toEqual(FOOTER_SOCIAL_DEFAULT);
 
     const result = schema.safeParse({
       ...legacyRow,
-      social: { ...cleared, instagram: 'https://instagram.com/smokey' },
+      social: { ...cleared, instagram: 'https://t.me/smokeypetshop' },
     });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].path).toEqual(['social', 'instagram']);
+      expect(result.error.issues[0].message).toBe(HANDLE_MESSAGES.host);
     }
   });
 
