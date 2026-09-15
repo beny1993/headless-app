@@ -1,0 +1,66 @@
+// The footer's social pills: each renders only while its handle is set, the row
+// is gone when none is, and every pill is an external link (new tab, no opener)
+// to the canonical profile of its bare handle. The show/hide branch lives only
+// in JSX, so a render is the one place it can be pinned. next/image renders a
+// plain <img> on happy-dom (the life-moments test relies on the same).
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { Footer } from './footer';
+import { DEFAULT_CONTENT } from '@/lib/content/defaults';
+import type { LinkTargets } from '@/lib/content/link';
+
+afterEach(cleanup);
+
+const NO_TARGETS: LinkTargets = { categories: {}, products: {} };
+const footer = DEFAULT_CONTENT.footer;
+const pill = (event: string) =>
+  document.querySelector<HTMLAnchorElement>(`[data-umami-event="${event}"]`);
+
+describe('Footer social pills', () => {
+  it('links all three defaults to their profiles, in a new tab without an opener', () => {
+    render(<Footer content={footer} targets={NO_TARGETS} />);
+
+    const expected = [
+      ['footer-social-instagram-shop', 'https://instagram.com/smokey.petshop'],
+      [
+        'footer-social-instagram-dailies',
+        'https://instagram.com/smokey.dailies',
+      ],
+      ['footer-social-telegram', 'https://t.me/smokeypetshop'],
+    ] as const;
+    for (const [event, href] of expected) {
+      const link = pill(event);
+      expect(link?.getAttribute('href'), event).toBe(href);
+      expect(link?.getAttribute('target'), event).toBe('_blank');
+      expect(link?.getAttribute('rel'), event).toBe('noopener noreferrer');
+    }
+    expect(screen.getByRole('list', { name: 'شبکه‌های اجتماعی' })).toBeTruthy();
+  });
+
+  it('drops a pill whose handle is cleared, and the row once all are', () => {
+    const { unmount } = render(
+      <Footer
+        content={{ ...footer, social: { ...footer.social, telegram: '' } }}
+        targets={NO_TARGETS}
+      />,
+    );
+    expect(pill('footer-social-telegram')).toBeNull();
+    expect(pill('footer-social-instagram-shop')).not.toBeNull();
+    expect(pill('footer-social-instagram-dailies')).not.toBeNull();
+    unmount();
+
+    render(
+      <Footer
+        content={{
+          ...footer,
+          social: { instagram: '', instagramDailies: '', telegram: '' },
+        }}
+        targets={NO_TARGETS}
+      />,
+    );
+    expect(screen.queryByRole('list', { name: 'شبکه‌های اجتماعی' })).toBeNull();
+    expect(
+      document.querySelector('[data-umami-event^="footer-social-"]'),
+    ).toBeNull();
+  });
+});

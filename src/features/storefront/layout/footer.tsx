@@ -1,6 +1,11 @@
 import Image from 'next/image';
+import { Instagram, Send } from 'lucide-react';
 import { FOOTER_TARGETS } from './nav-links';
-import type { ContentValue } from '@/lib/content/site-content';
+import {
+  instagramUrl,
+  telegramUrl,
+  type ContentValue,
+} from '@/lib/content/site-content';
 import { ContentLink } from '@/features/storefront/content-link';
 import { resolveLink, type LinkTargets } from '@/lib/content/link';
 import { formatJalaliYear } from '@/lib/format';
@@ -17,7 +22,16 @@ import { formatJalaliYear } from '@/lib/format';
  * Trimmed to links with real destinations (the design review's "no dead
  * navigation"): the prototype's «پشتیبانی» column and the «ارسال رایگان» /
  * «ضمانت کیفیت» entries have no pages, so the grid is three columns, not four.
+ *
+ * The social pills sit under the tagline, not in a fourth column: at `md` a
+ * four-column brand cell is 152px and the logo is a fixed 176px. Persian
+ * labels, not handles — two Instagram accounts need telling apart, and
+ * «dailies» says nothing to a Persian shopper. A pill renders only while its
+ * handle (`footer.social`) is set; the row goes with the last one.
  */
+const SOCIAL_PILL =
+  'hover:border-accent-on-dark/50 hover:text-accent-on-dark inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-white/15 px-3.5 py-2 text-sm transition-colors';
+
 export function Footer({
   content,
   targets,
@@ -25,6 +39,30 @@ export function Footer({
   content: ContentValue<'footer'>;
   targets: LinkTargets;
 }) {
+  const socials = [
+    {
+      handle: content.social.instagram,
+      url: instagramUrl,
+      label: 'اینستاگرام فروشگاه',
+      Icon: Instagram,
+      event: 'footer-social-instagram-shop',
+    },
+    {
+      handle: content.social.instagramDailies,
+      url: instagramUrl,
+      label: 'اینستاگرام آموزش و سرگرمی',
+      Icon: Instagram,
+      event: 'footer-social-instagram-dailies',
+    },
+    {
+      handle: content.social.telegram,
+      url: telegramUrl,
+      label: 'تلگرام',
+      Icon: Send,
+      event: 'footer-social-telegram',
+    },
+  ].filter((social) => social.handle !== '');
+
   const columns = content.columns.map((column, c) => ({
     title: column.title,
     links: column.links.map((label, l) => ({
@@ -54,6 +92,26 @@ export function Footer({
             <p className="text-sm leading-relaxed whitespace-pre-line">
               {content.tagline}
             </p>
+            {socials.length > 0 && (
+              <ul
+                aria-label="شبکه‌های اجتماعی"
+                className="mt-4 flex flex-wrap gap-2"
+              >
+                {socials.map(({ handle, url, label, Icon, event }) => (
+                  <li key={event} className="max-w-full">
+                    <ContentLink
+                      href={url(handle)}
+                      external
+                      className={SOCIAL_PILL}
+                      data-umami-event={event}
+                    >
+                      <Icon size={16} aria-hidden="true" className="shrink-0" />
+                      <span className="truncate">{label}</span>
+                    </ContentLink>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           {columns.map((column, c) => (
             // Index key: column titles are content and may repeat.

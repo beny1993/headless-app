@@ -7,10 +7,13 @@ import {
   CONTENT_AREAS,
   CONTENT_KEYS,
   CONTENT_SCHEMAS,
+  FOOTER_SOCIAL_DEFAULT,
   contentAreaSchema,
   contentKeySchema,
   imageKeySchema,
+  instagramUrl,
   isVisible,
+  telegramUrl,
   type ContentKey,
 } from './site-content';
 import { DEFAULT_CONTENT } from './defaults';
@@ -400,7 +403,7 @@ describe('CONTENT_SCHEMAS checkout.payment', () => {
     }
   });
 
-  it('keeps an empty slot and empty handles blank — the shipped spares are', () => {
+  it('keeps an empty slot and a cleared handle blank — the shipped spares are', () => {
     const parsed = schema.parse({
       ...base,
       bankCards: [
@@ -410,7 +413,8 @@ describe('CONTENT_SCHEMAS checkout.payment', () => {
       ],
       instagram: '  ',
     });
-    expect(parsed).toEqual(base);
+    // A whitespace handle is a cleared one: stored as `''`, never as the default.
+    expect(parsed).toEqual({ ...base, instagram: '' });
     // The default ships one card, already normalized, and two blank spares.
     expect(base.bankCards[0].number).toMatch(/^\d{16}$/);
     expect(base.bankCards.slice(1).every((card) => card.number === '')).toBe(
@@ -579,5 +583,63 @@ describe('CONTENT_SCHEMAS link fields (every one optional: compat)', () => {
     for (const bad of [[], IDS, [IDS[0], IDS[0]], ['dry-food']]) {
       expect(parse(bad).success, JSON.stringify(bad)).toBe(false);
     }
+  });
+});
+
+describe('CONTENT_SCHEMAS footer.social (a shipped key: defaulted, not required)', () => {
+  const schema = CONTENT_SCHEMAS.footer;
+  const { social: _social, ...legacyRow } = DEFAULT_CONTENT.footer;
+  const cleared = { instagram: '', instagramDailies: '', telegram: '' };
+
+  it('parses a row saved before the field existed to the real handles', () => {
+    // On read AND in the editor (which seeds from the parsed value): a legacy
+    // row shows the pills, and an unrelated save round-trips them.
+    expect(schema.parse(legacyRow)).toEqual(DEFAULT_CONTENT.footer);
+    expect(schema.parse(legacyRow).social).toEqual(FOOTER_SOCIAL_DEFAULT);
+  });
+
+  it('keeps a cleared handle empty — the admin can remove a pill', () => {
+    expect(schema.parse({ ...legacyRow, social: cleared }).social).toEqual(
+      cleared,
+    );
+    expect(
+      schema.parse({ ...legacyRow, social: { ...cleared, telegram: 'x' } })
+        .social,
+    ).toEqual({ ...cleared, telegram: 'x' });
+  });
+
+  it('ships the default in stored form, so the short-circuit hands out valid handles', () => {
+    // `.default()` never runs `handle` over its value; prove it would pass.
+    expect(
+      schema.parse({ ...legacyRow, social: FOOTER_SOCIAL_DEFAULT }).social,
+    ).toEqual(FOOTER_SOCIAL_DEFAULT);
+  });
+
+  it('stores each handle bare and refuses a URL on its own path', () => {
+    const parsed = schema.parse({
+      ...legacyRow,
+      social: {
+        instagram: '@smokey.petshop',
+        instagramDailies: ' smokey.dailies ',
+        telegram: '@smokeypetshop',
+      },
+    });
+    expect(parsed.social).toEqual(FOOTER_SOCIAL_DEFAULT);
+
+    const result = schema.safeParse({
+      ...legacyRow,
+      social: { ...cleared, instagram: 'https://instagram.com/smokey' },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].path).toEqual(['social', 'instagram']);
+    }
+  });
+
+  it('links a stored handle to its canonical profile URL', () => {
+    expect(instagramUrl('smokey.dailies')).toBe(
+      'https://instagram.com/smokey.dailies',
+    );
+    expect(telegramUrl('smokeypetshop')).toBe('https://t.me/smokeypetshop');
   });
 });

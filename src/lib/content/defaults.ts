@@ -22,6 +22,7 @@
 import * as Sentry from '@sentry/nextjs';
 import {
   CONTENT_SCHEMAS,
+  FOOTER_SOCIAL_DEFAULT,
   type ContentKey,
   type ContentValue,
   type ContentValues,
@@ -217,8 +218,11 @@ export const DEFAULT_CONTENT: ContentValues = {
   },
   'about.cta': { headline: 'به خانواده اسموکی خوش اومدی.', cta: 'کشف محصولات' },
   // Ships with the shop's card in slot 1 (already in the schema's stored form:
-  // sixteen ASCII digits) and no handle; `''` is an unused slot, the same in the
-  // default, a stored row and the editor. The storefront shows only filled slots.
+  // sixteen ASCII digits) and the shop's own handles — the receipt inbox is the
+  // shop account, never the education one; `''` is an unused slot, the same in
+  // the default, a stored row and the editor. The storefront shows only filled
+  // slots. A row saved before the handles were known keeps its own `''`: on
+  // staging the admin fills the two fields once.
   'checkout.payment': {
     note: 'مبلغ سفارش را به یکی از کارت‌های زیر واریز کن و رسید را برای ما بفرست. سفارش پس از تأیید واریز ارسال می‌شود.',
     bankCards: [
@@ -226,8 +230,8 @@ export const DEFAULT_CONTENT: ContentValues = {
       { bank: '', number: '', holder: '' },
       { bank: '', number: '', holder: '' },
     ],
-    instagram: '',
-    telegram: '',
+    instagram: FOOTER_SOCIAL_DEFAULT.instagram,
+    telegram: FOOTER_SOCIAL_DEFAULT.telegram,
   },
   header: {
     // A display wordmark, independent of DEFAULT_SITE_NAME (which is «اسموکی» and
@@ -248,6 +252,7 @@ export const DEFAULT_CONTENT: ContentValues = {
     // The text AFTER the `© {jalali year}` prefix (rendered in code), verbatim.
     copyright: 'اسموکی. تمام حقوق محفوظ است.',
     credit: 'ساخته شده با ❤️ برای حیوانات خانگی ایران',
+    social: { ...FOOTER_SOCIAL_DEFAULT },
   },
 };
 

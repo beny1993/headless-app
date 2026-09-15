@@ -33,7 +33,8 @@ import { LINK_MESSAGES, linkSchema } from './link';
  *  admin's edits. v2 could add `shopCta`, `cta`, `eyebrow`, … to v1 keys for free
  *  only because PR #26 never shipped and no row exists outside dev databases. Once
  *  a key is released, a new field needs a compat plan: `.optional()` with a
- *  code-side fallback, or a data migration script. */
+ *  code-side fallback, `.default()` when the fallback is one concrete value
+ *  (`footer.social`), or a data migration script. */
 export const CONTENT_KEYS = [
   // Home, in page order (matches `src/app/(app)/(store)/page.tsx`).
   'home.hero',
@@ -160,6 +161,22 @@ const handle = z
   .refine((v) => v === '' || /^[A-Za-z0-9._]{1,32}$/.test(v), {
     error: HANDLE_MESSAGE,
   });
+/** Where a stored handle links to — the one place each host is spelled. */
+export const instagramUrl = (handle: string) =>
+  `https://instagram.com/${handle}`;
+export const telegramUrl = (handle: string) => `https://t.me/${handle}`;
+/**
+ * The footer's social pills as shipped: the shop's Instagram, the education-and-
+ * fun Instagram («smokey.dailies») and the Telegram channel. Already in stored
+ * form (bare, no `@`) — `.default()` short-circuits and never runs `handle` over
+ * it (a test proves it would pass). Lives here, not in `defaults.ts`, because
+ * that module imports this one.
+ */
+export const FOOTER_SOCIAL_DEFAULT = {
+  instagram: 'smokey.petshop',
+  instagramDailies: 'smokey.dailies',
+  telegram: 'smokeypetshop',
+};
 /** One card-to-card destination; a slot with an empty `number` is not shown. */
 const bankCard = z.object({
   bank: blankableText(40),
@@ -328,6 +345,14 @@ export const CONTENT_SCHEMAS = {
     // the year are rendered in code (`formatJalaliYear`), never stored.
     copyright: t(120),
     credit: t(120),
+    // The brand column's social pills, each a bare handle; `''` hides that pill.
+    // `.default()` is this shipped key's compat plan: a row saved before the
+    // field existed parses to the real handles — on read, and in the editor,
+    // which seeds from the parsed value, so an unrelated save round-trips them
+    // instead of writing `''`. A saved `''` stays `''`: an admin can remove one.
+    social: z
+      .object({ instagram: handle, instagramDailies: handle, telegram: handle })
+      .default(() => ({ ...FOOTER_SOCIAL_DEFAULT })),
   }),
 } as const satisfies Record<ContentKey, z.ZodType>;
 

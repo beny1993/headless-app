@@ -1,8 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Copy, Instagram, Send } from 'lucide-react';
-import type { ContentValue } from '@/lib/content/site-content';
+import { Check, Copy } from 'lucide-react';
+import {
+  instagramUrl,
+  telegramUrl,
+  type ContentValue,
+} from '@/lib/content/site-content';
 import { toPersianDigits } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -22,9 +26,10 @@ const social = (href: string) =>
  * The card-to-card instructions a shopper sees wherever the payment method is
  * chosen or shown again (checkout, the result page, an order in the account):
  * the admin's note, the filled card slots (an empty slot is simply absent) with a
- * copy button each, and the shop's Instagram/Telegram — the contact sentence is
- * always there, each link only when its handle is set. A client component only
- * for the copy button; server pages render it with the block they read.
+ * copy button each, and the contact sentence — always there, with «اینستاگرام»
+ * and «تلگرام» in it linking to the shop's accounts while their handles are set
+ * (plain words otherwise). A client component only for the copy button; server
+ * pages render it with the block they read.
  */
 export function CardToCardPanel({
   payment,
@@ -71,32 +76,51 @@ export function CardToCardPanel({
       )}
 
       <p className="mt-4 text-sm leading-relaxed">
-        برای هماهنگی و ارسال رسید، از طریق اینستاگرام یا تلگرام با ما در تماس
-        باش.
+        برای هماهنگی و ارسال رسید، از طریق{' '}
+        <ContactLink
+          handle={payment.instagram}
+          url={instagramUrl}
+          event="checkout-card-instagram"
+        >
+          اینستاگرام
+        </ContactLink>{' '}
+        یا{' '}
+        <ContactLink
+          handle={payment.telegram}
+          url={telegramUrl}
+          event="checkout-card-telegram"
+        >
+          تلگرام
+        </ContactLink>{' '}
+        با ما در تماس باش.
       </p>
-      {(payment.instagram !== '' || payment.telegram !== '') && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {payment.instagram !== '' && (
-            <a
-              {...social(`https://instagram.com/${payment.instagram}`)}
-              className="bg-card border-border hover:border-accent/50 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
-              data-umami-event="checkout-card-instagram"
-            >
-              <Instagram size={14} aria-hidden="true" /> اینستاگرام
-            </a>
-          )}
-          {payment.telegram !== '' && (
-            <a
-              {...social(`https://t.me/${payment.telegram}`)}
-              className="bg-card border-border hover:border-accent/50 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
-              data-umami-event="checkout-card-telegram"
-            >
-              <Send size={14} aria-hidden="true" /> تلگرام
-            </a>
-          )}
-        </div>
-      )}
     </div>
+  );
+}
+
+/** A platform name inside the contact sentence: a link to the shop's account
+ *  while its handle is set, the plain word otherwise, so the sentence reads the
+ *  same either way. */
+function ContactLink({
+  handle,
+  url,
+  event,
+  children,
+}: {
+  handle: string;
+  url: (handle: string) => string;
+  event: string;
+  children: string;
+}) {
+  if (handle === '') return children;
+  return (
+    <a
+      {...social(url(handle))}
+      className="text-accent-strong font-medium underline"
+      data-umami-event={event}
+    >
+      {children}
+    </a>
   );
 }
 

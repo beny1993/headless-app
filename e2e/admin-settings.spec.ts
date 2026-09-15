@@ -85,6 +85,59 @@ test('a headline an admin edits is what the home page shows', async ({
   }
 });
 
+test('the social handles an admin edits are what the footer links to', async ({
+  page,
+  shopper,
+}) => {
+  await page.goto(adminContentAreaPath('footer'));
+  const block = page.locator('form', {
+    has: page.getByRole('heading', { name: 'فوتر' }),
+  });
+  const dailies = block.getByLabel(/اینستاگرام آموزش و سرگرمی/);
+  const telegram = block.getByLabel(/نام کاربری تلگرام/);
+  const original = {
+    dailies: await dailies.inputValue(),
+    telegram: await telegram.inputValue(),
+  };
+  const save = async (values: typeof original) => {
+    await dailies.fill(values.dailies);
+    await telegram.fill(values.telegram);
+    await block
+      .locator('[data-umami-event="admin-panel-content-save"]')
+      .click();
+    await expect(block.getByText('ذخیره شد')).toBeVisible();
+  };
+
+  // A pasted URL is refused on its own field, before anything is sent.
+  await dailies.fill('https://instagram.com/smokey.dailies');
+  await block.locator('[data-umami-event="admin-panel-content-save"]').click();
+  await expect(block.getByText(/نام کاربری فقط/)).toBeVisible();
+
+  // One handle changed, one cleared: the pill follows, the other pill is gone.
+  const edited = { dailies: `e2e.${Date.now().toString(36)}`, telegram: '' };
+  await save(edited);
+  try {
+    await shopper.goto(PATHS.HOME);
+    const pill = shopper.locator(
+      '[data-umami-event="footer-social-instagram-dailies"]',
+    );
+    await expect(pill).toHaveAttribute(
+      'href',
+      `https://instagram.com/${edited.dailies}`,
+    );
+    await expect(pill).toHaveAttribute('target', '_blank');
+    await expect(pill).toHaveAttribute('rel', 'noopener noreferrer');
+    await expect(
+      shopper.locator('[data-umami-event="footer-social-telegram"]'),
+    ).toHaveCount(0);
+    await expect(
+      shopper.locator('[data-umami-event="footer-social-instagram-shop"]'),
+    ).toHaveAttribute('href', /^https:\/\/instagram\.com\/./);
+  } finally {
+    await save(original);
+  }
+});
+
 test('a card an admin saves is what card-to-card checkout shows', async ({
   page,
   shopper,

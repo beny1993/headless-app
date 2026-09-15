@@ -331,6 +331,21 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
         kind: 'input',
       },
       { path: 'credit', label: 'خط اعتبار', kind: 'input' },
+      {
+        path: 'social.instagram',
+        label: 'نام کاربری اینستاگرام فروشگاه (بدون @)',
+        kind: 'input',
+      },
+      {
+        path: 'social.instagramDailies',
+        label: 'نام کاربری اینستاگرام آموزش و سرگرمی (بدون @)',
+        kind: 'input',
+      },
+      {
+        path: 'social.telegram',
+        label: 'نام کاربری تلگرام (بدون @)',
+        kind: 'input',
+      },
     ],
   },
 };
