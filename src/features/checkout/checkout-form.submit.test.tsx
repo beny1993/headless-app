@@ -146,6 +146,29 @@ describe('the checkout submit state machine', () => {
     expect(secondKey).toBe(firstKey);
   });
 
+  it('shows a paymentMethod 422 in the alert — those radios have no error slot', async () => {
+    // Where createOrder's two per-user caps land. `paymentMethod` is a field
+    // path, so it parses as a field error — but nothing renders one, so without
+    // a home in the top-level alert the shopper sees the button re-enable and
+    // nothing else, and simply presses it again.
+    postData.mockRejectedValue(
+      new ApiRequestError(422, 'ورودی نامعتبر', [
+        'paymentMethod: تعداد سفارش‌های شما در یک ساعت گذشته بیش از حد مجاز است؛ لطفاً بعداً دوباره تلاش کنید.',
+      ]),
+    );
+    advanceToPayment();
+
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expect(screen.getByRole('alert').textContent).toContain(
+      'یک ساعت گذشته بیش از حد مجاز است',
+    );
+    expect(submitButton().disabled).toBe(false);
+    expect(getCart()).toHaveLength(1);
+  });
+
   it('maps a 400 per-field error inline and jumps back to its step', async () => {
     // A body-schema 400 (e.g. an over-length field) carries the same
     // `field: message` shape as a 422; the form must render it on the input and

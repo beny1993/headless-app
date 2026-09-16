@@ -435,12 +435,17 @@ export function CheckoutForm({
           setApplied(null);
           setDiscountError(fields.discountCode);
         }
-        // Field errors on an input show inline; `items.*` (a cart line) and any
-        // unmapped message have no input to attach to → the top-level alert.
-        const itemMessages = Object.entries(fields)
-          .filter(([path]) => path.startsWith('items.'))
+        // Field errors on an input show inline; everything else goes to the
+        // top-level alert: `items.*` (a cart line), `paymentMethod` (where
+        // createOrder's per-user caps land — the payment radios have no error
+        // slot, so the message would otherwise be parsed, kept, and shown
+        // nowhere) and anything unmapped.
+        const withoutAnInput = Object.entries(fields)
+          .filter(
+            ([path]) => path.startsWith('items.') || path === 'paymentMethod',
+          )
           .map(([, message]) => message);
-        const top = [...itemMessages, ...unmapped];
+        const top = [...withoutAnInput, ...unmapped];
         setTopError(
           top.length > 0
             ? top.join(' ')
