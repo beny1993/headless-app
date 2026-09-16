@@ -242,6 +242,11 @@ suite pins it on; the disabled option is component-tested in
   already running" — stop that server, or run the suite from a worktree.
 - **A worktree has no `.env`**:
   `DOTENV_CONFIG_PATH=<main checkout>/.env pnpm test:e2e`.
+- **Checkout is rate-capped per account** (`MAX_ORDERS_PER_WINDOW` in
+  `src/logic/checkout/create-order.ts`, 30 orders an hour, any status). One
+  run's throwaway customer places about 15 across both viewports, so a spec
+  that adds checkouts eats into that headroom — raise the constant before the
+  suite trips it with a 422 mid-run.
 - **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
   customer and a fresh admin (`pnpm create-admin`) in through the real login
   page and saves their sessions; specs opt in with `test.use({ storageState })`
