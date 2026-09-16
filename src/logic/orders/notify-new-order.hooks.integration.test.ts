@@ -266,7 +266,24 @@ describe.skipIf(!databaseReachable)('the new-order alert hooks', () => {
         .set({ createdAt: new Date(Date.now() - 30 * 60_000) })
         .where(eq(payments.id, payment.id));
 
-      await reconcilePayments(stubClient());
+      // Verify answers for THIS authority only and throws for anything else:
+      // the sweep reads the whole table, and the shared dev database carries
+      // stale attempts from other runs that must not be settled from here.
+      await reconcilePayments(
+        stubClient({
+          verifyPayment: async ({ authority }) => {
+            if (authority !== payment.authority) {
+              throw new Error('not this suite’s payment');
+            }
+            return {
+              ok: true,
+              refId: 'ref-100',
+              cardPan: '502229******5995',
+              alreadyVerified: false,
+            };
+          },
+        }),
+      );
 
       expect(mocks.notify.mock.calls.flat()).toContain(order.id);
     });
