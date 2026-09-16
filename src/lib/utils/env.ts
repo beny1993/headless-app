@@ -15,6 +15,13 @@ export enum VARS {
   // body must contain `#OTP#`.
   APP_CONFIG_SMSIR_API_KEY = 'APP_CONFIG_SMSIR_API_KEY',
   APP_CONFIG_SMSIR_TEMPLATE_ID = 'APP_CONFIG_SMSIR_TEMPLATE_ID',
+  // The id of the SECOND panel template: the new-order alert sent to admins
+  // (`src/logic/orders/notify-new-order.ts`). Its body must contain `#ORDER#`,
+  // `#AMOUNT#` and `#METHOD#`. Read only when the provider is `smsir`, and only
+  // on the order-alert path — deliberately NOT at driver construction, so a
+  // production that flips to `smsir` before this template exists keeps signing
+  // people in; only the alert fails, loudly.
+  APP_CONFIG_SMSIR_ORDER_TEMPLATE_ID = 'APP_CONFIG_SMSIR_ORDER_TEMPLATE_ID',
   // `true` echoes the one-time code back in the send-otp response, so the login
   // form can show it on screen. For staging/QA deployments, where the console
   // SMS driver means the code only ever reaches the server log. Anything but

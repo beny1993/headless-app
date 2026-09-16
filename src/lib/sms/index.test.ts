@@ -3,12 +3,40 @@ import {
   consoleSmsDriver,
   createSmsIrDriver,
   getSmsSender,
+  newOrderMessage,
+  newOrderSms,
   otpMessage,
+  otpSms,
   sendOtpSms,
   SMS_PROVIDERS,
 } from './index';
 
 const PHONE = '+989121234567';
+
+/** What the order-alert builder hands the seam — already Persian-formatted. */
+const ORDER_PARAMS = {
+  ORDER: '۱۰۲۴',
+  AMOUNT: '۲٬۴۵۰٬۰۰۰ تومان',
+  METHOD: 'کارت به کارت',
+} as const;
+
+describe('newOrderMessage', () => {
+  it('carries the order number, the total and the method', () => {
+    const message = newOrderMessage(ORDER_PARAMS);
+
+    expect(message).toContain(ORDER_PARAMS.ORDER);
+    expect(message).toContain(ORDER_PARAMS.AMOUNT);
+    expect(message).toContain(ORDER_PARAMS.METHOD);
+  });
+
+  it('is written in Persian', () => {
+    expect(newOrderMessage(ORDER_PARAMS)).toMatch(/[\u0600-\u06FF]/);
+  });
+
+  it('does not embed a link — an admin alert is not a place to click from', () => {
+    expect(newOrderMessage(ORDER_PARAMS)).not.toContain('http');
+  });
+});
 
 describe('otpMessage', () => {
   it('carries the code so the shopper can read it off the notification', () => {
@@ -39,7 +67,7 @@ describe('consoleSmsDriver', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('prints the recipient and the message so a local QA run can read it', async () => {
-    await consoleSmsDriver(PHONE, '482913');
+    await consoleSmsDriver(PHONE, otpSms('482913'));
 
     expect(log).toHaveBeenCalledTimes(1);
     const printed = log.mock.calls[0]!.join(' ');
@@ -48,13 +76,23 @@ describe('consoleSmsDriver', () => {
   });
 
   it('renders the Persian message itself — the seam carries only the code', async () => {
-    await consoleSmsDriver(PHONE, '482913');
+    await consoleSmsDriver(PHONE, otpSms('482913'));
 
     expect(log.mock.calls[0]!.join(' ')).toContain(otpMessage('482913'));
   });
 
+  it('renders the new-order alert from its parameters', async () => {
+    await consoleSmsDriver(PHONE, newOrderSms(ORDER_PARAMS));
+
+    expect(log.mock.calls[0]!.join(' ')).toContain(
+      newOrderMessage(ORDER_PARAMS),
+    );
+  });
+
   it('resolves — a driver that throws would fail the send-otp request', async () => {
-    await expect(consoleSmsDriver(PHONE, '482913')).resolves.toBeUndefined();
+    await expect(
+      consoleSmsDriver(PHONE, otpSms('482913')),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -229,7 +267,7 @@ describe('createSmsIrDriver', () => {
 
   describe('the request', () => {
     it('posts to the SMS.ir verify endpoint', async () => {
-      await createSmsIrDriver()(PHONE, '482913');
+      await createSmsIrDriver()(PHONE, otpSms('482913'));
 
       const [url, init] = fetchMock.mock.calls[0]!;
       expect(url).toBe('https://api.sms.ir/v1/send/verify');
@@ -237,7 +275,7 @@ describe('createSmsIrDriver', () => {
     });
 
     it('authenticates with the x-api-key header', async () => {
-      await createSmsIrDriver()(PHONE, '482913');
+      await createSmsIrDriver()(PHONE, otpSms('482913'));
 
       const headers = fetchMock.mock.calls[0]![1]!.headers as Record<
         string,
@@ -250,13 +288,13 @@ describe('createSmsIrDriver', () => {
     it('sends the national 09… form, not the canonical +98…', async () => {
       // Storage is canonical E.164; SMS.ir reads the local form. Sending the
       // stored string verbatim is the bug this pins.
-      await createSmsIrDriver()(PHONE, '482913');
+      await createSmsIrDriver()(PHONE, otpSms('482913'));
 
       expect(body().mobile).toBe('09121234567');
     });
 
     it('sends the template id as a number, as SMS.ir expects', async () => {
-      await createSmsIrDriver()(PHONE, '482913');
+      await createSmsIrDriver()(PHONE, otpSms('482913'));
 
       expect(body().templateId).toBe(100200);
     });
@@ -264,13 +302,13 @@ describe('createSmsIrDriver', () => {
     it('passes the code as the OTP template parameter', async () => {
       // The panel template substitutes #OTP#; a renamed parameter delivers an
       // SMS with the placeholder still in it.
-      await createSmsIrDriver()(PHONE, '482913');
+      await createSmsIrDriver()(PHONE, otpSms('482913'));
 
       expect(body().parameters).toEqual([{ name: 'OTP', value: '482913' }]);
     });
 
     it('bounds the request so a wedged provider cannot hang the login', async () => {
-      await createSmsIrDriver()(PHONE, '482913');
+      await createSmsIrDriver()(PHONE, otpSms('482913'));
 
       expect(fetchMock.mock.calls[0]![1]!.signal).toBeInstanceOf(AbortSignal);
     });
@@ -279,7 +317,7 @@ describe('createSmsIrDriver', () => {
   describe('the response', () => {
     it('resolves on status 1 — the code reached the gateway', async () => {
       await expect(
-        createSmsIrDriver()(PHONE, '482913'),
+        createSmsIrDriver()(PHONE, otpSms('482913')),
       ).resolves.toBeUndefined();
     });
 
@@ -289,16 +327,18 @@ describe('createSmsIrDriver', () => {
         reply(10, 401, 'کلید وب سرویس نامعتبر است'),
       );
 
-      await expect(createSmsIrDriver()(PHONE, '482913')).rejects.toThrow(
-        /کلید وب سرویس نامعتبر است/,
-      );
+      await expect(
+        createSmsIrDriver()(PHONE, otpSms('482913')),
+      ).rejects.toThrow(/کلید وب سرویس نامعتبر است/);
     });
 
     it('rejects on an unknown template rather than reporting a send', async () => {
       // api.sms.ir answers an unknown template with HTTP 400, status 113.
       fetchMock.mockResolvedValueOnce(reply(113, 400, 'قالب یافت نشد'));
 
-      await expect(createSmsIrDriver()(PHONE, '482913')).rejects.toThrow(/113/);
+      await expect(
+        createSmsIrDriver()(PHONE, otpSms('482913')),
+      ).rejects.toThrow(/113/);
     });
 
     it('rejects a body that is not SMS.ir’s envelope', async () => {
@@ -308,9 +348,9 @@ describe('createSmsIrDriver', () => {
         new Response('<html>502</html>', { status: 502 }),
       );
 
-      await expect(createSmsIrDriver()(PHONE, '482913')).rejects.toThrow(
-        /unrecognized/,
-      );
+      await expect(
+        createSmsIrDriver()(PHONE, otpSms('482913')),
+      ).rejects.toThrow(/unrecognized/);
     });
 
     it('rejects a JSON body missing the status field', async () => {
@@ -318,9 +358,9 @@ describe('createSmsIrDriver', () => {
         new Response(JSON.stringify({ message: 'ok' }), { status: 200 }),
       );
 
-      await expect(createSmsIrDriver()(PHONE, '482913')).rejects.toThrow(
-        /unrecognized/,
-      );
+      await expect(
+        createSmsIrDriver()(PHONE, otpSms('482913')),
+      ).rejects.toThrow(/unrecognized/);
     });
 
     it.each([
@@ -331,7 +371,7 @@ describe('createSmsIrDriver', () => {
       // exactly the leak src/lib/sentry.ts strips console breadcrumbs to avoid.
       fetchMock.mockResolvedValueOnce(make());
 
-      const error = await createSmsIrDriver()(PHONE, '482913').catch(
+      const error = await createSmsIrDriver()(PHONE, otpSms('482913')).catch(
         (caught: Error) => caught,
       );
 
@@ -339,6 +379,67 @@ describe('createSmsIrDriver', () => {
       expect(String(error)).not.toContain(PHONE);
       expect(String(error)).not.toContain('09121234567');
       expect(String(error)).not.toContain(KEY);
+    });
+  });
+
+  describe('the new-order template', () => {
+    // The trap this pins: production flips APP_CONFIG_SMS_PROVIDER to `smsir`
+    // before the second panel template has been created. Sign-in must keep
+    // working — only the order alert may fail, and it must fail loudly.
+    beforeEach(() => {
+      vi.stubEnv('APP_CONFIG_SMSIR_ORDER_TEMPLATE_ID', '');
+    });
+
+    it('builds the driver with no order template id set', () => {
+      expect(createSmsIrDriver).not.toThrow();
+    });
+
+    it('still sends an OTP with no order template id set', async () => {
+      await expect(
+        createSmsIrDriver()(PHONE, otpSms('482913')),
+      ).resolves.toBeUndefined();
+
+      expect(body().templateId).toBe(100200);
+    });
+
+    it('rejects an order alert with no id set, naming the variable', async () => {
+      await expect(
+        createSmsIrDriver()(PHONE, newOrderSms(ORDER_PARAMS)),
+      ).rejects.toThrow(/APP_CONFIG_SMSIR_ORDER_TEMPLATE_ID/);
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it.each(['abc', '12.5', '-1', '0'])(
+      'refuses %j as an order template id',
+      async (value) => {
+        vi.stubEnv('APP_CONFIG_SMSIR_ORDER_TEMPLATE_ID', value);
+
+        await expect(
+          createSmsIrDriver()(PHONE, newOrderSms(ORDER_PARAMS)),
+        ).rejects.toThrow(/APP_CONFIG_SMSIR_ORDER_TEMPLATE_ID/);
+      },
+    );
+
+    it('posts the order template id, not the OTP one', async () => {
+      vi.stubEnv('APP_CONFIG_SMSIR_ORDER_TEMPLATE_ID', '300400');
+
+      await createSmsIrDriver()(PHONE, newOrderSms(ORDER_PARAMS));
+
+      expect(body().templateId).toBe(300400);
+    });
+
+    it('sends the order fields as named parameters, never as #OTP#', async () => {
+      // A renamed parameter delivers an SMS with the placeholders still in it.
+      vi.stubEnv('APP_CONFIG_SMSIR_ORDER_TEMPLATE_ID', '300400');
+
+      await createSmsIrDriver()(PHONE, newOrderSms(ORDER_PARAMS));
+
+      expect(body().parameters).toEqual([
+        { name: 'ORDER', value: ORDER_PARAMS.ORDER },
+        { name: 'AMOUNT', value: ORDER_PARAMS.AMOUNT },
+        { name: 'METHOD', value: ORDER_PARAMS.METHOD },
+      ]);
     });
   });
 
