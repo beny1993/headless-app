@@ -42,17 +42,15 @@ export class UserDao {
   static async listAdminsWithPhone(): Promise<
     { id: string; phoneNumber: string }[]
   > {
-    const rows = await db
+    // The cast is what `isNotNull` above already guarantees — drizzle types the
+    // column from the schema, not from the predicate. Deliberately the ONLY
+    // filter: a second one in JS would mean the `where` could be dropped
+    // without a single test noticing.
+    return (await db
       .select({ id: users.id, phoneNumber: users.phoneNumber })
       .from(users)
       .where(and(eq(users.role, ROLES.ADMIN), isNotNull(users.phoneNumber)))
-      .orderBy(asc(users.createdAt));
-    // `isNotNull` above is the real filter; this only carries that fact into
-    // the type, so a caller never has to re-check what SQL already excluded.
-    return rows.filter(
-      (row): row is { id: string; phoneNumber: string } =>
-        row.phoneNumber !== null,
-    );
+      .orderBy(asc(users.createdAt))) as { id: string; phoneNumber: string }[];
   }
 
   static async list(): Promise<User[]> {
