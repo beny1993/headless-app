@@ -1,6 +1,6 @@
 // All Drizzle DB access goes through DAOs like this one. Multi-DAO operations
 // belong in src/logic/, not in route handlers or components. Never write raw SQL.
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { db } from '@/db';
 import { ROLES, users, type Role, type User } from '@/db/schema/auth';
 
@@ -28,6 +28,31 @@ export class UserDao {
       .where(eq(users.phoneNumber, phone))
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  /**
+   * Every admin who can receive an SMS — the new-order alert's recipient list
+   * (`src/logic/orders/notify-new-order.ts`). `role` is READ here and never
+   * written: granting it stays `pnpm create-admin`'s job alone, which is also
+   * what makes this list an admin's opt-in.
+   *
+   * Deliberately one `and(...)`: the admin settings page adds its per-admin
+   * opt-out as one more clause here, and nowhere else.
+   */
+  static async listAdminsWithPhone(): Promise<
+    { id: string; phoneNumber: string }[]
+  > {
+    const rows = await db
+      .select({ id: users.id, phoneNumber: users.phoneNumber })
+      .from(users)
+      .where(and(eq(users.role, ROLES.ADMIN), isNotNull(users.phoneNumber)))
+      .orderBy(asc(users.createdAt));
+    // `isNotNull` above is the real filter; this only carries that fact into
+    // the type, so a caller never has to re-check what SQL already excluded.
+    return rows.filter(
+      (row): row is { id: string; phoneNumber: string } =>
+        row.phoneNumber !== null,
+    );
   }
 
   static async list(): Promise<User[]> {
