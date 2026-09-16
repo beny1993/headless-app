@@ -34,6 +34,7 @@ All runtime configuration is env-only. Names come from the `VARS` enum in
 | `APP_CONFIG_SMS_PROVIDER` | yes | OTP SMS driver. `console` (default) logs codes to the server log — **fine for a soft launch, not for real customers**. Set to `smsir` before launch (see §6). |
 | `APP_CONFIG_SMSIR_API_KEY` | when `=smsir` | SMS.ir web-service key, sent as `x-api-key`. A **secret** — Coolify env only, never a build arg. |
 | `APP_CONFIG_SMSIR_TEMPLATE_ID` | when `=smsir` | Numeric id of the SMS.ir panel template the code is substituted into. Its body must contain `#OTP#`. |
+| `APP_CONFIG_SMSIR_ORDER_TEMPLATE_ID` | for order alerts | Numeric id of the **second** panel template: the new-order SMS every admin with a phone number gets. Its body must contain `#ORDER#`, `#AMOUNT#` and `#METHOD#`. Read only on that send — unset, sign-in is unaffected and only the alert fails, into Sentry. |
 | `APP_CONFIG_SHOW_OTP_IN_UI` | no | `true` prints the OTP on the login page for **staging/QA only**, where `console` codes reach nothing but the server log. Anything else is off, and it is ignored unless `APP_CONFIG_SMS_PROVIDER=console`. Never set it on the production app — it is a sign-in bypass. |
 | `APP_CONFIG_MAINTENANCE_MODE` | no | `true` shows every storefront page as the maintenance screen to everyone but a signed-in admin, who sees the real site. `/login` and `/admin-panel` stay open. Anything else is off. Restart after changing it — no rebuild. Hides the shop, does not lock it: `/api` stays reachable. |
 | `APP_CONFIG_ZARINPAL_PROVIDER` | yes | `mock` (default) simulates the full pay flow with no gateway account. Set to `zarinpal` at the real-gateway flip (see §6). |
@@ -211,6 +212,12 @@ and deliberately not baked into the image:
       If the SMS.ir panel's IP restriction is on, list the server's outbound
       IPv4 (app → Terminal in Coolify: `wget -qO- https://api.ipify.org`), plus
       the IP of whatever machine runs `verify-sms`; anything unlisted is refused.
+- [ ] **New-order admin alert:** create the **second** SMS.ir panel template
+      (body with `#ORDER#`, `#AMOUNT#` and `#METHOD#`) and set
+      `APP_CONFIG_SMSIR_ORDER_TEMPLATE_ID`. Every admin holding the `admin`
+      role who has a phone number then gets one SMS per order, so
+      `pnpm create-admin` is what puts someone on that list. Unset, the
+      driver still signs people in and only the alert fails, into Sentry.
 - [ ] **`APP_CONFIG_SHOW_OTP_IN_UI` unset (or `false`) on production.** Staging
       sets it to `true` to read codes off the login page; production must not,
       and the real SMS driver above also disarms it.
