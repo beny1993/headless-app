@@ -23,24 +23,31 @@ export const SMS_TEMPLATES = {
 
 export type SmsTemplate = (typeof SMS_TEMPLATES)[keyof typeof SMS_TEMPLATES];
 
+/** The sign-in code, and the panel template that renders it. */
+export type OtpSmsMessage = {
+  template: typeof SMS_TEMPLATES.OTP;
+  parameters: { OTP: string };
+};
+
+/** The new-order admin alert, already formatted for display. */
+export type NewOrderSmsMessage = {
+  template: typeof SMS_TEMPLATES.NEW_ORDER;
+  parameters: { ORDER: string; AMOUNT: string; METHOD: string };
+};
+
 /**
  * One message as the seam carries it: which template, and the parameters that
  * template substitutes. A union rather than a loose `Record<string, string>` —
  * a parameter named for the wrong template is a delivered SMS with `#ORDER#`
  * still in it, and that is a compile error here instead.
  */
-export type SmsMessage =
-  | { template: typeof SMS_TEMPLATES.OTP; parameters: { OTP: string } }
-  | {
-      template: typeof SMS_TEMPLATES.NEW_ORDER;
-      parameters: { ORDER: string; AMOUNT: string; METHOD: string };
-    };
+export type SmsMessage = OtpSmsMessage | NewOrderSmsMessage;
 
 /** Everything a provider has to do: get one message to one number. */
 export type SmsSender = (to: string, message: SmsMessage) => Promise<void>;
 
 /** The sign-in code, as the seam carries it. */
-export const otpSms = (code: string): SmsMessage => ({
+export const otpSms = (code: string): OtpSmsMessage => ({
   template: SMS_TEMPLATES.OTP,
   parameters: { OTP: code },
 });
@@ -50,11 +57,9 @@ export const otpSms = (code: string): SmsMessage => ({
  * formatted for display (`src/logic/orders/notify-new-order.ts` builds them
  * through `src/lib/format.ts`) — this module knows nothing about orders.
  */
-export const newOrderSms = (parameters: {
-  ORDER: string;
-  AMOUNT: string;
-  METHOD: string;
-}): SmsMessage => ({ template: SMS_TEMPLATES.NEW_ORDER, parameters });
+export const newOrderSms = (
+  parameters: NewOrderSmsMessage['parameters'],
+): NewOrderSmsMessage => ({ template: SMS_TEMPLATES.NEW_ORDER, parameters });
 
 /** Providers with a driver behind them. */
 export const SMS_PROVIDERS = ['console', 'smsir'] as const;
@@ -83,11 +88,9 @@ export function otpMessage(code: string): string {
  * SMS.ir panel template says. No customer name, phone, city or address: an SMS
  * is not a secure channel, and the admin panel is one tap away.
  */
-export function newOrderMessage(parameters: {
-  ORDER: string;
-  AMOUNT: string;
-  METHOD: string;
-}): string {
+export function newOrderMessage(
+  parameters: NewOrderSmsMessage['parameters'],
+): string {
   return (
     `سفارش جدید در اسموکی — شماره ${parameters.ORDER}، ` +
     `مبلغ ${parameters.AMOUNT}، پرداخت: ${parameters.METHOD}`

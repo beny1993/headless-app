@@ -31,6 +31,10 @@ import {
   DISCOUNT_FIELD,
   assertDiscountApplicable,
 } from '@/logic/checkout/discount';
+import {
+  notifiesOnCreate,
+  notifyAdminsOfNewOrder,
+} from '@/logic/orders/notify-new-order';
 
 // Re-exported so the many importers of `CheckoutError` keep their path
 // (`@/logic/checkout/create-order`); the class itself lives in ./checkout-error
@@ -165,7 +169,7 @@ export const createOrder = async (
     .sort(byProductId);
 
   try {
-    return await db.transaction(async (tx) => {
+    const order = await db.transaction(async (tx) => {
       const loaded = await ProductDao.getByIds(
         tx,
         lines.map((line) => line.productId),
@@ -297,6 +301,17 @@ export const createOrder = async (
 
       return order;
     });
+
+    // Tell the admins — AFTER the commit, and only here: neither replay branch
+    // (the fast path above, the unique-violation catch below) reaches this line,
+    // so a double-submit sends one SMS. Deliberately un-awaited and never
+    // `await`ed anywhere: `notifyAdminsOfNewOrder` catches everything and never
+    // rejects, so the shopper's response cannot be delayed or failed by a wedged
+    // SMS provider. Not Next's `after()` — the reconcile sweep and the tests
+    // call this function with no request scope at all.
+    if (notifiesOnCreate(order.status)) void notifyAdminsOfNewOrder(order.id);
+
+    return order;
   } catch (error) {
     // A concurrent request with the same key won the race: its insert committed
     // first, so this transaction's insert tripped the partial unique index and
