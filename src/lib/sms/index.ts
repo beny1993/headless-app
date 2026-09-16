@@ -253,7 +253,9 @@ export const createSmsIrDriver = (): SmsSender => {
     if (parsed.data.status !== SMSIR_SUCCESS_STATUS) {
       throw new Error(
         `sms.ir refused the send (HTTP ${response.status}, status ` +
-          `${parsed.data.status}): ${parsed.data.message}`,
+          // Untrusted, and on its way to Sentry: enough of the provider's
+          // reason to act on, never a whole outage page.
+          `${parsed.data.status}): ${parsed.data.message.slice(0, 200)}`,
       );
     }
   };

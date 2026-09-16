@@ -80,16 +80,27 @@ export const notifiesOnCreate = (status: OrderStatus): boolean =>
 export const notifiesOnSettle = (outcome: SettleOutcome): boolean =>
   outcome === 'paid';
 
-/** One report per failed alert: the order number, and nothing else. */
+/**
+ * One report per failed alert: the order number, and nothing else.
+ *
+ * Its own try/catch because it runs inside the catch below: a console that has
+ * lost its pipe, or a Sentry client that throws, would otherwise leave this
+ * un-awaited promise rejected — and Node 24 exits the process on an unhandled
+ * rejection. A report that cannot be made is not worth the container.
+ */
 const report = (error: unknown, orderNo?: number) => {
-  console.error(
-    `[new-order-sms] alert failed for order ${orderNo ?? 'unknown'}`,
-    error,
-  );
-  // At most the order number — never an admin's phone, never anything of the
-  // customer's. That is the privacy contract in src/lib/sentry.ts, and the
-  // reason the console-breadcrumb integration is removed there.
-  Sentry.captureException(error, { extra: { orderNo } });
+  try {
+    console.error(
+      `[new-order-sms] alert failed for order ${orderNo ?? 'unknown'}`,
+      error,
+    );
+    // At most the order number — never an admin's phone, never anything of the
+    // customer's. That is the privacy contract in src/lib/sentry.ts, and the
+    // reason the console-breadcrumb integration is removed there.
+    Sentry.captureException(error, { extra: { orderNo } });
+  } catch {
+    // Nowhere left to report to.
+  }
 };
 
 /**

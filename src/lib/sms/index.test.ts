@@ -341,6 +341,19 @@ describe('createSmsIrDriver', () => {
       ).rejects.toThrow(/113/);
     });
 
+    it('caps how much of SMS.ir’s message it repeats', async () => {
+      // The body is an untrusted string and this error reaches Sentry. A
+      // provider outage page or a hostile proxy must not paste a novel into an
+      // error report.
+      fetchMock.mockResolvedValueOnce(reply(10, 401, 'خ'.repeat(5_000)));
+
+      const error = await createSmsIrDriver()(PHONE, otpSms('482913')).catch(
+        (caught: Error) => caught,
+      );
+
+      expect(String(error).length).toBeLessThan(400);
+    });
+
     it('rejects a body that is not SMS.ir’s envelope', async () => {
       // A proxy error page or an outage HTML body. Reporting success here
       // leaves the shopper waiting for an SMS that was never dispatched.

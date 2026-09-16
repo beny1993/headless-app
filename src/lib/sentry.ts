@@ -109,6 +109,9 @@ const SAFE_DATABASE_EXTRA_KEYS = new Set([
   'path',
   'paymentId',
   'orderId',
+  // The new-order alert's only context. A database failure is exactly when
+  // knowing which order lost its SMS is worth something.
+  'orderNo',
 ]);
 
 const safeDatabaseExtras = (extra: Sentry.ErrorEvent['extra']) => {

@@ -203,6 +203,19 @@ describe('notifyAdminsOfNewOrder', () => {
     expect(mocks.captureException).toHaveBeenCalledTimes(1);
   });
 
+  it('resolves even when the reporting itself throws', async () => {
+    // The last line of defence. `report` runs in the catch, so anything it
+    // throws — a console that has lost its pipe, a Sentry client mid-init —
+    // leaves the un-awaited promise rejected, and Node 24 exits the process on
+    // an unhandled rejection. Long after the checkout it belongs to returned.
+    mocks.sendSms.mockRejectedValue(new Error('sms.ir refused the send'));
+    vi.spyOn(console, 'error').mockImplementation(() => {
+      throw new Error('EPIPE');
+    });
+
+    await expect(notifyAdminsOfNewOrder(ORDER.id)).resolves.toBeUndefined();
+  });
+
   it('reports the order number to Sentry and nothing else', async () => {
     // The privacy contract in src/lib/sentry.ts: no admin phone number, nothing
     // of the customer's, in an error report.
