@@ -47,6 +47,8 @@ const PRODUCT_UNAVAILABLE = 'محصول انتخابی دیگر در دسترس 
 const INVALID_PROVINCE = 'استان انتخاب‌شده نامعتبر است.';
 const TOO_MANY_OPEN_ORDERS =
   'تعداد سفارش‌های در انتظار پرداختِ شما به حد مجاز رسیده است؛ لطفاً یکی را کامل یا لغو کنید.';
+const TOO_MANY_RECENT_ORDERS =
+  'تعداد سفارش‌های شما در یک ساعت گذشته بیش از حد مجاز است؛ لطفاً بعداً دوباره تلاش کنید.';
 const insufficientStock = (title: string) =>
   `موجودی «${title}» برای تعداد درخواستی کافی نیست.`;
 
@@ -65,6 +67,30 @@ const insufficientStock = (title: string) =>
  * caps abuse; tune it here.
  */
 export const MAX_OPEN_ORDERS = 5;
+
+/**
+ * Rolling per-user cap on order CREATION — every status, every payment method.
+ *
+ * `MAX_OPEN_ORDERS` above counts only `pending_payment`, so it never saw a COD
+ * checkout at all: a COD order is `processing` from birth. One OTP-verified
+ * shopper could therefore loop `POST /api/checkout` with a fresh
+ * `Idempotency-Key` each time and mint orders without limit — every one of them
+ * an SMS to every admin (`notifyAdminsOfNewOrder`) and a row burying the real
+ * orders on `/admin-panel/orders`. This cap is the one chokepoint that bounds
+ * that, for both payment methods at once.
+ *
+ * 30/hour is far above any real shopper — and above the machines: the E2E
+ * suite's single throwaway customer places 15 orders in one full run (13
+ * through `placeOrder`/`completeCheckout` across both viewports, 2 in the
+ * card-to-card content spec). Count them with
+ * `grep -c 'checkout-submit-order' e2e/*.spec.ts e2e/support.ts`, and keep the
+ * headroom if the suite grows.
+ *
+ * Deliberately NOT status-aware: cancelling an order must not give the quota
+ * back (see `OrderDao.countCreatedSince`). Only time does.
+ */
+export const MAX_ORDERS_PER_WINDOW = 30;
+export const ORDER_RATE_WINDOW_MS = 60 * 60 * 1000;
 
 /** Ascending productId — the deterministic lock order the design mandates. */
 const byProductId = (a: { productId: string }, b: { productId: string }) =>
@@ -145,7 +171,19 @@ export const createOrder = async (
   const rate = await ShippingRateDao.getByProvinceId(input.address.provinceId);
   if (!rate) throw new CheckoutError('address.provinceId', INVALID_PROVINCE);
 
-  // 2. Interim open-order cap (fail-fast, before the transaction). Only orders
+  // 2a. The rolling creation cap, fail-fast, before the transaction: every
+  // order this user created in the window, whatever its status and however it
+  // was paid. This is the one that bounds a COD loop, and a replay never reaches
+  // it — the fast path above returned. See MAX_ORDERS_PER_WINDOW.
+  const recentOrders = await OrderDao.countCreatedSince(
+    userId,
+    new Date(Date.now() - ORDER_RATE_WINDOW_MS),
+  );
+  if (recentOrders >= MAX_ORDERS_PER_WINDOW) {
+    throw new CheckoutError('paymentMethod', TOO_MANY_RECENT_ORDERS);
+  }
+
+  // 2b. Interim open-order cap (fail-fast, before the transaction). Only orders
   // that WOULD enter `pending_payment` are gated — the one state whose reserved
   // stock has no release path yet — so a COD checkout (→ `processing`) is never
   // blocked and never counted. See `MAX_OPEN_ORDERS`.

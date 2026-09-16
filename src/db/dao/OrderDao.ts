@@ -242,6 +242,23 @@ export class OrderDao {
   }
 
   /**
+   * How many orders `userId` created since `since` — the input to checkout's
+   * rolling creation cap.
+   *
+   * No status filter, deliberately: a cancelled or failed order still cost the
+   * shop a row, a stock movement and an SMS to every admin, so letting it stop
+   * counting would hand an attacker a reset button (create to the cap, cancel
+   * everything, go again). Only the clock lets the count fall.
+   */
+  static async countCreatedSince(userId: string, since: Date): Promise<number> {
+    const [row] = await db
+      .select({ value: count() })
+      .from(orders)
+      .where(and(eq(orders.userId, userId), gte(orders.createdAt, since)));
+    return row.value;
+  }
+
+  /**
    * The current status of one order, read inside the caller's transaction. The
    * Zarinpal verify path uses it after a lost `pending_payment → paid` CAS to
    * decide *why* the order moved on — already `paid` (idempotent replay) versus
