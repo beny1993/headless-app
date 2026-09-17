@@ -33,7 +33,7 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
       price: 100_000,
       stock: 1,
       categoryId,
-      petType: PET_TYPES.CAT,
+      petTypes: [PET_TYPES.CAT],
     });
   };
 

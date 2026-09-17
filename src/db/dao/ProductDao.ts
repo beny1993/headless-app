@@ -7,6 +7,7 @@
 // reads filter on `is_active` instead.
 import {
   and,
+  arrayContains,
   asc,
   count,
   desc,
@@ -127,8 +128,17 @@ const ORDER_BY: Record<ProductSort, SQL[]> = {
   [PRODUCT_SORTS.PRICE_DESC]: [desc(products.price), asc(products.sku)],
 };
 
+/**
+ * «Suitable for this pet» — `pet_type @> ARRAY[x]`, so a both-pets product
+ * answers the cat filter and the dog filter alike, and appears exactly once
+ * under each. Still one pet per query: `?pet=` is single-valued.
+ */
+const petFilter = (petType: PetType): SQL =>
+  arrayContains(products.petTypes, [petType]);
+
 export type ProductFilters = {
   categorySlug?: string;
+  /** One pet; a product suits it when its selection contains it. */
   petType?: PetType;
   /** Inclusive, integer Toman. */
   minPrice?: number;
@@ -233,7 +243,7 @@ export class ProductDao {
       where.push(eq(categories.slug, filters.categorySlug));
     }
     if (filters.petType) {
-      where.push(eq(products.petType, filters.petType));
+      where.push(petFilter(filters.petType));
     }
     // Compared against undefined, not truthiness: a `minPrice` of 0 is a real
     // bound, even if the price check makes it a no-op.
@@ -323,7 +333,7 @@ export class ProductDao {
       where.push(eq(categories.slug, filters.categorySlug));
     }
     if (filters.petType) {
-      where.push(eq(products.petType, filters.petType));
+      where.push(petFilter(filters.petType));
     }
     // A plain case-insensitive substring on the normalized search text — an
     // operational lookup, not the storefront's trigram fuzziness, so it needs
@@ -548,7 +558,7 @@ export class ProductDao {
           oldPrice: input.oldPrice ?? null,
           stock: input.stock ?? 0,
           categoryId: input.categoryId,
-          petType: input.petType,
+          petTypes: input.petTypes,
           // On the update branch too, or a corrected title in the seed would
           // never reach the index — the row would keep the text it was first
           // inserted with, and re-running the seed would look like a no-op.

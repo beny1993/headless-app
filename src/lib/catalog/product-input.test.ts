@@ -19,7 +19,7 @@ const valid = {
   oldPrice: 2_900_000,
   stock: 12,
   categoryId: '123e4567-e89b-12d3-a456-426614174000',
-  petType: PET_TYPES.CAT,
+  petTypes: [PET_TYPES.CAT],
   isActive: true,
 };
 
@@ -27,7 +27,7 @@ describe('productInputSchema', () => {
   it('accepts a well-formed product', () => {
     const parsed = productInputSchema.parse(valid);
     expect(parsed.price).toBe(2_450_000);
-    expect(parsed.petType).toBe('cat');
+    expect(parsed.petTypes).toEqual(['cat']);
   });
 
   describe('money is integer Toman', () => {
@@ -146,10 +146,45 @@ describe('productInputSchema', () => {
     });
   });
 
-  it('rejects an unknown pet type', () => {
-    expect(
-      productInputSchema.safeParse({ ...valid, petType: 'hamster' }).success,
-    ).toBe(false);
+  describe('the pet selection', () => {
+    const pets = (input: unknown) =>
+      productInputSchema.safeParse({ ...valid, petTypes: input });
+
+    it('accepts both pets and stores them in the canonical order', () => {
+      expect(pets([PET_TYPES.DOG, PET_TYPES.CAT]).data?.petTypes).toEqual([
+        'cat',
+        'dog',
+      ]);
+    });
+
+    it('dedupes a repeated pet rather than storing it twice', () => {
+      expect(pets([PET_TYPES.CAT, PET_TYPES.CAT]).data?.petTypes).toEqual([
+        'cat',
+      ]);
+    });
+
+    it('refuses an empty selection with the message the form shows', () => {
+      const parsed = pets([]);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0]).toMatchObject({
+        path: ['petTypes'],
+        message: PRODUCT_MESSAGES.petRequired,
+      });
+    });
+
+    it('refuses a missing key with the same message', () => {
+      const { petTypes: _omitted, ...withoutPets } = valid;
+      const parsed = productInputSchema.safeParse(withoutPets);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0].message).toBe(
+        PRODUCT_MESSAGES.petRequired,
+      );
+    });
+
+    it('rejects an unknown pet type', () => {
+      expect(pets(['hamster']).success).toBe(false);
+      expect(pets(PET_TYPES.CAT).success).toBe(false);
+    });
   });
 
   describe('free-text hardening', () => {

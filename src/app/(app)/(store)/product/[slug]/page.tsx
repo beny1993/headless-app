@@ -12,7 +12,7 @@ import {
 import { ProductGallery } from '@/features/storefront/product/product-gallery';
 import { ProductPurchase } from '@/features/storefront/product/product-purchase';
 import { ProductTabs } from '@/features/storefront/product/product-tabs';
-import { PET_LABELS } from '@/features/storefront/shop/shop-query';
+import { formatPetTypes } from '@/features/storefront/shop/shop-query';
 import { productSlugSchema } from '@/lib/catalog/product-query';
 import type { ProductWithImages } from '@/db/schema/catalog';
 import { PATHS, shopPath } from '@/lib/constant/paths';
@@ -191,7 +191,7 @@ export default async function ProductDetailPage({ params }: Params) {
                   )}
                   <Spec
                     label="مناسب برای"
-                    value={PET_LABELS[product.petType]}
+                    value={formatPetTypes(product.petTypes)}
                   />
                 </dl>
               ),

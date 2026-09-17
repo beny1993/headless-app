@@ -76,7 +76,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       price: 100_000,
       stock: 5,
       categoryId: category.id,
-      petType: PET_TYPES.CAT,
+      petTypes: [PET_TYPES.CAT],
       ...overrides,
     };
   };
@@ -184,13 +184,31 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       expect(page.totalPages).toBe(1);
     });
 
+    it('lists a both-pets product under each pet, and carries both in the payload', async () => {
+      const category = await makeCategory();
+      const both = await ProductDao.create(
+        makeProduct(category, { petTypes: [PET_TYPES.CAT, PET_TYPES.DOG] }),
+      );
+
+      const listed = async (pet: string) =>
+        getData<ProductListResponse>(
+          `${API_PATHS.PRODUCTS}?category=${category.slug}&pet=${pet}`,
+        );
+      const [cats, dogs] = await Promise.all([listed('cat'), listed('dog')]);
+
+      expect(cats.items.map((row) => row.id)).toEqual([both.id]);
+      expect(dogs.items.map((row) => row.id)).toEqual([both.id]);
+      expect([cats.total, dogs.total]).toEqual([1, 1]);
+      expect(cats.items[0].petTypes).toEqual(['cat', 'dog']);
+    });
+
     it('filters by pet type', async () => {
       const category = await makeCategory();
       await ProductDao.create(
-        makeProduct(category, { petType: PET_TYPES.CAT }),
+        makeProduct(category, { petTypes: [PET_TYPES.CAT] }),
       );
       const dog = await ProductDao.create(
-        makeProduct(category, { petType: PET_TYPES.DOG }),
+        makeProduct(category, { petTypes: [PET_TYPES.DOG] }),
       );
 
       const page = await getData<ProductListResponse>(
@@ -336,7 +354,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       // combination that could reach around the flag is the bug worth catching.
       const category = await makeCategory();
       const removed = await ProductDao.create(
-        makeProduct(category, { price: 70_000, petType: PET_TYPES.DOG }),
+        makeProduct(category, { price: 70_000, petTypes: [PET_TYPES.DOG] }),
       );
       await ProductDao.softDelete(removed.id);
 
@@ -552,7 +570,7 @@ describe.skipIf(!databaseReachable)('GET /api/products?q=', () => {
         price: 100_000,
         stock: 5,
         categoryId: category.id,
-        petType: PET_TYPES.CAT,
+        petTypes: [PET_TYPES.CAT],
         ...overrides,
       });
     };
@@ -567,7 +585,7 @@ describe.skipIf(!databaseReachable)('GET /api/products?q=', () => {
         title: 'شامپو ضد کک و کنه سگ',
         brand: 'Beaphar',
         benefit: 'پوست حساس',
-        petType: PET_TYPES.DOG,
+        petTypes: [PET_TYPES.DOG],
       }),
     ]);
 

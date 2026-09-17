@@ -23,7 +23,7 @@ import {
   productInputSchema,
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
-import { PET_TYPES } from '@/lib/catalog/product-query';
+import { PET_TYPE_VALUES } from '@/lib/catalog/product-query';
 import { generateSku } from '@/lib/catalog/sku';
 import { replaceProductImage } from '@/logic/admin/product-images';
 import { readImageUpload } from '../image-upload';
@@ -61,7 +61,7 @@ const AdminProductSchema = z
     stock: z.number().int().nonnegative(),
     isActive: z.boolean(),
     categoryId: z.uuid(),
-    petType: z.enum([PET_TYPES.CAT, PET_TYPES.DOG]),
+    petTypes: z.array(z.enum(PET_TYPE_VALUES)).min(1),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
@@ -84,7 +84,7 @@ const toAdminProduct = (p: Product): AdminProductResponse => ({
   stock: p.stock,
   isActive: p.isActive,
   categoryId: p.categoryId,
-  petType: p.petType,
+  petTypes: p.petTypes,
   createdAt: p.createdAt.toISOString(),
   updatedAt: p.updatedAt.toISOString(),
 });

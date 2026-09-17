@@ -39,7 +39,7 @@ const product = (
   stock: 5,
   isActive: true,
   categoryId: '22222222-2222-4222-8222-222222222222',
-  petType: 'cat',
+  petTypes: ['cat'],
   createdAt: new Date('2026-09-01T00:00:00Z'),
   updatedAt: new Date('2026-09-01T00:00:00Z'),
   searchText: '',

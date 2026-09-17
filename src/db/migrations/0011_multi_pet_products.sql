@@ -1,0 +1,2 @@
+ALTER TABLE "products" ALTER COLUMN "pet_type" SET DATA TYPE "public"."pet_type"[] USING ARRAY["pet_type"];--> statement-breakpoint
+ALTER TABLE "products" ADD CONSTRAINT "products_pet_type_not_empty" CHECK (cardinality("products"."pet_type") >= 1);

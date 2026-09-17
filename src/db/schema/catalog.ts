@@ -86,7 +86,14 @@ export const products = pgTable(
     categoryId: uuid('category_id')
       .notNull()
       .references(() => categories.id, { onDelete: 'restrict' }),
-    petType: petTypeEnum('pet_type').notNull(),
+    /**
+     * Which pets the product suits — one of them, or both. An array of the
+     * `pet_type` enum rather than a third `both` value, because the very same
+     * enum types a customer's own pet (`pets.type`) and a pet is one species.
+     * Stored in `PET_TYPE_VALUES` order; `products_pet_type_not_empty` is what
+     * keeps «no pet at all» out.
+     */
+    petTypes: petTypeEnum('pet_type').array().notNull(),
     createdAt,
     updatedAt,
   },
@@ -101,6 +108,12 @@ export const products = pgTable(
     check(
       'products_old_price_above_price',
       sql`${table.oldPrice} is null or ${table.oldPrice} > ${table.price}`,
+    ),
+    // A product with no pet at all is filed nowhere and listed under neither
+    // filter. NOT NULL alone would let `{}` through.
+    check(
+      'products_pet_type_not_empty',
+      sql`cardinality(${table.petTypes}) >= 1`,
     ),
     index('products_category_id_idx').on(table.categoryId),
     index('products_is_active_idx').on(table.isActive),

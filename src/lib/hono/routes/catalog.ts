@@ -17,7 +17,7 @@ import { ProductDao } from '@/db/dao/ProductDao';
 import {
   MAX_PRODUCT_PAGE_SIZE,
   MAX_SEARCH_TERM_LENGTH,
-  PET_TYPES,
+  PET_TYPE_VALUES,
   productListQueryShape,
   productSlugSchema,
 } from '@/lib/catalog/product-query';
@@ -66,7 +66,8 @@ const ProductSchema = z
     price: z.number().int().positive(),
     oldPrice: z.number().int().positive().nullable(),
     stock: z.number().int().nonnegative(),
-    petType: z.enum([PET_TYPES.CAT, PET_TYPES.DOG]),
+    /** One pet or both, in the catalog's canonical order. Never empty. */
+    petTypes: z.array(z.enum(PET_TYPE_VALUES)).min(1),
     categoryId: z.uuid(),
     createdAt: z.iso.datetime(),
     images: z.array(ProductImageSchema),
@@ -187,7 +188,7 @@ const toProductResponse = (row: ProductWithImages): ProductResponse => ({
   price: row.price,
   oldPrice: row.oldPrice,
   stock: row.stock,
-  petType: row.petType,
+  petTypes: row.petTypes,
   categoryId: row.categoryId,
   createdAt: row.createdAt.toISOString(),
   images: row.images.map((image) => ({

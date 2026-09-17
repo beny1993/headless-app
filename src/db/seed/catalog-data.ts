@@ -34,7 +34,7 @@ type SeedProduct = {
   oldPrice: number | null;
   stock: number;
   categorySlug: (typeof SEED_CATEGORIES)[number]['slug'];
-  petType: PetType;
+  petTypes: PetType[];
   imageKeys: string[];
 };
 
@@ -49,7 +49,7 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: 320_000,
     stock: 24,
     categorySlug: 'dry-food',
-    petType: PET_TYPES.CAT,
+    petTypes: [PET_TYPES.CAT],
     imageKeys: ['products/cat-dry-food.jpg'],
   },
   {
@@ -62,7 +62,7 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: null,
     stock: 12,
     categorySlug: 'dry-food',
-    petType: PET_TYPES.DOG,
+    petTypes: [PET_TYPES.DOG],
     imageKeys: ['products/dog-dry-food.jpg'],
   },
   {
@@ -75,7 +75,7 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: null,
     stock: 40,
     categorySlug: 'treats',
-    petType: PET_TYPES.CAT,
+    petTypes: [PET_TYPES.CAT],
     imageKeys: ['products/cat-treats.jpg'],
   },
   {
@@ -88,7 +88,7 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: 190_000,
     stock: 18,
     categorySlug: 'treats',
-    petType: PET_TYPES.DOG,
+    petTypes: [PET_TYPES.DOG],
     imageKeys: ['products/dog-treats.jpg'],
   },
   {
@@ -103,7 +103,7 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: null,
     stock: 0,
     categorySlug: 'wet-food',
-    petType: PET_TYPES.CAT,
+    petTypes: [PET_TYPES.CAT],
     imageKeys: ['products/cat-wet-food.jpg'],
   },
   {
@@ -116,7 +116,7 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: 210_000,
     stock: 7,
     categorySlug: 'supplements',
-    petType: PET_TYPES.CAT,
+    petTypes: [PET_TYPES.CAT],
     imageKeys: ['products/cat-supplement.jpg'],
   },
   {
@@ -129,7 +129,7 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: null,
     stock: 15,
     categorySlug: 'supplements',
-    petType: PET_TYPES.DOG,
+    petTypes: [PET_TYPES.DOG],
     // The prototype reuses the dog dry-food photo for this one.
     imageKeys: ['products/dog-dry-food.jpg'],
   },
@@ -144,7 +144,7 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: null,
     stock: 3,
     categorySlug: 'toys',
-    petType: PET_TYPES.CAT,
+    petTypes: [PET_TYPES.CAT],
     imageKeys: ['products/cat-toy.jpg'],
   },
 ];

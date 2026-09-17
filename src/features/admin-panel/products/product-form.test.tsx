@@ -54,7 +54,7 @@ it('submits the observed inventory when editing a product', async () => {
     oldPrice: null,
     stock: 5,
     categoryId: '123e4567-e89b-12d3-a456-426614174001',
-    petType: 'cat',
+    petTypes: ['cat'],
     isActive: true,
     imageKey: null,
   };
@@ -108,7 +108,7 @@ const EDIT_PRODUCT: ProductFormInitial = {
   oldPrice: null,
   stock: 5,
   categoryId: '123e4567-e89b-12d3-a456-426614174001',
-  petType: 'cat',
+  petTypes: ['cat'],
   isActive: true,
   imageKey: null,
 };

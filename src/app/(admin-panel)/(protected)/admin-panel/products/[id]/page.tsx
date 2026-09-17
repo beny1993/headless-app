@@ -45,7 +45,7 @@ export default async function EditProductPage({
         oldPrice: product.oldPrice,
         stock: product.stock,
         categoryId: product.categoryId,
-        petType: product.petType,
+        petTypes: product.petTypes,
         isActive: product.isActive,
         imageKey: product.images[0]?.objectKey ?? null,
       }}

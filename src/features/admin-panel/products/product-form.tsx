@@ -46,7 +46,7 @@ export type ProductFormInitial = {
   oldPrice: number | null;
   stock: number;
   categoryId: string;
-  petType: PetType;
+  petTypes: PetType[];
   isActive: boolean;
   /** The current image's storage key, if any, so the edit form can preview it. */
   imageKey: string | null;
@@ -112,7 +112,7 @@ export function ProductForm({
     oldPrice: product?.oldPrice != null ? String(product.oldPrice) : '',
     stock: product ? String(product.stock) : '',
     categoryId: product?.categoryId ?? '',
-    petType: product?.petType ?? PET_TYPES.CAT,
+    petTypes: product?.petTypes ?? [PET_TYPES.CAT],
     isActive: product?.isActive ?? true,
   });
   const [file, setFile] = useState<File | null>(null);
@@ -122,7 +122,10 @@ export function ProductForm({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
-  const update = (key: keyof typeof form, value: string | boolean) => {
+  const update = (
+    key: keyof typeof form,
+    value: string | boolean | PetType[],
+  ) => {
     setForm((current) => ({ ...current, [key]: value }));
     setFieldErrors((current) => ({ ...current, [key]: '' }));
   };
@@ -149,7 +152,7 @@ export function ProductForm({
     oldPrice: form.oldPrice.trim() === '' ? null : numeric(form.oldPrice),
     stock: numeric(form.stock),
     categoryId: form.categoryId,
-    petType: form.petType,
+    petTypes: form.petTypes,
     isActive: form.isActive,
   });
 
@@ -440,10 +443,10 @@ export function ProductForm({
               <button
                 key={option.value}
                 type="button"
-                onClick={() => update('petType', option.value)}
-                aria-pressed={form.petType === option.value}
+                onClick={() => update('petTypes', [option.value])}
+                aria-pressed={form.petTypes.includes(option.value)}
                 className={`flex-1 rounded-xl border-2 py-2.5 text-sm font-medium transition-colors ${
-                  form.petType === option.value
+                  form.petTypes.includes(option.value)
                     ? 'border-accent-strong bg-accent/10 text-accent-strong'
                     : 'border-border hover:border-accent-strong'
                 }`}

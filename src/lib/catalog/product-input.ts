@@ -24,7 +24,7 @@
 import { z } from 'zod';
 import { toPersianDigits } from '@/lib/format';
 import { FORBIDDEN_TEXT_CHARS, VISIBLE_CHAR } from '@/lib/validation/text';
-import { PET_TYPES } from './product-query';
+import { PET_TYPE_VALUES, normalizePetTypes } from './product-query';
 import { MAX_SLUG_LENGTH } from './sku';
 
 /**
@@ -59,6 +59,7 @@ export const PRODUCT_MESSAGES = {
   oldPrice: 'قیمت قبلی باید عددی صحیح و بیشتر از قیمت فعلی باشد.',
   stock: 'موجودی باید عددی صحیح و صفر یا بیشتر باشد.',
   pet: 'نوع حیوان نامعتبر است.',
+  petRequired: 'حداقل یک نوع حیوان را انتخاب کن.',
 };
 
 /** Latin URL segment; the same shape the categories schema documents. */
@@ -155,7 +156,17 @@ export const productInputSchema = z
       .nonnegative(PRODUCT_MESSAGES.stock)
       .max(MAX_STOCK, PRODUCT_MESSAGES.stock),
     categoryId: z.uuid(PRODUCT_MESSAGES.category),
-    petType: z.enum([PET_TYPES.CAT, PET_TYPES.DOG], PRODUCT_MESSAGES.pet),
+    // One pet or both, stored in the canonical order with duplicates dropped —
+    // so `['dog','cat']` and `['cat','cat','dog']` reach the column as the one
+    // value they mean. The form runs this very schema, so «at least one» is one
+    // sentence said in one place (A1).
+    petTypes: z
+      .array(
+        z.enum(PET_TYPE_VALUES, PRODUCT_MESSAGES.pet),
+        PRODUCT_MESSAGES.petRequired,
+      )
+      .min(1, PRODUCT_MESSAGES.petRequired)
+      .transform(normalizePetTypes),
     // A real editable field — the design's «نمایش در فروشگاه» toggle. Soft delete
     // is the DELETE route, not this flag; but an admin may deactivate a product
     // by unchecking it here too.

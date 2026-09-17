@@ -85,7 +85,7 @@ describe('catalog seed data', () => {
   });
 
   it('covers both pet types and offers at least one discounted product', () => {
-    expect(new Set(SEED_PRODUCTS.map((p) => p.petType))).toEqual(
+    expect(new Set(SEED_PRODUCTS.flatMap((p) => p.petTypes))).toEqual(
       new Set(['cat', 'dog']),
     );
     expect(SEED_PRODUCTS.some((p) => p.oldPrice !== null)).toBe(true);

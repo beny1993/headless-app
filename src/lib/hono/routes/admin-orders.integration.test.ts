@@ -90,7 +90,7 @@ describe.skipIf(!databaseReachable)('admin order API', () => {
         price: 100_000,
         stock: 1000,
         categoryId: category.id,
-        petType: PET_TYPES.CAT,
+        petTypes: [PET_TYPES.CAT],
       })
       .returning();
     createdProductIds.push(product.id);

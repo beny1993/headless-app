@@ -98,7 +98,7 @@ describe.skipIf(!databaseReachable)('the product page', () => {
       price: 285_000,
       stock: 24,
       categoryId: category.id,
-      petType: PET_TYPES.CAT,
+      petTypes: [PET_TYPES.CAT],
       ...overrides,
     };
   };

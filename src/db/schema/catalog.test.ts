@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   categories,
   PET_TYPES,
+  petTypeEnum,
   productImages,
   products,
 } from '@/db/schema/catalog';
@@ -68,9 +69,15 @@ describe('catalog schema', () => {
     expect(products.isActive.default).toBe(true);
   });
 
-  it('restricts the pet type to cat and dog', () => {
-    expect(products.petType.enumValues).toEqual(['cat', 'dog']);
+  it('holds one or both pet types, from the cat/dog enum', () => {
+    // An array of the enum, not a third `both` value: the same enum types a
+    // customer's pet, and a pet is one species.
+    expect(products.petTypes.getSQLType()).toBe('pet_type[]');
+    expect(petTypeEnum.enumValues).toEqual(['cat', 'dog']);
+    expect(products.petTypes.notNull).toBe(true);
     expect(Object.values(PET_TYPES)).toEqual(['cat', 'dog']);
+    // An empty array is still «no pet» — the CHECK is what refuses it.
+    expect(checkNames(products)).toContain('products_pet_type_not_empty');
   });
 
   it('cascades images with their product but restricts category deletes', () => {
