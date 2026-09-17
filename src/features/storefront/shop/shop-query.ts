@@ -30,6 +30,7 @@ import { z } from 'zod';
 import {
   PET_TYPES,
   PRODUCT_SORTS,
+  normalizePetTypes,
   productListQueryShape,
   type ProductListQuery,
 } from '@/lib/catalog/product-query';
@@ -120,6 +121,17 @@ export const PET_LABELS: Record<ShopPet, string> = {
   cat: 'گربه',
   dog: 'سگ',
 };
+
+/**
+ * A product's whole pet selection as one Persian phrase — «گربه», «سگ» or
+ * «گربه و سگ». Here rather than in the product page so that page, and whatever
+ * shows the selection next, cannot invent a second wording; normalized first,
+ * so the phrase does not depend on the order the row was written in.
+ */
+export const formatPetTypes = (petTypes: readonly ShopPet[]): string =>
+  normalizePetTypes(petTypes)
+    .map((pet) => PET_LABELS[pet])
+    .join(' و ');
 
 /** The sort control's options: the API's orderings with their Persian labels. */
 export const SHOP_SORT_OPTIONS: readonly { value: ShopSort; label: string }[] =

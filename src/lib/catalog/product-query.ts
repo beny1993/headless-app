@@ -24,6 +24,23 @@ export const PET_TYPES = {
 
 export type PetType = (typeof PET_TYPES)[keyof typeof PET_TYPES];
 
+/**
+ * The canonical order a product's pet selection is stored and read in. One
+ * order everywhere means `['cat','dog']` is the only both-pets value there is,
+ * so equality holds in a test, in a payload and on the page without anybody
+ * sorting first.
+ */
+export const PET_TYPE_VALUES = [PET_TYPES.CAT, PET_TYPES.DOG] as const;
+
+/**
+ * A pet selection as it is stored: deduped and in canonical order. Filtering
+ * the enum rather than sorting the input does both in one pass — and a value
+ * outside the enum cannot survive it, which is the schema's job but costs
+ * nothing to be true of here too.
+ */
+export const normalizePetTypes = (values: readonly PetType[]): PetType[] =>
+  PET_TYPE_VALUES.filter((value) => values.includes(value));
+
 /** The orderings the storefront offers. Never compare against bare strings. */
 export const PRODUCT_SORTS = {
   NEWEST: 'newest',
