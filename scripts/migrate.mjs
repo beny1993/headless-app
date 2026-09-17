@@ -7,7 +7,9 @@
 // (drizzle-kit), which additionally generates migrations; this one only applies
 // them.
 //
-// Wire it as Coolify's pre-deployment command:  node scripts/migrate.mjs
+// The image's CMD runs it before the server on every container start (see the
+// Dockerfile): a non-zero exit here is what keeps an unmigrated server from
+// starting, so every failure path below must end in one.
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';

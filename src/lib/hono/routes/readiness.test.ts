@@ -62,8 +62,8 @@ describe('readinessHandler', () => {
   });
 
   it('returns 503 when the schema is missing, not just when the socket is down', async () => {
-    // A reachable-but-unmigrated database is the state a fresh environment is in
-    // before the pre-deployment migration runs. `select 1` would pass here.
+    // A reachable-but-unmigrated database: a fresh environment whose migrations
+    // have not run. `select 1` would pass here.
     ping.mockRejectedValueOnce(
       new Error('relation "categories" does not exist'),
     );
