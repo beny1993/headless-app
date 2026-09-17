@@ -5,19 +5,21 @@
 // The page renders for real with its DAOs and the admin guard mocked at the
 // module edge.
 import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductWithImages } from '@/db/schema/catalog';
+import { SUBCATEGORY_PREFIX } from '@/lib/catalog/category-tree';
 import { PROTECTED_PATHS } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import { ADMIN_PAGE_SIZE } from '@/lib/pagination';
 import AdminProductsPage from './page';
 
-const { pageForAdmin } = vi.hoisted(() => ({ pageForAdmin: vi.fn() }));
+const { pageForAdmin, categories } = vi.hoisted(() => ({
+  pageForAdmin: vi.fn(),
+  categories: vi.fn(),
+}));
 vi.mock('@/lib/auth/session', () => ({ requireAdmin: vi.fn() }));
 vi.mock('@/db/dao/ProductDao', () => ({ ProductDao: { pageForAdmin } }));
-vi.mock('@/db/dao/CategoryDao', () => ({
-  CategoryDao: { list: async () => [] },
-}));
+vi.mock('@/db/dao/CategoryDao', () => ({ CategoryDao: { list: categories } }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
@@ -25,6 +27,19 @@ vi.mock('next/navigation', () => ({
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+beforeEach(() => categories.mockResolvedValue([]));
+
+/** A category row as the page reads it; `parent` names its parent's slug. */
+const category = (slug: string, title: string, parent?: string) => ({
+  id: `id-${slug}`,
+  title,
+  slug,
+  sortOrder: 0,
+  parentId: parent ? `id-${parent}` : null,
+  createdAt: new Date('2026-09-01T00:00:00Z'),
+  updatedAt: new Date('2026-09-01T00:00:00Z'),
 });
 
 const product = (
@@ -93,6 +108,28 @@ it('offers deactivation only on active products', async () => {
   expect(
     screen.getByRole('link', { name: 'ویرایش محصول غیرفعال' }),
   ).toBeTruthy();
+});
+
+it('offers sub-categories under their parent, prefixed, in the filter', async () => {
+  categories.mockResolvedValue([
+    category('hygiene', 'بهداشت'),
+    category('toys', 'اسباب‌بازی'),
+    category('grooming', 'شامپو و نظافت', 'hygiene'),
+  ]);
+  pageForAdmin.mockResolvedValue({ items: [ACTIVE], total: 1 });
+
+  await renderPage({});
+
+  expect(
+    [...(screen.getByLabelText('دسته‌بندی') as HTMLSelectElement).options].map(
+      (option) => option.textContent,
+    ),
+  ).toEqual([
+    'همه دسته‌ها',
+    'بهداشت',
+    `${SUBCATEGORY_PREFIX}شامپو و نظافت`,
+    'اسباب‌بازی',
+  ]);
 });
 
 describe('paging', () => {

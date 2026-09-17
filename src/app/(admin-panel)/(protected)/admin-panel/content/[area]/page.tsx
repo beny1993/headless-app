@@ -2,6 +2,7 @@ import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { CategoryDao } from '@/db/dao/CategoryDao';
+import { categoryOptions } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { SiteContentDao } from '@/db/dao/SiteContentDao';
 import { CONTENT_AREAS, contentAreaSchema } from '@/lib/content/site-content';
@@ -68,7 +69,15 @@ export default async function AdminContentAreaPage({
         keys={area.keys}
         values={values}
         options={{
-          categories: categories.map(option),
+          // Tree order, sub-categories prefixed — the link picker's select and
+          // its `CategoryPicker` both read this one list.
+          categories: categoryOptions(categories).map(
+            ({ id, slug, label }) => ({
+              id,
+              slug,
+              title: label,
+            }),
+          ),
           products: products.map(option),
         }}
       />

@@ -20,8 +20,9 @@ export default async function AdminCategoriesPage() {
         <h1 className="text-2xl font-black">دسته‌بندی‌ها</h1>
         <p className="text-muted-foreground mt-1 text-sm">
           دسته‌بندی‌ها بلافاصله در فروشگاه و فرم محصول دیده می‌شوند، به ترتیب
-          نمایش (عدد کمتر، اول). دسته‌بندی‌ای که محصول دارد حذف نمی‌شود؛ اول
-          محصولاتش را به دسته‌بندی دیگری منتقل کن.
+          نمایش (عدد کمتر، اول). هر دسته‌بندی می‌تواند زیردسته داشته باشد، اما
+          فقط یک سطح؛ زیردسته خودش زیردسته نمی‌گیرد. دسته‌بندی‌ای که محصول یا
+          زیردسته دارد حذف نمی‌شود؛ اول آن‌ها را جابه‌جا یا حذف کن.
         </p>
       </div>
       <CategoryManager initialCategories={categories.map(toCategoryView)} />

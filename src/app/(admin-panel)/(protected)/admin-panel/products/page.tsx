@@ -6,6 +6,7 @@ import { Edit, Eye, Plus } from 'lucide-react';
 import { z } from 'zod';
 import { Pagination } from '@/components/ui/pagination';
 import { CategoryDao } from '@/db/dao/CategoryDao';
+import { categoryOptions } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
 import type { ProductWithImages } from '@/db/schema/catalog';
 import { PET_TYPES } from '@/lib/catalog/product-query';
@@ -148,9 +149,9 @@ export default async function AdminProductsPage({
             className="border-border focus-visible:border-accent-strong h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none"
           >
             <option value="">همه دسته‌ها</option>
-            {categories.map((category) => (
+            {categoryOptions(categories).map((category) => (
               <option key={category.id} value={category.slug}>
-                {category.title}
+                {category.label}
               </option>
             ))}
           </select>

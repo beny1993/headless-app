@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { z } from 'zod';
 import { CategoryDao } from '@/db/dao/CategoryDao';
+import { categoryOptions } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { ProductForm } from '@/features/admin-panel/products/product-form';
 
@@ -32,7 +33,10 @@ export default async function EditProductPage({
   return (
     <ProductForm
       key={product.id}
-      categories={categories.map(({ id, title }) => ({ id, title }))}
+      categories={categoryOptions(categories).map(({ id, label }) => ({
+        id,
+        title: label,
+      }))}
       product={{
         id: product.id,
         title: product.title,
