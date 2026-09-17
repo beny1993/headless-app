@@ -8,7 +8,10 @@ import { eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { categories, products } from '@/db/schema/catalog';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
-import { CATEGORY_MESSAGES } from '@/lib/catalog/category-input';
+import {
+  CATEGORY_MESSAGES,
+  CATEGORY_PARENT_MESSAGES,
+} from '@/lib/catalog/category-input';
 import { PET_TYPES } from '@/lib/catalog/product-query';
 import { API_PATHS, apiAdminCategoryPath } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
@@ -105,9 +108,19 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
   // ── Authz matrix ────────────────────────────────────────────────────────────
 
   describe('authorization', () => {
+    // Bodies carry `parentId`: the guard must refuse before anything looks a
+    // parent up, so a stranger cannot probe which category ids exist.
     const everyRoute = (id: string) => [
-      json(API_PATHS.ADMIN_CATEGORIES, 'POST', body()),
-      json(apiAdminCategoryPath(id), 'PUT', body()),
+      json(
+        API_PATHS.ADMIN_CATEGORIES,
+        'POST',
+        body({ parentId: faker.string.uuid() }),
+      ),
+      json(
+        apiAdminCategoryPath(id),
+        'PUT',
+        body({ parentId: faker.string.uuid() }),
+      ),
       json(apiAdminCategoryPath(id), 'DELETE'),
     ];
 
@@ -363,6 +376,40 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
       expect(await rowsFor(existing.id)).toHaveLength(1);
     });
 
+    it('refuses (409) while sub-categories sit under it, naming how many', async () => {
+      const parent = await create();
+      await create({ parentId: parent.id });
+      await create({ parentId: parent.id });
+      asAdmin();
+
+      const res = await parse(
+        await json(apiAdminCategoryPath(parent.id), 'DELETE'),
+      );
+
+      expect(res.status).toBe(409);
+      if (res.body.status !== 'error') throw new Error('expected an error');
+      expect(res.body.message).toBe(categoryInUseMessage(0, 2));
+      expect(res.body.message).toContain(formatNumber(2));
+      expect(await rowsFor(parent.id)).toHaveLength(1);
+    });
+
+    it('names both blockers when a category has sub-categories and products', async () => {
+      const parent = await create();
+      await create({ parentId: parent.id });
+      await makeProduct(parent.id);
+      asAdmin();
+
+      const res = await parse(
+        await json(apiAdminCategoryPath(parent.id), 'DELETE'),
+      );
+
+      expect(res.status).toBe(409);
+      if (res.body.status !== 'error') throw new Error('expected an error');
+      expect(res.body.message).toBe(categoryInUseMessage(1, 1));
+      expect(res.body.message).toContain('زیردسته');
+      expect(res.body.message).toContain('محصول');
+    });
+
     it('still refuses (409) when its only products are soft-deleted, and says so', async () => {
       const existing = await create();
       const hidden = await makeProduct(existing.id);
@@ -378,6 +425,137 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
       expect(res.body.message).toBe(categoryInUseMessage(1));
       expect(res.body.message).toContain('غیرفعال');
       expect(await rowsFor(existing.id)).toHaveLength(1);
+    });
+  });
+
+  // ── Sub-categories ──────────────────────────────────────────────────────────
+
+  describe('parentId', () => {
+    /** The refusal as the manager reads it: one `parentId: …` field error. */
+    const parentError = async (res: { body: ApiResponse<unknown> }) => {
+      if (res.body.status !== 'error') throw new Error('expected an error');
+      return res.body.errors;
+    };
+
+    it('round-trips a parent through create, move and promote', async () => {
+      const parent = await create();
+      const other = await create();
+      const sub = await create({ parentId: parent.id });
+      asAdmin();
+
+      const moved = await parse<CategoryView>(
+        await json(
+          apiAdminCategoryPath(sub.id),
+          'PUT',
+          body({ slug: sub.slug, parentId: other.id }),
+        ),
+      );
+      const promoted = await parse<CategoryView>(
+        await json(
+          apiAdminCategoryPath(sub.id),
+          'PUT',
+          body({ slug: sub.slug }),
+        ),
+      );
+
+      expect(sub.parentId).toBe(parent.id);
+      if (moved.body.status !== 'success') throw new Error(moved.body.message);
+      expect(moved.body.data.parentId).toBe(other.id);
+      // An omitted `parentId` is «top-level», because PUT replaces the row.
+      if (promoted.body.status !== 'success')
+        throw new Error(promoted.body.message);
+      expect(promoted.body.data.parentId).toBeNull();
+    });
+
+    it('refuses a category as its own parent (400)', async () => {
+      const existing = await create();
+      asAdmin();
+
+      const res = await parse(
+        await json(
+          apiAdminCategoryPath(existing.id),
+          'PUT',
+          body({ slug: existing.slug, parentId: existing.id }),
+        ),
+      );
+
+      expect(res.status).toBe(400);
+      expect(await parentError(res)).toEqual([
+        `parentId: ${CATEGORY_PARENT_MESSAGES.self}`,
+      ]);
+    });
+
+    it('refuses a parent that is itself a sub-category (400)', async () => {
+      const parent = await create();
+      const sub = await create({ parentId: parent.id });
+      asAdmin();
+
+      const res = await parse(
+        await json(
+          API_PATHS.ADMIN_CATEGORIES,
+          'POST',
+          body({ parentId: sub.id }),
+        ),
+      );
+
+      expect(res.status).toBe(400);
+      expect(await parentError(res)).toEqual([
+        `parentId: ${CATEGORY_PARENT_MESSAGES.nested}`,
+      ]);
+    });
+
+    it('refuses giving a parent to a category that has sub-categories (400)', async () => {
+      const parent = await create();
+      await create({ parentId: parent.id });
+      const other = await create();
+      asAdmin();
+
+      const res = await parse(
+        await json(
+          apiAdminCategoryPath(parent.id),
+          'PUT',
+          body({ slug: parent.slug, parentId: other.id }),
+        ),
+      );
+
+      expect(res.status).toBe(400);
+      expect(await parentError(res)).toEqual([
+        `parentId: ${CATEGORY_PARENT_MESSAGES.hasChildren}`,
+      ]);
+    });
+
+    it('refuses an unknown parent with 400, never a 23503-shaped 500', async () => {
+      asAdmin();
+
+      const res = await parse(
+        await json(
+          API_PATHS.ADMIN_CATEGORIES,
+          'POST',
+          body({ parentId: faker.string.uuid() }),
+        ),
+      );
+
+      expect(res.status).toBe(400);
+      expect(await parentError(res)).toEqual([
+        `parentId: ${CATEGORY_PARENT_MESSAGES.unknown}`,
+      ]);
+    });
+
+    it('refuses a malformed parent id with the schema’s Persian message', async () => {
+      asAdmin();
+
+      const res = await parse(
+        await json(
+          API_PATHS.ADMIN_CATEGORIES,
+          'POST',
+          body({ parentId: 'not-a-uuid' }),
+        ),
+      );
+
+      expect(res.status).toBe(400);
+      expect(await parentError(res)).toEqual([
+        `parentId: ${CATEGORY_MESSAGES.parent}`,
+      ]);
     });
   });
 });

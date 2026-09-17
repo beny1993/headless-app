@@ -26,6 +26,7 @@ const DRY: CategoryView = {
   title: 'غذای خشک',
   slug: 'dry-food',
   sortOrder: 1,
+  parentId: null,
   createdAt: '2026-09-01T00:00:00.000Z',
   updatedAt: '2026-09-01T00:00:00.000Z',
 };

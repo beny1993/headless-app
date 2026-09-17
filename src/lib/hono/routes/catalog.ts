@@ -38,6 +38,11 @@ const CategorySchema = z
     title: z.string(),
     slug: z.string(),
     sortOrder: z.number().int(),
+    /**
+     * The category this one sits under; `null` for a top-level one. The list
+     * stays flat — consumers nest it with `@/lib/catalog/category-tree`.
+     */
+    parentId: z.uuid().nullable(),
   })
   .openapi('Category');
 
@@ -163,6 +168,7 @@ const toCategoryResponse = (row: Category): CategoryResponse => ({
   title: row.title,
   slug: row.slug,
   sortOrder: row.sortOrder,
+  parentId: row.parentId,
 });
 
 /**

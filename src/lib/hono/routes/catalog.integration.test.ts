@@ -154,10 +154,19 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
 
       expect(Object.keys(first).sort()).toEqual([
         'id',
+        'parentId',
         'slug',
         'sortOrder',
         'title',
       ]);
+    });
+
+    it('carries parentId so consumers can nest the flat list', async () => {
+      const list = await getData<CategoryResponse[]>(API_PATHS.CATEGORIES);
+
+      // Nothing is nested in the seed yet, so this pins the field and its
+      // top-level value; the seed's own sub-category arrives with group C.
+      expect(list.every((row) => row.parentId === null)).toBe(true);
     });
 
     it('includes a category that has no products yet', async () => {

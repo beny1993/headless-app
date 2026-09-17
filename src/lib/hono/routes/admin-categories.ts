@@ -10,15 +10,19 @@
 // public `GET /categories` is untouched.
 //
 // Unlike products and discount codes, a category is hard-deleted — nothing
-// snapshots one. What refuses a category still in use is the products foreign
-// key (`ON DELETE RESTRICT`), soft-deleted products included; delete turns that
-// refusal into a 409 naming how many products are attached.
+// snapshots one. What refuses a category still in use is a restricting foreign
+// key: the products one (soft-deleted products included) and, since
+// sub-categories, the self-referencing parent one. Delete turns either refusal
+// into a 409 naming how many products and sub-categories are attached.
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
-import { CategoryDao } from '@/db/dao/CategoryDao';
+import { CategoryDao, CategoryParentError } from '@/db/dao/CategoryDao';
 import type { Category } from '@/db/schema/catalog';
-import { categoryInputSchema } from '@/lib/catalog/category-input';
+import {
+  CATEGORY_PARENT_MESSAGES,
+  categoryInputSchema,
+} from '@/lib/catalog/category-input';
 import { formatNumber } from '@/lib/format';
 import {
   apiError,
@@ -40,8 +44,15 @@ export const CATEGORY_SAVE_FAILED_MESSAGE =
  * otherwise a category whose products were all soft-deleted looks empty in the
  * panel, and the refusal looks like a bug.
  */
-export const categoryInUseMessage = (productCount: number) =>
-  `${formatNumber(productCount)} محصول (شامل محصولات غیرفعال) هنوز در این دسته‌بندی است؛ اول آن‌ها را به دسته‌بندی دیگری منتقل کن.`;
+export const categoryInUseMessage = (productCount: number, childCount = 0) => {
+  if (childCount === 0) {
+    return `${formatNumber(productCount)} محصول (شامل محصولات غیرفعال) هنوز در این دسته‌بندی است؛ اول آن‌ها را به دسته‌بندی دیگری منتقل کن.`;
+  }
+  if (productCount === 0) {
+    return `${formatNumber(childCount)} زیردسته هنوز زیر این دسته‌بندی است؛ اول آن‌ها را حذف یا جابه‌جا کن.`;
+  }
+  return `${formatNumber(childCount)} زیردسته و ${formatNumber(productCount)} محصول (شامل محصولات غیرفعال) هنوز در این دسته‌بندی است؛ اول آن‌ها را جابه‌جا یا حذف کن.`;
+};
 
 const CategorySchema = z
   .object({
@@ -49,6 +60,8 @@ const CategorySchema = z
     title: z.string(),
     slug: z.string(),
     sortOrder: z.number().int().nonnegative(),
+    /** The category this one sits under; `null` for a top-level one. */
+    parentId: z.uuid().nullable(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
@@ -63,6 +76,7 @@ export const toCategoryView = (c: Category): CategoryView => ({
   title: c.title,
   slug: c.slug,
   sortOrder: c.sortOrder,
+  parentId: c.parentId,
   createdAt: c.createdAt.toISOString(),
   updatedAt: c.updatedAt.toISOString(),
 });
@@ -80,11 +94,26 @@ const errorResponse = (description: string) =>
     description,
   }) as const;
 
-/** The field error for a taken slug (23505), or `null` to rethrow. */
+/**
+ * The field error for a refused parent or a taken slug (23505), or `null` to
+ * rethrow. Both create and update run a body through it, so the two cannot
+ * answer the same refusal differently.
+ */
 export const categoryWriteErrors = (error: unknown): string[] | null => {
+  if (error instanceof CategoryParentError) {
+    return [`parentId: ${CATEGORY_PARENT_MESSAGES[error.reason]}`];
+  }
   const pg = pgErrorOf(error);
   if (pg?.code === '23505' && pg.constraint === 'categories_slug_unique') {
     return ['slug: این نشانی قبلاً برای دسته‌بندی دیگری ثبت شده است.'];
+  }
+  // A backstop the DAO's lock makes unreachable — but a 23503 from this key is
+  // «that parent is gone» either way, and it must not surface as a 500.
+  if (
+    pg?.code === '23503' &&
+    pg.constraint === 'categories_parent_id_categories_id_fk'
+  ) {
+    return [`parentId: ${CATEGORY_PARENT_MESSAGES.unknown}`];
   }
   return null;
 };
@@ -139,7 +168,8 @@ export const categoryUpdateRoute = createRoute({
   method: 'put',
   path: '/admin/categories/{id}',
   tags: ['admin'],
-  summary: 'Replace a category’s title, slug and sort order (admin only)',
+  summary:
+    'Replace a category’s title, slug, sort order and parent (admin only)',
   request: {
     params: IdParamSchema,
     body: {
@@ -202,7 +232,7 @@ export const categoryDeleteRoute = createRoute({
     403: errorResponse('Signed in, but not an admin'),
     404: errorResponse('No such category'),
     409: errorResponse(
-      'Products (active or soft-deleted) still reference the category',
+      'Products (active or soft-deleted) or sub-categories still reference the category',
     ),
   },
 });
@@ -219,8 +249,16 @@ export const categoryDeleteHandler: RouteHandler<
   } catch (error) {
     if (pgErrorOf(error)?.code !== '23503') throw error;
     // Counted after the foreign key refused, not as a pre-check: a product added
-    // between a count and the delete could not then slip past as a 500.
-    const productCount = await CategoryDao.countProducts(id);
-    return c.json(apiError(categoryInUseMessage(productCount)), 409);
+    // between a count and the delete could not then slip past as a 500. Both
+    // counts, never a branch on which key spoke — two of them can refuse, and a
+    // category blocked by both must say so in one message.
+    const [productCount, childCount] = await Promise.all([
+      CategoryDao.countProducts(id),
+      CategoryDao.countChildren(id),
+    ]);
+    return c.json(
+      apiError(categoryInUseMessage(productCount, childCount)),
+      409,
+    );
   }
 };
