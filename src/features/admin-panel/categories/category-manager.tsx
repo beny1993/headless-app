@@ -224,7 +224,6 @@ function CreateForm({
           onChange={(parentId) => setDraft((d) => ({ ...d, parentId }))}
           parents={parents}
           error={errors.parentId}
-          hint="خالی بگذار تا دسته‌بندی اصلی بماند"
           umami="admin-panel-categories-parent"
         />
       </div>
