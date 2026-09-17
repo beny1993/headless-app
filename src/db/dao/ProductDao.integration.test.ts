@@ -22,12 +22,15 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
   // so running the suite against a seeded dev database leaves the seed intact.
   const createdCategoryIds: string[] = [];
 
-  const makeCategory = async (): Promise<Category> => {
+  const makeCategory = async (
+    parentId: string | null = null,
+  ): Promise<Category> => {
     const [row] = await testDb
       .insert(categories)
       .values({
         title: 'دسته آزمایشی',
         slug: `test-${faker.string.alphanumeric(10).toLowerCase()}`,
+        parentId,
       })
       .returning();
     createdCategoryIds.push(row.id);
@@ -213,6 +216,79 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       });
 
       expect(rows).toEqual([]);
+    });
+
+    describe('a parent category takes in its sub-categories', () => {
+      /** A parent holding one product itself, over a sub holding two. */
+      const makeFamily = async () => {
+        const parent = await makeCategory();
+        const sub = await makeCategory(parent.id);
+        const other = await makeCategory();
+        return {
+          parent,
+          sub,
+          own: await ProductDao.create(makeProduct(parent)),
+          under: [
+            await ProductDao.create(makeProduct(sub)),
+            await ProductDao.create(
+              makeProduct(sub, { petTypes: [PET_TYPES.DOG] }),
+            ),
+          ],
+          elsewhere: await ProductDao.create(makeProduct(other)),
+        };
+      };
+
+      const ids = (rows: { id: string }[]) => rows.map((row) => row.id).sort();
+
+      it('lists the parent’s own products and every sub-category’s, counted once each', async () => {
+        const { parent, own, under } = await makeFamily();
+
+        const { items, total } = await ProductDao.list({
+          categorySlug: parent.slug,
+        });
+
+        expect(ids(items)).toEqual(ids([own, ...under]));
+        expect(total).toBe(3);
+      });
+
+      it('lists only its own products under a sub-category’s slug', async () => {
+        const { sub, under } = await makeFamily();
+
+        const { items, total } = await ProductDao.list({
+          categorySlug: sub.slug,
+        });
+
+        expect(ids(items)).toEqual(ids(under));
+        expect(total).toBe(2);
+      });
+
+      it('narrows the parent’s whole set by pet type', async () => {
+        const { parent, under } = await makeFamily();
+
+        const { items, total } = await ProductDao.list({
+          categorySlug: parent.slug,
+          petType: PET_TYPES.DOG,
+        });
+
+        expect(ids(items)).toEqual([under[1].id]);
+        expect(total).toBe(1);
+      });
+
+      it('does the same on the admin read', async () => {
+        const { parent, sub, own, under } = await makeFamily();
+
+        const wide = await ProductDao.pageForAdmin({
+          categorySlug: parent.slug,
+        });
+        const narrow = await ProductDao.pageForAdmin({
+          categorySlug: sub.slug,
+        });
+
+        expect(ids(wide.items)).toEqual(ids([own, ...under]));
+        expect(wide.total).toBe(3);
+        expect(ids(narrow.items)).toEqual(ids(under));
+        expect(narrow.total).toBe(2);
+      });
     });
 
     it('attaches images in sort order', async () => {

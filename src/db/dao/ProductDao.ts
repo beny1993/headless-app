@@ -12,14 +12,15 @@ import {
   count,
   desc,
   eq,
-  getTableColumns,
   gte,
   ilike,
   inArray,
   lte,
+  or,
   sql,
   type SQL,
 } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { db } from '@/db';
 import {
   DEFAULT_PRODUCT_PAGE_SIZE,
@@ -136,6 +137,25 @@ const ORDER_BY: Record<ProductSort, SQL[]> = {
 const petFilter = (petType: PetType): SQL =>
   arrayContains(products.petTypes, [petType]);
 
+/**
+ * The ids a `?category=` slug covers: the category itself and — when it is a
+ * top-level one — every sub-category under it. A sub-category's slug therefore
+ * narrows to it alone, and an unknown slug covers nothing, which is what makes
+ * the listing degrade to empty rather than to everything.
+ *
+ * A subquery rather than a join to `categories`: a join would have to become an
+ * `or` over two tables the moment a product can sit in more than one category,
+ * and then it would list that product twice and break `total` with it.
+ */
+const categoryScope = (slug: string) => {
+  const parent = alias(categories, 'parent');
+  return db
+    .select({ id: categories.id })
+    .from(categories)
+    .leftJoin(parent, eq(categories.parentId, parent.id))
+    .where(or(eq(categories.slug, slug), eq(parent.slug, slug)));
+};
+
 export type ProductFilters = {
   categorySlug?: string;
   /** One pet; a product suits it when its selection contains it. */
@@ -203,20 +223,15 @@ export class ProductDao {
 
     const pageQuery = (on: Executor) =>
       on
-        .select(getTableColumns(products))
+        .select()
         .from(products)
-        .innerJoin(categories, eq(products.categoryId, categories.id))
         .where(where)
         .orderBy(...ORDER_BY[sort])
         .limit(limit)
         .offset((page - 1) * limit);
 
     const countQuery = (on: Executor) =>
-      on
-        .select({ value: count() })
-        .from(products)
-        .innerJoin(categories, eq(products.categoryId, categories.id))
-        .where(where);
+      on.select({ value: count() }).from(products).where(where);
 
     // A search needs its similarity threshold, and that threshold only lives
     // for a transaction — so the two queries run on one connection, in order,
@@ -240,7 +255,9 @@ export class ProductDao {
   private static storefrontWhere(filters: ProductFilters): SQL[] {
     const where: SQL[] = [eq(products.isActive, true)];
     if (filters.categorySlug) {
-      where.push(eq(categories.slug, filters.categorySlug));
+      where.push(
+        inArray(products.categoryId, categoryScope(filters.categorySlug)),
+      );
     }
     if (filters.petType) {
       where.push(petFilter(filters.petType));
@@ -300,11 +317,7 @@ export class ProductDao {
       ProductDao.adminRows(where)
         .limit(limit)
         .offset((page - 1) * limit),
-      db
-        .select({ value: count() })
-        .from(products)
-        .innerJoin(categories, eq(products.categoryId, categories.id))
-        .where(where),
+      db.select({ value: count() }).from(products).where(where),
     ]);
 
     return { items: await ProductDao.withImages(rows), total: counted.value };
@@ -313,9 +326,8 @@ export class ProductDao {
   /** The admin listing's rows, newest first, before any paging. */
   private static adminRows(where: SQL | undefined) {
     return db
-      .select(getTableColumns(products))
+      .select()
       .from(products)
-      .innerJoin(categories, eq(products.categoryId, categories.id))
       .where(where)
       .orderBy(desc(products.createdAt), asc(products.sku));
   }
@@ -330,7 +342,9 @@ export class ProductDao {
       where.push(eq(products.isActive, filters.active));
     }
     if (filters.categorySlug) {
-      where.push(eq(categories.slug, filters.categorySlug));
+      where.push(
+        inArray(products.categoryId, categoryScope(filters.categorySlug)),
+      );
     }
     if (filters.petType) {
       where.push(petFilter(filters.petType));
