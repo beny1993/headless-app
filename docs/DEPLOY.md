@@ -165,8 +165,14 @@ docker run --rm -e APP_CONFIG_DATABASE_URL="$APP_CONFIG_DATABASE_URL" \
   smokey-shop:migrate pnpm create-admin 09121234567 "Admin Name"
 ```
 
-`seed-catalog` is demo data — skip it on a real production store; `seed-shipping`
-is real infrastructure (you then tune the per-province fees in the admin panel).
+`seed-catalog` is demo data — skip it on a real production store.
+
+`seed-shipping` is no longer needed on a deploy: migration `0011_seed_provinces`
+plants the 31 provinces and their placeholder fees wherever migrations run. It
+only adds what is missing — a province already typed in by hand keeps its name,
+fee and active flag, and is recognised even when spelled with different spacing
+or a ZWNJ. Then set the real fees in the admin panel: one fee for every province
+with «اعمال روی همه استان‌ها», and the exceptions row by row.
 
 ---
 

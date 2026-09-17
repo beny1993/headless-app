@@ -35,7 +35,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `design/` | **Canonical design reference** — vendored Figma prototype (own deps, own `pnpm dev` on :5173). FE stories port from it. Never imported by the app. |
 | `scripts/create-admin.ts` | Grant admin by phone (`pnpm create-admin <phone> [name]`) — creates or promotes |
 | `src/db/seed/`, `scripts/seed-catalog.ts` | Demo catalog seed (`pnpm seed-catalog`), idempotent; its images live in `public/products/` |
-| `scripts/seed-shipping.ts` | Seed all 31 provinces + placeholder shipping rates (`pnpm seed-shipping`), idempotent (upserts by name, never resets a tuned fee) |
+| `scripts/seed-shipping.ts` | Seed all 31 provinces + placeholder shipping rates (`pnpm seed-shipping`), idempotent (upserts by name, never resets a tuned fee). Migration `0011_seed_provinces` plants the same 31 in every environment — production cannot run this script — adding only what is missing and recognising a hand-typed spelling (spaces/ZWNJ) as the same province; pinned by `src/db/seed/shipping-migration.integration.test.ts` |
 | `e2e/`, `playwright.config.ts` | Playwright E2E suite (`pnpm test:e2e`): the core-flow regression walk — see *End-to-end tests* under Testing standard |
 
 ## Conventions
