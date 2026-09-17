@@ -85,6 +85,13 @@
       "when": 1789685168704,
       "tag": "0011_multi_pet_products",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789686799341,
+      "tag": "0012_category_parent",
+      "breakpoints": true
     }
   ]
 }

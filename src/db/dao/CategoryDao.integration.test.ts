@@ -1,15 +1,16 @@
 // Needs a live database — see src/db/test-db.ts.
 import { faker } from '@faker-js/faker';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { categories, products } from '@/db/schema/catalog';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { PET_TYPES } from '@/lib/catalog/product-query';
 import { pgErrorOf } from '@/lib/hono/pg-error';
 
-const { CategoryDao } = await importWithDb(
+const { CategoryDao, CategoryParentError } = await importWithDb(
   () => import('@/db/dao/CategoryDao'),
 );
+type CategoryParentError = InstanceType<typeof CategoryParentError>;
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
 
 describe.skipIf(!databaseReachable)('CategoryDao', () => {
@@ -21,8 +22,13 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
     return value;
   };
 
-  const makeCategory = (sortOrder = 0) =>
-    CategoryDao.create({ title: 'دسته آزمایشی', slug: slug(), sortOrder });
+  const makeCategory = (sortOrder = 0, parentId: string | null = null) =>
+    CategoryDao.create({
+      title: 'دسته آزمایشی',
+      slug: slug(),
+      sortOrder,
+      parentId,
+    });
 
   const makeProduct = (categoryId: string) => {
     const token = faker.string.alphanumeric(10).toLowerCase();
@@ -84,6 +90,32 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
     expect(second.sortOrder).toBe(4);
   });
 
+  it('sets the parent on insert but never re-parents on a re-run', async () => {
+    // The seed is the only caller, and it must not undo an admin's move.
+    const parent = await makeCategory();
+    const value = slug();
+
+    const inserted = await CategoryDao.upsertBySlug({
+      title: 'شامپو و نظافت',
+      slug: value,
+      parentId: parent.id,
+    });
+    await CategoryDao.update(inserted.id, {
+      title: inserted.title,
+      slug: value,
+      sortOrder: 0,
+      parentId: null,
+    });
+    const reseeded = await CategoryDao.upsertBySlug({
+      title: 'شامپو و نظافت',
+      slug: value,
+      parentId: parent.id,
+    });
+
+    expect(inserted.parentId).toBe(parent.id);
+    expect(reseeded.parentId).toBeNull();
+  });
+
   it('defaults sort order to zero', async () => {
     const created = await CategoryDao.upsertBySlug({
       title: 'بهداشت',
@@ -120,6 +152,7 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
         title: 'غذای تر',
         slug: value,
         sortOrder: 3,
+        parentId: null,
       });
 
       expect(created).toMatchObject({
@@ -136,12 +169,14 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
         title: 'اول',
         slug: value,
         sortOrder: 1,
+        parentId: null,
       });
 
       const error = await CategoryDao.create({
         title: 'دوم',
         slug: value,
         sortOrder: 2,
+        parentId: null,
       }).catch((caught: unknown) => caught);
 
       expect(pgErrorOf(error)).toMatchObject({
@@ -162,6 +197,7 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
         title: 'عنوان تازه',
         slug: nextSlug,
         sortOrder: 7,
+        parentId: null,
       });
 
       expect(updated).toMatchObject({
@@ -178,6 +214,7 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
           title: 'ناموجود',
           slug: 'no-such-category',
           sortOrder: 0,
+          parentId: null,
         }),
       ).toBeNull();
     });
@@ -190,6 +227,7 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
         title: other.title,
         slug: taken.slug,
         sortOrder: 0,
+        parentId: null,
       }).catch((caught: unknown) => caught);
 
       expect(pgErrorOf(error)?.code).toBe('23505');
@@ -223,6 +261,151 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
         constraint: 'products_category_id_categories_id_fk',
       });
       expect(await exists(created.id)).toBe(true);
+    });
+
+    it('is refused by the parent foreign key while a sub-category is under it', async () => {
+      const parent = await makeCategory();
+      await makeCategory(0, parent.id);
+
+      const error = await CategoryDao.deleteById(parent.id).catch(
+        (caught: unknown) => caught,
+      );
+
+      expect(pgErrorOf(error)).toMatchObject({
+        code: '23503',
+        constraint: 'categories_parent_id_categories_id_fk',
+      });
+      expect(await exists(parent.id)).toBe(true);
+    });
+
+    it('removes an empty sub-category', async () => {
+      const parent = await makeCategory();
+      const sub = await makeCategory(0, parent.id);
+
+      expect((await CategoryDao.deleteById(sub.id))?.id).toBe(sub.id);
+      expect(await exists(sub.id)).toBe(false);
+    });
+  });
+
+  describe('parentId', () => {
+    it('files a new category under a top-level parent', async () => {
+      const parent = await makeCategory();
+
+      const sub = await makeCategory(0, parent.id);
+
+      expect(sub.parentId).toBe(parent.id);
+    });
+
+    it('moves a sub-category to another parent and back to top level', async () => {
+      const first = await makeCategory();
+      const second = await makeCategory();
+      const sub = await makeCategory(0, first.id);
+      const body = { title: sub.title, slug: sub.slug, sortOrder: 0 };
+
+      const moved = await CategoryDao.update(sub.id, {
+        ...body,
+        parentId: second.id,
+      });
+      const promoted = await CategoryDao.update(sub.id, {
+        ...body,
+        parentId: null,
+      });
+
+      expect(moved?.parentId).toBe(second.id);
+      expect(promoted?.parentId).toBeNull();
+    });
+
+    it('refuses a category as its own parent', async () => {
+      const created = await makeCategory();
+
+      const error = await CategoryDao.update(created.id, {
+        title: created.title,
+        slug: created.slug,
+        sortOrder: 0,
+        parentId: created.id,
+      }).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(CategoryParentError);
+      expect((error as CategoryParentError).reason).toBe('self');
+    });
+
+    it('refuses an unknown parent rather than letting the foreign key throw', async () => {
+      const error = await makeCategory(0, faker.string.uuid()).catch(
+        (caught: unknown) => caught,
+      );
+
+      expect(error).toBeInstanceOf(CategoryParentError);
+      expect((error as CategoryParentError).reason).toBe('unknown');
+    });
+
+    it('refuses a parent that is itself a sub-category — one level only', async () => {
+      const parent = await makeCategory();
+      const sub = await makeCategory(0, parent.id);
+
+      const error = await makeCategory(0, sub.id).catch(
+        (caught: unknown) => caught,
+      );
+
+      expect(error).toBeInstanceOf(CategoryParentError);
+      expect((error as CategoryParentError).reason).toBe('nested');
+    });
+
+    it('refuses to give a parent to a category that has sub-categories', async () => {
+      const parent = await makeCategory();
+      await makeCategory(0, parent.id);
+      const other = await makeCategory();
+
+      const error = await CategoryDao.update(parent.id, {
+        title: parent.title,
+        slug: parent.slug,
+        sortOrder: 0,
+        parentId: other.id,
+      }).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(CategoryParentError);
+      expect((error as CategoryParentError).reason).toBe('hasChildren');
+    });
+
+    it('still answers an unknown category with null, parent or not', async () => {
+      const parent = await makeCategory();
+
+      expect(
+        await CategoryDao.update(faker.string.uuid(), {
+          title: 'ناموجود',
+          slug: 'no-such-category',
+          sortOrder: 0,
+          parentId: parent.id,
+        }),
+      ).toBeNull();
+    });
+
+    it('is refused by the CHECK when a raw write points a row at itself', async () => {
+      // C2: the guard above lives in this DAO, so psql and a future migration
+      // are covered by the database itself, not by it.
+      const created = await makeCategory();
+
+      const error = await testDb
+        .update(categories)
+        .set({ parentId: created.id })
+        .where(eq(categories.id, created.id))
+        .catch((caught: unknown) => caught);
+
+      expect(pgErrorOf(error)).toMatchObject({
+        code: '23514',
+        constraint: 'categories_parent_not_self',
+      });
+    });
+  });
+
+  describe('countChildren', () => {
+    it('counts only the sub-categories directly under it', async () => {
+      const parent = await makeCategory();
+      await makeCategory(0, parent.id);
+      await makeCategory(1, parent.id);
+      const childless = await makeCategory();
+
+      expect(await CategoryDao.countChildren(parent.id)).toBe(2);
+      expect(await CategoryDao.countChildren(childless.id)).toBe(0);
     });
   });
 

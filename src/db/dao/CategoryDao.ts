@@ -1,11 +1,36 @@
 // All Drizzle DB access goes through DAOs like this one. Multi-DAO operations
 // belong in src/logic/, not in route handlers or components. Never write raw SQL.
-import { asc, count, eq } from 'drizzle-orm';
+import { asc, count, eq, inArray } from 'drizzle-orm';
 import { db } from '@/db';
 import { categories, products, type Category } from '@/db/schema/catalog';
+import {
+  CATEGORY_PARENT_MESSAGES,
+  type CategoryParentReason,
+} from '@/lib/catalog/category-input';
 
 /** What the admin supplies. The database owns `id` and both timestamps. */
-export type CategoryInput = { title: string; slug: string; sortOrder: number };
+export type CategoryInput = {
+  title: string;
+  slug: string;
+  sortOrder: number;
+  /** `null` for a top-level category. */
+  parentId: string | null;
+};
+
+/**
+ * A parent the one-level rule refuses. Thrown rather than returned so no caller
+ * can write the row by ignoring it; the admin routes turn `reason` into the
+ * matching Persian message on the `parentId` field.
+ */
+export class CategoryParentError extends Error {
+  constructor(readonly reason: CategoryParentReason) {
+    super(CATEGORY_PARENT_MESSAGES[reason]);
+    this.name = 'CategoryParentError';
+  }
+}
+
+/** The pool, or a transaction on one connection of it — as in `ProductDao`. */
+type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export class CategoryDao {
   /** Storefront order: the hand-set `sortOrder` first, title as the tiebreak. */
@@ -16,11 +41,19 @@ export class CategoryDao {
       .orderBy(asc(categories.sortOrder), asc(categories.title));
   }
 
-  /** Insert-or-update by slug. The seed relies on this to stay idempotent. */
+  /**
+   * Insert-or-update by slug. The seed relies on this to stay idempotent.
+   *
+   * `parentId` is set on the **insert only** — it is deliberately absent from
+   * the conflict `set`, so re-running the seed can neither undo a move an admin
+   * made in the panel nor build a third level out of one. That is also why this
+   * one write skips the guard below: the seed is its only caller.
+   */
   static async upsertBySlug(input: {
     title: string;
     slug: string;
     sortOrder?: number;
+    parentId?: string | null;
   }): Promise<Category> {
     const [row] = await db
       .insert(categories)
@@ -43,31 +76,79 @@ export class CategoryDao {
     title,
     slug,
     sortOrder,
+    parentId,
   }: CategoryInput): Promise<Category> {
-    const [row] = await db
-      .insert(categories)
-      .values({ title, slug, sortOrder })
-      .returning();
-    return row;
+    return db.transaction(async (tx) => {
+      await CategoryDao.assertParent(tx, null, parentId);
+      const [row] = await tx
+        .insert(categories)
+        .values({ title, slug, sortOrder, parentId })
+        .returning();
+      return row;
+    });
   }
 
-  /** Replaces title, slug and sort order. `null` for an unknown id. */
+  /**
+   * Replaces title, slug, sort order and parent. `null` for an unknown id. A
+   * parent the one-level rule refuses throws {@link CategoryParentError} and
+   * writes nothing.
+   */
   static async update(
     id: string,
-    { title, slug, sortOrder }: CategoryInput,
+    { title, slug, sortOrder, parentId }: CategoryInput,
   ): Promise<Category | null> {
-    const [row] = await db
-      .update(categories)
-      .set({ title, slug, sortOrder })
-      .where(eq(categories.id, id))
-      .returning();
-    return row ?? null;
+    return db.transaction(async (tx) => {
+      await CategoryDao.assertParent(tx, id, parentId);
+      const [row] = await tx
+        .update(categories)
+        .set({ title, slug, sortOrder, parentId })
+        .where(eq(categories.id, id))
+        .returning();
+      return row ?? null;
+    });
+  }
+
+  /**
+   * The one-level rule, as the guard read that also locks what it checked.
+   *
+   * `for update` on the pair blocks a concurrent move of either row until this
+   * transaction commits, and it blocks the `FOR KEY SHARE` a concurrent child
+   * insert needs on its parent — so the second writer re-reads the committed
+   * state and is refused rather than building a third level between them.
+   * `order by id` gives the opposite moves (X under Y, Y under X) the same lock
+   * order, so they cannot deadlock. `id` is `null` on a create: there is no row
+   * yet to lock or to have children.
+   */
+  private static async assertParent(
+    tx: Executor,
+    id: string | null,
+    parentId: string | null,
+  ): Promise<void> {
+    if (parentId === null) return;
+    if (parentId === id) throw new CategoryParentError('self');
+
+    const locked = await tx
+      .select({ id: categories.id, parentId: categories.parentId })
+      .from(categories)
+      .where(inArray(categories.id, id === null ? [parentId] : [parentId, id]))
+      .orderBy(asc(categories.id))
+      .for('update');
+
+    const parent = locked.find((row) => row.id === parentId);
+    if (!parent) throw new CategoryParentError('unknown');
+    if (parent.parentId !== null) throw new CategoryParentError('nested');
+    // The lock read cannot see this — a child names its parent, not the other
+    // way round — so it is a second statement inside the same transaction.
+    if (id !== null && (await CategoryDao.countChildren(id, tx)) > 0) {
+      throw new CategoryParentError('hasChildren');
+    }
   }
 
   /**
    * Hard-deletes a category — nothing snapshots one, so no order needs the row.
    * `null` for an unknown id. While any product references it, active or not,
-   * the products foreign key (`ON DELETE RESTRICT`) throws 23503 instead.
+   * the products foreign key (`ON DELETE RESTRICT`) throws 23503 instead — and
+   * so does the parent foreign key while a sub-category sits under it.
    */
   static async deleteById(id: string): Promise<Category | null> {
     const [row] = await db
@@ -86,6 +167,19 @@ export class CategoryDao {
       .select({ value: count() })
       .from(products)
       .where(eq(products.categoryId, id));
+    return row?.value ?? 0;
+  }
+
+  /**
+   * How many sub-categories sit under the category — the other half of the
+   * delete refusal, and the guard's «has children» read. Takes an executor so
+   * {@link assertParent} can ask inside its own transaction.
+   */
+  static async countChildren(id: string, on: Executor = db): Promise<number> {
+    const [row] = await on
+      .select({ value: count() })
+      .from(categories)
+      .where(eq(categories.parentId, id));
     return row?.value ?? 0;
   }
 }

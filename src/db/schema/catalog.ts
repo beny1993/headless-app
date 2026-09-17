@@ -10,6 +10,7 @@ import {
   bigint,
   boolean,
   check,
+  type AnyPgColumn,
   index,
   integer,
   pgEnum,
@@ -38,17 +39,35 @@ const updatedAt = timestamp('updated_at', { withTimezone: true })
   .$onUpdate(() => /* @__PURE__ */ new Date())
   .notNull();
 
-export const categories = pgTable('categories', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  /** Persian display title, stored exactly as entered — no normalization. */
-  title: text('title').notNull(),
-  /** Latin URL segment; the design's admin form enforces `[a-z0-9-]{3,}`. */
-  slug: text('slug').notNull().unique(),
-  /** Manual ordering for the storefront's category strip. */
-  sortOrder: integer('sort_order').default(0).notNull(),
-  createdAt,
-  updatedAt,
-});
+export const categories = pgTable(
+  'categories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Persian display title, stored exactly as entered — no normalization. */
+    title: text('title').notNull(),
+    /** Latin URL segment; the design's admin form enforces `[a-z0-9-]{3,}`. */
+    slug: text('slug').notNull().unique(),
+    /** Manual ordering for the storefront's category strip. */
+    sortOrder: integer('sort_order').default(0).notNull(),
+    /**
+     * The category this one sits under, or `null` for a top-level one. Exactly
+     * one level deep: a row whose parent already has a parent is refused by
+     * `CategoryDao`, which is the only place that rule can live — a CHECK sees
+     * one row and cannot look at another. `restrict` so a parent with children
+     * cannot be deleted out from under them.
+     */
+    parentId: uuid('parent_id').references((): AnyPgColumn => categories.id, {
+      onDelete: 'restrict',
+    }),
+    createdAt,
+    updatedAt,
+  },
+  (table) => [
+    // The one part of the rule the database *can* enforce on its own.
+    check('categories_parent_not_self', sql`${table.parentId} <> ${table.id}`),
+    index('categories_parent_id_idx').on(table.parentId),
+  ],
+);
 
 export const products = pgTable(
   'products',
