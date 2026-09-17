@@ -17,13 +17,18 @@ import {
   apiAdminProvincePath,
   apiShippingRatePath,
 } from '@/lib/constant/paths';
-import { formatToman, toAsciiDigits } from '@/lib/format';
-import { provinceCreateSchema } from '@/lib/shipping/province-input';
+import { formatNumber, formatToman, toAsciiDigits } from '@/lib/format';
+import {
+  PROVINCE_MESSAGES,
+  provinceCreateSchema,
+} from '@/lib/shipping/province-input';
 import { shippingFeeSchema } from '@/lib/shipping/shipping-query';
 import { cn } from '@/lib/utils';
 
 const DEACTIVATE_LABEL = 'غیرفعال\u200Cسازی';
 const ACTIVATE_LABEL = 'فعال\u200Cسازی';
+const BULK_FEE_LABEL = 'هزینه ارسال همه استان\u200Cها (تومان)';
+const APPLY_ALL_LABEL = 'اعمال روی همه استان\u200Cها';
 
 /**
  * A fee as typed — Persian or ASCII digits — to integer Toman, or `null` when it
@@ -44,16 +49,25 @@ const parseFee = (raw: string): number | null => {
  * exact contract the province-shipping security pass fixed in place: no
  * POST/form alias and no permissive CORS, because the CSRF defences — the JSON
  * preflight and SameSite=Lax — both depend on it), and `POST`/`PATCH` under
- * `/api/admin/provinces`. Client-side gating here is cosmetic; the real boundary
- * is `requireAdmin` on those endpoints.
+ * `/api/admin/provinces`, plus the one-fee-for-all `PUT /api/admin/provinces/fee`.
+ * Client-side gating here is cosmetic; the real boundary is `requireAdmin` on
+ * those endpoints.
  *
  * Validation reuses the shared contracts (`shippingFeeSchema`,
  * `provinceCreateSchema`), so the form and the API cannot drift. Rows live in
  * local state: a create appends (ids ascend, so id order holds), a toggle maps
  * in place — an inactive province stays where it was, muted, fee still editable.
+ *
+ * A bulk apply replaces the rows with the server's list AND bumps `generation`,
+ * which is part of every row's key. Each `RateRow` seeds its input and its
+ * "saved" fee from props once, so only a remount makes the table show what the
+ * database now holds. Keyed on a counter rather than the fee: a per-row save
+ * never reaches `rows`, so after 25,000 → 30,000 (saved in the row) → everything
+ * back to 25,000, the fee in `rows` has not changed and would remount nothing.
  */
 export function ShippingRatesEditor({ rates }: { rates: AdminProvinceRow[] }) {
   const [rows, setRows] = useState(rates);
+  const [generation, setGeneration] = useState(0);
 
   const onCreated = (created: AdminProvinceRow) =>
     setRows((prev) => [...prev, created]);
@@ -63,11 +77,18 @@ export function ShippingRatesEditor({ rates }: { rates: AdminProvinceRow[] }) {
         row.provinceId === updated.provinceId ? updated : row,
       ),
     );
+  const onAppliedToAll = (updated: AdminProvinceRow[]) => {
+    setRows(updated);
+    setGeneration((current) => current + 1);
+  };
 
   return (
     // `min-w-0`: a flex item holding a wide table (see the discount manager).
     <div className="flex min-w-0 flex-col gap-6">
       <CreateProvinceForm onCreated={onCreated} />
+      {rows.length > 0 && (
+        <BulkFeeForm count={rows.length} onApplied={onAppliedToAll} />
+      )}
       {rows.length === 0 ? (
         <div className="border-border bg-secondary/40 text-muted-foreground rounded-2xl border py-16 text-center text-sm">
           هنوز استانی ثبت نشده است. اولین استان را با فرم بالا اضافه کن.
@@ -98,7 +119,7 @@ export function ShippingRatesEditor({ rates }: { rates: AdminProvinceRow[] }) {
               <tbody>
                 {rows.map((rate) => (
                   <RateRow
-                    key={rate.provinceId}
+                    key={`${rate.provinceId}:${generation}`}
                     rate={rate}
                     onToggled={onToggled}
                   />
@@ -109,6 +130,115 @@ export function ShippingRatesEditor({ rates }: { rates: AdminProvinceRow[] }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * One fee for every province — what makes 31 rows tunable: set them all, then
+ * adjust the few that differ. It overwrites every rate (inactive provinces too),
+ * so the confirm says how many and to what before anything is sent; a cancelled
+ * confirm keeps what was typed. The write is a single atomic server-side
+ * `UPDATE`, never a loop of per-row PUTs from here that could stop half way.
+ */
+function BulkFeeForm({
+  count,
+  onApplied,
+}: {
+  count: number;
+  onApplied: (updated: AdminProvinceRow[]) => void;
+}) {
+  const fieldId = useId();
+  const [fee, setFee] = useState('');
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const [justApplied, setJustApplied] = useState(false);
+
+  const submit = async () => {
+    if (busy) return;
+    setError(undefined);
+    setJustApplied(false);
+
+    const value = parseFee(fee);
+    if (value === null) {
+      setError(PROVINCE_MESSAGES.fee);
+      return;
+    }
+    if (
+      !window.confirm(
+        `هزینه ارسال هر ${formatNumber(count)} استان روی ${formatToman(value)} تنظیم می\u200Cشود و جای نرخ\u200Cهای فعلی را می\u200Cگیرد. ادامه؟`,
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      onApplied(
+        await putData<AdminProvinceRow[]>(API_PATHS.ADMIN_PROVINCES_FEE, {
+          fee: value,
+        }),
+      );
+      setFee('');
+      setJustApplied(true);
+    } catch (requestError) {
+      toast.error(
+        requestError instanceof Error
+          ? requestError.message
+          : 'اعمال هزینه ناموفق بود. دوباره تلاش کن.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+      className="border-border bg-card flex flex-col gap-4 rounded-2xl border p-6"
+    >
+      <h2 className="font-bold">{'یک هزینه برای همه استان\u200Cها'}</h2>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <TextField
+          id={`${fieldId}-bulk-fee`}
+          label={BULK_FEE_LABEL}
+          value={fee}
+          onChange={(next) => {
+            setFee(next);
+            setJustApplied(false);
+          }}
+          error={error}
+          hint={
+            'بعد از اعمال، استان\u200Cهای متفاوت را در جدول تک\u200Cتک تنظیم کن'
+          }
+          dir="ltr"
+          inputMode="numeric"
+          umami="admin-panel-shipping-bulk-fee"
+        />
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          disabled={busy}
+          data-umami-event="admin-panel-shipping-bulk-apply"
+          className="bg-accent-strong hover:bg-accent-hover inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy && (
+            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+          )}
+          {APPLY_ALL_LABEL}
+        </button>
+        {justApplied && (
+          <span className="text-success-strong flex items-center gap-1 text-sm">
+            <Check size={16} aria-hidden="true" /> روی همه اعمال شد
+          </span>
+        )}
+      </div>
+    </form>
   );
 }
 

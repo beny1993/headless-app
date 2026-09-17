@@ -11,8 +11,10 @@
 //
 // No DELETE: three restrict FKs point at a province, so removal is the soft
 // delete `PATCH { isActive: false }`. No admin GET either: the rate page reads
-// `ShippingRateDao.list` server-side. The fee itself stays on
-// `PUT /api/shipping/rates/{provinceId}` (./shipping.ts).
+// `ShippingRateDao.list` server-side. One province's fee stays on
+// `PUT /api/shipping/rates/{provinceId}` (./shipping.ts); the bulk
+// `PUT /admin/provinces/fee` — one fee for every province — lives here, because
+// a guard on `/shipping/rates` itself would also close the public GET there.
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
@@ -29,7 +31,7 @@ import {
   apiSuccessSchema,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
-import { AdminProvinceSchema } from './shipping';
+import { AdminProvinceSchema, RateUpdateBodySchema } from './shipping';
 
 /** User-facing copy, so Persian. */
 export const PROVINCE_DUPLICATE_MESSAGE =
@@ -143,4 +145,47 @@ export const provinceToggleHandler: RouteHandler<
   const updated = await ShippingRateDao.setActive(id, isActive);
   if (!updated) return c.json(apiError(PROVINCE_NOT_FOUND_MESSAGE), 404);
   return c.json(apiSuccess(updated), 200);
+};
+
+// ── One fee for every province ───────────────────────────────────────────────────
+
+// PUT, and only PUT: like the per-province rate update, there is deliberately no
+// POST/form alias — the CSRF defences (the JSON preflight and SameSite=Lax) both
+// depend on it. The static `fee` segment cannot shadow a province: the only
+// `{id}` route here is a PATCH.
+export const provinceBulkFeeRoute = createRoute({
+  method: 'put',
+  path: '/admin/provinces/fee',
+  tags: ['admin'],
+  summary: 'Set one shipping fee for every province (admin only)',
+  request: {
+    body: {
+      content: { 'application/json': { schema: RateUpdateBodySchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        'application/json': {
+          schema: apiSuccessSchema(
+            z.array(AdminProvinceSchema),
+            'ProvinceBulkFeeResponse',
+          ),
+        },
+      },
+      description: 'Every province — inactive ones too — with the new fee',
+    },
+    400: errorResponse('Invalid body'),
+    401: errorResponse('No session'),
+    403: errorResponse('Signed in, but not an admin'),
+  },
+});
+
+export const provinceBulkFeeHandler: RouteHandler<
+  typeof provinceBulkFeeRoute,
+  Env & AuthedEnv
+> = async (c) => {
+  const { fee } = c.req.valid('json');
+  return c.json(apiSuccess(await ShippingRateDao.setAllFees(fee)), 200);
 };

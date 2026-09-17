@@ -206,7 +206,8 @@ anonymous visitors and customers turned away; the dashboard figures; an order
 shipped, and one cancelled with its stock coming back; a product added with a
 photo, repriced and taken off the shop; a discount code a shopper redeems,
 then cannot once it is switched off; a shipping rate that checkout then
-charges; a province an admin adds, that checkout and the address book then
+charges, and one fee applied to every province at once (cancelled at the
+confirm, then confirmed) that checkout then charges; a province an admin adds, that checkout and the address book then
 offer and, once it is switched off, no longer offer — a saved address on it
 flagged in both — until it is switched back on; a home headline that the
 storefront then shows. Every page a spec opens is also checked for console
@@ -254,7 +255,8 @@ suite pins it on; the disabled option is component-tested in
   only, since none of those rows can be deleted. The card-to-card spec leaves a
   `checkout.payment` content row equal to the default (it puts the old values
   back in a `finally`). The shipping-rate and headline
-  specs put the old value back, and the province spec switches its province
+  specs put the old value back, the one-fee-for-all spec puts every province's
+  own fee back (through the API, all attempted before any failure is reported), and the province spec switches its province
   off, even when they fail.
 - **Uploaded images never count as failed requests.** A dev database keeps the
   uploads it was given while `.env` pointed at object storage, and this run's

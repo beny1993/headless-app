@@ -13,6 +13,7 @@
 // `provinces.name` is the real duplicate backstop.
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/db';
+import type { Executor } from '@/db/dao/OrderDao';
 import { provinces, shippingRates } from '@/db/schema/shipping';
 import { normalizeProvinceName } from '@/lib/shipping/province-input';
 
@@ -110,8 +111,8 @@ export class ShippingRateDao {
    * (Tehran first), and a new province simply appends. Not by name: Postgres
    * Persian collation is unreliable.
    */
-  static async list(): Promise<AdminProvinceRow[]> {
-    return db
+  static async list(executor: Executor = db): Promise<AdminProvinceRow[]> {
+    return executor
       .select(adminColumns)
       .from(provinces)
       .innerJoin(shippingRates, hasRate)
@@ -202,5 +203,22 @@ export class ShippingRateDao {
       .returning({ provinceId: shippingRates.provinceId });
     if (!updated) return null;
     return ShippingRateDao.getByProvinceIdForAdmin(provinceId);
+  }
+
+  /**
+   * Admin bulk update: set EVERY province's fee — inactive ones too, since the
+   * editor lists and edits them all — and return the admin list. One `UPDATE`
+   * with no `WHERE`, deliberately: a single statement is atomic, so the fees
+   * never sit half-changed the way 31 per-row writes could, and a negative fee
+   * is refused for all of them by the `shipping_rates_fee_non_negative` CHECK.
+   * `executor` lets the integration test run it inside a transaction it rolls
+   * back, because this is the one write that touches the seeded rows.
+   */
+  static async setAllFees(
+    fee: number,
+    executor: Executor = db,
+  ): Promise<AdminProvinceRow[]> {
+    await executor.update(shippingRates).set({ fee });
+    return ShippingRateDao.list(executor);
   }
 }
