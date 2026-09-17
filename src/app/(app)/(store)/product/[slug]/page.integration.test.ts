@@ -134,6 +134,19 @@ describe.skipIf(!databaseReachable)('the product page', () => {
       expect(text).toContain('مناسب گوارش حساس');
     });
 
+    it('names both pets in one phrase for a product suited to both', async () => {
+      const category = await makeCategory();
+      const both = await ProductDao.create(
+        makeProduct(category, { petTypes: [PET_TYPES.CAT, PET_TYPES.DOG] }),
+      );
+      const catOnly = await ProductDao.create(makeProduct(category));
+
+      expect(await renderedText(both.slug)).toContain('گربه و سگ');
+      const single = await renderedText(catOnly.slug);
+      expect(single).toContain('گربه');
+      expect(single).not.toContain('گربه و سگ');
+    });
+
     it('renders the price in Toman with Persian digits', async () => {
       const category = await makeCategory();
       const product = await ProductDao.create(

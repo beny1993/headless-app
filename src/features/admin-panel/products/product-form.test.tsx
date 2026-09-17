@@ -6,6 +6,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PRODUCT_MESSAGES } from '@/lib/catalog/product-input';
 import { PROTECTED_PATHS } from '@/lib/constant/paths';
 import { ProductForm, type ProductFormInitial } from './product-form';
 
@@ -154,5 +155,75 @@ describe('product save failures', () => {
     );
     expect(router.push).toHaveBeenCalledWith(PROTECTED_PATHS.PRODUCTS);
     expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('the pet control', () => {
+  // The buttons carry an emoji before the word, so they are matched by it.
+  const pet = (name: RegExp) => screen.getByRole('button', { name });
+
+  it('starts a new product with neither pet pressed', () => {
+    // Not «گربه» by default: with toggle semantics a pre-pressed cat turns an
+    // admin who presses only «سگ» into a silent both-pets product.
+    render(<ProductForm categories={[]} />);
+
+    expect(pet(/گربه/).getAttribute('aria-pressed')).toBe('false');
+    expect(pet(/سگ/).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByText('یکی یا هر دو را انتخاب کن')).toBeTruthy();
+  });
+
+  it('shows the saved selection when editing', () => {
+    render(
+      <ProductForm
+        product={{ ...EDIT_PRODUCT, petTypes: ['cat', 'dog'] }}
+        categories={[{ id: EDIT_PRODUCT.categoryId, title: 'گربه' }]}
+      />,
+    );
+
+    expect(pet(/گربه/).getAttribute('aria-pressed')).toBe('true');
+    expect(pet(/سگ/).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('toggles each pet independently and sends both', async () => {
+    api.putData.mockResolvedValue({ id: EDIT_PRODUCT.id });
+    render(
+      <ProductForm
+        product={EDIT_PRODUCT}
+        categories={[{ id: EDIT_PRODUCT.categoryId, title: 'گربه' }]}
+      />,
+    );
+
+    fireEvent.click(pet(/سگ/));
+
+    expect(pet(/گربه/).getAttribute('aria-pressed')).toBe('true');
+    expect(pet(/سگ/).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+    await waitFor(() =>
+      expect(api.putData).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ petTypes: ['cat', 'dog'] }),
+      ),
+    );
+  });
+
+  it('refuses a save with no pet and sends nothing', async () => {
+    render(
+      <ProductForm
+        product={EDIT_PRODUCT}
+        categories={[{ id: EDIT_PRODUCT.categoryId, title: 'گربه' }]}
+      />,
+    );
+
+    fireEvent.click(pet(/گربه/));
+    expect(pet(/گربه/).getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    await waitFor(() =>
+      expect(screen.getByText(PRODUCT_MESSAGES.petRequired)).toBeTruthy(),
+    );
+    expect(api.putData).not.toHaveBeenCalled();
+    // Pressing a pet again clears the message, as every other field does.
+    fireEvent.click(pet(/سگ/));
+    expect(screen.queryByText(PRODUCT_MESSAGES.petRequired)).toBeNull();
   });
 });

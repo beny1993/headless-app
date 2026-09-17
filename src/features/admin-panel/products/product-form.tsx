@@ -11,7 +11,11 @@ import {
   productInputSchema,
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
-import { PET_TYPES, type PetType } from '@/lib/catalog/product-query';
+import {
+  PET_TYPES,
+  normalizePetTypes,
+  type PetType,
+} from '@/lib/catalog/product-query';
 import { SKU_SUFFIX_LENGTH, skuPreview } from '@/lib/catalog/sku';
 import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import {
@@ -112,7 +116,11 @@ export function ProductForm({
     oldPrice: product?.oldPrice != null ? String(product.oldPrice) : '',
     stock: product ? String(product.stock) : '',
     categoryId: product?.categoryId ?? '',
-    petTypes: product?.petTypes ?? [PET_TYPES.CAT],
+    // A new product starts with neither pet pressed: with toggle semantics a
+    // pre-pressed «گربه» turns an admin who presses only «سگ» into a silent
+    // both-pets product. One expression — flip it to `[PET_TYPES.CAT]` to
+    // preselect the cat again.
+    petTypes: product?.petTypes ?? [],
     isActive: product?.isActive ?? true,
   });
   const [file, setFile] = useState<File | null>(null);
@@ -129,6 +137,17 @@ export function ProductForm({
     setForm((current) => ({ ...current, [key]: value }));
     setFieldErrors((current) => ({ ...current, [key]: '' }));
   };
+
+  /** Add or remove one pet, keeping the stored order. */
+  const togglePet = (pet: PetType) =>
+    update(
+      'petTypes',
+      normalizePetTypes(
+        form.petTypes.includes(pet)
+          ? form.petTypes.filter((value) => value !== pet)
+          : [...form.petTypes, pet],
+      ),
+    );
 
   const onPickFile = (chosen: File | undefined) => {
     if (!chosen) return;
@@ -274,7 +293,8 @@ export function ProductForm({
                 به ترتیب از چپ: برند، حیوان، نام محصول، وزن یا اندازه — با حروف
                 کوچک انگلیسی و خط تیره؛ مثل{' '}
                 <bdi className="font-mono">royal-canin-cat-sensible-2kg</bdi>.
-                کد کالا از همین ساخته می‌شود.
+                کد کالا از همین ساخته می‌شود. برای محصولی که هم گربه و هم سگ
+                است، بخش حیوان را از نشانی حذف کن.
               </>
             }
             error={fieldErrors.slug}
@@ -431,7 +451,11 @@ export function ProductForm({
           </Field>
         </div>
 
-        <fieldset>
+        {/* Two independent `aria-pressed` toggles already are multi-select
+            semantics — a pressed toggle is a button, not a radio — so «both»
+            needs the handler to toggle rather than replace, and nothing else.
+            The fieldset's legend is the group's label. */}
+        <fieldset aria-describedby={fid('petTypes-note')}>
           <legend className="mb-1.5 block text-sm font-medium">
             نوع حیوان
           </legend>
@@ -443,8 +467,9 @@ export function ProductForm({
               <button
                 key={option.value}
                 type="button"
-                onClick={() => update('petTypes', [option.value])}
+                onClick={() => togglePet(option.value)}
                 aria-pressed={form.petTypes.includes(option.value)}
+                data-umami-event={`admin-panel-product-pet-${option.value}`}
                 className={`flex-1 rounded-xl border-2 py-2.5 text-sm font-medium transition-colors ${
                   form.petTypes.includes(option.value)
                     ? 'border-accent-strong bg-accent/10 text-accent-strong'
@@ -455,6 +480,13 @@ export function ProductForm({
               </button>
             ))}
           </div>
+          {/* Deselecting the last pet is allowed and refused on submit with
+              every other field: silently ignoring the click says nothing. */}
+          <HintOrError
+            id={fid('petTypes-note')}
+            hint="یکی یا هر دو را انتخاب کن"
+            error={fieldErrors.petTypes}
+          />
         </fieldset>
 
         <div className="bg-secondary/50 border-border flex items-start gap-3 rounded-xl border p-4">
@@ -529,13 +561,35 @@ function Field({
         {label}
       </label>
       {children}
-      {error ? (
-        <p className="text-destructive mt-1.5 flex items-center gap-1 text-xs">
-          <AlertCircle size={12} aria-hidden="true" /> {error}
-        </p>
-      ) : hint ? (
-        <p className="text-muted-foreground mt-1.5 text-xs">{hint}</p>
-      ) : null}
+      <HintOrError hint={hint} error={error} />
     </div>
+  );
+}
+
+/** One slot under a control: its error if it has one, otherwise its hint. */
+function HintOrError({
+  id,
+  hint,
+  error,
+}: {
+  id?: string;
+  hint?: React.ReactNode;
+  error?: string;
+}) {
+  if (error) {
+    return (
+      <p
+        id={id}
+        className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
+      >
+        <AlertCircle size={12} aria-hidden="true" /> {error}
+      </p>
+    );
+  }
+  if (!hint) return null;
+  return (
+    <p id={id} className="text-muted-foreground mt-1.5 text-xs">
+      {hint}
+    </p>
   );
 }
