@@ -71,12 +71,15 @@ const renderedText = async (slug: string) => collect(await render(slug));
 describe.skipIf(!databaseReachable)('the product page', () => {
   const createdCategoryIds: string[] = [];
 
-  const makeCategory = async (): Promise<Category> => {
+  const makeCategory = async (
+    parentId: string | null = null,
+  ): Promise<Category> => {
     const [row] = await testDb
       .insert(categories)
       .values({
-        title: 'دسته آزمایشی',
+        title: parentId ? 'زیردسته آزمایشی' : 'دسته آزمایشی',
         slug: `test-${faker.string.alphanumeric(10).toLowerCase()}`,
+        parentId,
       })
       .returning();
     createdCategoryIds.push(row.id);
@@ -190,6 +193,25 @@ describe.skipIf(!databaseReachable)('the product page', () => {
 
       expect(text).toContain(shopPath({ category: category.slug }));
       expect(text).toContain(category.title);
+    });
+
+    it('puts the parent crumb before the sub-category’s, both linked', async () => {
+      const parent = await makeCategory();
+      const sub = await makeCategory(parent.id);
+      const product = await ProductDao.create(makeProduct(sub));
+
+      const text = await renderedText(product.slug);
+      const crumbs = [
+        text.indexOf(shopPath({ category: parent.slug })),
+        text.indexOf(shopPath({ category: sub.slug })),
+      ];
+
+      expect(crumbs[0]).toBeGreaterThan(-1);
+      expect(crumbs[1]).toBeGreaterThan(crumbs[0]);
+      expect(text).toContain(parent.title);
+      // The spec row names the category it is filed under — the sub — and the
+      // breadcrumb above already carries the parent.
+      expect(text).toContain(sub.title);
     });
 
     it('renders its description', async () => {

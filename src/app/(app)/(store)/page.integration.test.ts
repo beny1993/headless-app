@@ -136,6 +136,48 @@ describe.skipIf(!databaseReachable)('the home page', () => {
     }
   });
 
+  it('keeps sub-categories out of the strip while links still resolve to them', async () => {
+    const token = () => `home-${faker.string.alphanumeric(10).toLowerCase()}`;
+    const [parent] = await testDb
+      .insert(categories)
+      .values({ title: 'دسته مادر', slug: token() })
+      .returning();
+    const [sub] = await testDb
+      .insert(categories)
+      .values({ title: 'زیردسته', slug: token(), parentId: parent.id })
+      .returning();
+    try {
+      const cards = [
+        ...DEFAULT_CONTENT['home.moments'].cards,
+      ] as ContentValue<'home.moments'>['cards'];
+      cards[2] = {
+        ...cards[2],
+        link: { type: 'shop', categoryId: sub.id, pet: undefined },
+      };
+      await SiteContentDao.set('home.moments', {
+        ...DEFAULT_CONTENT['home.moments'],
+        cards,
+      });
+
+      const tree = await page.default();
+      const tiles = findSection(tree, CategoriesSection)?.props.categories as {
+        id: string;
+      }[];
+      const targets = findSection(tree, LifeMomentsSection)?.props
+        .targets as LinkTargets;
+
+      expect(tiles.map((tile) => tile.id)).toContain(parent.id);
+      expect(tiles.map((tile) => tile.id)).not.toContain(sub.id);
+      // `loadLinkTargets` still gets every row, sub-categories included.
+      expect(targets.categories[sub.id]).toBe(sub.slug);
+    } finally {
+      await clear();
+      await testDb
+        .delete(categories)
+        .where(inArray(categories.id, [sub.id, parent.id]));
+    }
+  });
+
   it('shows a saved block on the very next load (no cache to go stale)', async () => {
     await SiteContentDao.set('home.hero', {
       ...DEFAULT_CONTENT['home.hero'],

@@ -17,7 +17,12 @@ import { PATHS } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-export type ShopCategoryOption = { title: string; slug: string };
+export type ShopCategoryOption = {
+  title: string;
+  slug: string;
+  /** `1` for a sub-category; the page orders them with `orderAsTree`. */
+  depth: 0 | 1;
+};
 
 /**
  * The shop's filter panel: category, pet type and price range.
@@ -78,29 +83,38 @@ export function ShopFilters({
         <legend className="text-muted-foreground mb-2 text-sm font-semibold">
           دسته‌بندی
         </legend>
-        <div className="space-y-1">
-          {categories.map((category) => (
-            <div
-              key={category.slug}
-              className="flex items-center gap-2.5 py-1.5"
-            >
-              <input
-                type="checkbox"
-                id={`${ids}-category-${category.slug}`}
-                className="accent-accent-strong size-4 shrink-0 cursor-pointer"
-                checked={query.category === category.slug}
-                onChange={() => go(toggleShopCategory(query, category.slug))}
-                data-umami-event="shop-filter-category-toggle"
+        {/* A real list, not `div`s: the indent alone is visual, and a screen
+            reader has to hear that a sub-category sits inside its parent.
+            Exactly one box is ever ticked — the panel mirrors the single
+            `?category=`, and a half-ticked parent would promise a multi-select
+            the URL does not have. The parent's *results* include its children
+            (that is the DAO's job); the control does not pretend to. */}
+        <ul className="space-y-1">
+          {categoryGroups(categories).map(({ parent, children }) => (
+            <li key={parent.slug}>
+              <CategoryBox
+                category={parent}
+                ids={ids}
+                query={query}
+                onToggle={go}
               />
-              <label
-                htmlFor={`${ids}-category-${category.slug}`}
-                className="cursor-pointer text-sm select-none"
-              >
-                {category.title}
-              </label>
-            </div>
+              {children.length > 0 && (
+                <ul className="ps-6">
+                  {children.map((child) => (
+                    <li key={child.slug}>
+                      <CategoryBox
+                        category={child}
+                        ids={ids}
+                        query={query}
+                        onToggle={go}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
           ))}
-        </div>
+        </ul>
       </fieldset>
 
       <fieldset className="mb-6">
@@ -143,6 +157,57 @@ export function ShopFilters({
           پاک کردن فیلترها
         </Link>
       )}
+    </div>
+  );
+}
+
+/**
+ * The flat, tree-ordered options as parents with their children. `orderAsTree`
+ * has already put each sub-category straight after its parent, so one pass is
+ * enough — no nested type travels from the page to here.
+ */
+function categoryGroups(categories: readonly ShopCategoryOption[]) {
+  const groups: {
+    parent: ShopCategoryOption;
+    children: ShopCategoryOption[];
+  }[] = [];
+  for (const category of categories) {
+    const last = groups.at(-1);
+    if (category.depth === 1 && last) last.children.push(category);
+    else groups.push({ parent: category, children: [] });
+  }
+  return groups;
+}
+
+/** One category checkbox, in the sidebar list or nested under its parent. */
+function CategoryBox({
+  category,
+  ids,
+  query,
+  onToggle,
+}: {
+  category: ShopCategoryOption;
+  ids: string;
+  query: ShopQuery;
+  onToggle: (next: ShopQuery) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2.5 py-1.5">
+      <input
+        type="checkbox"
+        id={`${ids}-category-${category.slug}`}
+        className="accent-accent-strong size-4 shrink-0 cursor-pointer"
+        checked={query.category === category.slug}
+        onChange={() => onToggle(toggleShopCategory(query, category.slug))}
+        // One event name for one behaviour, sub-categories included.
+        data-umami-event="shop-filter-category-toggle"
+      />
+      <label
+        htmlFor={`${ids}-category-${category.slug}`}
+        className="cursor-pointer text-sm select-none"
+      >
+        {category.title}
+      </label>
     </div>
   );
 }

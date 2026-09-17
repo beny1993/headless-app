@@ -84,6 +84,11 @@ export default async function ProductDetailPage({ params }: Params) {
   // behind a restricting foreign key), but the lookup is still optional-typed
   // — the crumb is dropped rather than the page failing over a link.
   const category = categories.find((row) => row.id === product.categoryId);
+  // A sub-category's parent gets a crumb of its own, so the trail reads
+  // «فروشگاه › بهداشت › شامپو و نظافت». Optional-typed for the same reason.
+  const parentCategory = categories.find(
+    (row) => row.id === category?.parentId,
+  );
   const state = availability(product.stock);
 
   return (
@@ -100,6 +105,18 @@ export default async function ProductDetailPage({ params }: Params) {
           <Link href={PATHS.SHOP} className="hover:text-foreground">
             فروشگاه
           </Link>
+          {parentCategory && (
+            <>
+              <span aria-hidden="true">/</span>
+              <Link
+                href={shopPath({ category: parentCategory.slug })}
+                className="hover:text-foreground"
+                data-umami-event="product-breadcrumb-parent-category"
+              >
+                {parentCategory.title}
+              </Link>
+            </>
+          )}
           {category && (
             <>
               <span aria-hidden="true">/</span>
