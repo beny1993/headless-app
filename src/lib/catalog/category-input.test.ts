@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
   CATEGORY_MESSAGES,
+  CATEGORY_PARENT_MESSAGES,
   categoryInputSchema,
   MAX_SORT_ORDER,
   MAX_TITLE_LENGTH,
 } from './category-input';
 import { MAX_SLUG_LENGTH } from './sku';
 
-const valid = { title: 'غذای خشک', slug: 'dry-food', sortOrder: 1 };
+const valid = {
+  title: 'غذای خشک',
+  slug: 'dry-food',
+  sortOrder: 1,
+  parentId: null,
+};
 
 /** The message zod attached to `field`, or undefined when the field passed. */
 const messageFor = (input: unknown, field: string) =>
@@ -144,5 +150,47 @@ describe('categoryInputSchema', () => {
         );
       },
     );
+  });
+
+  describe('parentId', () => {
+    const PARENT = '123e4567-e89b-12d3-a456-426614174000';
+
+    it('accepts a parent id', () => {
+      expect(
+        categoryInputSchema.parse({ ...valid, parentId: PARENT }).parentId,
+      ).toBe(PARENT);
+    });
+
+    it('reads an omitted parent as top-level, so an older body stays valid', () => {
+      const { parentId, ...withoutParent } = valid;
+      void parentId;
+
+      expect(categoryInputSchema.parse(withoutParent).parentId).toBeNull();
+    });
+
+    it.each(['', 'not-a-uuid', 12, 'dry-food'])(
+      'rejects %s with the Persian message',
+      (parentId) => {
+        expect(messageFor({ ...valid, parentId }, 'parentId')).toBe(
+          CATEGORY_MESSAGES.parent,
+        );
+      },
+    );
+  });
+});
+
+describe('CATEGORY_PARENT_MESSAGES', () => {
+  it('has a Persian sentence for every refusal reason', () => {
+    // The manager reuses `hasChildren` as its disabled-select hint, and the
+    // routes send each of these back as `parentId: <message>`.
+    expect(Object.keys(CATEGORY_PARENT_MESSAGES).sort()).toEqual([
+      'hasChildren',
+      'nested',
+      'self',
+      'unknown',
+    ]);
+    for (const message of Object.values(CATEGORY_PARENT_MESSAGES)) {
+      expect(message).toMatch(/\p{Script=Arabic}/u);
+    }
   });
 });
