@@ -74,6 +74,17 @@ type SeedProduct = {
   extraCategorySlugs?: SeedCategorySlug[];
   petTypes: PetType[];
   imageKeys: string[];
+  /**
+   * «۱۰ کیلوگرم», «لاوندر» — what tells this member from its siblings. Set on
+   * the family's head too; absent on a standalone product.
+   */
+  variantLabel?: string;
+  /**
+   * The sku of the product this one is a variant of. By sku rather than by id
+   * because the seed has no ids until it runs — the runner resolves it, and a
+   * head must therefore appear **earlier in this list** than its members.
+   */
+  variantOfSku?: string;
 };
 
 export const SEED_PRODUCTS: SeedProduct[] = [
@@ -219,5 +230,55 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     extraCategorySlugs: ['multivitamin'],
     petTypes: [PET_TYPES.CAT],
     imageKeys: ['products/cat-supplement.jpg'],
+  },
+  // Benyamin's own example of one product in several smells: «our litter box
+  // deodorant has different kinds of smells». The three rows below are one card
+  // in the shop — the head is listed, the members are reached from its page.
+  // «بدون بو» is cheaper on purpose, so the card exercises «از ۱۴۹٬۰۰۰ تومان»
+  // rather than a plain price.
+  {
+    title: 'خوشبوکننده خاک گربه',
+    slug: 'catsan-litter-deodorizer-lavender',
+    sku: 'CS-DEO-LAVENDER',
+    brand: 'Catsan',
+    benefit: 'کنترل بو تا ۷ روز',
+    price: 185_000,
+    oldPrice: null,
+    stock: 18,
+    categorySlug: 'hygiene',
+    petTypes: [PET_TYPES.CAT],
+    // No new downloads, as with the shampoo above.
+    imageKeys: ['products/cat-supplement.jpg'],
+    variantLabel: 'لاوندر',
+  },
+  {
+    title: 'خوشبوکننده خاک گربه',
+    slug: 'catsan-litter-deodorizer-ocean',
+    sku: 'CS-DEO-OCEAN',
+    brand: 'Catsan',
+    benefit: 'کنترل بو تا ۷ روز',
+    price: 185_000,
+    oldPrice: null,
+    stock: 12,
+    categorySlug: 'hygiene',
+    petTypes: [PET_TYPES.CAT],
+    imageKeys: ['products/cat-supplement.jpg'],
+    variantLabel: 'اقیانوس',
+    variantOfSku: 'CS-DEO-LAVENDER',
+  },
+  {
+    title: 'خوشبوکننده خاک گربه',
+    slug: 'catsan-litter-deodorizer-unscented',
+    sku: 'CS-DEO-UNSCENTED',
+    brand: 'Catsan',
+    benefit: 'مناسب گربه‌های حساس',
+    price: 149_000,
+    oldPrice: null,
+    stock: 9,
+    categorySlug: 'hygiene',
+    petTypes: [PET_TYPES.CAT],
+    imageKeys: ['products/cat-supplement.jpg'],
+    variantLabel: 'بدون بو',
+    variantOfSku: 'CS-DEO-LAVENDER',
   },
 ];

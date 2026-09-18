@@ -39,10 +39,23 @@ export const seedCatalog = async (): Promise<{
     categoryIdBySlug.set(row.slug, row.id);
   }
 
+  // A family's head has to exist before its members can point at it, so the
+  // runner keeps the ids it has written and `SEED_PRODUCTS` lists heads first.
+  const productIdBySku = new Map<string, string>();
+  const headIdFor = (headSku: string, sku: string) => {
+    const id = productIdBySku.get(headSku);
+    if (!id)
+      throw new Error(
+        `Seed product ${sku}: head ${headSku} not seeded yet — list it first`,
+      );
+    return id;
+  };
+
   for (const {
     categorySlug,
     extraCategorySlugs = [],
     imageKeys,
+    variantOfSku,
     ...product
   } of SEED_PRODUCTS) {
     // Passed on every run, empty list and all: `upsertBySku` replaces a
@@ -54,7 +67,9 @@ export const seedCatalog = async (): Promise<{
       extraCategoryIds: extraCategorySlugs.map((slug) =>
         idFor(slug, product.sku),
       ),
+      variantOf: variantOfSku ? headIdFor(variantOfSku, product.sku) : null,
     });
+    productIdBySku.set(row.sku, row.id);
     await ProductDao.setImages(row.id, imageKeys);
   }
 

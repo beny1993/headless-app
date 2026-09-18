@@ -18,7 +18,7 @@ const known = new Set<string>([
 
 describe('catalog seed data', () => {
   it('carries the demo products and categories of the design prototype', () => {
-    expect(SEED_PRODUCTS).toHaveLength(10);
+    expect(SEED_PRODUCTS).toHaveLength(13);
     expect(SEED_CATEGORIES).toHaveLength(6);
     expect(SEED_SUBCATEGORIES).toHaveLength(3);
   });
@@ -149,5 +149,53 @@ describe('catalog seed data', () => {
       new Set(['cat', 'dog']),
     );
     expect(SEED_PRODUCTS.some((p) => p.oldPrice !== null)).toBe(true);
+  });
+});
+
+describe('the seeded product family', () => {
+  const members = SEED_PRODUCTS.filter((product) => product.variantOfSku);
+
+  it('seeds one family, so the storefront and the E2E suite have one', () => {
+    expect(members.length).toBeGreaterThan(0);
+    const heads = new Set(members.map((member) => member.variantOfSku));
+    expect(heads.size).toBe(1);
+  });
+
+  it('lists every head before the members that point at it', () => {
+    // The runner resolves `variantOfSku` against ids it has already written, so
+    // a member placed above its head throws rather than seeding a broken family.
+    for (const member of members) {
+      const headIndex = SEED_PRODUCTS.findIndex(
+        (product) => product.sku === member.variantOfSku,
+      );
+      const memberIndex = SEED_PRODUCTS.indexOf(member);
+      expect(headIndex).toBeGreaterThanOrEqual(0);
+      expect(headIndex).toBeLessThan(memberIndex);
+    }
+  });
+
+  it('gives every member and every head a label', () => {
+    const heads = new Set(members.map((member) => member.variantOfSku));
+    for (const product of SEED_PRODUCTS) {
+      const isFamily = product.variantOfSku || heads.has(product.sku);
+      if (isFamily) expect(product.variantLabel?.trim()).toBeTruthy();
+    }
+  });
+
+  it('prices the family unevenly, so a card exercises «از …»', () => {
+    const heads = new Set(members.map((member) => member.variantOfSku));
+    const family = SEED_PRODUCTS.filter(
+      (product) => product.variantOfSku || heads.has(product.sku),
+    );
+    const prices = new Set(family.map((product) => product.price));
+    expect(prices.size).toBeGreaterThan(1);
+  });
+
+  it('keeps every member in the same category as its head', () => {
+    const bySku = new Map(SEED_PRODUCTS.map((p) => [p.sku, p]));
+    for (const member of members) {
+      const head = bySku.get(member.variantOfSku!);
+      expect(member.categorySlug).toBe(head?.categorySlug);
+    }
   });
 });

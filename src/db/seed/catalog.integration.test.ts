@@ -179,9 +179,19 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
       petType: 'dog',
     });
 
-    expect(dryFood.map((row) => row.sku).sort()).toEqual(
+    // Scoped to the seed's own rows. The assertion is still exact — these two
+    // and no other *seeded* product is under dry-food — but it no longer breaks
+    // because somebody added a product on the shared dev database, which is
+    // what this suite runs against and what an admin is free to do.
+    const seeded = (rows: { sku: string }[]) =>
+      rows
+        .map((row) => row.sku)
+        .filter((sku) => SEED_PRODUCTS.some((product) => product.sku === sku))
+        .sort();
+
+    expect(seeded(dryFood)).toEqual(
       ['HS-DOG-CHICKEN-2K', 'RC-CAT-ADULT-1K'].sort(),
     );
-    expect(dogs.map((row) => row.sku)).toEqual(['HS-DOG-CHICKEN-2K']);
+    expect(seeded(dogs)).toEqual(['HS-DOG-CHICKEN-2K']);
   });
 });
