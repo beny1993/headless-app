@@ -7,9 +7,6 @@ import { Filter, X } from 'lucide-react';
 import {
   SHOP_PET_OPTIONS,
   buildShopHref,
-  parseShopQuery,
-  toggleShopCategory,
-  toggleShopPet,
   updateShopQuery,
   type ShopQuery,
 } from './shop-query';
@@ -49,10 +46,13 @@ export type ShopCategoryOption = {
 export function ShopFilters({
   query,
   categories,
+  priceBounds,
   onApply,
 }: {
   query: ShopQuery;
   categories: readonly ShopCategoryOption[];
+  /** The catalogue's cheapest and dearest, for the price slider's ends. */
+  priceBounds: { min: number; max: number };
   /** The sheet closes itself after a change; the sidebar passes nothing. */
   onApply?: () => void;
 }) {
@@ -65,48 +65,68 @@ export function ShopFilters({
     onApply?.();
   };
 
-  const hasFilters =
-    query.category !== undefined ||
-    query.pet !== undefined ||
-    query.minPrice !== undefined ||
-    query.maxPrice !== undefined;
-
   return (
     <div
-      // While a navigation is in flight the checkbox still shows the old URL's
+      // While a navigation is in flight the controls still show the old URL's
       // state, because that is what is still on screen. Saying so beats
       // pretending the click did nothing.
       aria-busy={pending}
-      className={cn('transition-opacity', pending && 'opacity-60')}
+      className={cn(
+        'transition-opacity duration-200 motion-reduce:transition-none',
+        pending && 'opacity-60',
+      )}
     >
-      <fieldset className="mb-6">
-        <legend className="text-muted-foreground mb-2 text-sm font-semibold">
-          دسته‌بندی
-        </legend>
+      <ActiveFilters query={query} categories={categories} onChange={go} />
+
+      <fieldset className="border-border/70 mb-5 border-b pb-5">
+        <legend className="mb-2 text-sm font-semibold">دسته‌بندی</legend>
         {/* A real list, not `div`s: the indent alone is visual, and a screen
             reader has to hear that a sub-category sits inside its parent.
-            Exactly one box is ever ticked — the panel mirrors the single
-            `?category=`, and a half-ticked parent would promise a multi-select
-            the URL does not have. The parent's *results* include its children
-            (that is the DAO's job); the control does not pretend to. */}
-        <ul className="space-y-1">
+            Radios, not checkboxes — the panel mirrors a single `?category=`,
+            and a box promises a multi-select the URL cannot hold. What a
+            checkbox did give was click-to-clear; the «همه» row below restores
+            it, and says out loud what was previously undiscoverable. The
+            parent's *results* include its children (the DAO's job); the
+            control does not pretend to. */}
+        <ul className="space-y-0.5">
+          <li>
+            <CategoryRow
+              label="همه دسته‌بندی‌ها"
+              value=""
+              ids={ids}
+              checked={query.category === undefined}
+              onSelect={() =>
+                go(updateShopQuery(query, { category: undefined }))
+              }
+            />
+          </li>
           {categoryGroups(categories).map(({ parent, children }) => (
             <li key={parent.slug}>
-              <CategoryBox
-                category={parent}
+              <CategoryRow
+                label={parent.title}
+                value={parent.slug}
                 ids={ids}
-                query={query}
-                onToggle={go}
+                checked={query.category === parent.slug}
+                onSelect={() =>
+                  go(updateShopQuery(query, { category: parent.slug }))
+                }
               />
               {children.length > 0 && (
-                <ul className="ps-6">
+                // The rail is the hierarchy. An indent alone left «مالت» and
+                // «مکمل» looking like siblings at a glance, which is the thing
+                // this panel most has to make obvious.
+                <ul className="border-border ms-3 mt-0.5 space-y-0.5 border-s ps-3">
                   {children.map((child) => (
                     <li key={child.slug}>
-                      <CategoryBox
-                        category={child}
+                      <CategoryRow
+                        label={child.title}
+                        value={child.slug}
                         ids={ids}
-                        query={query}
-                        onToggle={go}
+                        nested
+                        checked={query.category === child.slug}
+                        onSelect={() =>
+                          go(updateShopQuery(query, { category: child.slug }))
+                        }
                       />
                     </li>
                   ))}
@@ -117,48 +137,132 @@ export function ShopFilters({
         </ul>
       </fieldset>
 
-      <fieldset className="mb-6">
-        <legend className="text-muted-foreground mb-2 text-sm font-semibold">
-          نوع حیوان
-        </legend>
-        <div className="space-y-1">
+      <fieldset className="border-border/70 mb-5 border-b pb-5">
+        <legend className="mb-2 text-sm font-semibold">نوع حیوان</legend>
+        {/* Two options and a «no filter» state: a segmented control says that
+            in one line, where four stacked checkbox rows said it in four and
+            still left «both» unnamed. */}
+        <div className="bg-secondary flex gap-1 rounded-xl p-1">
+          <PetSegment
+            label="همه"
+            value=""
+            ids={ids}
+            checked={query.pet === undefined}
+            onSelect={() => go(updateShopQuery(query, { pet: undefined }))}
+          />
           {SHOP_PET_OPTIONS.map((pet) => (
-            <div key={pet.value} className="flex items-center gap-2.5 py-1.5">
-              <input
-                type="checkbox"
-                id={`${ids}-pet-${pet.value}`}
-                className="accent-accent-strong size-4 shrink-0 cursor-pointer"
-                checked={query.pet === pet.value}
-                onChange={() => go(toggleShopPet(query, pet.value))}
-                data-umami-event="shop-filter-pet-toggle"
-              />
-              <label
-                htmlFor={`${ids}-pet-${pet.value}`}
-                className="cursor-pointer text-sm select-none"
-              >
-                {pet.label}
-              </label>
-            </div>
+            <PetSegment
+              key={pet.value}
+              label={pet.label}
+              value={pet.value}
+              ids={ids}
+              checked={query.pet === pet.value}
+              onSelect={() => go(updateShopQuery(query, { pet: pet.value }))}
+            />
           ))}
         </div>
       </fieldset>
 
-      <PriceFilter query={query} ids={ids} onSubmit={go} />
+      <PriceFilter query={query} ids={ids} bounds={priceBounds} onSubmit={go} />
+    </div>
+  );
+}
 
-      {hasFilters && (
+/**
+ * What is filtering the results right now, as one removable chip each.
+ *
+ * The panel already encodes this across three sections, but reading it meant
+ * scanning all three. Stating it once, at the top, is what turns «why am I
+ * seeing these products» into a glance — and each chip drops its own filter
+ * without hunting for the control that set it.
+ *
+ * Renders nothing when nothing is applied, so an unfiltered shop is not asked
+ * to carry an empty box.
+ */
+function ActiveFilters({
+  query,
+  categories,
+  onChange,
+}: {
+  query: ShopQuery;
+  categories: readonly ShopCategoryOption[];
+  onChange: (next: ShopQuery) => void;
+}) {
+  const chips: { key: string; label: string; clear: ShopQuery }[] = [];
+
+  if (query.category !== undefined) {
+    const title =
+      categories.find((category) => category.slug === query.category)?.title ??
+      query.category;
+    chips.push({
+      key: 'category',
+      label: title,
+      clear: updateShopQuery(query, { category: undefined }),
+    });
+  }
+  if (query.pet !== undefined) {
+    const pet = SHOP_PET_OPTIONS.find((option) => option.value === query.pet);
+    chips.push({
+      key: 'pet',
+      label: pet?.label ?? query.pet,
+      clear: updateShopQuery(query, { pet: undefined }),
+    });
+  }
+  if (query.minPrice !== undefined || query.maxPrice !== undefined) {
+    chips.push({
+      key: 'price',
+      label: priceLabel(query.minPrice, query.maxPrice),
+      clear: updateShopQuery(query, {
+        minPrice: undefined,
+        maxPrice: undefined,
+      }),
+    });
+  }
+
+  if (chips.length === 0) return null;
+
+  return (
+    <div className="border-border/70 mb-5 border-b pb-5">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold">فیلترهای فعال</p>
         <Link
           // A link to the canonical `/shop`, not a state reset: the URL is the
           // state, so clearing the filters *is* going to the unfiltered URL.
           href={PATHS.SHOP}
-          className="text-accent-strong text-sm hover:underline"
+          className="text-accent-strong rounded text-xs font-medium hover:underline focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
           data-umami-event="shop-filter-clear"
-          onClick={onApply}
         >
-          پاک کردن فیلترها
+          پاک کردن همه
         </Link>
-      )}
+      </div>
+      <ul className="flex flex-wrap gap-2">
+        {chips.map((chip) => (
+          <li key={chip.key}>
+            <button
+              type="button"
+              onClick={() => onChange(chip.clear)}
+              className="bg-accent-soft text-foreground hover:bg-secondary focus-visible:ring-accent-strong inline-flex min-h-9 items-center gap-1.5 rounded-full ps-3 pe-2 text-xs font-medium transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
+              // Names the filter, not just «remove» — a screen reader reading
+              // three of these in a row otherwise hears the same word thrice.
+              aria-label={`حذف فیلتر ${chip.label}`}
+              data-umami-event="shop-filter-chip-remove"
+            >
+              <span className="nums">{chip.label}</span>
+              <X size={13} aria-hidden="true" />
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
+}
+
+/** «از ۵۰٬۰۰۰ تا ۳۰۰٬۰۰۰» — whichever bounds are actually set. */
+function priceLabel(min: number | undefined, max: number | undefined): string {
+  if (min !== undefined && max !== undefined)
+    return `${formatNumber(min)} تا ${formatNumber(max)}`;
+  if (min !== undefined) return `از ${formatNumber(min)}`;
+  return `تا ${formatNumber(max ?? 0)}`;
 }
 
 /**
@@ -179,34 +283,107 @@ function categoryGroups(categories: readonly ShopCategoryOption[]) {
   return groups;
 }
 
-/** One category checkbox, in the sidebar list or nested under its parent. */
-function CategoryBox({
-  category,
+/**
+ * One category row: a radio whose whole row is the target.
+ *
+ * The input is `sr-only` rather than hidden — it keeps the keyboard, the
+ * grouping and the announcement the platform gives a radio, while the label
+ * becomes a 44px row instead of a 16px box to aim at. Selection is carried by
+ * fill **and** weight **and** the dot, never by colour alone.
+ */
+function CategoryRow({
+  label,
+  value,
   ids,
-  query,
-  onToggle,
+  checked,
+  nested = false,
+  onSelect,
 }: {
-  category: ShopCategoryOption;
+  label: string;
+  /** Empty for «all»; only ever used to build the input's id. */
+  value: string;
   ids: string;
-  query: ShopQuery;
-  onToggle: (next: ShopQuery) => void;
+  checked: boolean;
+  nested?: boolean;
+  onSelect: () => void;
 }) {
+  const id = `${ids}-category-${value || 'all'}`;
+
   return (
-    <div className="flex items-center gap-2.5 py-1.5">
+    <>
       <input
-        type="checkbox"
-        id={`${ids}-category-${category.slug}`}
-        className="accent-accent-strong size-4 shrink-0 cursor-pointer"
-        checked={query.category === category.slug}
-        onChange={() => onToggle(toggleShopCategory(query, category.slug))}
-        // One event name for one behaviour, sub-categories included.
+        type="radio"
+        id={id}
+        name={`${ids}-category`}
+        className="peer sr-only"
+        checked={checked}
+        onChange={onSelect}
+        // One event name for one behaviour, sub-categories and «all» included.
         data-umami-event="shop-filter-category-toggle"
       />
       <label
-        htmlFor={`${ids}-category-${category.slug}`}
-        className="cursor-pointer text-sm select-none"
+        htmlFor={id}
+        className={cn(
+          'flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl px-3 text-sm transition-colors duration-200 select-none',
+          'hover:bg-secondary motion-reduce:transition-none',
+          'peer-focus-visible:ring-accent-strong peer-focus-visible:ring-2',
+          nested && 'text-[0.8125rem]',
+          checked
+            ? 'bg-accent-soft text-foreground font-semibold'
+            : 'text-muted-foreground',
+        )}
       >
-        {category.title}
+        <span
+          aria-hidden="true"
+          className={cn(
+            'size-1.5 shrink-0 rounded-full transition-colors duration-200 motion-reduce:transition-none',
+            checked ? 'bg-accent-strong' : 'bg-border',
+          )}
+        />
+        {label}
+      </label>
+    </>
+  );
+}
+
+/** One cell of the pet segmented control — same radio bones as a row. */
+function PetSegment({
+  label,
+  value,
+  ids,
+  checked,
+  onSelect,
+}: {
+  label: string;
+  value: string;
+  ids: string;
+  checked: boolean;
+  onSelect: () => void;
+}) {
+  const id = `${ids}-pet-${value || 'all'}`;
+
+  return (
+    <div className="flex-1">
+      <input
+        type="radio"
+        id={id}
+        name={`${ids}-pet`}
+        className="peer sr-only"
+        checked={checked}
+        onChange={onSelect}
+        data-umami-event="shop-filter-pet-toggle"
+      />
+      <label
+        htmlFor={id}
+        className={cn(
+          'flex min-h-11 cursor-pointer items-center justify-center rounded-lg px-2 text-sm transition-colors duration-200 select-none',
+          'peer-focus-visible:ring-accent-strong peer-focus-visible:ring-2',
+          checked
+            ? 'bg-background text-foreground font-semibold shadow-sm'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        {label}
       </label>
     </div>
   );
@@ -221,79 +398,180 @@ function CategoryBox({
  * validation apply; everything *rendered* — the applied range, the placeholder
  * — goes through `format.ts` and is therefore in Persian digits.
  */
+/** Slider granularity, and what the offered bounds are rounded to. */
+const PRICE_STEP = 10_000;
+
+const floorTo = (value: number, step: number) =>
+  Math.floor(value / step) * step;
+const ceilTo = (value: number, step: number) => Math.ceil(value / step) * step;
+
+/**
+ * The price range, as a two-handled slider over the catalogue's own bounds.
+ *
+ * Built from two native `<input type="range">` stacked on one track rather than
+ * a slider dependency: the platform brings the keyboard (arrows, Home/End), the
+ * announced value and the focus ring, which is most of what a custom slider has
+ * to rebuild. Only the thumbs take pointer events, so the one nearer the cursor
+ * wins and neither input swallows clicks meant for the other.
+ *
+ * **Dragging does not navigate.** The handles are local state and commit once,
+ * on release (pointer up, or key up for the keyboard) — a push per pixel would
+ * be a navigation storm. The figure above the track updates live, so the
+ * feedback is immediate even though the results are not.
+ *
+ * Resync is the same trick the inputs used: the fieldset is `key`ed on the
+ * URL's bounds, so a cleared filter or the back button remounts it rather than
+ * leaving the handles showing a range nobody asked for.
+ */
 function PriceFilter({
   query,
   ids,
+  bounds,
   onSubmit,
 }: {
   query: ShopQuery;
   ids: string;
+  /** The catalogue's own cheapest and dearest, before rounding. */
+  bounds: { min: number; max: number };
   onSubmit: (next: ShopQuery) => void;
 }) {
+  const floor = floorTo(bounds.min, PRICE_STEP);
+  const ceiling = ceilTo(bounds.max, PRICE_STEP);
+
+  // Nothing to slide over: an empty catalogue, or one where everything costs
+  // the same. A slider with both handles on one point filters nothing.
+  if (ceiling <= floor) return null;
+
   return (
-    <fieldset
-      className="mb-6"
-      // Remounts when the URL's bounds change (a cleared filter set, the back
-      // button), so the uncontrolled inputs cannot keep showing a stale range.
-      key={`${query.minPrice}-${query.maxPrice}`}
-    >
-      <legend className="text-muted-foreground mb-2 text-sm font-semibold">
+    <fieldset key={`${query.minPrice}-${query.maxPrice}`}>
+      <legend className="mb-2 text-sm font-semibold">
         محدوده قیمت (تومان)
       </legend>
-      <form
-        className="flex items-center gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const data = new FormData(event.currentTarget);
+      <PriceSlider
+        ids={ids}
+        floor={floor}
+        ceiling={ceiling}
+        from={Math.max(floor, query.minPrice ?? floor)}
+        to={Math.min(ceiling, query.maxPrice ?? ceiling)}
+        onCommit={(from, to) =>
+          onSubmit(
+            updateShopQuery(query, {
+              // A handle left at its end is «no bound», not a bound that
+              // happens to equal it — so clearing the slider clears the URL
+              // instead of pinning `?minPrice=` to the cheapest product.
+              minPrice: from <= floor ? undefined : from,
+              maxPrice: to >= ceiling ? undefined : to,
+            }),
+          )
+        }
+      />
+    </fieldset>
+  );
+}
 
-          // Validated by the same parser the URL goes through, so a bound typed
-          // into the form and one pasted into the address bar cannot disagree.
-          const { minPrice, maxPrice } = parseShopQuery({
-            minPrice: String(data.get('minPrice') ?? ''),
-            maxPrice: String(data.get('maxPrice') ?? ''),
-          });
+function PriceSlider({
+  ids,
+  floor,
+  ceiling,
+  from,
+  to,
+  onCommit,
+}: {
+  ids: string;
+  floor: number;
+  ceiling: number;
+  from: number;
+  to: number;
+  onCommit: (from: number, to: number) => void;
+}) {
+  const [range, setRange] = useState<[number, number]>([from, to]);
+  const [low, high] = range;
 
-          onSubmit(updateShopQuery(query, { minPrice, maxPrice }));
-        }}
-      >
+  const pct = (value: number) => ((value - floor) / (ceiling - floor)) * 100;
+
+  // Logical, not `left`: under `dir="rtl"` the browser flips the range inputs
+  // so the floor sits at the right, and the fill has to start from the same
+  // edge or it would run the wrong way.
+  const fill = {
+    insetInlineStart: `${pct(low)}%`,
+    width: `${pct(high) - pct(low)}%`,
+  };
+
+  const commit = () => onCommit(low, high);
+
+  /** Handles never cross: each one stops a step short of the other. */
+  const setLow = (value: number) =>
+    setRange(([, currentHigh]) => [
+      Math.min(value, currentHigh - PRICE_STEP),
+      currentHigh,
+    ]);
+  const setHigh = (value: number) =>
+    setRange(([currentLow]) => [
+      currentLow,
+      Math.max(value, currentLow + PRICE_STEP),
+    ]);
+
+  const thumb =
+    'pointer-events-none absolute inset-x-0 top-1/2 m-0 h-11 -translate-y-1/2 appearance-none bg-transparent focus-visible:outline-none ' +
+    '[&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:size-5 [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-accent-strong [&::-webkit-slider-thumb]:shadow ' +
+    '[&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:size-5 [&::-moz-range-thumb]:cursor-grab [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-accent-strong ' +
+    'focus-visible:[&::-webkit-slider-thumb]:ring-accent-strong/40 focus-visible:[&::-webkit-slider-thumb]:ring-4';
+
+  return (
+    <>
+      {/* The figure, not the input, is what a shopper reads — so it is the one
+          place the range is rendered, and it goes through `format.ts` like
+          every other number on the storefront. */}
+      <p className="nums text-muted-foreground mb-3 text-sm">
+        {formatNumber(low)} تا {formatNumber(high)}
+      </p>
+
+      <div className="relative h-11">
+        <div className="bg-secondary absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full" />
+        <div
+          className="bg-accent-strong absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full"
+          style={fill}
+        />
         <input
-          type="number"
-          inputMode="numeric"
-          name="minPrice"
-          min={0}
-          step={1}
+          type="range"
           id={`${ids}-min-price`}
-          defaultValue={query.minPrice ?? ''}
-          placeholder={formatNumber(0)}
-          aria-label="حداقل قیمت به تومان"
-          className="border-border bg-background nums focus-visible:border-accent-strong w-full min-w-0 rounded-xl border px-3 py-2 text-sm"
+          min={floor}
+          max={ceiling}
+          step={PRICE_STEP}
+          value={low}
+          onChange={(event) => setLow(Number(event.target.value))}
+          onPointerUp={commit}
+          onKeyUp={commit}
+          aria-label="کمترین قیمت"
+          className={thumb}
           data-umami-event="shop-filter-min-price"
         />
-        <span className="text-muted-foreground text-sm" aria-hidden="true">
-          تا
-        </span>
         <input
-          type="number"
-          inputMode="numeric"
-          name="maxPrice"
-          min={1}
-          step={1}
+          type="range"
           id={`${ids}-max-price`}
-          defaultValue={query.maxPrice ?? ''}
-          placeholder={formatNumber(1_000_000)}
-          aria-label="حداکثر قیمت به تومان"
-          className="border-border bg-background nums focus-visible:border-accent-strong w-full min-w-0 rounded-xl border px-3 py-2 text-sm"
+          min={floor}
+          max={ceiling}
+          step={PRICE_STEP}
+          value={high}
+          onChange={(event) => setHigh(Number(event.target.value))}
+          onPointerUp={commit}
+          onKeyUp={commit}
+          aria-label="بیشترین قیمت"
+          className={thumb}
           data-umami-event="shop-filter-max-price"
         />
-        <button
-          type="submit"
-          className="bg-secondary hover:bg-accent-strong shrink-0 rounded-xl px-3 py-2 text-sm font-semibold transition-colors hover:text-white"
-          data-umami-event="shop-filter-price-apply"
-        >
-          اعمال
-        </button>
-      </form>
-    </fieldset>
+      </div>
+
+      {/* Floor first: `justify-between` puts the first child at the *start*,
+          which under `dir="rtl"` is the right — the same edge the browser
+          flips the range input's minimum to. Written the other way round the
+          labels contradict the track, which is exactly what they are there to
+          explain. */}
+      <div className="nums text-muted-foreground flex justify-between text-xs">
+        <span>{formatNumber(floor)}</span>
+        <span>{formatNumber(ceiling)}</span>
+      </div>
+    </>
   );
 }
 
@@ -310,10 +588,13 @@ function PriceFilter({
 export function ShopFilterSheet({
   query,
   categories,
+  priceBounds,
   total,
 }: {
   query: ShopQuery;
   categories: readonly ShopCategoryOption[];
+  /** Handed straight to the panel below. */
+  priceBounds: { min: number; max: number };
   /** Shown on the confirm button, so the shopper knows before closing it. */
   total: number;
 }) {
@@ -382,6 +663,7 @@ export function ShopFilterSheet({
           <ShopFilters
             query={query}
             categories={categories}
+            priceBounds={priceBounds}
             // A filter change navigates and the results are behind the sheet,
             // so it gets out of the way rather than leaving the shopper to
             // dismiss it before seeing what they just did.

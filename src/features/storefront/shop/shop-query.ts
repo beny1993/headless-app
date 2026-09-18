@@ -242,17 +242,3 @@ export function updateShopQuery(
 
   return { ...query, ...patch, page };
 }
-
-/**
- * Category is single-select against checkbox UI — the API takes one slug, so
- * picking another replaces it and picking the checked one clears it. Radios
- * would look equally right and lose that click-to-clear.
- */
-export const toggleShopCategory = (query: ShopQuery, slug: string): ShopQuery =>
-  updateShopQuery(query, {
-    category: query.category === slug ? undefined : slug,
-  });
-
-/** Same single-select semantics for the pet type. */
-export const toggleShopPet = (query: ShopQuery, pet: ShopPet): ShopQuery =>
-  updateShopQuery(query, { pet: query.pet === pet ? undefined : pet });
