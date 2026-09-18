@@ -1733,24 +1733,33 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       ]);
     });
 
-    it('counts a two-category product once under their parent, search and all', async () => {
+    it('combines a search with a parent scope over both of a product’s categories', async () => {
       // The one combination the rest of this file never lines up: a search runs
       // its page and its count inside a transaction with the similarity GUC,
       // and the category scope it carries is two subqueries over two tables.
-      // A product matched through its *additional* category, under the parent
-      // of both, is where a join would list — and count — it twice.
+      // Both halves of that `or` are here — `inside` matches through its
+      // primary *and* its extra, which is where a join would list and count it
+      // twice; `outside` is only reachable through the junction at all.
       const parent = await makeCategory();
       const malt = await makeCategory(parent.id);
       const multivitamin = await makeCategory(parent.id);
-      const paste = await ProductDao.create({
-        ...makeProduct(malt, {
-          title: 'خمیر مالت مولتی‌ویتامین گربه',
-          brand: 'Gimcat',
-        }),
+      const elsewhere = await makeCategory();
+      const title = 'خمیر مالت مولتی‌ویتامین گربه';
+      const inside = await ProductDao.create({
+        ...makeProduct(malt, { title, brand: 'Gimcat' }),
         extraCategoryIds: [multivitamin.id],
       });
+      const outside = await ProductDao.create({
+        ...makeProduct(elsewhere, { title, brand: 'Trixie' }),
+        extraCategoryIds: [malt.id],
+      });
+      // Under the parent but not matching the term, so a total of two is the
+      // search working rather than the whole family coming back.
+      await ProductDao.create(makeProduct(multivitamin));
 
-      const { items, total } = await ProductDao.list({
+      const ids = (rows: { id: string }[]) => rows.map((row) => row.id).sort();
+      const expected = ids([inside, outside]);
+      const page = await ProductDao.list({
         categorySlug: parent.slug,
         search: 'خمیر مالت',
       });
@@ -1759,10 +1768,10 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
         search: 'خمیر مالت',
       });
 
-      expect(items.map((row) => row.id)).toEqual([paste.id]);
-      expect(total).toBe(1);
-      expect(admin.items.map((row) => row.id)).toEqual([paste.id]);
-      expect(admin.total).toBe(1);
+      expect(ids(page.items)).toEqual(expected);
+      expect(page.total).toBe(2);
+      expect(ids(admin.items)).toEqual(expected);
+      expect(admin.total).toBe(2);
     });
 
     it('narrows by price range and search together', async () => {
