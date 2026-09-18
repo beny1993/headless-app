@@ -3,11 +3,12 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
-import { AlertCircle, ChevronRight, Loader2 } from 'lucide-react';
+import { AlertCircle, ChevronRight, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { ApiRequestError, postData, putData } from '@/lib/api-client';
 import {
+  MAX_EXTRA_CATEGORIES,
   productInputSchema,
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
@@ -49,14 +50,22 @@ export type ProductFormInitial = {
   price: number;
   oldPrice: number | null;
   stock: number;
+  /** The main category. */
   categoryId: string;
+  /** The others, in the order they were added. */
+  extraCategoryIds: string[];
   petTypes: PetType[];
   isActive: boolean;
   /** The current image's storage key, if any, so the edit form can preview it. */
   imageKey: string | null;
 };
 
-export type CategoryOption = { id: string; title: string };
+/**
+ * One category as the selects and the chips need it: `label` carries the «— »
+ * that stands in for an indent inside a flat option list, `title` is the plain
+ * one a chip shows. Both come from `categoryOptions`.
+ */
+export type CategoryOption = { id: string; title: string; label: string };
 
 const GENERIC_ERROR = 'خطای غیرمنتظره رخ داد. دوباره تلاش کن.';
 
@@ -116,6 +125,7 @@ export function ProductForm({
     oldPrice: product?.oldPrice != null ? String(product.oldPrice) : '',
     stock: product ? String(product.stock) : '',
     categoryId: product?.categoryId ?? '',
+    extraCategoryIds: product?.extraCategoryIds ?? [],
     // A new product starts with neither pet pressed: with toggle semantics a
     // pre-pressed «گربه» turns an admin who presses only «سگ» into a silent
     // both-pets product. One expression — flip it to `[PET_TYPES.CAT]` to
@@ -129,14 +139,45 @@ export function ProductForm({
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  /**
+   * F2: the admin made one of their additional categories the main one, so its
+   * chip is gone. Said beside the two controls it is about — their eye is on
+   * the select they just changed, not on the chip row underneath it — and
+   * cleared by the next change to either.
+   */
+  const [promotedTitle, setPromotedTitle] = useState<string | null>(null);
 
   const update = (
     key: keyof typeof form,
-    value: string | boolean | PetType[],
+    value: string | boolean | string[] | PetType[],
   ) => {
     setForm((current) => ({ ...current, [key]: value }));
     setFieldErrors((current) => ({ ...current, [key]: '' }));
+    setPromotedTitle(null);
   };
+
+  /** Picking a main category that is already an additional one removes it. */
+  const chooseCategory = (categoryId: string) => {
+    const promoted = form.extraCategoryIds.includes(categoryId)
+      ? categories.find((category) => category.id === categoryId)
+      : undefined;
+    setForm((current) => ({
+      ...current,
+      categoryId,
+      extraCategoryIds: current.extraCategoryIds.filter(
+        (id) => id !== categoryId,
+      ),
+    }));
+    setFieldErrors((current) => ({
+      ...current,
+      categoryId: '',
+      extraCategoryIds: '',
+    }));
+    setPromotedTitle(promoted?.title ?? null);
+  };
+
+  const setExtras = (extraCategoryIds: string[]) =>
+    update('extraCategoryIds', extraCategoryIds);
 
   /** Add or remove one pet, keeping the stored order. */
   const togglePet = (pet: PetType) =>
@@ -171,6 +212,7 @@ export function ProductForm({
     oldPrice: form.oldPrice.trim() === '' ? null : numeric(form.oldPrice),
     stock: numeric(form.stock),
     categoryId: form.categoryId,
+    extraCategoryIds: form.extraCategoryIds,
     petTypes: form.petTypes,
     isActive: form.isActive,
   });
@@ -237,6 +279,9 @@ export function ProductForm({
       toast.error(error instanceof Error ? error.message : GENERIC_ERROR);
     }
   };
+
+  const atExtraCategoryCap =
+    form.extraCategoryIds.length >= MAX_EXTRA_CATEGORIES;
 
   const money = (value: string): string | null => {
     const n = numeric(value);
@@ -347,13 +392,13 @@ export function ProductForm({
             <select
               id={fid('categoryId')}
               value={form.categoryId}
-              onChange={(e) => update('categoryId', e.target.value)}
+              onChange={(e) => chooseCategory(e.target.value)}
               className={inputClass(fieldErrors.categoryId)}
             >
               <option value="">انتخاب دسته‌بندی</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
-                  {category.title}
+                  {category.label}
                 </option>
               ))}
             </select>
@@ -373,6 +418,89 @@ export function ProductForm({
             )}
           </Field>
         </div>
+
+        {/* Its own full-width block under the main category, so the two read
+            top-to-bottom as one decision — not a second cell in that row,
+            which would make the main category look like one of two equals.
+            Chips plus an add-select rather than a checkbox list: a real
+            catalogue reaches dozens of categories with sub-categories, and the
+            admin is choosing at most five. */}
+        <fieldset aria-describedby={fid('extraCategoryIds-note')}>
+          <legend className="mb-1.5 block text-sm font-medium">
+            دسته‌بندی‌های دیگر (اختیاری)
+          </legend>
+          {/* Always rendered, so adding and removing are announced — the
+              select snapping back to its placeholder says nothing by itself. */}
+          <ul aria-live="polite" className="flex flex-wrap gap-2">
+            {form.extraCategoryIds.map((id) => {
+              const title =
+                categories.find((category) => category.id === id)?.title ?? id;
+              return (
+                <li
+                  key={id}
+                  className="border-border flex h-11 items-center rounded-xl border ps-3 text-sm"
+                >
+                  {title}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExtras(
+                        form.extraCategoryIds.filter((kept) => kept !== id),
+                      )
+                    }
+                    aria-label={`حذف ${title} از دسته‌بندی‌های دیگر`}
+                    data-umami-event="admin-panel-product-category-extra-remove"
+                    className="text-muted-foreground hover:text-foreground flex h-11 w-9 items-center justify-center"
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {/* A placeholder option is not a label. */}
+          <label htmlFor={fid('extraCategoryIds')} className="sr-only">
+            افزودن دسته‌بندی دیگر
+          </label>
+          {/* An action, not a value: it stays on its placeholder and pushes
+              what was chosen onto the list. The main category and the chosen
+              ones are removed from the options rather than disabled — there is
+              no rule to teach here, they are simply already used. */}
+          <select
+            id={fid('extraCategoryIds')}
+            value=""
+            disabled={atExtraCategoryCap}
+            onChange={(e) =>
+              setExtras([...form.extraCategoryIds, e.target.value])
+            }
+            data-umami-event="admin-panel-product-category-extra-add"
+            className={`${inputClass(fieldErrors.extraCategoryIds)} mt-2 disabled:opacity-60`}
+          >
+            <option value="">افزودن دسته‌بندی…</option>
+            {categories
+              .filter(
+                (category) =>
+                  category.id !== form.categoryId &&
+                  !form.extraCategoryIds.includes(category.id),
+              )
+              .map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.label}
+                </option>
+              ))}
+          </select>
+          <HintOrError
+            id={fid('extraCategoryIds-note')}
+            hint={
+              promotedTitle
+                ? `«${promotedTitle}» از دسته‌بندی‌های دیگر برداشته شد؛ حالا دسته‌بندی اصلی است.`
+                : atExtraCategoryCap
+                  ? `سقف ${toPersianDigits(MAX_EXTRA_CATEGORIES)} دسته‌بندی دیگر پر شده است؛ برای افزودن، یکی را حذف کن.`
+                  : `اگر محصول در دسته‌بندی دیگری هم جا می‌گیرد، اینجا اضافه کن. حداکثر ${toPersianDigits(MAX_EXTRA_CATEGORIES)} تا.`
+            }
+            error={fieldErrors.extraCategoryIds}
+          />
+        </fieldset>
 
         <Field
           id={fid('benefit')}

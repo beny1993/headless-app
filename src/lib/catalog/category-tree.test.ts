@@ -72,13 +72,20 @@ describe('orderAsTree', () => {
 describe('categoryOptions', () => {
   it('prefixes sub-categories and leaves top-level titles alone', () => {
     expect(categoryOptions([HYGIENE, GROOMING, FOOD])).toEqual([
-      { id: 'hygiene', slug: 'hygiene', label: HYGIENE.title },
+      {
+        id: 'hygiene',
+        slug: 'hygiene',
+        title: HYGIENE.title,
+        label: HYGIENE.title,
+      },
       {
         id: 'grooming',
         slug: 'grooming',
+        // The plain title rides along: a chip shows it without the prefix.
+        title: GROOMING.title,
         label: `${SUBCATEGORY_PREFIX}${GROOMING.title}`,
       },
-      { id: 'food', slug: 'food', label: FOOD.title },
+      { id: 'food', slug: 'food', title: FOOD.title, label: FOOD.title },
     ]);
   });
 

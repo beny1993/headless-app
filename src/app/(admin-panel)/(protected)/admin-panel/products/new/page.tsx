@@ -11,12 +11,5 @@ export const dynamic = 'force-dynamic';
 export default async function NewProductPage() {
   await requireAdmin();
   const categories = await CategoryDao.list();
-  return (
-    <ProductForm
-      categories={categoryOptions(categories).map(({ id, label }) => ({
-        id,
-        title: label,
-      }))}
-    />
-  );
+  return <ProductForm categories={categoryOptions(categories)} />;
 }

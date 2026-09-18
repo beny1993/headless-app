@@ -33,10 +33,7 @@ export default async function EditProductPage({
   return (
     <ProductForm
       key={product.id}
-      categories={categoryOptions(categories).map(({ id, label }) => ({
-        id,
-        title: label,
-      }))}
+      categories={categoryOptions(categories)}
       product={{
         id: product.id,
         title: product.title,
@@ -49,6 +46,7 @@ export default async function EditProductPage({
         oldPrice: product.oldPrice,
         stock: product.stock,
         categoryId: product.categoryId,
+        extraCategoryIds: product.extraCategoryIds,
         petTypes: product.petTypes,
         isActive: product.isActive,
         imageKey: product.images[0]?.objectKey ?? null,

@@ -6,8 +6,12 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PRODUCT_MESSAGES } from '@/lib/catalog/product-input';
+import {
+  MAX_EXTRA_CATEGORIES,
+  PRODUCT_MESSAGES,
+} from '@/lib/catalog/product-input';
 import { PROTECTED_PATHS } from '@/lib/constant/paths';
+import { toPersianDigits } from '@/lib/format';
 import { ProductForm, type ProductFormInitial } from './product-form';
 
 const api = vi.hoisted(() => ({ putData: vi.fn() }));
@@ -55,6 +59,7 @@ it('submits the observed inventory when editing a product', async () => {
     oldPrice: null,
     stock: 5,
     categoryId: '123e4567-e89b-12d3-a456-426614174001',
+    extraCategoryIds: [],
     petTypes: ['cat'],
     isActive: true,
     imageKey: null,
@@ -63,7 +68,7 @@ it('submits the observed inventory when editing a product', async () => {
   render(
     <ProductForm
       product={product}
-      categories={[{ id: product.categoryId, title: 'گربه' }]}
+      categories={[{ id: product.categoryId, title: 'گربه', label: 'گربه' }]}
     />,
   );
   fireEvent.change(screen.getByLabelText('عنوان محصول'), {
@@ -109,6 +114,7 @@ const EDIT_PRODUCT: ProductFormInitial = {
   oldPrice: null,
   stock: 5,
   categoryId: '123e4567-e89b-12d3-a456-426614174001',
+  extraCategoryIds: [],
   petTypes: ['cat'],
   isActive: true,
   imageKey: null,
@@ -119,7 +125,9 @@ describe('product save failures', () => {
     render(
       <ProductForm
         product={EDIT_PRODUCT}
-        categories={[{ id: EDIT_PRODUCT.categoryId, title: 'گربه' }]}
+        categories={[
+          { id: EDIT_PRODUCT.categoryId, title: 'گربه', label: 'گربه' },
+        ]}
       />,
     );
 
@@ -176,7 +184,9 @@ describe('the pet control', () => {
     render(
       <ProductForm
         product={{ ...EDIT_PRODUCT, petTypes: ['cat', 'dog'] }}
-        categories={[{ id: EDIT_PRODUCT.categoryId, title: 'گربه' }]}
+        categories={[
+          { id: EDIT_PRODUCT.categoryId, title: 'گربه', label: 'گربه' },
+        ]}
       />,
     );
 
@@ -189,7 +199,9 @@ describe('the pet control', () => {
     render(
       <ProductForm
         product={EDIT_PRODUCT}
-        categories={[{ id: EDIT_PRODUCT.categoryId, title: 'گربه' }]}
+        categories={[
+          { id: EDIT_PRODUCT.categoryId, title: 'گربه', label: 'گربه' },
+        ]}
       />,
     );
 
@@ -210,7 +222,9 @@ describe('the pet control', () => {
     render(
       <ProductForm
         product={EDIT_PRODUCT}
-        categories={[{ id: EDIT_PRODUCT.categoryId, title: 'گربه' }]}
+        categories={[
+          { id: EDIT_PRODUCT.categoryId, title: 'گربه', label: 'گربه' },
+        ]}
       />,
     );
 
@@ -225,5 +239,108 @@ describe('the pet control', () => {
     // Pressing a pet again clears the message, as every other field does.
     fireEvent.click(pet(/سگ/));
     expect(screen.queryByText(PRODUCT_MESSAGES.petRequired)).toBeNull();
+  });
+});
+
+describe('the additional categories', () => {
+  const MAIN = EDIT_PRODUCT.categoryId;
+  const MALT = '123e4567-e89b-12d3-a456-426614174002';
+  const MULTI = '123e4567-e89b-12d3-a456-426614174003';
+
+  /** The main category, a sub-category and one more — as the pages feed them. */
+  const CATEGORIES = [
+    { id: MAIN, title: 'مکمل', label: 'مکمل' },
+    { id: MALT, title: 'مالت', label: '— مالت' },
+    { id: MULTI, title: 'مولتی‌ویتامین', label: '— مولتی‌ویتامین' },
+  ];
+
+  const renderEdit = (product: Partial<ProductFormInitial> = {}) =>
+    render(
+      <ProductForm
+        product={{ ...EDIT_PRODUCT, ...product }}
+        categories={CATEGORIES}
+      />,
+    );
+
+  const addSelect = () =>
+    screen.getByLabelText('افزودن دسته‌بندی دیگر') as HTMLSelectElement;
+  const mainSelect = () =>
+    screen.getByLabelText('دسته‌بندی') as HTMLSelectElement;
+
+  it('sends what was added, in the order it was added', async () => {
+    api.putData.mockResolvedValue({ id: EDIT_PRODUCT.id });
+    renderEdit();
+
+    fireEvent.change(addSelect(), { target: { value: MULTI } });
+    fireEvent.change(addSelect(), { target: { value: MALT } });
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    await waitFor(() =>
+      expect(api.putData).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ extraCategoryIds: [MULTI, MALT] }),
+      ),
+    );
+  });
+
+  it('shows the saved ones as chips, by their plain title', () => {
+    renderEdit({ extraCategoryIds: [MALT] });
+
+    // No «— » prefix on a chip: that dash encodes depth inside a flat option
+    // list, and a chip is not a list.
+    expect(screen.getByText('مالت')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'حذف مالت از دسته‌بندی‌های دیگر' }),
+    ).toBeTruthy();
+    // …and the select no longer offers it, nor the main category.
+    const offered = [...addSelect().options].map((option) => option.value);
+    expect(offered).toEqual(['', MULTI]);
+  });
+
+  it('removes a chip, and offers its category again', () => {
+    renderEdit({ extraCategoryIds: [MALT] });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'حذف مالت از دسته‌بندی‌های دیگر' }),
+    );
+
+    expect(screen.queryByText('مالت')).toBeNull();
+    expect([...addSelect().options].map((option) => option.value)).toEqual([
+      '',
+      MALT,
+      MULTI,
+    ]);
+  });
+
+  it('drops a chip the admin makes the main category, and says so', () => {
+    renderEdit({ extraCategoryIds: [MALT, MULTI] });
+
+    fireEvent.change(mainSelect(), { target: { value: MALT } });
+
+    expect(
+      screen.getByText(
+        '«مالت» از دسته‌بندی‌های دیگر برداشته شد؛ حالا دسته‌بندی اصلی است.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /حذف مالت/ })).toBeNull();
+    expect(screen.getByText('مولتی‌ویتامین')).toBeTruthy();
+    // The note is about the change just made, so the next one clears it.
+    fireEvent.change(addSelect(), { target: { value: MAIN } });
+    expect(screen.queryByText(/برداشته شد/)).toBeNull();
+  });
+
+  it('disables the select at the cap and says why', () => {
+    const many = Array.from(
+      { length: MAX_EXTRA_CATEGORIES },
+      (_unused, index) => `123e4567-e89b-12d3-a456-42661417400${index + 4}`,
+    );
+    renderEdit({ extraCategoryIds: many });
+
+    expect(addSelect().disabled).toBe(true);
+    expect(
+      screen.getByText(
+        `سقف ${toPersianDigits(MAX_EXTRA_CATEGORIES)} دسته‌بندی دیگر پر شده است؛ برای افزودن، یکی را حذف کن.`,
+      ),
+    ).toBeTruthy();
   });
 });

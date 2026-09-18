@@ -53,13 +53,21 @@ export function orderAsTree<T extends Node>(
  * Every category select's options: tree order, sub-categories prefixed. Flat
  * rather than `<optgroup>`ed on purpose — a parent may hold products itself, so
  * it has to stay selectable, and an optgroup label is not.
+ *
+ * `title` comes along beside `label` because the prefix encodes depth *inside a
+ * flat option list*, and a chip is not a list — the product form's additional
+ * categories render the plain title and would otherwise have to strip the
+ * prefix back off, which is the same rule written twice.
  */
 export function categoryOptions<
   T extends Node & { title: string; slug: string },
->(rows: readonly T[]): { id: string; slug: string; label: string }[] {
+>(
+  rows: readonly T[],
+): { id: string; slug: string; title: string; label: string }[] {
   return orderAsTree(rows).map(({ id, slug, title, depth }) => ({
     id,
     slug,
+    title,
     label: depth === 1 ? `${SUBCATEGORY_PREFIX}${title}` : title,
   }));
 }
