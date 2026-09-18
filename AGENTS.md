@@ -199,12 +199,18 @@ covered by their pure modules' unit tests plus browser verification.
 `pnpm test:e2e` (Playwright, `e2e/`) is the regression walk QA used to do by
 hand, run at 1280px and again at 375px. Storefront: phone-OTP sign-in for a
 customer and an admin; home → shop → product → cart drawer (quantity, removal,
-empty state) and a sold-out product; checkout by card to card — Jalali date
-and `format.ts`-formatted numbers on the result page, the order in `/account` —
-and through the mock Zarinpal gateway (paid, and failed → retry → paid). Admin:
-anonymous visitors and customers turned away; the dashboard figures; an order
-shipped, and one cancelled with its stock coming back; a product added with a
-photo, repriced and taken off the shop; a discount code a shopper redeems,
+empty state) and a sold-out product; a both-pets product under either pet
+filter and under its sub-category's parent; a product in two categories listed
+once under that parent and once under each of its own, both linked on its
+page; checkout by card to card — Jalali date and `format.ts`-formatted numbers
+on the result page, the order in `/account` — and through the mock Zarinpal
+gateway (paid, and failed → retry → paid). Admin: anonymous visitors and
+customers turned away; the dashboard figures; an order shipped, and one
+cancelled with its stock coming back; a product added with a photo — for both
+pets, filed under a sub-category and given a second category — repriced, found
+under both category filters and taken off the shop; a sub-category nested under
+a category the panel then refuses to delete until it is emptied; a discount
+code a shopper redeems,
 then cannot once it is switched off; a shipping rate that checkout then
 charges; a province an admin adds, that checkout and the address book then
 offer and, once it is switched off, no longer offer — a saved address on it
@@ -248,10 +254,14 @@ suite pins it on; the disabled option is component-tested in
   (`e2e/support.ts`). send-otp allows 3 a minute for the whole machine, so a run
   started within a minute of the last one waits about a minute.
 - **What a run leaves in the dev database:** two throwaway `0999…` accounts, a
-  few orders, one inactive `e2e-…` product (its photo stays under `uploads/`),
-  one switched-off `E2E…` discount code and one inactive «استان آزمایشی …»
+  few orders, one inactive `e2e-…` product (its photo stays under `uploads/`)
+  filed under a seeded sub-category and a seeded second category — seeded, and
+  never one the spec made, because the junction's restricting foreign key would
+  pin that category for good — one switched-off `E2E…` discount code and one
+  inactive «استان آزمایشی …»
   province with the customer's address on it — those three specs run at 1280px
-  only, since none of those rows can be deleted. The card-to-card spec leaves a
+  only, since none of those rows can be deleted. The sub-category spec deletes
+  both rows it creates, so it runs at both widths. The card-to-card spec leaves a
   `checkout.payment` content row equal to the default (it puts the old values
   back in a `finally`). The shipping-rate and headline
   specs put the old value back, and the province spec switches its province
