@@ -30,6 +30,7 @@ import {
   type PetType,
 } from './product-query';
 import { MAX_SLUG_LENGTH } from './sku';
+import { VARIANT_LABEL_LIMIT, VARIANT_MESSAGES } from './variant';
 
 /**
  * The longest value each free-text field accepts, measured after trimming. Every
@@ -226,6 +227,25 @@ export const productInputSchema = z
         error: PRODUCT_MESSAGES.pet,
       })
       .transform((values) => normalizePetTypes(values as PetType[])),
+    // The product this one is a variant of — a smell, a colour, a size — or
+    // `null` for a standalone product and for a family's head, which points at
+    // nothing itself. That «head points at nothing» is what lets the storefront
+    // listing be one predicate (`variant_of is null`) instead of a grouping.
+    //
+    // Only the shape is checked here. «One level deep», «the head exists» and
+    // «the head has a label of its own» each need to read another row, so they
+    // live in `ProductDao` beside the category-parent rules, which cannot be
+    // CHECKs for the same reason.
+    variantOf: z
+      .uuid(VARIANT_MESSAGES.unknownHead)
+      .nullish()
+      .transform((value) => value ?? null),
+    // What distinguishes this member from its siblings. Set on every member
+    // *and* on the head; `null` on a standalone product.
+    variantLabel: optionalText(
+      VARIANT_LABEL_LIMIT,
+      VARIANT_MESSAGES.labelLength,
+    ),
     // A real editable field — the design's «نمایش در فروشگاه» toggle. Soft delete
     // is the DELETE route, not this flag; but an admin may deactivate a product
     // by unchecking it here too.
@@ -237,6 +257,14 @@ export const productInputSchema = z
   .refine((data) => data.oldPrice == null || data.oldPrice > data.price, {
     error: PRODUCT_MESSAGES.oldPrice,
     path: ['oldPrice'],
+  })
+  // A member with no label renders an empty chip on the product page and an
+  // order line ending in a bare dash. Keyed on `variantLabel` because that is
+  // the field the form renders — an issue on `variantOf` would be shown by the
+  // select, which is not where the admin has to type.
+  .refine((data) => data.variantOf == null || data.variantLabel != null, {
+    error: VARIANT_MESSAGES.label,
+    path: ['variantLabel'],
   });
 
 /** The validated body — assignable to `ProductDao`'s `ProductInput`. */

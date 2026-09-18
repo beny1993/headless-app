@@ -86,10 +86,21 @@ describe('catalog schema', () => {
     );
     expect(imageFks).toEqual(['cascade']);
 
-    // A category with products must not silently take them down with it.
+    // Neither a category with products nor a head with members may silently
+    // take them down with it — both of the table's keys restrict.
     const productFks = getTableConfig(products).foreignKeys.map(
       (fk) => fk.onDelete,
     );
-    expect(productFks).toEqual(['restrict']);
+    expect(productFks).toEqual(['restrict', 'restrict']);
+    expect(productFks).toHaveLength(2);
+  });
+
+  it('keeps a product family one level deep and its label present', () => {
+    const names = checkNames(products);
+    // The half of «one level» a single row can see; `ProductDao` owns the rest.
+    expect(names).toContain('products_variant_not_self');
+    // A member with a blank label renders an empty chip and a bare dash on an
+    // order line, so the database refuses it rather than the form alone.
+    expect(names).toContain('products_variant_label_present');
   });
 });

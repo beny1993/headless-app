@@ -8,6 +8,7 @@ import {
   productUpdateInputSchema,
 } from './product-input';
 import { MAX_SLUG_LENGTH } from './sku';
+import { VARIANT_LABEL_LIMIT, VARIANT_MESSAGES } from './variant';
 
 const valid = {
   title: 'غذای خشک گربه',
@@ -412,5 +413,105 @@ describe('slug length', () => {
       .safeParse({ ...valid, slug: 'a'.repeat(MAX_SLUG_LENGTH + 1) })
       .error?.issues.find((i) => i.path[0] === 'slug');
     expect(issue?.message).toBe(PRODUCT_MESSAGES.slugLength);
+  });
+});
+
+describe('product families (variant_of / variant_label)', () => {
+  const HEAD = '11111111-1111-4111-8111-111111111111';
+
+  it('defaults both fields to null, so every body written before they existed stays valid', () => {
+    const parsed = productInputSchema.parse(valid);
+    expect(parsed.variantOf).toBeNull();
+    expect(parsed.variantLabel).toBeNull();
+  });
+
+  it('accepts a standalone product that carries a label but no head (a family head)', () => {
+    const parsed = productInputSchema.parse({
+      ...valid,
+      variantLabel: '۱۰ کیلوگرم',
+    });
+    expect(parsed.variantOf).toBeNull();
+    expect(parsed.variantLabel).toBe('۱۰ کیلوگرم');
+  });
+
+  it('accepts a member: a head plus a label', () => {
+    const parsed = productInputSchema.parse({
+      ...valid,
+      variantOf: HEAD,
+      variantLabel: '۵ کیلوگرم',
+    });
+    expect(parsed.variantOf).toBe(HEAD);
+    expect(parsed.variantLabel).toBe('۵ کیلوگرم');
+  });
+
+  it('refuses a member with no label — it would render an empty chip', () => {
+    const result = productInputSchema.safeParse({ ...valid, variantOf: HEAD });
+    expect(result.success).toBe(false);
+    const issue = result.error?.issues.find((i) =>
+      i.path.includes('variantLabel'),
+    );
+    expect(issue?.message).toBe(VARIANT_MESSAGES.label);
+  });
+
+  it('refuses a member whose label is only whitespace', () => {
+    expect(
+      productInputSchema.safeParse({
+        ...valid,
+        variantOf: HEAD,
+        variantLabel: '   ',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('keys the missing-label refusal on the field the form actually renders', () => {
+    const result = productInputSchema.safeParse({ ...valid, variantOf: HEAD });
+    expect(result.error?.issues.some((i) => i.path[0] === 'variantLabel')).toBe(
+      true,
+    );
+  });
+
+  it('refuses a head id that is not a uuid', () => {
+    expect(
+      productInputSchema.safeParse({
+        ...valid,
+        variantOf: 'not-a-uuid',
+        variantLabel: 'قرمز',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('trims a label and turns an empty one into null, like every other optional text', () => {
+    const parsed = productInputSchema.parse({
+      ...valid,
+      variantLabel: '  قرمز  ',
+    });
+    expect(parsed.variantLabel).toBe('قرمز');
+    expect(
+      productInputSchema.parse({ ...valid, variantLabel: '' }).variantLabel,
+    ).toBeNull();
+  });
+
+  it('caps the label length', () => {
+    expect(
+      productInputSchema.safeParse({
+        ...valid,
+        variantLabel: 'ا'.repeat(VARIANT_LABEL_LIMIT + 1),
+      }).success,
+    ).toBe(false);
+    expect(
+      productInputSchema.safeParse({
+        ...valid,
+        variantLabel: 'ا'.repeat(VARIANT_LABEL_LIMIT),
+      }).success,
+    ).toBe(true);
+  });
+
+  it('refuses a label carrying a control character', () => {
+    expect(
+      productInputSchema.safeParse({
+        ...valid,
+        variantLabel: `قرمز${String.fromCharCode(0)}`,
+      }).success,
+    ).toBe(false);
   });
 });

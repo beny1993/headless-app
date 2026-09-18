@@ -114,6 +114,22 @@ export const products = pgTable(
      * keeps «no pet at all» out.
      */
     petTypes: petTypeEnum('pet_type').array().notNull(),
+    /**
+     * The product this one is a variant of — a smell, a colour, a size — or
+     * `null`. A **head** is null here and carries its own `variantLabel`, which
+     * is what makes the storefront listing one predicate (`variant_of is null`)
+     * rather than a grouping with a count to get wrong.
+     *
+     * Exactly one level, like `categories.parent_id`, and enforced in the same
+     * place for the same reason: a CHECK sees one row and cannot look at the
+     * head's own `variant_of`. `restrict` so a head cannot be deleted out from
+     * under its members.
+     */
+    variantOf: uuid('variant_of').references((): AnyPgColumn => products.id, {
+      onDelete: 'restrict',
+    }),
+    /** «۱۰ کیلوگرم», «قرمز». Set on a member and on its head; null alone. */
+    variantLabel: text('variant_label'),
     createdAt,
     updatedAt,
   },
@@ -135,7 +151,18 @@ export const products = pgTable(
       'products_pet_type_not_empty',
       sql`cardinality(${table.petTypes}) >= 1`,
     ),
+    // The one half of «one level deep» the database can enforce by itself.
+    check('products_variant_not_self', sql`${table.variantOf} <> ${table.id}`),
+    // A member with no label renders an empty chip and an order line ending in
+    // a bare dash. `btrim` rather than `<> ''`: a label of spaces is no label.
+    check(
+      'products_variant_label_present',
+      sql`${table.variantOf} is null or length(btrim(${table.variantLabel})) > 0`,
+    ),
     index('products_category_id_idx').on(table.categoryId),
+    // Read by the family scalars on every storefront card, and by the guard
+    // that refuses to soft-delete a head that still has members.
+    index('products_variant_of_idx').on(table.variantOf),
     index('products_is_active_idx').on(table.isActive),
     // Trigram index over the normalized text. GIN rather than GiST: the
     // storefront only asks «does this row match», never «how close is it», and
@@ -217,4 +244,46 @@ export type NewProductImage = typeof productImages.$inferInsert;
 export type ProductWithImages = Product & {
   images: ProductImage[];
   extraCategoryIds: string[];
+};
+
+/**
+ * One chip on the product page: a member of this product's family, including
+ * the product being viewed. Head first, then the members in the order they were
+ * created. Empty for a standalone product, which is what makes «show no chips»
+ * the absence of data rather than a flag.
+ */
+export type VariantChip = {
+  id: string;
+  slug: string;
+  label: string;
+  isCurrent: boolean;
+};
+
+/**
+ * A product as the storefront *listing* reads it. The three family scalars are
+ * computed per row by the listing query, never by a join — a join against the
+ * members would duplicate the row and break `total`.
+ *
+ * For a standalone product `familyMinPrice` is its own price, `familyPricesVary`
+ * is false and `familyInStock` is `stock > 0`, so a caller that knows nothing
+ * about families still reads the truth.
+ */
+export type ProductCard = ProductWithImages & {
+  /** Integer Toman: the cheapest active member of the family. */
+  familyMinPrice: number;
+  /** `min <> max` across the family — what makes the card read «از …». */
+  familyPricesVary: boolean;
+  /** True when any active member has stock; a sold-out head must not hide one. */
+  familyInStock: boolean;
+  /**
+   * True when this row has active members. Distinct from `familyPricesVary`:
+   * a family whose sizes happen to cost the same still must not be added to the
+   * cart from the shop grid, or the shopper gets a smell nobody chose.
+   */
+  familyHasMembers: boolean;
+};
+
+/** A product as its own page reads it: the row plus its family's chips. */
+export type ProductDetail = ProductWithImages & {
+  variants: VariantChip[];
 };
