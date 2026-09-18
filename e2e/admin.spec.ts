@@ -131,3 +131,59 @@ test.describe('an admin', () => {
     }
   });
 });
+
+test.describe('a product family in the admin panel', () => {
+  test.use({ storageState: ADMIN_STATE });
+
+  // Reads the seeded family and changes nothing, so it runs at both widths and
+  // leaves no row behind — unlike the catalog spec, which creates products.
+  const members = SEED_PRODUCTS.filter((product) => product.variantOfSku);
+  const head = SEED_PRODUCTS.find((product) =>
+    members.some((member) => member.variantOfSku === product.sku),
+  );
+  const member = members[0];
+
+  test('lists every member by name and refuses to nest one deeper', async ({
+    page,
+  }) => {
+    if (!head || !member) throw new Error('The seed needs a product family.');
+
+    // The panel shows the members the shop hides — otherwise the 10kg bag
+    // could never be repriced. Searched by title, which both rows share, so
+    // the label is the only thing telling them apart in the list.
+    await page.goto(
+      `${PROTECTED_PATHS.PRODUCTS}?${new URLSearchParams({ q: head.title })}`,
+    );
+    await expect(
+      page.getByText(`${head.title} — ${head.variantLabel}`),
+    ).toBeVisible();
+    await expect(
+      page.getByText(`${member.title} — ${member.variantLabel}`),
+    ).toBeVisible();
+
+    // The head already has members, so it cannot itself become one: one level
+    // only, and moving it would orphan them. The select is disabled with the
+    // reason rather than silently accepting a save the DAO would refuse.
+    // By the displayed name, not the bare title: all three rows share a title,
+    // and before the label fix these three links were indistinguishable.
+    await page
+      .getByRole('link', {
+        name: `ویرایش ${head.title} — ${head.variantLabel}`,
+      })
+      .click();
+    const headSelect = page.locator('select[id$="variantOf"]');
+    await expect(headSelect).toBeDisabled();
+
+    // A member, by contrast, may be re-pointed — its own select is live and
+    // already names the head it hangs off.
+    await page.goto(
+      `${PROTECTED_PATHS.PRODUCTS}?${new URLSearchParams({ q: head.title })}`,
+    );
+    await page
+      .getByRole('link', {
+        name: `ویرایش ${member.title} — ${member.variantLabel}`,
+      })
+      .click();
+    await expect(page.locator('select[id$="variantOf"]')).toBeEnabled();
+  });
+});

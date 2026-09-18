@@ -31,6 +31,22 @@ if (!bothPets || !multiCategory) {
 if (!catOnly || !dogOnly) {
   throw new Error('The catalog seed needs a cat-only and a dog-only row.');
 }
+/** The seeded family: the head, the members that point at it, the cheapest. */
+const familyMembers = SEED_PRODUCTS.filter((product) => product.variantOfSku);
+const familyHead = SEED_PRODUCTS.find((product) =>
+  familyMembers.some((member) => member.variantOfSku === product.sku),
+);
+if (!familyHead || familyMembers.length === 0) {
+  throw new Error('The catalog seed needs one product family.');
+}
+/** Head included: the «از …» price is the whole family's minimum. */
+const cheapest = [familyHead, ...familyMembers].reduce((best, product) =>
+  product.price < best.price ? product : best,
+);
+if (cheapest.price === familyHead.price) {
+  throw new Error('The family seed must price a member below its head.');
+}
+
 const mainCategory = subOf(multiCategory.categorySlug);
 const grooming = subOf(bothPets.categorySlug);
 if (!mainCategory || !grooming) {
@@ -169,4 +185,63 @@ test('a sold-out product cannot go in the cart', async ({ page }) => {
   await expect(
     page.locator('[data-umami-event="product-add-to-cart"]'),
   ).toHaveCount(0);
+});
+
+test('a product family is one card, and its page picks the member', async ({
+  page,
+}) => {
+  // One card in the shop for the whole family — the head is listed, the members
+  // are reached from its page. The controls are the two members' own labels:
+  // without the `variant_of is null` predicate each would be a card of its own,
+  // and this reads 3 instead of 1.
+  await page.goto(shopPath({ category: familyHead.categorySlug }));
+  const cards = cardsFor(page, familyHead.title);
+  await expect(cards).toHaveCount(1);
+
+  // «از ۱۴۹٬۰۰۰ تومان» — the family's cheapest, not the head's own price. The
+  // seed prices «بدون بو» below the other two precisely so this is not a
+  // tautology: printing `familyHead.price` here would fail.
+  const card = page.locator('article', { has: cards });
+  await expect(card).toContainText(`از ${formatNumber(cheapest.price)}`);
+  await expect(card).not.toContainText(formatNumber(familyHead.price));
+
+  // A family is chosen, never quick-added: adding the head from the grid would
+  // pick a smell nobody asked for.
+  await expect(
+    card.locator('[data-umami-event="product-card-add-to-cart"]'),
+  ).toHaveCount(0);
+  await card.locator('[data-umami-event="product-card-choose"]').click();
+
+  // The head's own page: heading is title + label, and every member is a chip.
+  await expect(
+    page.getByRole('heading', {
+      level: 1,
+      name: `${familyHead.title} — ${familyHead.variantLabel}`,
+    }),
+  ).toBeVisible();
+  const chips = page.locator('[data-umami-event="product-variant-open"]');
+  await expect(chips).toHaveCount(familyMembers.length);
+
+  // Picking a sibling is ordinary navigation to that member's own slug.
+  await chips.filter({ hasText: cheapest.variantLabel! }).click();
+  await expect(page).toHaveURL(new RegExp(`${cheapest.slug}$`));
+  await expect(
+    page.getByRole('heading', {
+      level: 1,
+      name: `${cheapest.title} — ${cheapest.variantLabel}`,
+    }),
+  ).toBeVisible();
+  // Its own price, not the family's «از …» — this is a single product now.
+  await expect(page.locator('main')).toContainText(
+    formatNumber(cheapest.price),
+  );
+
+  // The line a shopper ends up buying names the member, because the cart title
+  // and the order snapshot come from the same derivation.
+  await page.locator('[data-umami-event="product-add-to-cart"]').click();
+  const drawer = page.getByRole('dialog', { name: 'سبد خرید' });
+  await expect(drawer).toContainText(
+    `${cheapest.title} — ${cheapest.variantLabel}`,
+  );
+  await drawer.locator('[data-umami-event="cart-line-remove"]').click();
 });
