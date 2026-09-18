@@ -4,6 +4,7 @@ import {
   PATHS,
   PROTECTED_PATHS,
   adminContentAreaPath,
+  apiShippingRatePath,
   shopPath,
 } from '@/lib/constant/paths';
 import { formatToman, toAsciiDigits } from '@/lib/format';
@@ -53,6 +54,90 @@ test('a shipping rate an admin changes is what checkout charges', async ({
     await expect(shopper.getByText(formatToman(changed)).first()).toBeVisible();
   } finally {
     await saveFee(original);
+  }
+});
+
+test('one fee an admin applies to every province is what checkout charges', async ({
+  page,
+  shopper,
+}) => {
+  // The last seeded province: no other spec delivers there.
+  const province = SEED_PROVINCES[SEED_PROVINCES.length - 1].name;
+
+  await page.goto(PROTECTED_PATHS.SHIPPING);
+  // Every row's fee field — the labels are in the table body, so the create
+  // form's and the bulk form's own fee fields are not among them.
+  const fees = page.locator('tbody').getByLabel(/^هزینه ارسال /);
+  const original = await fees.evaluateAll((inputs) =>
+    inputs.map((input) => ({
+      provinceId: Number(input.id.replace('rate-', '')),
+      fee: (input as HTMLInputElement).value,
+    })),
+  );
+  expect(original.length).toBeGreaterThanOrEqual(SEED_PROVINCES.length);
+  // A fee no province has: a row showing it can only have got it from the apply.
+  const applied =
+    Math.max(...original.map((row) => Number(toAsciiDigits(row.fee)))) + 1_234;
+
+  const bulkFee = page.locator(
+    '[data-umami-event="admin-panel-shipping-bulk-fee"]',
+  );
+  const apply = page.locator(
+    '[data-umami-event="admin-panel-shipping-bulk-apply"]',
+  );
+  const writes: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'PUT') writes.push(request.url());
+  });
+
+  // From the first click on: if the cancelled confirm ever DID send the write,
+  // the fees have moved and the `finally` is what puts them back.
+  try {
+    // Cancelled at the confirm: nothing is sent.
+    await bulkFee.fill(String(applied));
+    page.once('dialog', (dialog) => void dialog.dismiss());
+    await apply.click();
+    expect(writes).toEqual([]);
+
+    let asked = '';
+    page.once('dialog', (dialog) => {
+      asked = dialog.message();
+      void dialog.accept();
+    });
+    await apply.click();
+    await expect(page.getByText('روی همه اعمال شد')).toBeVisible();
+    expect(asked).toContain(formatToman(applied));
+    expect(writes).toHaveLength(1);
+
+    // Every row shows it — and still does from a fresh server render, so it is
+    // what the database holds, not what the page painted.
+    for (const fee of await fees.all()) {
+      await expect(fee).toHaveValue(String(applied));
+    }
+    await page.reload();
+    await expect(fees).toHaveCount(original.length);
+    for (const fee of await fees.all()) {
+      await expect(fee).toHaveValue(String(applied));
+    }
+
+    await openCheckout(shopper);
+    await shopper.locator('[data-umami-event="checkout-step-next"]').click();
+    await shopper
+      .locator('[data-umami-event="checkout-province-change"]')
+      .selectOption({ label: province });
+    await expect(shopper.getByText(formatToman(applied)).first()).toBeVisible();
+  } finally {
+    // Every province back to its own fee, straight through the API: the other
+    // specs charge the seeded fees. All of them are attempted before any failure
+    // is reported, so one refused row cannot strand the rest.
+    const stranded: number[] = [];
+    for (const { provinceId, fee } of original) {
+      const response = await page.request.put(apiShippingRatePath(provinceId), {
+        data: { fee: Number(toAsciiDigits(fee)) },
+      });
+      if (!response.ok()) stranded.push(provinceId);
+    }
+    expect(stranded).toEqual([]);
   }
 });
 

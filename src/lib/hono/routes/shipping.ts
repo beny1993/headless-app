@@ -74,7 +74,8 @@ const ProvinceIdParamSchema = z.object({
   }),
 });
 
-const RateUpdateBodySchema = z
+/** `{ fee }` — the body of the per-province PUT and of the admin bulk PUT. */
+export const RateUpdateBodySchema = z
   .object({
     fee: shippingFeeSchema.meta({
       description: "The province's new shipping fee, integer Toman (0 = free).",

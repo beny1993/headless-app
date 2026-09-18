@@ -35,7 +35,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `design/` | **Canonical design reference** — vendored Figma prototype (own deps, own `pnpm dev` on :5173). FE stories port from it. Never imported by the app. |
 | `scripts/create-admin.ts` | Grant admin by phone (`pnpm create-admin <phone> [name]`) — creates or promotes |
 | `src/db/seed/`, `scripts/seed-catalog.ts` | Demo catalog seed (`pnpm seed-catalog`), idempotent; its images live in `public/products/` |
-| `scripts/seed-shipping.ts` | Seed all 31 provinces + placeholder shipping rates (`pnpm seed-shipping`), idempotent (upserts by name, never resets a tuned fee) |
+| `scripts/seed-shipping.ts` | Seed all 31 provinces + placeholder shipping rates (`pnpm seed-shipping`), idempotent (upserts by name, never resets a tuned fee). Migration `0011_seed_provinces` plants the same 31 in every environment — production cannot run this script — adding only what is missing and recognising a hand-typed spelling (spaces/ZWNJ) as the same province; pinned by `src/db/seed/shipping-migration.integration.test.ts` |
 | `e2e/`, `playwright.config.ts` | Playwright E2E suite (`pnpm test:e2e`): the core-flow regression walk — see *End-to-end tests* under Testing standard |
 
 ## Conventions
@@ -214,7 +214,8 @@ under both category filters and taken off the shop; a sub-category nested under
 a category the panel then refuses to delete until it is emptied; a discount
 code a shopper redeems,
 then cannot once it is switched off; a shipping rate that checkout then
-charges; a province an admin adds, that checkout and the address book then
+charges, and one fee applied to every province at once (cancelled at the
+confirm, then confirmed) that checkout then charges; a province an admin adds, that checkout and the address book then
 offer and, once it is switched off, no longer offer — a saved address on it
 flagged in both — until it is switched back on; a home headline that the
 storefront then shows. Every page a spec opens is also checked for console
@@ -266,7 +267,8 @@ suite pins it on; the disabled option is component-tested in
   both rows it creates, so it runs at both widths. The card-to-card spec leaves a
   `checkout.payment` content row equal to the default (it puts the old values
   back in a `finally`). The shipping-rate and headline
-  specs put the old value back, and the province spec switches its province
+  specs put the old value back, the one-fee-for-all spec puts every province's
+  own fee back (through the API, all attempted before any failure is reported), and the province spec switches its province
   off, even when they fail.
 - **Uploaded images never count as failed requests.** A dev database keeps the
   uploads it was given while `.env` pointed at object storage, and this run's

@@ -1,6 +1,6 @@
 {
-  "id": "b3ac0b25-f8d9-40ad-896c-0382900d5d81",
-  "prevId": "2e2b3151-c389-467c-9f39-fafeb2276ceb",
+  "id": "2e2b3151-c389-467c-9f39-fafeb2276ceb",
+  "prevId": "783db509-99df-447d-b7bc-f801f48a6074",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -785,89 +785,6 @@
           "value": "\"categories\".\"parent_id\" <> \"categories\".\"id\""
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.product_categories": {
-      "name": "product_categories",
-      "schema": "",
-      "columns": {
-        "product_id": {
-          "name": "product_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "category_id": {
-          "name": "category_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "sort_order": {
-          "name": "sort_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        }
-      },
-      "indexes": {
-        "product_categories_category_id_idx": {
-          "name": "product_categories_category_id_idx",
-          "columns": [
-            {
-              "expression": "category_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "product_categories_product_id_products_id_fk": {
-          "name": "product_categories_product_id_products_id_fk",
-          "tableFrom": "product_categories",
-          "tableTo": "products",
-          "columnsFrom": [
-            "product_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "product_categories_category_id_categories_id_fk": {
-          "name": "product_categories_category_id_categories_id_fk",
-          "tableFrom": "product_categories",
-          "tableTo": "categories",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "product_categories_product_id_category_id_pk": {
-          "name": "product_categories_product_id_category_id_pk",
-          "columns": [
-            "product_id",
-            "category_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.product_images": {

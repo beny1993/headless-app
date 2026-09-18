@@ -123,6 +123,10 @@ export const API_PATHS = {
   // guard; deliberately not under `/shipping/rates`, where a method-agnostic
   // guard would also 403 the public `GET /shipping/rates` checkout reads.
   ADMIN_PROVINCES: '/api/admin/provinces',
+  // One fee for every province at once (`PUT`). Under `/admin/*` for the same
+  // reason: the natural `PUT /shipping/rates` could only be guarded by a mount
+  // that also 401s the public `GET` on that path.
+  ADMIN_PROVINCES_FEE: '/api/admin/provinces/fee',
   // Admin storefront content — replace one block by key, and a shared image
   // upload. Same `/admin/*` guard. No public content GET: the storefront reads
   // through the DAO in server components, as the home page already does.

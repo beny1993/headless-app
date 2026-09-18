@@ -1,6 +1,6 @@
 {
-  "id": "2e2b3151-c389-467c-9f39-fafeb2276ceb",
-  "prevId": "783db509-99df-447d-b7bc-f801f48a6074",
+  "id": "783db509-99df-447d-b7bc-f801f48a6074",
+  "prevId": "039f3b85-e393-42e3-b313-b14be898ec3e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -715,12 +715,6 @@
           "notNull": true,
           "default": 0
         },
-        "parent_id": {
-          "name": "parent_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -736,38 +730,8 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "categories_parent_id_idx": {
-          "name": "categories_parent_id_idx",
-          "columns": [
-            {
-              "expression": "parent_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "categories_parent_id_categories_id_fk": {
-          "name": "categories_parent_id_categories_id_fk",
-          "tableFrom": "categories",
-          "tableTo": "categories",
-          "columnsFrom": [
-            "parent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "categories_slug_unique": {
@@ -779,12 +743,7 @@
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "categories_parent_not_self": {
-          "name": "categories_parent_not_self",
-          "value": "\"categories\".\"parent_id\" <> \"categories\".\"id\""
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.product_images": {
