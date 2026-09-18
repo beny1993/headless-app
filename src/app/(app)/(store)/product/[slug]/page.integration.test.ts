@@ -214,6 +214,47 @@ describe.skipIf(!databaseReachable)('the product page', () => {
       expect(text).toContain(sub.title);
     });
 
+    it('lists every category it is filed under, main first, each linked', async () => {
+      const main = await makeCategory();
+      const malt = await makeCategory();
+      const multivitamin = await makeCategory();
+      const product = await ProductDao.create({
+        ...makeProduct(main),
+        extraCategoryIds: [malt.id, multivitamin.id],
+      });
+
+      const text = await renderedText(product.slug);
+      const paths = [main, malt, multivitamin].map((row) =>
+        shopPath({ category: row.slug }),
+      );
+
+      for (const [index, row] of [main, malt, multivitamin].entries()) {
+        expect(text).toContain(row.title);
+        expect(text).toContain(paths[index]);
+      }
+      // The spec row renders the main one first: its link is the last of the
+      // three to appear before them, since the breadcrumb already used it.
+      expect(text.lastIndexOf(paths[0])).toBeLessThan(text.indexOf(paths[1]));
+      expect(text.indexOf(paths[1])).toBeLessThan(text.indexOf(paths[2]));
+      expect(text.filter((entry) => entry === 'product-category-link')).toEqual(
+        Array(3).fill('product-category-link'),
+      );
+      expect(text).toContain('،');
+    });
+
+    it('leaves a single-category product’s row with one linked category', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+
+      const text = await renderedText(product.slug);
+
+      expect(text).toContain(category.title);
+      expect(text.filter((entry) => entry === 'product-category-link')).toEqual(
+        ['product-category-link'],
+      );
+      expect(text).not.toContain('،');
+    });
+
     it('renders its description', async () => {
       const category = await makeCategory();
       const product = await ProductDao.create(

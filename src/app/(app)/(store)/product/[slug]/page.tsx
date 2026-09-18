@@ -89,6 +89,13 @@ export default async function ProductDetailPage({ params }: Params) {
   const parentCategory = categories.find(
     (row) => row.id === category?.parentId,
   );
+  // Every category the product is filed under, main first, then the additional
+  // ones in the order the admin added them — the breadcrumb above still
+  // follows the main one alone. A category that has since vanished is simply
+  // dropped rather than failing the page over a link.
+  const filedUnder = [product.categoryId, ...product.extraCategoryIds].flatMap(
+    (id) => categories.filter((row) => row.id === id),
+  );
   const state = availability(product.stock);
 
   return (
@@ -203,8 +210,25 @@ export default async function ProductDetailPage({ params }: Params) {
                 <dl className="max-w-3xl">
                   {product.brand && <Spec label="برند" value={product.brand} />}
                   <Spec label="کد کالا" value={product.sku} />
-                  {category && (
-                    <Spec label="دسته‌بندی" value={category.title} />
+                  {filedUnder.length > 0 && (
+                    <Spec
+                      label="دسته‌بندی"
+                      value={filedUnder.map((row, index) => (
+                        <span key={row.id} className="flex items-center gap-1">
+                          {/* The comma is content, so it is a real node —
+                              hiding it from a screen reader leaves the links
+                              announced as the separate items they are. */}
+                          {index > 0 && <span aria-hidden="true">،</span>}
+                          <Link
+                            href={shopPath({ category: row.slug })}
+                            className="hover:text-accent-strong hover:underline"
+                            data-umami-event="product-category-link"
+                          >
+                            {row.title}
+                          </Link>
+                        </span>
+                      ))}
+                    />
                   )}
                   <Spec
                     label="مناسب برای"
@@ -270,11 +294,20 @@ function StockNotice({
   );
 }
 
-function Spec({ label, value }: { label: string; value: string }) {
+/**
+ * `value` is a node, not a string, for the one row that renders links — برند،
+ * کد کالا and مناسب برای still pass plain strings. The `<dd>` wraps rather than
+ * squeezing the `<dt>`: with six categories that is two or three lines in a
+ * spec table, which is what a spec table is for. `justify-end` is logical, so
+ * it stays correct in the RTL shell.
+ */
+function Spec({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="border-border flex items-center justify-between gap-4 border-b py-3">
       <dt className="text-muted-foreground font-medium">{label}</dt>
-      <dd className="font-semibold">{value}</dd>
+      <dd className="flex flex-wrap justify-end gap-x-1 font-semibold">
+        {value}
+      </dd>
     </div>
   );
 }
