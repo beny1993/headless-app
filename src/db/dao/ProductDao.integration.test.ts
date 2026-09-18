@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   categories,
   PET_TYPES,
+  productCategories,
   productImages,
   products,
   type Category,
@@ -872,6 +873,196 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
     });
   });
 
+  describe('a product in more than one category', () => {
+    const ids = (rows: { id: string }[]) => rows.map((row) => row.id).sort();
+
+    /** Benyamin's own example: «مکمل» over «مالت» and «مولتی‌ویتامین». */
+    const makeFamily = async () => {
+      const parent = await makeCategory();
+      return {
+        parent,
+        malt: await makeCategory(parent.id),
+        multivitamin: await makeCategory(parent.id),
+        elsewhere: await makeCategory(),
+      };
+    };
+
+    it('reads the extras back on every read path, in the order they were added', async () => {
+      const { malt, multivitamin, elsewhere } = await makeFamily();
+      const extras = [multivitamin.id, elsewhere.id];
+
+      const forwards = await ProductDao.create({
+        ...makeProduct(malt),
+        extraCategoryIds: extras,
+      });
+      // The same pair the other way round, so «the order they were added» is
+      // pinned by the two disagreeing — an id-ordered read would fail one.
+      const backwards = await ProductDao.create({
+        ...makeProduct(malt),
+        extraCategoryIds: [...extras].reverse(),
+      });
+
+      expect(forwards.extraCategoryIds).toEqual(extras);
+      expect(backwards.extraCategoryIds).toEqual([...extras].reverse());
+      expect(
+        (await ProductDao.findByIdForAdmin(forwards.id))?.extraCategoryIds,
+      ).toEqual(extras);
+      expect(
+        (await ProductDao.getBySlug(forwards.slug))?.extraCategoryIds,
+      ).toEqual(extras);
+      const { items } = await ProductDao.list({ categorySlug: malt.slug });
+      expect(
+        items.find((row) => row.id === forwards.id)?.extraCategoryIds,
+      ).toEqual(extras);
+      expect(
+        items.find((row) => row.id === backwards.id)?.extraCategoryIds,
+      ).toEqual([...extras].reverse());
+    });
+
+    it('reads an empty list, never undefined, for a product with none', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+
+      expect(product.extraCategoryIds).toEqual([]);
+      expect(
+        (await ProductDao.getBySlug(product.slug))?.extraCategoryIds,
+      ).toEqual([]);
+    });
+
+    it('drops a repeated category and the primary itself before storing', async () => {
+      const { malt, multivitamin } = await makeFamily();
+
+      const product = await ProductDao.create({
+        ...makeProduct(malt),
+        extraCategoryIds: [
+          multivitamin.id,
+          multivitamin.id,
+          malt.id,
+          multivitamin.id,
+        ],
+      });
+
+      expect(product.extraCategoryIds).toEqual([multivitamin.id]);
+    });
+
+    it('writes the extras on an update that changes no column at all', async () => {
+      const { malt, multivitamin } = await makeFamily();
+      const product = await ProductDao.create(makeProduct(malt));
+
+      const updated = await ProductDao.update(product.id, {
+        extraCategoryIds: [multivitamin.id],
+      });
+
+      expect(updated?.extraCategoryIds).toEqual([multivitamin.id]);
+      expect(
+        (await ProductDao.findByIdForAdmin(product.id))?.extraCategoryIds,
+      ).toEqual([multivitamin.id]);
+    });
+
+    it('leaves the extras alone when an update does not mention them', async () => {
+      const { malt, multivitamin } = await makeFamily();
+      const product = await ProductDao.create({
+        ...makeProduct(malt),
+        extraCategoryIds: [multivitamin.id],
+      });
+
+      const updated = await ProductDao.update(product.id, {
+        title: 'عنوان تازه',
+      });
+
+      expect(updated).toMatchObject({
+        title: 'عنوان تازه',
+        extraCategoryIds: [multivitamin.id],
+      });
+    });
+
+    it('drops the junction row of a category that becomes the primary', async () => {
+      const { malt, multivitamin, elsewhere } = await makeFamily();
+      const product = await ProductDao.create({
+        ...makeProduct(malt),
+        extraCategoryIds: [multivitamin.id, elsewhere.id],
+      });
+
+      // The new primary is stripped from the extras it is sent with — read
+      // from the row as it ends up, not as it started.
+      const updated = await ProductDao.update(product.id, {
+        categoryId: multivitamin.id,
+        extraCategoryIds: [multivitamin.id, elsewhere.id],
+      });
+
+      expect(updated).toMatchObject({
+        categoryId: multivitamin.id,
+        extraCategoryIds: [elsewhere.id],
+      });
+    });
+
+    it('leaves no product row behind when an extra category does not exist', async () => {
+      const category = await makeCategory();
+      const input = makeProduct(category);
+
+      await expect(
+        ProductDao.create({
+          ...input,
+          extraCategoryIds: [crypto.randomUUID()],
+        }),
+      ).rejects.toMatchObject({
+        cause: {
+          constraint: 'product_categories_category_id_categories_id_fk',
+        },
+      });
+
+      const left = await testDb
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.slug, input.slug));
+      expect(left).toEqual([]);
+    });
+
+    it('replaces the extras wholesale on the seed path', async () => {
+      const { malt, multivitamin, elsewhere } = await makeFamily();
+      const input = {
+        ...makeProduct(malt),
+        extraCategoryIds: [multivitamin.id],
+      };
+
+      await ProductDao.upsertBySku(input);
+      const second = await ProductDao.upsertBySku({
+        ...input,
+        extraCategoryIds: [elsewhere.id],
+      });
+
+      expect(second.extraCategoryIds).toEqual([elsewhere.id]);
+    });
+
+    it('lists the product once under its primary, each extra and their parent', async () => {
+      const { parent, malt, multivitamin, elsewhere } = await makeFamily();
+      const product = await ProductDao.create({
+        ...makeProduct(malt),
+        extraCategoryIds: [multivitamin.id],
+      });
+      // A neighbour under the same parent, so a total of one is a filter
+      // working rather than an empty corner of the catalogue.
+      const neighbour = await ProductDao.create(makeProduct(elsewhere));
+
+      const under = async (slug: string) => {
+        const page = await ProductDao.list({ categorySlug: slug });
+        const admin = await ProductDao.pageForAdmin({ categorySlug: slug });
+        expect(ids(admin.items)).toEqual(ids(page.items));
+        expect(admin.total).toBe(page.total);
+        return page;
+      };
+
+      for (const slug of [malt.slug, multivitamin.slug, parent.slug]) {
+        const { items, total } = await under(slug);
+        // The parent's scope holds both of the product's categories, and it is
+        // still one row and one match — a join to the junction would say two.
+        expect(ids(items)).toEqual([product.id]);
+        expect(total).toBe(1);
+      }
+      expect(ids((await under(elsewhere.slug)).items)).toEqual([neighbour.id]);
+    });
+  });
+
   describe('findByIdForAdmin', () => {
     it('loads an inactive product the storefront read would hide', async () => {
       const category = await makeCategory();
@@ -1053,6 +1244,42 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       );
 
       expect(refused).toBe('products_category_id_categories_id_fk');
+    });
+
+    it('refuses the same extra category twice on one product', async () => {
+      // The DAO dedupes, but the seed and psql bypass it; this is the rule
+      // that actually holds.
+      const primary = await makeCategory();
+      const extra = await makeCategory();
+      const product = await ProductDao.create({
+        ...makeProduct(primary),
+        extraCategoryIds: [extra.id],
+      });
+
+      const refused = await refusedBy(() =>
+        testDb.insert(productCategories).values({
+          productId: product.id,
+          categoryId: extra.id,
+          sortOrder: 1,
+        }),
+      );
+
+      expect(refused).toBe('product_categories_product_id_category_id_pk');
+    });
+
+    it('refuses to drop a category that is only an extra of some product', async () => {
+      const primary = await makeCategory();
+      const extra = await makeCategory();
+      await ProductDao.create({
+        ...makeProduct(primary),
+        extraCategoryIds: [extra.id],
+      });
+
+      const refused = await refusedBy(() =>
+        testDb.delete(categories).where(eq(categories.id, extra.id)),
+      );
+
+      expect(refused).toBe('product_categories_category_id_categories_id_fk');
     });
   });
 

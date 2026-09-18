@@ -32,6 +32,7 @@ import { ADMIN_PAGE_SIZE } from '@/lib/pagination';
 import { normalizeSearchText } from '@/lib/catalog/search-text';
 import {
   categories,
+  productCategories,
   productImages,
   products,
   type NewProduct,
@@ -46,11 +47,21 @@ import {
  * this DAO owns `search_text` — it is derived from three fields below, so a
  * caller that could set it could hide a product from the search or plant one in
  * every result.
+ *
+ * `extraCategoryIds` is the **additional** categories, never the primary
+ * `categoryId`. This DAO is their one canonicalizer — it dedupes the list and
+ * drops the primary from it — because the seed bypasses zod and two copies of
+ * that rule would drift.
  */
 export type ProductInput = Omit<
   NewProduct,
   'id' | 'createdAt' | 'updatedAt' | 'searchText'
->;
+> & { extraCategoryIds?: string[] };
+
+/** A written product plus the additional categories now stored for it. */
+export type ProductWithExtraCategories = Product & {
+  extraCategoryIds: string[];
+};
 
 export class StockConflictError extends Error {
   constructor() {
@@ -156,6 +167,27 @@ const categoryScope = (slug: string) => {
     .where(or(eq(categories.slug, slug), eq(parent.slug, slug)));
 };
 
+/**
+ * «Filed under this slug» — as the primary category, or as one of the
+ * additional ones. The only thing either list path asks about a category.
+ *
+ * Two subqueries under an `or`, never a join to the junction: a join would
+ * return a product once per matching category, so a product in two
+ * sub-categories of the filtered parent would be listed twice and counted
+ * twice — the page and its `total` both wrong.
+ */
+const inCategoryScope = (slug: string): SQL =>
+  or(
+    inArray(products.categoryId, categoryScope(slug)),
+    inArray(
+      products.id,
+      db
+        .select({ id: productCategories.productId })
+        .from(productCategories)
+        .where(inArray(productCategories.categoryId, categoryScope(slug))),
+    ),
+  )!;
+
 export type ProductFilters = {
   categorySlug?: string;
   /** One pet; a product suits it when its selection contains it. */
@@ -244,7 +276,10 @@ export class ProductDao {
         })
       : await Promise.all([pageQuery(db), countQuery(db)]);
 
-    return { items: await ProductDao.withImages(rows), total: counted.value };
+    return {
+      items: await ProductDao.withRelations(rows),
+      total: counted.value,
+    };
   }
 
   /**
@@ -255,9 +290,7 @@ export class ProductDao {
   private static storefrontWhere(filters: ProductFilters): SQL[] {
     const where: SQL[] = [eq(products.isActive, true)];
     if (filters.categorySlug) {
-      where.push(
-        inArray(products.categoryId, categoryScope(filters.categorySlug)),
-      );
+      where.push(inCategoryScope(filters.categorySlug));
     }
     if (filters.petType) {
       where.push(petFilter(filters.petType));
@@ -294,7 +327,7 @@ export class ProductDao {
     filters: AdminProductFilters = {},
   ): Promise<ProductWithImages[]> {
     const rows = await ProductDao.adminRows(ProductDao.adminWhere(filters));
-    return ProductDao.withImages(rows);
+    return ProductDao.withRelations(rows);
   }
 
   /**
@@ -320,7 +353,10 @@ export class ProductDao {
       db.select({ value: count() }).from(products).where(where),
     ]);
 
-    return { items: await ProductDao.withImages(rows), total: counted.value };
+    return {
+      items: await ProductDao.withRelations(rows),
+      total: counted.value,
+    };
   }
 
   /** The admin listing's rows, newest first, before any paging. */
@@ -342,9 +378,7 @@ export class ProductDao {
       where.push(eq(products.isActive, filters.active));
     }
     if (filters.categorySlug) {
-      where.push(
-        inArray(products.categoryId, categoryScope(filters.categorySlug)),
-      );
+      where.push(inCategoryScope(filters.categorySlug));
     }
     if (filters.petType) {
       where.push(petFilter(filters.petType));
@@ -374,7 +408,7 @@ export class ProductDao {
       .where(eq(products.id, id))
       .limit(1);
 
-    const [row] = await ProductDao.withImages(rows);
+    const [row] = await ProductDao.withRelations(rows);
     return row ?? null;
   }
 
@@ -386,17 +420,32 @@ export class ProductDao {
       .where(and(eq(products.slug, slug), eq(products.isActive, true)))
       .limit(1);
 
-    const [row] = await ProductDao.withImages(rows);
+    const [row] = await ProductDao.withRelations(rows);
     return row ?? null;
   }
 
-  static async create(input: ProductInput): Promise<Product> {
-    const [row] = await db
-      .insert(products)
-      // Last, so a caller reaching past `ProductInput` cannot supply its own.
-      .values({ ...input, searchText: buildProductSearchText(input) })
-      .returning();
-    return row;
+  static async create(
+    input: ProductInput,
+  ): Promise<ProductWithExtraCategories> {
+    const { extraCategoryIds = [], ...columns } = input;
+    // One transaction, so an extra category that no longer exists rolls the
+    // product back with it rather than leaving a half-created row behind.
+    return db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(products)
+        // Last, so a caller reaching past `ProductInput` cannot supply its own.
+        .values({ ...columns, searchText: buildProductSearchText(columns) })
+        .returning();
+      return {
+        ...row,
+        extraCategoryIds: await ProductDao.replaceExtraCategories(
+          tx,
+          row.id,
+          row.categoryId,
+          extraCategoryIds,
+        ),
+      };
+    });
   }
 
   /**
@@ -410,69 +459,112 @@ export class ProductDao {
     id: string,
     patch: Partial<ProductInput>,
     expectedStock?: number,
-  ): Promise<Product | null> {
+  ): Promise<ProductWithExtraCategories | null> {
+    // Split first: drizzle's `.set()` must never see `extraCategoryIds`, which
+    // is not a column of `products`.
+    const { extraCategoryIds, ...columns } = patch;
     return db.transaction(async (tx) => {
-      // A form round-trips stock even when only its title was edited. Preserve
-      // concurrent reservations unless the operator actually changed inventory.
-      const update = { ...patch };
-      let stockGuard: number | undefined;
-      if (expectedStock !== undefined && update.stock !== undefined) {
-        if (update.stock === expectedStock) {
-          delete update.stock;
-        } else {
-          stockGuard = expectedStock;
-        }
-      }
-      if (Object.keys(update).length === 0) {
-        const [current] = await tx
-          .select()
-          .from(products)
-          .where(eq(products.id, id));
-        return current ?? null;
-      }
-      const [row] = await tx
-        .update(products)
-        .set(update)
-        .where(
-          stockGuard === undefined
-            ? eq(products.id, id)
-            : and(eq(products.id, id), eq(products.stock, stockGuard)),
-        )
-        .returning();
-
-      if (!row) {
-        if (stockGuard === undefined) return null;
-        // The CAS intentionally combines "missing" and "stale" into zero rows;
-        // split them only on this failure path for the API's 404/409 contract.
-        const [existing] = await tx
-          .select({ id: products.id })
-          .from(products)
-          .where(eq(products.id, id));
-        if (!existing) return null;
-        throw new StockConflictError();
-      }
-      if (!SEARCHABLE_FIELDS.some((field) => field in update)) return row;
-
-      const [rewritten] = await tx
-        .update(products)
-        .set({ searchText: buildProductSearchText(row) })
-        .where(eq(products.id, id))
-        .returning();
-      return rewritten;
+      const row = await ProductDao.updateColumns(
+        tx,
+        id,
+        columns,
+        expectedStock,
+      );
+      if (!row) return null;
+      return {
+        ...row,
+        extraCategoryIds:
+          // ponytail: a patch that omits the key leaves the extras alone — the
+          // one caller (the admin PUT) always sends the full body, a stray
+          // primary in the junction is harmless to the filter and the count,
+          // and the next full write strips it. `row.categoryId` is the primary
+          // *after* the update, so a category promoted to primary in this very
+          // write loses its junction row.
+          extraCategoryIds === undefined
+            ? await ProductDao.readExtraCategories(tx, id)
+            : await ProductDao.replaceExtraCategories(
+                tx,
+                id,
+                row.categoryId,
+                extraCategoryIds,
+              ),
+      };
     });
+  }
+
+  /** Today's column logic, unchanged, inside the caller's transaction. */
+  private static async updateColumns(
+    tx: Executor,
+    id: string,
+    patch: Partial<Omit<ProductInput, 'extraCategoryIds'>>,
+    expectedStock?: number,
+  ): Promise<Product | null> {
+    // A form round-trips stock even when only its title was edited. Preserve
+    // concurrent reservations unless the operator actually changed inventory.
+    const update = { ...patch };
+    let stockGuard: number | undefined;
+    if (expectedStock !== undefined && update.stock !== undefined) {
+      if (update.stock === expectedStock) {
+        delete update.stock;
+      } else {
+        stockGuard = expectedStock;
+      }
+    }
+    if (Object.keys(update).length === 0) {
+      const [current] = await tx
+        .select()
+        .from(products)
+        .where(eq(products.id, id));
+      return current ?? null;
+    }
+    const [row] = await tx
+      .update(products)
+      .set(update)
+      .where(
+        stockGuard === undefined
+          ? eq(products.id, id)
+          : and(eq(products.id, id), eq(products.stock, stockGuard)),
+      )
+      .returning();
+
+    if (!row) {
+      if (stockGuard === undefined) return null;
+      // The CAS intentionally combines "missing" and "stale" into zero rows;
+      // split them only on this failure path for the API's 404/409 contract.
+      const [existing] = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.id, id));
+      if (!existing) return null;
+      throw new StockConflictError();
+    }
+    if (!SEARCHABLE_FIELDS.some((field) => field in update)) return row;
+
+    const [rewritten] = await tx
+      .update(products)
+      .set({ searchText: buildProductSearchText(row) })
+      .where(eq(products.id, id))
+      .returning();
+    return rewritten;
   }
 
   /**
    * The only removal path there is: the row stays, the storefront stops seeing
    * it, the admin panel still does.
    */
-  static async softDelete(id: string): Promise<Product | null> {
+  static async softDelete(
+    id: string,
+  ): Promise<ProductWithExtraCategories | null> {
     const [row] = await db
       .update(products)
       .set({ isActive: false })
       .where(eq(products.id, id))
       .returning();
-    return row ?? null;
+    if (!row) return null;
+    return {
+      ...row,
+      extraCategoryIds: await ProductDao.readExtraCategories(db, id),
+    };
   }
 
   /**
@@ -554,33 +646,48 @@ export class ProductDao {
    * `isActive` is deliberately absent from the update: re-seeding must not
    * resurrect a product somebody removed on purpose.
    */
-  static async upsertBySku(input: ProductInput): Promise<Product> {
-    const searchText = buildProductSearchText(input);
+  static async upsertBySku(
+    input: ProductInput,
+  ): Promise<ProductWithExtraCategories> {
+    const { extraCategoryIds = [], ...columns } = input;
+    const searchText = buildProductSearchText(columns);
 
-    const [row] = await db
-      .insert(products)
-      .values({ ...input, searchText })
-      .onConflictDoUpdate({
-        target: products.sku,
-        set: {
-          title: input.title,
-          slug: input.slug,
-          brand: input.brand ?? null,
-          description: input.description ?? null,
-          benefit: input.benefit ?? null,
-          price: input.price,
-          oldPrice: input.oldPrice ?? null,
-          stock: input.stock ?? 0,
-          categoryId: input.categoryId,
-          petTypes: input.petTypes,
-          // On the update branch too, or a corrected title in the seed would
-          // never reach the index — the row would keep the text it was first
-          // inserted with, and re-running the seed would look like a no-op.
-          searchText,
-        },
-      })
-      .returning();
-    return row;
+    // The extras are replaced wholesale on a re-seed, exactly as the images
+    // are — so a corrected seed is the truth, and a re-run stacks nothing.
+    return db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(products)
+        .values({ ...columns, searchText })
+        .onConflictDoUpdate({
+          target: products.sku,
+          set: {
+            title: columns.title,
+            slug: columns.slug,
+            brand: columns.brand ?? null,
+            description: columns.description ?? null,
+            benefit: columns.benefit ?? null,
+            price: columns.price,
+            oldPrice: columns.oldPrice ?? null,
+            stock: columns.stock ?? 0,
+            categoryId: columns.categoryId,
+            petTypes: columns.petTypes,
+            // On the update branch too, or a corrected title in the seed would
+            // never reach the index — the row would keep the text it was first
+            // inserted with, and re-running the seed would look like a no-op.
+            searchText,
+          },
+        })
+        .returning();
+      return {
+        ...row,
+        extraCategoryIds: await ProductDao.replaceExtraCategories(
+          tx,
+          row.id,
+          row.categoryId,
+          extraCategoryIds,
+        ),
+      };
+    });
   }
 
   /**
@@ -612,30 +719,92 @@ export class ProductDao {
     });
   }
 
-  /** One extra query for the whole page of products, not one per product. */
-  private static async withImages(
+  /**
+   * Replaces a product's additional categories wholesale — position in `ids`
+   * becomes `sortOrder`, which is what makes the form, the stored rows and the
+   * product page's spec row agree on an order. The `product_images` pattern.
+   *
+   * This is the one canonicalizer: a repeated id keeps its first position and
+   * the primary category is dropped, because «an extra is never the primary»
+   * spans two tables and so cannot be a CHECK. Returns what was stored.
+   */
+  private static async replaceExtraCategories(
+    tx: Executor,
+    productId: string,
+    primaryId: string,
+    ids: readonly string[],
+  ): Promise<string[]> {
+    await tx
+      .delete(productCategories)
+      .where(eq(productCategories.productId, productId));
+
+    const extras = [...new Set(ids)].filter((id) => id !== primaryId);
+    if (extras.length === 0) return [];
+
+    await tx.insert(productCategories).values(
+      extras.map((categoryId, index) => ({
+        productId,
+        categoryId,
+        sortOrder: index,
+      })),
+    );
+    return extras;
+  }
+
+  /** One product's additional categories, in the order they were added. */
+  private static async readExtraCategories(
+    on: Executor,
+    productId: string,
+  ): Promise<string[]> {
+    const rows = await on
+      .select({ categoryId: productCategories.categoryId })
+      .from(productCategories)
+      .where(eq(productCategories.productId, productId))
+      .orderBy(asc(productCategories.sortOrder));
+    return rows.map((row) => row.categoryId);
+  }
+
+  /** Two extra queries for the whole page of products, not two per product. */
+  private static async withRelations(
     rows: Product[],
   ): Promise<ProductWithImages[]> {
     if (rows.length === 0) return [];
+    const productIds = rows.map((row) => row.id);
 
-    const images = await db
-      .select()
-      .from(productImages)
-      .where(
-        inArray(
-          productImages.productId,
-          rows.map((row) => row.id),
-        ),
-      )
-      .orderBy(asc(productImages.sortOrder));
+    const [images, extras] = await Promise.all([
+      db
+        .select()
+        .from(productImages)
+        .where(inArray(productImages.productId, productIds))
+        .orderBy(asc(productImages.sortOrder)),
+      db
+        .select()
+        .from(productCategories)
+        .where(inArray(productCategories.productId, productIds))
+        .orderBy(asc(productCategories.sortOrder)),
+    ]);
 
-    const byProduct = new Map<string, ProductImage[]>();
-    for (const image of images) {
-      const existing = byProduct.get(image.productId);
-      if (existing) existing.push(image);
-      else byProduct.set(image.productId, [image]);
-    }
+    const imagesOf = groupByProduct(images, (image) => image);
+    const extrasOf = groupByProduct(extras, (row) => row.categoryId);
 
-    return rows.map((row) => ({ ...row, images: byProduct.get(row.id) ?? [] }));
+    return rows.map((row) => ({
+      ...row,
+      images: imagesOf.get(row.id) ?? [],
+      extraCategoryIds: extrasOf.get(row.id) ?? [],
+    }));
   }
 }
+
+/** Bucket rows already ordered by `sortOrder` under their product id. */
+const groupByProduct = <T extends { productId: string }, V>(
+  rows: T[],
+  pick: (row: T) => V,
+): Map<string, V[]> => {
+  const byProduct = new Map<string, V[]>();
+  for (const row of rows) {
+    const existing = byProduct.get(row.productId);
+    if (existing) existing.push(pick(row));
+    else byProduct.set(row.productId, [pick(row)]);
+  }
+  return byProduct;
+};

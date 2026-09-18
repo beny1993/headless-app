@@ -15,6 +15,7 @@ import {
   integer,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -149,6 +150,39 @@ export const products = pgTable(
   ],
 );
 
+/**
+ * The **additional** categories a product is filed under — never its primary
+ * one, which stays `products.category_id`. Keeping the primary out of here is
+ * what makes a bug in this table unable to hide a product from the category it
+ * mainly belongs to, and what lets «a product always has a category» stay a
+ * database guarantee instead of a zod rule.
+ *
+ * The composite primary key refuses the same category twice for free. «An extra
+ * is never the primary» cannot be a CHECK — it spans two tables — so `ProductDao`
+ * strips it on every write; a stray one is harmless to the filter and the count.
+ *
+ * The product foreign key cascades like `product_images`: the app never
+ * hard-deletes a product, so only test teardown ever triggers it. The category
+ * one restricts, which is what keeps a category in use undeletable.
+ */
+export const productCategories = pgTable(
+  'product_categories',
+  {
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    categoryId: uuid('category_id')
+      .notNull()
+      .references(() => categories.id, { onDelete: 'restrict' }),
+    /** Position in the admin's own list — index on write, `asc` on read. */
+    sortOrder: integer('sort_order').default(0).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.productId, table.categoryId] }),
+    index('product_categories_category_id_idx').on(table.categoryId),
+  ],
+);
+
 export const productImages = pgTable(
   'product_images',
   {
@@ -175,5 +209,12 @@ export type NewProduct = typeof products.$inferInsert;
 export type ProductImage = typeof productImages.$inferSelect;
 export type NewProductImage = typeof productImages.$inferInsert;
 
-/** A product with its images attached, as the storefront reads it. */
-export type ProductWithImages = Product & { images: ProductImage[] };
+/**
+ * A product with its images and its additional categories attached, as the
+ * storefront reads it. `categoryId` is still the primary category; these are
+ * the others, in the order the admin added them.
+ */
+export type ProductWithImages = Product & {
+  images: ProductImage[];
+  extraCategoryIds: string[];
+};

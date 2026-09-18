@@ -1,8 +1,13 @@
 // All Drizzle DB access goes through DAOs like this one. Multi-DAO operations
 // belong in src/logic/, not in route handlers or components. Never write raw SQL.
-import { asc, count, eq, inArray } from 'drizzle-orm';
+import { asc, count, eq, inArray, or } from 'drizzle-orm';
 import { db } from '@/db';
-import { categories, products, type Category } from '@/db/schema/catalog';
+import {
+  categories,
+  productCategories,
+  products,
+  type Category,
+} from '@/db/schema/catalog';
 import {
   CATEGORY_PARENT_MESSAGES,
   type CategoryParentReason,
@@ -160,13 +165,29 @@ export class CategoryDao {
 
   /**
    * How many products reference the category, soft-deleted ones included —
-   * exactly the rows the foreign key sees when it refuses a delete.
+   * exactly the rows the two foreign keys see when they refuse a delete: the
+   * products filed under it, plus the ones that merely list it among their
+   * additional categories.
+   *
+   * Counted over `products` with a subquery rather than joined to the junction,
+   * so a product that is filed there twice over is one product, not two.
    */
   static async countProducts(id: string): Promise<number> {
     const [row] = await db
       .select({ value: count() })
       .from(products)
-      .where(eq(products.categoryId, id));
+      .where(
+        or(
+          eq(products.categoryId, id),
+          inArray(
+            products.id,
+            db
+              .select({ id: productCategories.productId })
+              .from(productCategories)
+              .where(eq(productCategories.categoryId, id)),
+          ),
+        ),
+      );
     return row?.value ?? 0;
   }
 

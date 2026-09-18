@@ -2,7 +2,7 @@
 import { faker } from '@faker-js/faker';
 import { eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
-import { categories, products } from '@/db/schema/catalog';
+import { categories, productCategories, products } from '@/db/schema/catalog';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { PET_TYPES } from '@/lib/catalog/product-query';
 import { pgErrorOf } from '@/lib/hono/pg-error';
@@ -426,6 +426,29 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
       await ProductDao.softDelete(hidden.id);
 
       expect(await CategoryDao.countProducts(created.id)).toBe(2);
+    });
+
+    it('counts a product that only has the category as an extra one', async () => {
+      // The junction's foreign key refuses the delete for these too, so the
+      // refusal's count has to see them or it reads as a bug.
+      const primary = await makeCategory();
+      const extra = await makeCategory();
+      const product = await makeProduct(primary.id);
+      await ProductDao.update(product.id, { extraCategoryIds: [extra.id] });
+
+      expect(await CategoryDao.countProducts(extra.id)).toBe(1);
+    });
+
+    it('counts a product once even when it is filed there twice over', async () => {
+      // The DAO strips the primary from the extras, so only a raw write can
+      // build this row — and it is exactly what a join would double-count.
+      const category = await makeCategory();
+      const product = await makeProduct(category.id);
+      await testDb
+        .insert(productCategories)
+        .values({ productId: product.id, categoryId: category.id });
+
+      expect(await CategoryDao.countProducts(category.id)).toBe(1);
     });
   });
 });
