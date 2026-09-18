@@ -200,9 +200,11 @@ covered by their pure modules' unit tests plus browser verification.
 hand, run at 1280px and again at 375px. Storefront: phone-OTP sign-in for a
 customer and an admin; home → shop → product → cart drawer (quantity, removal,
 empty state) and a sold-out product; a both-pets product under either pet
-filter and under its sub-category's parent; a product in two categories listed
-once under that parent and once under each of its own, both linked on its
-page; checkout by card to card — Jalali date and `format.ts`-formatted numbers
+filter and under its sub-category's parent, reading «گربه و سگ» on its page —
+each of those shelves also checked for a product it must *not* list; a product
+in two categories listed once under that parent and once under each of its own,
+its breadcrumb naming parent then sub-category and both its categories linked
+in the spec row; checkout by card to card — Jalali date and `format.ts`-formatted numbers
 on the result page, the order in `/account` — and through the mock Zarinpal
 gateway (paid, and failed → retry → paid). Admin: anonymous visitors and
 customers turned away; the dashboard figures; an order shipped, and one
