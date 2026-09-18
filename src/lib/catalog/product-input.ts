@@ -24,7 +24,11 @@
 import { z } from 'zod';
 import { toPersianDigits } from '@/lib/format';
 import { FORBIDDEN_TEXT_CHARS, VISIBLE_CHAR } from '@/lib/validation/text';
-import { PET_TYPE_VALUES, normalizePetTypes } from './product-query';
+import {
+  PET_TYPE_VALUES,
+  normalizePetTypes,
+  type PetType,
+} from './product-query';
 import { MAX_SLUG_LENGTH } from './sku';
 
 /**
@@ -77,8 +81,26 @@ export const PRODUCT_MESSAGES = {
 /** Latin URL segment; the same shape the categories schema documents. */
 export const SLUG_PATTERN = /^[a-z0-9-]{3,}$/;
 
-/** zod's own uuid rule, reused element-wise without its indexed error path. */
+/**
+ * An array element that accepts anything, so a bad one is reported by the
+ * array's own check instead of by the element's.
+ *
+ * `formatZodIssues` renders an element issue as `petTypes.0`, and both the form
+ * and `parseFieldErrors` look an error up by its exact field name — so such an
+ * issue is one no field ever shows, and the admin gets a refused save with no
+ * message anywhere. `meta` is what keeps the element's real shape in the
+ * OpenAPI document, which is the only other job the element schema had.
+ */
+const anyElement = (meta: Record<string, unknown>) => z.unknown().meta(meta);
+
+/** zod's own uuid rule, applied to the whole array rather than element-wise. */
 const UUID = z.uuid();
+
+const isUuid = (value: unknown): value is string =>
+  UUID.safeParse(value).success;
+
+const isPetType = (value: unknown): value is PetType =>
+  (PET_TYPE_VALUES as readonly unknown[]).includes(value);
 
 /** No forbidden characters; `multiline` lets tab, line feed and carriage return through. */
 const hasNoForbiddenChars = (multiline: boolean) => (value: string) =>
@@ -175,16 +197,17 @@ export const productInputSchema = z
     // canonicalizer (it dedupes and drops the main one) because the seed
     // bypasses zod and two copies of that rule would drift.
     //
-    // Validated as a whole rather than element by element, so a malformed id
-    // raises ONE issue at path `extraCategoryIds`: `formatZodIssues` turns an
-    // element issue into `extraCategoryIds.1`, and the form looks its errors
-    // up by exact key, so that would be an error no field ever shows.
+    // Validated as a whole rather than element by element — see `anyElement`.
     extraCategoryIds: z
-      .array(z.string(), PRODUCT_MESSAGES.extraCategories)
+      .array(
+        anyElement({ type: 'string', format: 'uuid' }),
+        PRODUCT_MESSAGES.extraCategories,
+      )
       .max(MAX_EXTRA_CATEGORIES, PRODUCT_MESSAGES.extraCategoriesMax)
-      .refine((ids) => ids.every((id) => UUID.safeParse(id).success), {
+      .refine((ids) => ids.every(isUuid), {
         error: PRODUCT_MESSAGES.extraCategories,
       })
+      .transform((ids) => ids as string[])
       // Absent means «none», so every body written before this field existed
       // stays valid.
       .default([]),
@@ -194,11 +217,15 @@ export const productInputSchema = z
     // sentence said in one place (A1).
     petTypes: z
       .array(
-        z.enum(PET_TYPE_VALUES, PRODUCT_MESSAGES.pet),
+        anyElement({ type: 'string', enum: PET_TYPE_VALUES }),
         PRODUCT_MESSAGES.petRequired,
       )
       .min(1, PRODUCT_MESSAGES.petRequired)
-      .transform(normalizePetTypes),
+      // Checked on the array, not on the element, for `anyElement`'s reason.
+      .refine((values) => values.every(isPetType), {
+        error: PRODUCT_MESSAGES.pet,
+      })
+      .transform((values) => normalizePetTypes(values as PetType[])),
     // A real editable field — the design's «نمایش در فروشگاه» toggle. Soft delete
     // is the DELETE route, not this flag; but an admin may deactivate a product
     // by unchecking it here too.

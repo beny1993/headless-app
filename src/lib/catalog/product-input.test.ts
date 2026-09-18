@@ -186,6 +186,20 @@ describe('productInputSchema', () => {
       expect(pets(['hamster']).success).toBe(false);
       expect(pets(PET_TYPES.CAT).success).toBe(false);
     });
+
+    it('keys a bad pet value on the bare field, never on its index', () => {
+      // The form reads `fieldErrors.petTypes`, so an issue keyed `petTypes.0`
+      // is one no field ever shows: the admin would get a refused save with
+      // no message at all.
+      for (const bad of [['hamster'], [PET_TYPES.CAT, 7], [null], [['cat']]]) {
+        const parsed = pets(bad);
+        expect(parsed.success).toBe(false);
+        expect(parsed.error?.issues[0]).toMatchObject({
+          path: ['petTypes'],
+          message: PRODUCT_MESSAGES.pet,
+        });
+      }
+    });
   });
 
   describe('the additional categories', () => {
@@ -218,17 +232,22 @@ describe('productInputSchema', () => {
 
     it('keys a malformed id on the bare field, never on its index', () => {
       // The form looks its errors up by exact key, so an issue keyed
-      // `extraCategoryIds.1` would be one no field ever shows.
-      const parsed = extras([
-        '123e4567-e89b-12d3-a456-426614174111',
-        'not-a-uuid',
-      ]);
-
-      expect(parsed.success).toBe(false);
-      expect(parsed.error?.issues[0]).toMatchObject({
-        path: ['extraCategoryIds'],
-        message: PRODUCT_MESSAGES.extraCategories,
-      });
+      // `extraCategoryIds.1` would be one no field ever shows. A value that is
+      // not even a string has to collapse the same way — it arrives through
+      // the same API field.
+      for (const bad of [
+        ['not-a-uuid'],
+        ['123e4567-e89b-12d3-a456-426614174111', 7],
+        [null],
+        [{}],
+      ]) {
+        const parsed = extras(bad);
+        expect(parsed.success).toBe(false);
+        expect(parsed.error?.issues[0]).toMatchObject({
+          path: ['extraCategoryIds'],
+          message: PRODUCT_MESSAGES.extraCategories,
+        });
+      }
     });
 
     it('rejects a value that is not a list at all', () => {

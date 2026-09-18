@@ -399,6 +399,25 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       );
     });
 
+    it('keys a bad pet value on the bare field, not on its index', async () => {
+      // Same trap as the additional ids above: `petTypes.0` is a key the
+      // form's pet fieldset never reads, so the refusal would be invisible.
+      const category = await makeCategory();
+      asAdmin();
+
+      const res = await parse(
+        await json(
+          API_PATHS.ADMIN_PRODUCTS,
+          'POST',
+          body(category, { petTypes: [PET_TYPES.CAT, 'hamster'] }),
+        ),
+      );
+
+      expect(res.status).toBe(400);
+      if (res.body.status !== 'error') throw new Error('expected error');
+      expect(res.body.errors).toContain(`petTypes: ${PRODUCT_MESSAGES.pet}`);
+    });
+
     it('400s a NUL byte in the title rather than a database 500', async () => {
       const category = await makeCategory();
       asAdmin();
