@@ -1,5 +1,41 @@
-import { PATHS } from '@/lib/constant/paths';
+import type { Page } from '@playwright/test';
+import { PET_TYPES } from '@/db/schema/catalog';
+import {
+  SEED_CATEGORIES,
+  SEED_PRODUCTS,
+  SEED_SUBCATEGORIES,
+} from '@/db/seed/catalog-data';
+import { formatPetTypes } from '@/features/storefront/shop/shop-query';
+import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
+import { formatNumber } from '@/lib/format';
 import { IN_STOCK_PRODUCT, SOLD_OUT_PRODUCT, expect, test } from './support';
+
+// Picked out of the seed by what makes each one interesting, never by index:
+// appending a row to the catalog must not point these at another product.
+const bothPets = SEED_PRODUCTS.find((product) => product.petTypes.length === 2);
+const multiCategory = SEED_PRODUCTS.find(
+  (product) => (product.extraCategorySlugs ?? []).length > 0,
+);
+const subOf = (slug: string) =>
+  SEED_SUBCATEGORIES.find((sub) => sub.slug === slug);
+if (!bothPets || !multiCategory) {
+  throw new Error('The catalog seed needs a both-pets and a two-category row.');
+}
+const mainCategory = subOf(multiCategory.categorySlug);
+const grooming = subOf(bothPets.categorySlug);
+if (!mainCategory || !grooming) {
+  throw new Error('Both seeded products should sit in a sub-category.');
+}
+
+/** What the storefront calls a category, top-level or sub. */
+const titleOf = (slug: string) =>
+  [...SEED_CATEGORIES, ...SEED_SUBCATEGORIES].find(
+    (category) => category.slug === slug,
+  )?.title ?? slug;
+
+/** The product cards on the page whose link reads `title`. */
+const cardsFor = (page: Page, title: string) =>
+  page.locator('[data-umami-event="product-card-open"]', { hasText: title });
 
 test('a shopper browses from home to a product and into the cart', async ({
   page,
@@ -39,6 +75,74 @@ test('a shopper browses from home to a product and into the cart', async ({
   expect((await remove.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
   await remove.click();
   await expect(drawer).toContainText('سبد خرید شما خالی است');
+});
+
+test('a product for both pets is on both shelves', async ({ page }) => {
+  // Suitable for cats *includes* suitable for both, so the shampoo answers
+  // either pet filter, and its parent category's filter reaches down into the
+  // sub-category it is actually filed under.
+  for (const href of [
+    shopPath({ pet: PET_TYPES.CAT }),
+    shopPath({ pet: PET_TYPES.DOG }),
+    shopPath({ category: grooming.parentSlug }),
+  ]) {
+    await page.goto(href);
+    await expect(cardsFor(page, bothPets.title)).toHaveCount(1);
+  }
+
+  await page.goto(productPath(bothPets.slug));
+  await page
+    .locator('[data-umami-event="product-tab-select"]', { hasText: 'مشخصات' })
+    .click();
+  await expect(page.getByRole('region', { name: 'مشخصات' })).toContainText(
+    formatPetTypes([PET_TYPES.CAT, PET_TYPES.DOG]),
+  );
+});
+
+test('a product in two categories is listed once under each', async ({
+  page,
+}) => {
+  // Its main category and its additional one are both under «مکمل», so the
+  // parent's filter matches it twice over and must still show it once.
+  await page.goto(shopPath({ category: mainCategory.parentSlug }));
+  await expect(cardsFor(page, multiCategory.title)).toHaveCount(1);
+  // The total counts what the page lists — once per product, not once per
+  // matching category — and goes through src/lib/format.ts on the way out.
+  const listed = await page
+    .locator('[data-umami-event="product-card-open"]')
+    .count();
+  await expect(
+    page.getByText(`${formatNumber(listed)} محصول`, { exact: true }),
+  ).toBeVisible();
+
+  for (const slug of [
+    multiCategory.categorySlug,
+    ...(multiCategory.extraCategorySlugs ?? []),
+  ]) {
+    await page.goto(shopPath({ category: slug }));
+    await expect(cardsFor(page, multiCategory.title)).toHaveCount(1);
+  }
+
+  await page.goto(productPath(multiCategory.slug));
+  // The breadcrumb follows the main category alone, and a sub-category brings
+  // its parent along: «فروشگاه › مکمل › مالت».
+  await expect(
+    page.locator('[data-umami-event="product-breadcrumb-parent-category"]'),
+  ).toHaveText(titleOf(mainCategory.parentSlug));
+  await expect(
+    page.locator('[data-umami-event="product-breadcrumb-category"]'),
+  ).toHaveText(mainCategory.title);
+
+  await page
+    .locator('[data-umami-event="product-tab-select"]', { hasText: 'مشخصات' })
+    .click();
+  // The spec row lists every category it is filed under, main first.
+  await expect(
+    page.locator('[data-umami-event="product-category-link"]'),
+  ).toHaveText([
+    mainCategory.title,
+    ...(multiCategory.extraCategorySlugs ?? []).map(titleOf),
+  ]);
 });
 
 test('a sold-out product cannot go in the cart', async ({ page }) => {
