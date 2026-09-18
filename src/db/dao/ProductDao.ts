@@ -175,6 +175,11 @@ const categoryScope = (slug: string) => {
  * return a product once per matching category, so a product in two
  * sub-categories of the filtered parent would be listed twice and counted
  * twice — the page and its `total` both wrong.
+ *
+ * ponytail: the `or` costs the category index — Postgres hashes both subplans
+ * once and sequentially scans `products` against them. Correct `total`s are
+ * worth that over a catalogue of hundreds; at tens of thousands, mirror the
+ * primary into the junction behind a trigger and filter on one `IN`.
  */
 const inCategoryScope = (slug: string): SQL =>
   or(

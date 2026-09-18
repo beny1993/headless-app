@@ -6,6 +6,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiRequestError } from '@/lib/api-client';
 import {
   MAX_EXTRA_CATEGORIES,
   PRODUCT_MESSAGES,
@@ -342,5 +343,34 @@ describe('the additional categories', () => {
         `سقف ${toPersianDigits(MAX_EXTRA_CATEGORIES)} دسته‌بندی دیگر پر شده است؛ برای افزودن، یکی را حذف کن.`,
       ),
     ).toBeTruthy();
+  });
+
+  it('shows a refusal from the server in the fieldset’s own slot', async () => {
+    // The route keys this on the bare field name so the fieldset can show it;
+    // nothing else on the form would, and a toast is not raised while some
+    // field owns the error. The wiring is `fieldErrors.extraCategoryIds` →
+    // the `HintOrError` the fieldset's `aria-describedby` points at, which no
+    // unit test can reach.
+    api.putData.mockRejectedValue(
+      new ApiRequestError(400, 'محصول ذخیره نشد؛ ورودی را بررسی کن.', [
+        `extraCategoryIds: ${PRODUCT_MESSAGES.extraCategories}`,
+      ]),
+    );
+    renderEdit({ extraCategoryIds: [MALT] });
+
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    const shown = await screen.findByText(PRODUCT_MESSAGES.extraCategories);
+    // In the fieldset's slot, not loose on the page: the element the fieldset
+    // names as its description is the one carrying the message.
+    const fieldset = screen.getByRole('group', {
+      name: 'دسته‌بندی‌های دیگر (اختیاری)',
+    });
+    expect(shown.id).toBe(fieldset.getAttribute('aria-describedby'));
+    // …and the hint it replaced is gone, so the slot says one thing.
+    expect(
+      screen.queryByText(/اگر محصول در دسته‌بندی دیگری هم جا می‌گیرد/),
+    ).toBeNull();
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });

@@ -219,6 +219,26 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       expect(rows).toEqual([]);
     });
 
+    it('reads an empty slug as no category filter, not as one that misses', async () => {
+      // What `?category=` made of nothing but null bytes strips down to in
+      // `product-query.ts`, which documents this very reading. An unknown slug
+      // must empty the listing; an empty one must leave it alone — reading the
+      // two the same way would answer a stripped parameter with a shop that
+      // looks shut.
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+
+      const empty = await ProductDao.list({ categorySlug: '' });
+      const absent = await ProductDao.list({});
+      const adminEmpty = await ProductDao.pageForAdmin({ categorySlug: '' });
+      const adminAbsent = await ProductDao.pageForAdmin({});
+
+      expect(empty.total).toBe(absent.total);
+      expect(empty.items.map((row) => row.id)).toContain(product.id);
+      expect(adminEmpty.total).toBe(adminAbsent.total);
+      expect(adminEmpty.items.map((row) => row.id)).toContain(product.id);
+    });
+
     describe('a parent category takes in its sub-categories', () => {
       /** A parent holding one product itself, over a sub holding two. */
       const makeFamily = async () => {
@@ -1673,6 +1693,38 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       expect(await searchIds(category.slug, 'غذای خشک گربه')).toEqual([
         catFood.id,
       ]);
+    });
+
+    it('counts a two-category product once under their parent, search and all', async () => {
+      // The one combination the rest of this file never lines up: a search runs
+      // its page and its count inside a transaction with the similarity GUC,
+      // and the category scope it carries is two subqueries over two tables.
+      // A product matched through its *additional* category, under the parent
+      // of both, is where a join would list — and count — it twice.
+      const parent = await makeCategory();
+      const malt = await makeCategory(parent.id);
+      const multivitamin = await makeCategory(parent.id);
+      const paste = await ProductDao.create({
+        ...makeProduct(malt, {
+          title: 'خمیر مالت مولتی‌ویتامین گربه',
+          brand: 'Gimcat',
+        }),
+        extraCategoryIds: [multivitamin.id],
+      });
+
+      const { items, total } = await ProductDao.list({
+        categorySlug: parent.slug,
+        search: 'خمیر مالت',
+      });
+      const admin = await ProductDao.pageForAdmin({
+        categorySlug: parent.slug,
+        search: 'خمیر مالت',
+      });
+
+      expect(items.map((row) => row.id)).toEqual([paste.id]);
+      expect(total).toBe(1);
+      expect(admin.items.map((row) => row.id)).toEqual([paste.id]);
+      expect(admin.total).toBe(1);
     });
 
     it('narrows by price range and search together', async () => {

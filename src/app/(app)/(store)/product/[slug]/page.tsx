@@ -214,11 +214,7 @@ export default async function ProductDetailPage({ params }: Params) {
                     <Spec
                       label="دسته‌بندی"
                       value={filedUnder.map((row, index) => (
-                        <span key={row.id} className="flex items-center gap-1">
-                          {/* The comma is content, so it is a real node —
-                              hiding it from a screen reader leaves the links
-                              announced as the separate items they are. */}
-                          {index > 0 && <span aria-hidden="true">،</span>}
+                        <span key={row.id} className="flex items-center">
                           <Link
                             href={shopPath({ category: row.slug })}
                             className="hover:text-accent-strong hover:underline"
@@ -226,6 +222,17 @@ export default async function ProductDetailPage({ params }: Params) {
                           >
                             {row.title}
                           </Link>
+                          {/* The comma is content, so it is a real node —
+                              hiding it from a screen reader leaves the links
+                              announced as the separate items they are. It
+                              trails its own link, inside the same gap-less
+                              span: Persian punctuation hugs the word before
+                              it, and the `<dd>`'s gap is what separates the
+                              items. At a wrap it ends the line, which is
+                              where a separator belongs. */}
+                          {index < filedUnder.length - 1 && (
+                            <span aria-hidden="true">،</span>
+                          )}
                         </span>
                       ))}
                     />
