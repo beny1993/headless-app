@@ -218,6 +218,35 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       expect(cats.items[0].petTypes).toEqual(['cat', 'dog']);
     });
 
+    it('lists a product under an additional category, and carries them all', async () => {
+      const primary = await makeCategory();
+      const extra = await makeCategory();
+      const product = await ProductDao.create({
+        ...makeProduct(primary),
+        extraCategoryIds: [extra.id],
+      });
+
+      const listed = async (slug: string) =>
+        getData<ProductListResponse>(`${API_PATHS.PRODUCTS}?category=${slug}`);
+      const [byPrimary, byExtra] = await Promise.all([
+        listed(primary.slug),
+        listed(extra.slug),
+      ]);
+
+      expect(byPrimary.items.map((row) => row.id)).toEqual([product.id]);
+      expect(byExtra.items.map((row) => row.id)).toEqual([product.id]);
+      expect([byPrimary.total, byExtra.total]).toEqual([1, 1]);
+      // `categoryId` stays the main one, so existing consumers are untouched.
+      expect(byExtra.items[0]).toMatchObject({
+        categoryId: primary.id,
+        extraCategoryIds: [extra.id],
+      });
+      const detail = await getData<ProductResponse>(
+        apiProductPath(product.slug),
+      );
+      expect(detail.extraCategoryIds).toEqual([extra.id]);
+    });
+
     it('filters by pet type', async () => {
       const category = await makeCategory();
       await ProductDao.create(

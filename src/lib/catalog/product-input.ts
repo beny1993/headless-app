@@ -44,6 +44,12 @@ const tooLong = (label: string, max: number) =>
 /** `products.stock` is a Postgres `integer`; past this the write would 500. */
 const MAX_STOCK = 2_147_483_647;
 
+/**
+ * How many categories a product may carry beyond its main one — so six in all.
+ * A product filed everywhere makes every filter meaningless.
+ */
+export const MAX_EXTRA_CATEGORIES = 5;
+
 /** Persian, user-facing — these strings surface on the form's fields. */
 export const PRODUCT_MESSAGES = {
   title: 'عنوان محصول الزامی است.',
@@ -60,10 +66,19 @@ export const PRODUCT_MESSAGES = {
   stock: 'موجودی باید عددی صحیح و صفر یا بیشتر باشد.',
   pet: 'نوع حیوان نامعتبر است.',
   petRequired: 'حداقل یک نوع حیوان را انتخاب کن.',
+  // One sentence for a malformed id and for an id no category has: the form
+  // only ever sends ids it was given, so to the admin both are «the list you
+  // are looking at is stale», and the route maps the junction's foreign-key
+  // refusal onto this same string.
+  extraCategories: 'یکی از دسته‌بندی‌های انتخاب‌شده یافت نشد؛ صفحه را تازه کن.',
+  extraCategoriesMax: `حداکثر ${toPersianDigits(MAX_EXTRA_CATEGORIES)} دسته‌بندی دیگر می‌توانی انتخاب کنی.`,
 };
 
 /** Latin URL segment; the same shape the categories schema documents. */
 export const SLUG_PATTERN = /^[a-z0-9-]{3,}$/;
+
+/** zod's own uuid rule, reused element-wise without its indexed error path. */
+const UUID = z.uuid();
 
 /** No forbidden characters; `multiline` lets tab, line feed and carriage return through. */
 const hasNoForbiddenChars = (multiline: boolean) => (value: string) =>
@@ -156,6 +171,23 @@ export const productInputSchema = z
       .nonnegative(PRODUCT_MESSAGES.stock)
       .max(MAX_STOCK, PRODUCT_MESSAGES.stock),
     categoryId: z.uuid(PRODUCT_MESSAGES.category),
+    // The categories beyond the main one. Bounded here; the DAO is the one
+    // canonicalizer (it dedupes and drops the main one) because the seed
+    // bypasses zod and two copies of that rule would drift.
+    //
+    // Validated as a whole rather than element by element, so a malformed id
+    // raises ONE issue at path `extraCategoryIds`: `formatZodIssues` turns an
+    // element issue into `extraCategoryIds.1`, and the form looks its errors
+    // up by exact key, so that would be an error no field ever shows.
+    extraCategoryIds: z
+      .array(z.string(), PRODUCT_MESSAGES.extraCategories)
+      .max(MAX_EXTRA_CATEGORIES, PRODUCT_MESSAGES.extraCategoriesMax)
+      .refine((ids) => ids.every((id) => UUID.safeParse(id).success), {
+        error: PRODUCT_MESSAGES.extraCategories,
+      })
+      // Absent means «none», so every body written before this field existed
+      // stays valid.
+      .default([]),
     // One pet or both, stored in the canonical order with duplicates dropped —
     // so `['dog','cat']` and `['cat','cat','dog']` reach the column as the one
     // value they mean. The form runs this very schema, so «at least one» is one

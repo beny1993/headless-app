@@ -316,6 +316,89 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       );
     });
 
+    it('round-trips the additional categories, keeping categoryId the main one', async () => {
+      const primary = await makeCategory();
+      const extra = await makeCategory();
+      asAdmin();
+      const { status, body: envelope } = await parse<{
+        id: string;
+        categoryId: string;
+        extraCategoryIds: string[];
+      }>(
+        await json(
+          API_PATHS.ADMIN_PRODUCTS,
+          'POST',
+          body(primary, { extraCategoryIds: [extra.id] }),
+        ),
+      );
+
+      expect(status).toBe(201);
+      if (envelope.status !== 'success') throw new Error(envelope.message);
+      expect(envelope.data).toMatchObject({
+        categoryId: primary.id,
+        extraCategoryIds: [extra.id],
+      });
+    });
+
+    it('accepts a body with no additional categories at all', async () => {
+      // The field is absent from `body()`, which is the point: every body
+      // written before this story stays valid and means «none».
+      const category = await makeCategory();
+      asAdmin();
+      const { status, body: envelope } = await parse<{
+        extraCategoryIds: string[];
+      }>(await json(API_PATHS.ADMIN_PRODUCTS, 'POST', body(category)));
+
+      expect(status).toBe(201);
+      if (envelope.status !== 'success') throw new Error(envelope.message);
+      expect(envelope.data.extraCategoryIds).toEqual([]);
+    });
+
+    it('400s an unknown additional category, leaving no product behind', async () => {
+      const category = await makeCategory();
+      const sent = body(category, { extraCategoryIds: [faker.string.uuid()] });
+      asAdmin();
+
+      const res = await parse(
+        await json(API_PATHS.ADMIN_PRODUCTS, 'POST', sent),
+      );
+
+      expect(res.status).toBe(400);
+      if (res.body.status !== 'error') throw new Error('expected error');
+      expect(res.body.errors).toContain(
+        `extraCategoryIds: ${PRODUCT_MESSAGES.extraCategories}`,
+      );
+      // The junction write and the product row are one transaction.
+      const left = await testDb
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.slug, sent.slug as string));
+      expect(left).toEqual([]);
+    });
+
+    it('keys a malformed additional id on the bare field, not on its index', async () => {
+      // `formatZodIssues` would emit `extraCategoryIds.1` for an array element
+      // — an error key no field on the form ever looks up.
+      const category = await makeCategory();
+      asAdmin();
+
+      const res = await parse(
+        await json(
+          API_PATHS.ADMIN_PRODUCTS,
+          'POST',
+          body(category, {
+            extraCategoryIds: [faker.string.uuid(), 'not-a-uuid'],
+          }),
+        ),
+      );
+
+      expect(res.status).toBe(400);
+      if (res.body.status !== 'error') throw new Error('expected error');
+      expect(res.body.errors).toContain(
+        `extraCategoryIds: ${PRODUCT_MESSAGES.extraCategories}`,
+      );
+    });
+
     it('400s a NUL byte in the title rather than a database 500', async () => {
       const category = await makeCategory();
       asAdmin();
@@ -412,6 +495,43 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       if (envelope.status !== 'success') throw new Error(envelope.message);
       expect(envelope.data.title).toBe('عنوان تازه');
       expect(envelope.data.price).toBe(555_000);
+    });
+
+    it('replaces the additional categories, and clears them on an empty list', async () => {
+      const primary = await makeCategory();
+      const extra = await makeCategory();
+      const token = faker.string.alphanumeric(8).toLowerCase();
+      const product = await ProductDao.create({
+        title: 'قدیمی',
+        slug: `u-${token}`,
+        sku: `U-${token.toUpperCase()}`,
+        price: 100_000,
+        stock: 3,
+        categoryId: primary.id,
+        petTypes: [PET_TYPES.CAT],
+        extraCategoryIds: [extra.id],
+      });
+      asAdmin();
+      const put = async (extraCategoryIds: string[]) =>
+        parse<{ extraCategoryIds: string[] }>(
+          await json(apiAdminProductPath(product.id), 'PUT', {
+            ...body(primary),
+            slug: product.slug,
+            stock: 3,
+            expectedStock: 3,
+            extraCategoryIds,
+          }),
+        );
+
+      const cleared = await put([]);
+      if (cleared.body.status !== 'success')
+        throw new Error(cleared.body.message);
+      expect(cleared.body.data.extraCategoryIds).toEqual([]);
+
+      const restored = await put([extra.id]);
+      if (restored.body.status !== 'success')
+        throw new Error(restored.body.message);
+      expect(restored.body.data.extraCategoryIds).toEqual([extra.id]);
     });
 
     it('rejects a missing stock snapshot and reports stale stock changes as 409', async () => {

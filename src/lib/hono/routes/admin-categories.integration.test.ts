@@ -410,6 +410,25 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
       expect(res.body.message).toContain('محصول');
     });
 
+    it('refuses (409) while it is only an additional category of a product', async () => {
+      // The fix here is to untick the category on the product, not to move the
+      // product — but the refusal must come, and must count it.
+      const primary = await create();
+      const extra = await create();
+      const product = await makeProduct(primary.id);
+      await ProductDao.update(product.id, { extraCategoryIds: [extra.id] });
+      asAdmin();
+
+      const res = await parse(
+        await json(apiAdminCategoryPath(extra.id), 'DELETE'),
+      );
+
+      expect(res.status).toBe(409);
+      if (res.body.status !== 'error') throw new Error('expected an error');
+      expect(res.body.message).toBe(categoryInUseMessage(1));
+      expect(await rowsFor(extra.id)).toHaveLength(1);
+    });
+
     it('still refuses (409) when its only products are soft-deleted, and says so', async () => {
       const existing = await create();
       const hidden = await makeProduct(existing.id);

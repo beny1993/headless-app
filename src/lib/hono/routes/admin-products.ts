@@ -17,9 +17,13 @@
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Context, Env } from 'hono';
 import { z } from 'zod';
-import { ProductDao, StockConflictError } from '@/db/dao/ProductDao';
-import type { Product } from '@/db/schema/catalog';
 import {
+  ProductDao,
+  StockConflictError,
+  type ProductWithExtraCategories,
+} from '@/db/dao/ProductDao';
+import {
+  PRODUCT_MESSAGES,
   productInputSchema,
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
@@ -60,7 +64,10 @@ const AdminProductSchema = z
     oldPrice: z.number().int().positive().nullable(),
     stock: z.number().int().nonnegative(),
     isActive: z.boolean(),
+    /** The product's **main** category — unchanged by this story. */
     categoryId: z.uuid(),
+    /** The categories it is also filed under, in the order they were added. */
+    extraCategoryIds: z.array(z.uuid()),
     petTypes: z.array(z.enum(PET_TYPE_VALUES)).min(1),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
@@ -71,7 +78,9 @@ const AdminProductSchema = z
 export type AdminProductResponse = z.infer<typeof AdminProductSchema>;
 
 /** Project a DAO row to the admin response — drops `searchText`, ISO the dates. */
-const toAdminProduct = (p: Product): AdminProductResponse => ({
+const toAdminProduct = (
+  p: ProductWithExtraCategories,
+): AdminProductResponse => ({
   id: p.id,
   title: p.title,
   slug: p.slug,
@@ -84,6 +93,7 @@ const toAdminProduct = (p: Product): AdminProductResponse => ({
   stock: p.stock,
   isActive: p.isActive,
   categoryId: p.categoryId,
+  extraCategoryIds: p.extraCategoryIds,
   petTypes: p.petTypes,
   createdAt: p.createdAt.toISOString(),
   updatedAt: p.updatedAt.toISOString(),
@@ -115,6 +125,11 @@ const WRITE_ERROR_MESSAGES: Record<string, string> = {
   products_sku_unique: 'sku: این کد کالا قبلاً برای محصول دیگری ثبت شده است.',
   products_category_id_categories_id_fk:
     'categoryId: دسته‌بندی انتخاب‌شده معتبر نیست.',
+  // The junction's category key. Keyed on the bare field name, like every
+  // entry here, because that is what the form looks an error up by — and the
+  // product row is rolled back with it, since the DAO writes both in one
+  // transaction.
+  product_categories_category_id_categories_id_fk: `extraCategoryIds: ${PRODUCT_MESSAGES.extraCategories}`,
 };
 
 /**

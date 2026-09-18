@@ -73,7 +73,14 @@ const ProductSchema = z
     stock: z.number().int().nonnegative(),
     /** One pet or both, in the catalog's canonical order. Never empty. */
     petTypes: z.array(z.enum(PET_TYPE_VALUES)).min(1),
+    /** The product's **main** category. */
     categoryId: z.uuid(),
+    /**
+     * The categories it is also filed under, in the order the admin added
+     * them. Empty for most products; `categoryId` is unaffected, so a consumer
+     * that ignores this field keeps working exactly as before.
+     */
+    extraCategoryIds: z.array(z.uuid()),
     createdAt: z.iso.datetime(),
     images: z.array(ProductImageSchema),
   })
@@ -196,6 +203,7 @@ const toProductResponse = (row: ProductWithImages): ProductResponse => ({
   stock: row.stock,
   petTypes: row.petTypes,
   categoryId: row.categoryId,
+  extraCategoryIds: row.extraCategoryIds,
   createdAt: row.createdAt.toISOString(),
   images: row.images.map((image) => ({
     id: image.id,

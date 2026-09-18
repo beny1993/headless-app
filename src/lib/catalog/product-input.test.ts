@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PET_TYPES } from './product-query';
 import {
+  MAX_EXTRA_CATEGORIES,
   PRODUCT_MESSAGES,
   PRODUCT_TEXT_LIMITS,
   productInputSchema,
@@ -184,6 +185,57 @@ describe('productInputSchema', () => {
     it('rejects an unknown pet type', () => {
       expect(pets(['hamster']).success).toBe(false);
       expect(pets(PET_TYPES.CAT).success).toBe(false);
+    });
+  });
+
+  describe('the additional categories', () => {
+    const extras = (input: unknown) =>
+      productInputSchema.safeParse({ ...valid, extraCategoryIds: input });
+
+    it('means «none» when the key is missing', () => {
+      expect(productInputSchema.parse(valid).extraCategoryIds).toEqual([]);
+    });
+
+    it('accepts an empty list and a list of ids', () => {
+      const id = '123e4567-e89b-12d3-a456-426614174111';
+      expect(extras([]).data?.extraCategoryIds).toEqual([]);
+      expect(extras([id]).data?.extraCategoryIds).toEqual([id]);
+    });
+
+    it('refuses more than the cap, with the message the form shows', () => {
+      const ids = Array.from(
+        { length: MAX_EXTRA_CATEGORIES + 1 },
+        () => '123e4567-e89b-12d3-a456-426614174111',
+      );
+      const parsed = extras(ids);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0]).toMatchObject({
+        path: ['extraCategoryIds'],
+        message: PRODUCT_MESSAGES.extraCategoriesMax,
+      });
+    });
+
+    it('keys a malformed id on the bare field, never on its index', () => {
+      // The form looks its errors up by exact key, so an issue keyed
+      // `extraCategoryIds.1` would be one no field ever shows.
+      const parsed = extras([
+        '123e4567-e89b-12d3-a456-426614174111',
+        'not-a-uuid',
+      ]);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0]).toMatchObject({
+        path: ['extraCategoryIds'],
+        message: PRODUCT_MESSAGES.extraCategories,
+      });
+    });
+
+    it('rejects a value that is not a list at all', () => {
+      expect(extras('123e4567-e89b-12d3-a456-426614174111').success).toBe(
+        false,
+      );
+      expect(extras([42]).success).toBe(false);
     });
   });
 
