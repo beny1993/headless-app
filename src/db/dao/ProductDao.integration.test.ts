@@ -1,7 +1,7 @@
 // Needs a live database — see src/db/test-db.ts. The DAO's surface is checked
 // without one in ./ProductDao.test.ts.
 import { faker } from '@faker-js/faker';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   categories,
@@ -937,6 +937,44 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       expect(
         items.find((row) => row.id === backwards.id)?.extraCategoryIds,
       ).toEqual([...extras].reverse());
+    });
+
+    it('keeps that order once the rows stop sitting in insert order', async () => {
+      // The assertion above cannot see a missing `order by sort_order`: the
+      // junction is written by delete-then-insert, so heap order and stored
+      // order agree on a fresh row and an unordered read looks right by luck.
+      // Rewriting one row moves its tuple to the end of the heap — what any
+      // in-place edit of the column would do — and only the ORDER BY survives
+      // it. Without it the product page and the form's chips would list a
+      // product's categories in whatever order Postgres felt like.
+      const { malt, multivitamin, elsewhere } = await makeFamily();
+      const extras = [multivitamin.id, elsewhere.id];
+      const product = await ProductDao.create({
+        ...makeProduct(malt),
+        extraCategoryIds: extras,
+      });
+
+      await testDb
+        .update(productCategories)
+        .set({ sortOrder: 0 })
+        .where(
+          and(
+            eq(productCategories.productId, product.id),
+            eq(productCategories.categoryId, multivitamin.id),
+          ),
+        );
+
+      expect(
+        (await ProductDao.findByIdForAdmin(product.id))?.extraCategoryIds,
+      ).toEqual(extras);
+      expect(
+        (await ProductDao.getBySlug(product.slug))?.extraCategoryIds,
+      ).toEqual(extras);
+      // …and through the other reader, the one a patch that mentions no
+      // extras goes down.
+      expect(
+        (await ProductDao.update(product.id, {}))?.extraCategoryIds,
+      ).toEqual(extras);
     });
 
     it('reads an empty list, never undefined, for a product with none', async () => {

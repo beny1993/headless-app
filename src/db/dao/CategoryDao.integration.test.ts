@@ -441,14 +441,20 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
 
     it('counts a product once even when it is filed there twice over', async () => {
       // The DAO strips the primary from the extras, so only a raw write can
-      // build this row — and it is exactly what a join would double-count.
+      // build that first row. The *second*, ordinary extra is what makes this
+      // discriminate: a join to the junction returns one row per extra, so it
+      // would count this one product twice under its own primary — and the
+      // 409 would tell the admin to move two products that do not exist.
       const category = await makeCategory();
+      const alsoIn = await makeCategory();
       const product = await makeProduct(category.id);
-      await testDb
-        .insert(productCategories)
-        .values({ productId: product.id, categoryId: category.id });
+      await testDb.insert(productCategories).values([
+        { productId: product.id, categoryId: category.id },
+        { productId: product.id, categoryId: alsoIn.id, sortOrder: 1 },
+      ]);
 
       expect(await CategoryDao.countProducts(category.id)).toBe(1);
+      expect(await CategoryDao.countProducts(alsoIn.id)).toBe(1);
     });
   });
 });
