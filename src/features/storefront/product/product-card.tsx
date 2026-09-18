@@ -2,7 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Check, ShoppingBag } from 'lucide-react';
 import { AddToCartButton } from './add-to-cart-button';
-import type { ProductWithImages } from '@/db/schema/catalog';
+import type { ProductCard as ProductCardRow } from '@/db/schema/catalog';
 import { productPath } from '@/lib/constant/paths';
 import { formatToman } from '@/lib/format';
 import { imageSrc } from '@/lib/storage/image-url';
@@ -27,9 +27,15 @@ import { imageSrc } from '@/lib/storage/image-url';
  * ancestor and renders exactly as before. The group is *named* because this
  * card already uses an unnamed `group` for its own image hover.
  */
-export function ProductCard({ product }: { product: ProductWithImages }) {
-  const outOfStock = product.stock <= 0;
+export function ProductCard({ product }: { product: ProductCardRow }) {
+  // The **family's** stock, not this row's: a sold-out head must not grey out a
+  // card whose other size is on the shelf.
+  const outOfStock = !product.familyInStock;
   const imageKey = product.images[0]?.objectKey;
+  // A family sends the shopper to the page to choose — adding the head straight
+  // from the grid would pick a smell or a size nobody asked for. True even when
+  // the prices agree, which is why it is its own fact and not `familyPricesVary`.
+  const mustChoose = product.familyHasMembers;
 
   return (
     <article className="group bg-card relative overflow-hidden rounded-2xl transition-[transform,box-shadow] duration-300 group-data-[view=list]/results:flex group-data-[view=list]/results:items-stretch hover:-translate-y-1 hover:shadow-lg">
@@ -60,7 +66,7 @@ export function ProductCard({ product }: { product: ProductWithImages }) {
           <span className="bg-muted text-muted-foreground absolute end-3 top-3 rounded-full px-2 py-0.5 text-xs font-medium">
             ناموجود
           </span>
-        ) : product.oldPrice ? (
+        ) : product.oldPrice && !product.familyPricesVary ? (
           <span className="bg-accent-strong absolute end-3 top-3 rounded-full px-2 py-0.5 text-xs font-medium text-white">
             تخفیف
           </span>
@@ -92,29 +98,61 @@ export function ProductCard({ product }: { product: ProductWithImages }) {
         <div className="flex items-center justify-between gap-2">
           <div className="nums min-w-0">
             <p className="text-foreground font-bold">
-              {formatToman(product.price)}
+              {product.familyPricesVary ? (
+                // «از ۲۵۰٬۰۰۰ تومان» — the family's cheapest. The prefix is a
+                // separate span so it keeps the body type size while the number
+                // stays bold, and so `nums` still governs only the digits.
+                <>
+                  <span className="text-muted-foreground me-1 text-xs font-normal">
+                    از
+                  </span>
+                  {/* A real space, not just the margin: without it the text
+                      content reads «از۱۴۹٬۰۰۰» to a screen reader and to
+                      anyone who copies the line. */}{' '}
+                  {formatToman(product.familyMinPrice)}
+                </>
+              ) : (
+                formatToman(product.price)
+              )}
             </p>
-            {product.oldPrice && (
+            {/* A struck-through «was» price under an «از …» would be claiming a
+                discount on a price the card is not even showing. */}
+            {product.oldPrice && !product.familyPricesVary && (
               <p className="text-muted-foreground text-xs line-through">
                 {formatToman(product.oldPrice)}
               </p>
             )}
           </div>
-          <AddToCartButton
-            // Above the stretched title overlay, so the click adds to the cart
-            // instead of navigating.
-            className="relative z-10"
-            outOfStock={outOfStock}
-            line={{
-              productId: product.id,
-              slug: product.slug,
-              title: product.title,
-              sku: product.sku,
-              brand: product.brand ?? undefined,
-              unitPrice: product.price,
-              imageKey,
-            }}
-          />
+          {mustChoose ? (
+            // A real link, not a disabled button: the shopper's next step is
+            // the page, where the chips are. It sits above the stretched title
+            // overlay so it reads as its own control to a screen reader, and
+            // it names the product for the same reason.
+            <Link
+              href={productPath(product.slug)}
+              className="bg-secondary text-foreground hover:bg-secondary/80 relative z-10 inline-flex min-h-11 shrink-0 items-center rounded-xl px-4 text-sm font-medium transition-colors"
+              data-umami-event="product-card-choose"
+            >
+              انتخاب
+              <span className="sr-only"> {product.title}</span>
+            </Link>
+          ) : (
+            <AddToCartButton
+              // Above the stretched title overlay, so the click adds to the cart
+              // instead of navigating.
+              className="relative z-10"
+              outOfStock={outOfStock}
+              line={{
+                productId: product.id,
+                slug: product.slug,
+                title: product.title,
+                sku: product.sku,
+                brand: product.brand ?? undefined,
+                unitPrice: product.price,
+                imageKey,
+              }}
+            />
+          )}
         </div>
       </div>
     </article>

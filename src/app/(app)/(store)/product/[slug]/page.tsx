@@ -12,9 +12,11 @@ import {
 import { ProductGallery } from '@/features/storefront/product/product-gallery';
 import { ProductPurchase } from '@/features/storefront/product/product-purchase';
 import { ProductTabs } from '@/features/storefront/product/product-tabs';
+import { VariantChips } from '@/features/storefront/product/variant-chips';
 import { formatPetTypes } from '@/features/storefront/shop/shop-query';
 import { productSlugSchema } from '@/lib/catalog/product-query';
-import type { ProductWithImages } from '@/db/schema/catalog';
+import { displayTitle } from '@/lib/catalog/variant';
+import type { ProductDetail } from '@/db/schema/catalog';
 import { PATHS, shopPath } from '@/lib/constant/paths';
 import { formatNumber, formatToman } from '@/lib/format';
 
@@ -48,7 +50,7 @@ type Params = { params: Promise<{ slug: string }> };
  * cache is per-request, so it never serves one visitor's product to the next.
  */
 const findProduct = cache(
-  async (slug: string): Promise<ProductWithImages | null> => {
+  async (slug: string): Promise<ProductDetail | null> => {
     const parsed = productSlugSchema.safeParse(slug);
     return parsed.success ? ProductDao.getBySlug(parsed.data) : null;
   },
@@ -64,7 +66,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
   const product = await findProduct(slug);
 
-  return product ? { title: product.title } : {};
+  return product ? { title: displayTitle(product) } : {};
 }
 
 export default async function ProductDetailPage({ params }: Params) {
@@ -138,12 +140,15 @@ export default async function ProductDetailPage({ params }: Params) {
           )}
           <span aria-hidden="true">/</span>
           <span className="text-foreground" aria-current="page">
-            {product.title}
+            {displayTitle(product)}
           </span>
         </nav>
 
         <div className="mb-16 grid grid-cols-1 gap-12 lg:grid-cols-2">
-          <ProductGallery images={product.images} title={product.title} />
+          <ProductGallery
+            images={product.images}
+            title={displayTitle(product)}
+          />
 
           <div className="flex flex-col">
             {product.brand && (
@@ -152,7 +157,7 @@ export default async function ProductDetailPage({ params }: Params) {
               </p>
             )}
             <h1 className="mb-3 text-3xl leading-tight font-black">
-              {product.title}
+              {displayTitle(product)}
             </h1>
             {product.benefit && (
               <p className="text-success-strong mb-4 flex items-center gap-1.5 text-sm">
@@ -160,6 +165,9 @@ export default async function ProductDetailPage({ params }: Params) {
                 {product.benefit}
               </p>
             )}
+
+            {/* Above the price, because picking a size changes it. */}
+            <VariantChips variants={product.variants} label="نوع" />
 
             <div className="nums mb-4 flex flex-wrap items-baseline gap-3">
               <span className="text-3xl font-black">
@@ -181,7 +189,9 @@ export default async function ProductDetailPage({ params }: Params) {
               line={{
                 productId: product.id,
                 slug: product.slug,
-                title: product.title,
+                // The same derivation the order snapshot uses, so the drawer,
+                // the checkout summary and the invoice all name one thing.
+                title: displayTitle(product),
                 sku: product.sku,
                 brand: product.brand ?? undefined,
                 unitPrice: product.price,

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import type { ProductWithImages } from '@/db/schema/catalog';
+import type { ProductCard as ProductCardRow } from '@/db/schema/catalog';
 import { ProductCard } from '@/features/storefront/product/product-card';
 import type { ContentValue } from '@/lib/content/site-content';
 import { shopPath } from '@/lib/constant/paths';
@@ -19,7 +19,7 @@ export function RecommendsSection({
   products,
 }: {
   content: ContentValue<'home.recommends'>;
-  products: ProductWithImages[];
+  products: ProductCardRow[];
 }) {
   return (
     <section className="bg-secondary/40 py-24">
