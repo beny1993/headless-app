@@ -14,8 +14,13 @@ import {
   eq,
   gte,
   ilike,
+  getTableColumns,
   inArray,
+  isNull,
   lte,
+  max,
+  min,
+  ne,
   or,
   sql,
   type SQL,
@@ -30,6 +35,7 @@ import {
 } from '@/lib/catalog/product-query';
 import { ADMIN_PAGE_SIZE } from '@/lib/pagination';
 import { normalizeSearchText } from '@/lib/catalog/search-text';
+import { VARIANT_MESSAGES, hasMembersMessage } from '@/lib/catalog/variant';
 import {
   categories,
   productCategories,
@@ -38,7 +44,10 @@ import {
   type NewProduct,
   type PetType,
   type Product,
+  type ProductCard,
+  type ProductDetail,
   type ProductImage,
+  type VariantChip,
   type ProductWithImages,
 } from '@/db/schema/catalog';
 
@@ -63,6 +72,30 @@ export type ProductWithExtraCategories = Product & {
   extraCategoryIds: string[];
 };
 
+/** Which family rule refused the write; the routes map it onto a form field. */
+export type VariantRuleReason =
+  'self' | 'unknownHead' | 'nested' | 'headNeedsLabel' | 'hasMembers';
+
+/**
+ * A family rule that needs to read a second row, so it can be neither a CHECK
+ * nor a zod refinement. Thrown rather than returned, like
+ * {@link CategoryParentError}, so no caller can write the row by ignoring it.
+ */
+export class ProductVariantError extends Error {
+  constructor(
+    readonly reason: VariantRuleReason,
+    /** How many active members are in the way — only `hasMembers` uses it. */
+    count?: number,
+  ) {
+    super(
+      reason === 'hasMembers' && count !== undefined
+        ? hasMembersMessage(count)
+        : VARIANT_MESSAGES[reason],
+    );
+    this.name = 'ProductVariantError';
+  }
+}
+
 export class StockConflictError extends Error {
   constructor() {
     super('موجودی محصول تغییر کرده است؛ صفحه را تازه‌سازی و دوباره تلاش کن.');
@@ -71,7 +104,16 @@ export class StockConflictError extends Error {
 }
 
 /** The fields a shopper can find a product by. */
-const SEARCHABLE_FIELDS = ['title', 'brand', 'benefit'] as const;
+// `variantLabel` is in here so «۱۰ کیلو» finds the 10kg bag through the member's
+// *own* search text. Nothing recomputes a head's text when a member changes:
+// the storefront's search clause reaches the members instead, which is one
+// query rather than a cross-row write with a re-parenting cleanup behind it.
+const SEARCHABLE_FIELDS = [
+  'title',
+  'brand',
+  'benefit',
+  'variantLabel',
+] as const;
 
 type SearchableFields = Pick<NewProduct, (typeof SEARCHABLE_FIELDS)[number]>;
 
@@ -134,10 +176,63 @@ export {
  * is free to return rows with equal prices in a different order per query, and
  * two products at the same price can appear on both page 1 and page 2.
  */
+/**
+ * The three numbers a storefront card needs about the whole family, each as a
+ * **scalar subquery** over `products` aliased `fam`.
+ *
+ * Subqueries, never a join — the same trap the additional-categories work paid
+ * for: joining the members multiplies the row and `total` starts counting a
+ * three-size family three times. A scalar subquery returns one value per row, so
+ * the page query and the count query stay the two halves of one truth.
+ *
+ * `fam.id = products.id or fam.variant_of = products.id` is «this row and its
+ * members». A standalone product matches only itself, so it reads its own price,
+ * no variation and its own stock — a caller that knows nothing about families
+ * still gets the truth. Inactive members are left out of all three: a
+ * soft-deleted 5kg must not set the «از …» price of a card nobody can buy it from.
+ *
+ * // ponytail: three correlated subqueries per listed row, which the
+ * // `products_variant_of_idx` index serves. At tens of thousands of products,
+ * // denormalize the family's min price onto the head behind a trigger.
+ */
+// **Every correlated reference to the outer row goes through a nested `sql`
+// fragment like these two, never inlined into the scalar's own template.**
+// Drizzle renders `${products.id}` unqualified — as bare `"id"` — when it sits
+// directly in a select field, and inside `from products fam` that binds to
+// `fam.id` instead of the outer row: `fam.variant_of = fam.id` is false for
+// every row, silently, with no error and a plausible-looking result. Nesting
+// the fragment is what makes drizzle emit `"products"."id"`.
+const FAMILY_SCOPE = sql`from products fam where (fam.id = ${products.id} or fam.variant_of = ${products.id}) and fam.is_active`;
+
+/** «The members of this row», for the one scalar that must exclude the row. */
+const MEMBER_SCOPE = sql`from products fam where fam.variant_of = ${products.id} and fam.is_active`;
+
+/** Integer Toman. `bigint` comes back from `pg` as a string — coerced on read. */
+const familyMinPrice = sql<string>`(select min(fam.price) ${FAMILY_SCOPE})`;
+
+/** The dearest member, used only by the price-range overlap below. */
+const familyMaxPrice = sql<string>`(select max(fam.price) ${FAMILY_SCOPE})`;
+
+/** `min <> max` — what makes a card read «از …» rather than a plain price. */
+const familyPricesVary = sql<boolean>`(select min(fam.price) <> max(fam.price) ${FAMILY_SCOPE})`;
+
+/** Any member with stock. A sold-out head must not hide an in-stock 10kg. */
+const familyInStock = sql<boolean>`(exists (select 1 ${FAMILY_SCOPE} and fam.stock > 0))`;
+
+/**
+ * Whether anything hangs off this row. The card needs it even when the prices
+ * all agree: quick-adding the head would silently choose «لاوندر» for a shopper
+ * who never picked a smell, so a family sends them to the page instead.
+ */
+const familyHasMembers = sql<boolean>`(exists (select 1 ${MEMBER_SCOPE}))`;
+
 const ORDER_BY: Record<ProductSort, SQL[]> = {
   [PRODUCT_SORTS.NEWEST]: [desc(products.createdAt), asc(products.sku)],
-  [PRODUCT_SORTS.PRICE_ASC]: [asc(products.price), asc(products.sku)],
-  [PRODUCT_SORTS.PRICE_DESC]: [desc(products.price), asc(products.sku)],
+  // The family's own cheapest, not the head's price — otherwise a family whose
+  // card prints «از ۱۰۰٬۰۰۰» sorts among the 900,000s and the order visibly
+  // disagrees with the number printed on it.
+  [PRODUCT_SORTS.PRICE_ASC]: [asc(familyMinPrice), asc(products.sku)],
+  [PRODUCT_SORTS.PRICE_DESC]: [desc(familyMinPrice), asc(products.sku)],
 };
 
 /**
@@ -218,8 +313,32 @@ export type ProductListOptions = ProductFilters & {
   limit?: number;
 };
 
-/** One page of products plus the size of the whole filtered result. */
-export type ProductPage = { items: ProductWithImages[]; total: number };
+/**
+ * One page of the **storefront** listing plus the size of the whole filtered
+ * result — cards, so each row carries what its family costs.
+ */
+export type ProductPage = { items: ProductCard[]; total: number };
+
+/**
+ * One page of the **admin** listing. Plain rows: the panel shows every product,
+ * members included, and edits them one at a time — it has no use for what the
+ * family costs, and computing three subqueries per row to throw them away would
+ * be work done for nobody.
+ */
+export type AdminProductPage = { items: ProductWithImages[]; total: number };
+
+/**
+ * A listing row before the relations are attached: the columns plus the three
+ * family scalars, with `familyMinPrice` still the string `pg` returns for an
+ * aggregate over `bigint`. Named so the page query can be annotated — selecting
+ * through the `Executor` union otherwise widens the scalars away.
+ */
+type ProductCardRow = Product & {
+  familyMinPrice: string;
+  familyPricesVary: boolean;
+  familyInStock: boolean;
+  familyHasMembers: boolean;
+};
 
 /**
  * Admin listing filters. Unlike {@link ProductFilters}, `active` is a first-class
@@ -258,9 +377,18 @@ export class ProductDao {
     const search = filters.search ? normalizeSearchText(filters.search) : '';
     const where = and(...ProductDao.storefrontWhere({ ...filters, search }));
 
-    const pageQuery = (on: Executor) =>
+    const pageQuery = (on: Executor): Promise<ProductCardRow[]> =>
       on
-        .select()
+        // The row plus the three family scalars. `.select()` with no argument
+        // would take the columns only, and the card needs what the *family*
+        // costs and whether any of it is in stock.
+        .select({
+          ...getTableColumns(products),
+          familyMinPrice,
+          familyPricesVary,
+          familyInStock,
+          familyHasMembers,
+        })
         .from(products)
         .where(where)
         .orderBy(...ORDER_BY[sort])
@@ -281,8 +409,16 @@ export class ProductDao {
         })
       : await Promise.all([pageQuery(db), countQuery(db)]);
 
+    const attached = await ProductDao.withRelations<ProductCardRow>(rows);
+
     return {
-      items: await ProductDao.withRelations(rows),
+      // `min(bigint)` arrives from `pg` as a string — drizzle's `mode: 'number'`
+      // maps the column, not an aggregate over it. Coerced here, once, so no
+      // component ever renders «از 250000» as text or adds a price to a string.
+      items: attached.map((row) => ({
+        ...row,
+        familyMinPrice: Number(row.familyMinPrice),
+      })),
       total: counted.value,
     };
   }
@@ -293,7 +429,15 @@ export class ProductDao {
    * every filter combination the listing offers.
    */
   private static storefrontWhere(filters: ProductFilters): SQL[] {
-    const where: SQL[] = [eq(products.isActive, true)];
+    const where: SQL[] = [
+      eq(products.isActive, true),
+      // **The whole of «one card per family».** A head points at nothing, so
+      // this keeps heads and standalone products and drops the members, which
+      // are reached from the head's page instead. It rides the shared clause,
+      // so every listing the storefront offers — category, pet, price, search,
+      // the home strips — inherits it, and `total` cannot disagree with the page.
+      isNull(products.variantOf),
+    ];
     if (filters.categorySlug) {
       where.push(inCategoryScope(filters.categorySlug));
     }
@@ -302,11 +446,16 @@ export class ProductDao {
     }
     // Compared against undefined, not truthiness: a `minPrice` of 0 is a real
     // bound, even if the price check makes it a no-op.
+    // Interval overlap against the family, not a test on the head's own price:
+    // a family is in range when **any** member is. Filtering on the head alone
+    // both hides a card whose printed «از ۲۵۰٬۰۰۰» is inside the range and
+    // keeps one whose only affordable size was the member. For a standalone
+    // product min and max are its own price, so this is the old behaviour.
     if (filters.minPrice !== undefined) {
-      where.push(gte(products.price, filters.minPrice));
+      where.push(gte(familyMaxPrice, filters.minPrice));
     }
     if (filters.maxPrice !== undefined) {
-      where.push(lte(products.price, filters.maxPrice));
+      where.push(lte(familyMinPrice, filters.maxPrice));
     }
     // `%>` rather than `word_similarity(…) >= x`: same meaning, but only the
     // operator reads the trigram index (`Bitmap Index Scan on
@@ -318,7 +467,15 @@ export class ProductDao {
     // requiring every word to clear the bar alone drops a one-letter typo from
     // 0.69 to 0.29 and fails the misspelling this story promises.
     if (filters.search) {
-      where.push(sql`${products.searchText} %> ${filters.search}`);
+      // The head matches, or one of its members does — «۱۰ کیلو» is written on
+      // the 10kg bag, and the card the shopper must be shown is the family's.
+      // The member side reads the same trigram index as the head side.
+      //
+      // // ponytail: an `or` with an `exists`. If the planner ever stops using
+      // // the index for the inner arm, move the members' text onto the head.
+      where.push(
+        sql`(${products.searchText} %> ${filters.search} or exists (select 1 ${MEMBER_SCOPE} and fam.search_text %> ${filters.search}))`,
+      );
     }
     return where;
   }
@@ -349,7 +506,7 @@ export class ProductDao {
     /** One-based. */
     page?: number;
     limit?: number;
-  } = {}): Promise<ProductPage> {
+  } = {}): Promise<AdminProductPage> {
     const where = ProductDao.adminWhere(filters);
     const [rows, [counted]] = await Promise.all([
       ProductDao.adminRows(where)
@@ -417,8 +574,14 @@ export class ProductDao {
     return row ?? null;
   }
 
-  /** Storefront product page. An inactive product reads as absent. */
-  static async getBySlug(slug: string): Promise<ProductWithImages | null> {
+  /**
+   * Storefront product page. An inactive product reads as absent.
+   *
+   * Deliberately **without** the listing's `variant_of is null` predicate: a
+   * member has its own page and its own slug, and the chips link straight to it.
+   * The predicate belongs to the listing and nowhere else.
+   */
+  static async getBySlug(slug: string): Promise<ProductDetail | null> {
     const rows = await db
       .select()
       .from(products)
@@ -426,7 +589,162 @@ export class ProductDao {
       .limit(1);
 
     const [row] = await ProductDao.withRelations(rows);
-    return row ?? null;
+    if (!row) return null;
+    return { ...row, variants: await ProductDao.familyOf(row) };
+  }
+
+  /**
+   * The chips for a product's family: the head first, then its members oldest
+   * first, each marked when it is the one being viewed. Empty for a standalone
+   * product — «show no chips» is the absence of siblings, not a flag.
+   *
+   * Reads from the family's **head** id (`variantOf ?? id`), so a member's page
+   * shows the whole family and not just itself. Inactive members are left out:
+   * a chip that leads to a 404 is worse than a missing one.
+   */
+  private static async familyOf(product: Product): Promise<VariantChip[]> {
+    const headId = product.variantOf ?? product.id;
+    const rows = await db
+      .select({
+        id: products.id,
+        slug: products.slug,
+        label: products.variantLabel,
+        variantOf: products.variantOf,
+        createdAt: products.createdAt,
+      })
+      .from(products)
+      .where(
+        and(
+          or(eq(products.id, headId), eq(products.variantOf, headId)),
+          eq(products.isActive, true),
+        ),
+      )
+      .orderBy(asc(products.createdAt), asc(products.sku));
+
+    // A lone row is the product itself with no siblings — no family, no chips.
+    if (rows.length < 2) return [];
+
+    return rows
+      .slice()
+      .sort((a, b) => Number(a.variantOf != null) - Number(b.variantOf != null))
+      .map((row) => ({
+        id: row.id,
+        slug: row.slug,
+        label: row.label ?? '',
+        isCurrent: row.id === product.id,
+      }));
+  }
+
+  /**
+   * The cheapest and dearest active product, for the shop's price slider.
+   *
+   * Over **every** active row, members included: a family's card prints its
+   * cheapest member, so a slider that stopped at the heads' prices could not
+   * reach a price the shop visibly shows.
+   *
+   * `{ min: 0, max: 0 }` on an empty catalogue — the panel reads that as «no
+   * range to offer» and renders no slider, rather than one with both handles
+   * pinned to zero.
+   */
+  static async priceBounds(): Promise<{ min: number; max: number }> {
+    const [row] = await db
+      .select({ min: min(products.price), max: max(products.price) })
+      .from(products)
+      .where(eq(products.isActive, true));
+
+    // `pg` returns an aggregate over `bigint` as a string, as with the family
+    // scalars above — drizzle's `mode: 'number'` maps the column, not a
+    // function of it.
+    return { min: Number(row?.min ?? 0), max: Number(row?.max ?? 0) };
+  }
+
+  /**
+   * The products an admin may point a variant at: active, not themselves
+   * members, and never the row being edited. Ordered by title so the select
+   * reads alphabetically rather than by insertion.
+   *
+   * A candidate without a label of its own is still listed — the form disables
+   * it with the reason, which is more useful than a head that silently is not
+   * there.
+   */
+  static async listVariantHeads(
+    excludeId?: string,
+  ): Promise<{ id: string; title: string; variantLabel: string | null }[]> {
+    return db
+      .select({
+        id: products.id,
+        title: products.title,
+        variantLabel: products.variantLabel,
+      })
+      .from(products)
+      .where(
+        and(
+          eq(products.isActive, true),
+          isNull(products.variantOf),
+          excludeId ? ne(products.id, excludeId) : undefined,
+        ),
+      )
+      .orderBy(asc(products.title), asc(products.sku));
+  }
+
+  /**
+   * Whether anything hangs off this product. The edit form asks so it can
+   * disable the «head» select with a reason, exactly as the category manager
+   * does for a category that already has children.
+   */
+  static async hasMembers(id: string): Promise<boolean> {
+    return (await ProductDao.countActiveMembers(id)) > 0;
+  }
+
+  /** How many **active** rows point at this one. See `softDelete` for why. */
+  private static async countActiveMembers(
+    id: string,
+    executor: Executor = db,
+  ): Promise<number> {
+    const [counted] = await executor
+      .select({ value: count() })
+      .from(products)
+      .where(and(eq(products.variantOf, id), eq(products.isActive, true)));
+    return counted.value;
+  }
+
+  /**
+   * Every family rule that has to read a second row, in one place so create and
+   * update cannot answer the same refusal differently.
+   *
+   * `id` is the row being written — absent on create, which is why «a head that
+   * already has members cannot itself become a member» is checked only when
+   * there is an id to have members.
+   */
+  private static async assertFamilyRules(
+    executor: Executor,
+    id: string | undefined,
+    variantOf: string | null | undefined,
+  ): Promise<void> {
+    if (variantOf == null) return;
+    if (id && variantOf === id) throw new ProductVariantError('self');
+
+    const [head] = await executor
+      .select({
+        variantOf: products.variantOf,
+        variantLabel: products.variantLabel,
+      })
+      .from(products)
+      .where(eq(products.id, variantOf))
+      .limit(1);
+
+    if (!head) throw new ProductVariantError('unknownHead');
+    // One level: the head must itself be a head, not a member.
+    if (head.variantOf !== null) throw new ProductVariantError('nested');
+    // A head with no label of its own renders an empty chip on the page.
+    if (!head.variantLabel?.trim())
+      throw new ProductVariantError('headNeedsLabel');
+
+    if (id) {
+      // The other half of one level: this row must not already have members.
+      const members = await ProductDao.countActiveMembers(id, executor);
+      if (members > 0) throw new ProductVariantError('nested');
+    }
   }
 
   static async create(
@@ -436,6 +754,9 @@ export class ProductDao {
     // One transaction, so an extra category that no longer exists rolls the
     // product back with it rather than leaving a half-created row behind.
     return db.transaction(async (tx) => {
+      // Same transaction, so a head deleted between this check and the insert
+      // rolls the product back with it instead of leaving an orphan behind.
+      await ProductDao.assertFamilyRules(tx, undefined, columns.variantOf);
       const [row] = await tx
         .insert(products)
         // Last, so a caller reaching past `ProductInput` cannot supply its own.
@@ -469,6 +790,19 @@ export class ProductDao {
     // is not a column of `products`.
     const { extraCategoryIds, ...columns } = patch;
     return db.transaction(async (tx) => {
+      // Before the write, on the same connection: the row this patch points at
+      // is read and refused here, not by a constraint that cannot see it.
+      await ProductDao.assertFamilyRules(tx, id, columns.variantOf);
+      // Clearing a head's own label would leave its chips with nothing written
+      // on them — `products_variant_label_present` only covers members, and the
+      // «head needs a label» guard only fires when something is *pointed at* it.
+      if (
+        'variantLabel' in columns &&
+        !columns.variantLabel?.trim() &&
+        (await ProductDao.countActiveMembers(id, tx)) > 0
+      ) {
+        throw new ProductVariantError('headNeedsLabel');
+      }
       const row = await ProductDao.updateColumns(
         tx,
         id,
@@ -560,6 +894,18 @@ export class ProductDao {
   static async softDelete(
     id: string,
   ): Promise<ProductWithExtraCategories | null> {
+    // A head hidden from the shop would take its members' chips with it while
+    // leaving them listed nowhere — the same refusal a category with children
+    // gets, for the same reason.
+    //
+    // **Active members only.** Counting the inactive ones too would be a dead
+    // end: deactivate every smell and the head could never be deactivated
+    // after them, since the rows still point at it and nothing but re-pointing
+    // each one by hand would clear the way. An inactive head over inactive
+    // members is harmless — none of them is listed anywhere.
+    const blocking = await ProductDao.countActiveMembers(id);
+    if (blocking > 0) throw new ProductVariantError('hasMembers', blocking);
+
     const [row] = await db
       .update(products)
       .set({ isActive: false })
@@ -770,9 +1116,9 @@ export class ProductDao {
   }
 
   /** Two extra queries for the whole page of products, not two per product. */
-  private static async withRelations(
-    rows: Product[],
-  ): Promise<ProductWithImages[]> {
+  private static async withRelations<T extends Product>(
+    rows: T[],
+  ): Promise<(T & { images: ProductImage[]; extraCategoryIds: string[] })[]> {
     if (rows.length === 0) return [];
     const productIds = rows.map((row) => row.id);
 
