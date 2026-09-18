@@ -3,6 +3,7 @@ import type { Page, Response } from '@playwright/test';
 import { z } from 'zod';
 import { SEED_CATEGORIES, SEED_PRODUCTS } from '@/db/seed/catalog-data';
 import { API_PATHS, PROTECTED_PATHS } from '@/lib/constant/paths';
+import { formatNumber } from '@/lib/format';
 import { ADMIN_STATE, expect, expectFailedRequest, test } from './support';
 
 test.use({ storageState: ADMIN_STATE });
@@ -20,6 +21,50 @@ const rowFor = (page: Page, slug: string) =>
     has: page.getByRole('cell', { name: slug, exact: true }),
   });
 
+/**
+ * Fills the create form and submits it, optionally under a parent. Returns the
+ * new category's id — the value the parent select of the next one takes.
+ */
+async function createCategory(
+  page: Page,
+  title: string,
+  slug: string,
+  parentId?: string,
+) {
+  await page
+    .locator('[data-umami-event="admin-panel-categories-title"]')
+    .fill(title);
+  await page
+    .locator('[data-umami-event="admin-panel-categories-slug"]')
+    .fill(slug);
+  if (parentId) {
+    await page
+      .locator('[data-umami-event="admin-panel-categories-parent"]')
+      .selectOption(parentId);
+  }
+  const [created] = await Promise.all([
+    page.waitForResponse(categoryCall('POST')),
+    page.locator('[data-umami-event="admin-panel-categories-create"]').click(),
+  ]);
+  await expect(rowFor(page, slug)).toContainText(title);
+
+  return z
+    .object({ data: z.object({ id: z.uuid() }) })
+    .parse(await created.json()).data.id;
+}
+
+/** Deletes a category through its row, past the confirm dialog. */
+async function deleteCategory(page: Page, slug: string) {
+  page.once('dialog', (dialog) => dialog.accept());
+  await Promise.all([
+    page.waitForResponse(categoryCall('DELETE')),
+    rowFor(page, slug)
+      .locator('[data-umami-event="admin-panel-categories-delete"]')
+      .click(),
+  ]);
+  await expect(rowFor(page, slug)).toHaveCount(0);
+}
+
 test('an admin creates a category, renames it and deletes it', async ({
   page,
 }) => {
@@ -29,17 +74,7 @@ test('an admin creates a category, renames it and deletes it', async ({
   const slug = `e2e-category-${id}`;
 
   await page.goto(PROTECTED_PATHS.CATEGORIES);
-  await page
-    .locator('[data-umami-event="admin-panel-categories-title"]')
-    .fill(title);
-  await page
-    .locator('[data-umami-event="admin-panel-categories-slug"]')
-    .fill(slug);
-  await Promise.all([
-    page.waitForResponse(categoryCall('POST')),
-    page.locator('[data-umami-event="admin-panel-categories-create"]').click(),
-  ]);
-  await expect(rowFor(page, slug)).toContainText(title);
+  await createCategory(page, title, slug);
 
   // Renamed in place: the row turns into its own fields, then saves.
   await rowFor(page, slug)
@@ -58,14 +93,56 @@ test('an admin creates a category, renames it and deletes it', async ({
   await expect(rowFor(page, slug)).toContainText(renamed);
 
   // No product uses it, so it deletes outright.
+  await deleteCategory(page, slug);
+});
+
+test('an admin nests a sub-category, and the parent waits for it to go first', async ({
+  page,
+}) => {
+  const id = runId();
+  const parentTitle = `دسته مادر ${id}`;
+  const parentSlug = `e2e-parent-${id}`;
+  const subSlug = `e2e-sub-${id}`;
+  // Deleting the parent while its sub-category is still there is the 409 this
+  // spec is here to see.
+  expectFailedRequest(
+    page,
+    new RegExp(`^409 .*${API_PATHS.ADMIN_CATEGORIES}/`),
+  );
+
+  await page.goto(PROTECTED_PATHS.CATEGORIES);
+  const parentId = await createCategory(page, parentTitle, parentSlug);
+  await createCategory(page, `زیردسته ${id}`, subSlug, parentId);
+
+  // The nesting is announced, not merely indented: the sub-row's title cell
+  // opens with the parent's name for a screen reader, and that is the only
+  // place the parent's title turns up in this row.
+  await expect(rowFor(page, subSlug)).toContainText(parentTitle);
+
   page.once('dialog', (dialog) => dialog.accept());
-  await Promise.all([
+  const [refused] = await Promise.all([
     page.waitForResponse(categoryCall('DELETE')),
-    rowFor(page, slug)
+    rowFor(page, parentSlug)
       .locator('[data-umami-event="admin-panel-categories-delete"]')
       .click(),
   ]);
-  await expect(rowFor(page, slug)).toHaveCount(0);
+  expect(refused.status()).toBe(409);
+
+  // The refusal counts what blocks it, through src/lib/format.ts, and reaches
+  // the admin as the error toast the shipped delete flow already uses.
+  const { message } = z
+    .object({ message: z.string().min(1) })
+    .parse(await refused.json());
+  expect(message).toContain(`${formatNumber(1)} زیردسته`);
+  await expect(
+    page.locator('[data-sonner-toast][data-type="error"]'),
+  ).toContainText(message);
+  await expect(rowFor(page, parentSlug)).toBeVisible();
+
+  // Emptied, the parent goes — so this spec leaves no row behind and runs at
+  // both widths.
+  await deleteCategory(page, subSlug);
+  await deleteCategory(page, parentSlug);
 });
 
 test('a category that still has products stays, and a toast says why', async ({
