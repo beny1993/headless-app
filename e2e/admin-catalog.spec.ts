@@ -1,5 +1,9 @@
 import { randomInt } from 'node:crypto';
 import { z } from 'zod';
+import { PET_TYPES } from '@/db/schema/catalog';
+import { SEED_CATEGORIES, SEED_SUBCATEGORIES } from '@/db/seed/catalog-data';
+import { formatPetTypes } from '@/features/storefront/shop/shop-query';
+import { SUBCATEGORY_PREFIX } from '@/lib/catalog/category-tree';
 import { SKU_SUFFIX_LENGTH, skuPreview } from '@/lib/catalog/sku';
 import {
   API_PATHS,
@@ -7,6 +11,7 @@ import {
   adminEditProductPath,
   adminNewProductPath,
   productPath,
+  shopPath,
 } from '@/lib/constant/paths';
 import { DISCOUNT_TYPES } from '@/lib/discount/discount-code';
 import { formatToman } from '@/lib/format';
@@ -30,6 +35,15 @@ test.skip(({ isMobile }) => isMobile, 'creates rows that are never deleted');
 /** Unique per run, so a re-run never collides on a slug, SKU or code. */
 const runId = () => randomInt(2 ** 40).toString(36);
 
+/** A seeded sub-category, and a seeded top-level one that is not its parent. */
+const SUB_CATEGORY = SEED_SUBCATEGORIES[0];
+const EXTRA_CATEGORY = SEED_CATEGORIES.find(
+  (category) => category.slug !== SUB_CATEGORY.parentSlug,
+);
+if (!EXTRA_CATEGORY) {
+  throw new Error('The catalog seed has no category outside the sub’s parent.');
+}
+
 test('an admin adds a product with a photo, reprices it and takes it off the shop', async ({
   page,
 }) => {
@@ -45,10 +59,34 @@ test('an admin adds a product with a photo, reprices it and takes it off the sho
   await expect(sku).toHaveJSProperty('readOnly', true);
   await expect(sku).toHaveValue(skuPreview(slug));
   // The category label carries a ZWNJ; matching its start avoids typing one.
-  await page.getByLabel(/^دسته/).selectOption({ index: 1 });
+  // Filed under a seeded sub-category, which the select offers under its
+  // parent behind the «— » that stands in for the indent.
+  await page
+    .getByLabel(/^دسته/)
+    .selectOption({ label: `${SUBCATEGORY_PREFIX}${SUB_CATEGORY.title}` });
   await page.getByLabel('قیمت (تومان)', { exact: true }).fill('150000');
   await page.getByLabel('موجودی', { exact: true }).fill('10');
-  await page.getByRole('button', { name: /گربه/ }).click();
+  await page
+    .locator('[data-umami-event="admin-panel-product-pet-cat"]')
+    .click();
+  await page
+    .locator('[data-umami-event="admin-panel-product-pet-dog"]')
+    .click();
+  // One more category, alongside the main one. A seeded top-level one on
+  // purpose: this product is never deleted, and the junction's restricting
+  // foreign key would make a category the spec created undeletable for good.
+  await page
+    .locator('[data-umami-event="admin-panel-product-category-extra-add"]')
+    .selectOption({ label: EXTRA_CATEGORY.title });
+  // The select snaps back to its placeholder, so the chip is the only sign the
+  // choice was taken — and it carries the plain title, without the prefix.
+  await expect(
+    page.locator('li', {
+      has: page.locator(
+        '[data-umami-event="admin-panel-product-category-extra-remove"]',
+      ),
+    }),
+  ).toHaveText([EXTRA_CATEGORY.title]);
   await page.locator('input[type="file"]').setInputFiles(PRODUCT_PHOTO);
 
   const [created] = await Promise.all([
@@ -77,6 +115,16 @@ test('an admin adds a product with a photo, reprices it and takes it off the sho
   await expect
     .poll(() => photo.evaluate((img) => (img as HTMLImageElement).naturalWidth))
     .toBeGreaterThan(0);
+  // Both toggles were pressed, so «مناسب برای» names both animals — through
+  // the one helper that wording comes from, never a literal.
+  await page
+    .locator('[data-umami-event="product-tab-select"]', {
+      hasText: 'مشخصات',
+    })
+    .click();
+  await expect(page.getByRole('region', { name: 'مشخصات' })).toContainText(
+    formatPetTypes([PET_TYPES.CAT, PET_TYPES.DOG]),
+  );
 
   await page.goto(adminEditProductPath(productId));
   // Saved as the slug's code plus a random suffix, and still not editable.
@@ -91,6 +139,18 @@ test('an admin adds a product with a photo, reprices it and takes it off the sho
   );
   await page.goto(productPath(slug));
   await expect(page.getByText(formatToman(175_000)).first()).toBeVisible();
+
+  // Both shelves find it: the sub-category it is filed under, and the extra
+  // one — which only the junction can answer for. Checked while it is still on
+  // the shop, since the next step takes it off for good.
+  for (const slugToFilter of [SUB_CATEGORY.slug, EXTRA_CATEGORY.slug]) {
+    await page.goto(shopPath({ category: slugToFilter }));
+    await expect(
+      page.locator('[data-umami-event="product-card-open"]', {
+        hasText: title,
+      }),
+    ).toHaveCount(1);
+  }
 
   // Deactivated from the list, behind its confirm dialog.
   await page.goto(`${PROTECTED_PATHS.PRODUCTS}?q=${encodeURIComponent(id)}`);
