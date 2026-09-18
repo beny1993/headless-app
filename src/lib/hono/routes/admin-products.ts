@@ -19,6 +19,7 @@ import type { Context, Env } from 'hono';
 import { z } from 'zod';
 import {
   ProductDao,
+  ProductVariantError,
   StockConflictError,
   type ProductWithExtraCategories,
 } from '@/db/dao/ProductDao';
@@ -38,6 +39,7 @@ import {
   apiSuccessSchema,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
+import { VARIANT_MESSAGES } from '@/lib/catalog/variant';
 import { pgErrorOf } from '../pg-error';
 
 /** User-facing copy, so Persian. */
@@ -68,6 +70,10 @@ const AdminProductSchema = z
     categoryId: z.uuid(),
     /** The categories it is also filed under, in the order they were added. */
     extraCategoryIds: z.array(z.uuid()),
+    /** The product this one is a variant of, or null for a standalone/head. */
+    variantOf: z.uuid().nullable(),
+    /** «۱۰ کیلوگرم», «قرمز» — set on a member and on its head. */
+    variantLabel: z.string().nullable(),
     petTypes: z.array(z.enum(PET_TYPE_VALUES)).min(1),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
@@ -94,6 +100,8 @@ const toAdminProduct = (
   isActive: p.isActive,
   categoryId: p.categoryId,
   extraCategoryIds: p.extraCategoryIds,
+  variantOf: p.variantOf,
+  variantLabel: p.variantLabel,
   petTypes: p.petTypes,
   createdAt: p.createdAt.toISOString(),
   updatedAt: p.updatedAt.toISOString(),
@@ -130,6 +138,9 @@ const WRITE_ERROR_MESSAGES: Record<string, string> = {
   // product row is rolled back with it, since the DAO writes both in one
   // transaction.
   product_categories_category_id_categories_id_fk: `extraCategoryIds: ${PRODUCT_MESSAGES.extraCategories}`,
+  // A backstop the DAO's own guard makes unreachable — but a 23503 from this
+  // key means «that head is gone» either way, and it must not read as a 500.
+  products_variant_of_products_id_fk: `variantOf: ${VARIANT_MESSAGES.unknownHead}`,
 };
 
 /**
@@ -140,6 +151,14 @@ const WRITE_ERROR_MESSAGES: Record<string, string> = {
  * rethrows on `null`, so an unrecognized error stays the 500 it is.
  */
 export const productWriteErrors = (error: unknown): string[] | null => {
+  // A family rule that had to read a second row, so neither zod nor a CHECK
+  // could refuse it. Keyed on the field the form renders: the head goes on the
+  // «زیرمجموعه‌ی» select, «this product still has members» on the label instead,
+  // because the select is not where the admin can fix that one.
+  if (error instanceof ProductVariantError) {
+    const field = error.reason === 'hasMembers' ? 'variantLabel' : 'variantOf';
+    return [`${field}: ${error.message}`];
+  }
   const pg = pgErrorOf(error);
   if (!pg) return null;
   if (
@@ -272,6 +291,9 @@ export const productDeleteRoute = createRoute({
       },
       description: 'The deactivated product (the row is kept, never removed)',
     },
+    400: errorResponse(
+      'A family head whose active members would be left with nothing to hang off',
+    ),
     401: errorResponse('No session'),
     403: errorResponse('Signed in, but not an admin'),
     404: errorResponse('No such product'),
@@ -283,10 +305,20 @@ export const productDeleteHandler: RouteHandler<
   Env & AuthedEnv
 > = async (c) => {
   const { id } = c.req.valid('param');
-  // Soft delete only — the row stays so past order snapshots keep resolving.
-  const removed = await ProductDao.softDelete(id);
-  if (!removed) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
-  return c.json(apiSuccess(toAdminProduct(removed)), 200);
+  try {
+    // Soft delete only — the row stays so past order snapshots keep resolving.
+    const removed = await ProductDao.softDelete(id);
+    if (!removed) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
+    return c.json(apiSuccess(toAdminProduct(removed)), 200);
+  } catch (error) {
+    // Deactivating could not fail before families existed, so this handler had
+    // no catch: a head with members would have escaped as a 500 instead of the
+    // Persian refusal the button shows.
+    const errors = productWriteErrors(error);
+    if (errors)
+      return c.json(apiError(PRODUCT_SAVE_FAILED_MESSAGE, errors), 400);
+    throw error;
+  }
 };
 
 // ── Image upload (multipart) ────────────────────────────────────────────────────

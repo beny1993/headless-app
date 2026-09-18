@@ -11,11 +11,12 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { faker } from '@faker-js/faker';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   it,
@@ -36,6 +37,7 @@ import {
   apiProductPath,
 } from '@/lib/constant/paths';
 import { PRODUCT_MESSAGES } from '@/lib/catalog/product-input';
+import { VARIANT_MESSAGES, hasMembersMessage } from '@/lib/catalog/variant';
 import { SKU_ALPHABET, SKU_SUFFIX_LENGTH } from '@/lib/catalog/sku';
 import type { ApiResponse } from '@/lib/hono/envelope';
 import { MAX_UPLOAD_BYTES } from '@/lib/storage/image-upload';
@@ -154,6 +156,16 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
   afterEach(async () => {
     mocks.getSession.mockReset();
     if (createdCategoryIds.length > 0) {
+      // Members first: `variant_of` restricts, so a head cannot go while one of
+      // its members still points at it.
+      await testDb
+        .delete(products)
+        .where(
+          and(
+            inArray(products.categoryId, createdCategoryIds),
+            isNotNull(products.variantOf),
+          ),
+        );
       await testDb
         .delete(products)
         .where(inArray(products.categoryId, createdCategoryIds));
@@ -756,6 +768,172 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
         new File([jpegBytes()], 'x.jpg', { type: 'image/jpeg' }),
       );
       expect(malformed.status).toBe(400);
+    });
+  });
+
+  // ── Product families ──────────────────────────────────────────────────────
+
+  describe('product families', () => {
+    beforeEach(asAdmin);
+
+    /** Creates a product through the route and returns the created row. */
+    const create = async (
+      category: Category,
+      over: Record<string, unknown> = {},
+    ) => {
+      const { status, body: envelope } = await parse<{
+        id: string;
+        variantOf: string | null;
+        variantLabel: string | null;
+        stock: number;
+      }>(await json(API_PATHS.ADMIN_PRODUCTS, 'POST', body(category, over)));
+      expect(status).toBe(201);
+      if (envelope.status !== 'success') throw new Error('create failed');
+      return envelope.data;
+    };
+
+    it('round-trips both fields on create and reports them back', async () => {
+      const category = await makeCategory();
+      const head = await create(category, { variantLabel: 'لاوندر' });
+
+      expect(head.variantOf).toBeNull();
+      expect(head.variantLabel).toBe('لاوندر');
+
+      const member = await create(category, {
+        variantOf: head.id,
+        variantLabel: 'اقیانوس',
+      });
+      expect(member.variantOf).toBe(head.id);
+      expect(member.variantLabel).toBe('اقیانوس');
+    });
+
+    it('keeps both null for a product that names neither', async () => {
+      const category = await makeCategory();
+      const plain = await create(category);
+
+      expect(plain.variantOf).toBeNull();
+      expect(plain.variantLabel).toBeNull();
+    });
+
+    it('refuses a second level, on the field the form renders', async () => {
+      const category = await makeCategory();
+      const head = await create(category, { variantLabel: 'لاوندر' });
+      const member = await create(category, {
+        variantOf: head.id,
+        variantLabel: 'اقیانوس',
+      });
+
+      const { status, body: envelope } = await parse(
+        await json(
+          API_PATHS.ADMIN_PRODUCTS,
+          'POST',
+          body(category, { variantOf: member.id, variantLabel: 'بدون بو' }),
+        ),
+      );
+
+      expect(status).toBe(400);
+      if (envelope.status !== 'error') throw new Error('expected an error');
+      expect(envelope.errors).toContain(
+        `variantOf: ${VARIANT_MESSAGES.nested}`,
+      );
+    });
+
+    it('refuses a head nobody has heard of', async () => {
+      const category = await makeCategory();
+      const { status, body: envelope } = await parse(
+        await json(
+          API_PATHS.ADMIN_PRODUCTS,
+          'POST',
+          body(category, {
+            variantOf: '00000000-0000-4000-8000-000000000000',
+            variantLabel: 'قرمز',
+          }),
+        ),
+      );
+
+      expect(status).toBe(400);
+      if (envelope.status !== 'error') throw new Error('expected an error');
+      expect(envelope.errors).toContain(
+        `variantOf: ${VARIANT_MESSAGES.unknownHead}`,
+      );
+    });
+
+    it('refuses a head that has no label of its own', async () => {
+      const category = await makeCategory();
+      const bare = await create(category);
+
+      const { status, body: envelope } = await parse(
+        await json(
+          API_PATHS.ADMIN_PRODUCTS,
+          'POST',
+          body(category, { variantOf: bare.id, variantLabel: 'قرمز' }),
+        ),
+      );
+
+      expect(status).toBe(400);
+      if (envelope.status !== 'error') throw new Error('expected an error');
+      expect(envelope.errors).toContain(
+        `variantOf: ${VARIANT_MESSAGES.headNeedsLabel}`,
+      );
+    });
+
+    it('answers 400, not 500, when deactivating a head with members', async () => {
+      const category = await makeCategory();
+      const head = await create(category, { variantLabel: 'لاوندر' });
+      await create(category, { variantOf: head.id, variantLabel: 'اقیانوس' });
+
+      // Deactivating could not fail before families existed, so the DELETE
+      // handler had no catch at all: this was a 500 until it got one.
+      const { status, body: envelope } = await parse(
+        await json(apiAdminProductPath(head.id), 'DELETE'),
+      );
+
+      expect(status).toBe(400);
+      if (envelope.status !== 'error') throw new Error('expected an error');
+      expect(envelope.errors).toContain(
+        `variantLabel: ${hasMembersMessage(1)}`,
+      );
+    });
+
+    it('still deactivates an ordinary member', async () => {
+      const category = await makeCategory();
+      const head = await create(category, { variantLabel: 'لاوندر' });
+      const member = await create(category, {
+        variantOf: head.id,
+        variantLabel: 'اقیانوس',
+      });
+
+      const { status } = await parse(
+        await json(apiAdminProductPath(member.id), 'DELETE'),
+      );
+
+      expect(status).toBe(200);
+    });
+
+    it('lets an update re-point a member at another head', async () => {
+      const category = await makeCategory();
+      const head = await create(category, { variantLabel: 'لاوندر' });
+      const other = await create(category, { variantLabel: 'یاس' });
+      const member = await create(category, {
+        variantOf: head.id,
+        variantLabel: 'اقیانوس',
+      });
+
+      const { status, body: envelope } = await parse<{
+        variantOf: string | null;
+      }>(
+        await json(apiAdminProductPath(member.id), 'PUT', {
+          ...body(category, {
+            variantOf: other.id,
+            variantLabel: 'اقیانوس',
+          }),
+          expectedStock: member.stock,
+        }),
+      );
+
+      expect(status).toBe(200);
+      if (envelope.status !== 'success') throw new Error('expected success');
+      expect(envelope.data.variantOf).toBe(other.id);
     });
   });
 });

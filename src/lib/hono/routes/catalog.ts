@@ -21,7 +21,12 @@ import {
   productListQueryShape,
   productSlugSchema,
 } from '@/lib/catalog/product-query';
-import { type Category, type ProductWithImages } from '@/db/schema/catalog';
+import {
+  type Category,
+  type ProductCard,
+  type ProductDetail,
+  type ProductWithImages,
+} from '@/db/schema/catalog';
 import {
   apiError,
   apiErrorSchema,
@@ -81,14 +86,55 @@ const ProductSchema = z
      * that ignores this field keeps working exactly as before.
      */
     extraCategoryIds: z.array(z.uuid()),
+    /**
+     * The product this one is a variant of — a smell, a colour, a size — or
+     * `null` for a standalone product **and for a family's head**, which points
+     * at nothing itself. A listing never returns a row with this set: members
+     * are reached from their head's page.
+     */
+    variantOf: z.uuid().nullable(),
+    /** «۱۰ کیلوگرم», «قرمز». Null on a product that has no siblings. */
+    variantLabel: z.string().nullable(),
     createdAt: z.iso.datetime(),
     images: z.array(ProductImageSchema),
   })
   .openapi('Product');
 
+/**
+ * A listing row: the product plus what its whole family costs and whether any
+ * of it is in stock. A client rendering a grid needs these to print «از …» and
+ * to grey out a card; a standalone product reports its own price, no variation
+ * and its own stock, so a consumer that ignores families still reads the truth.
+ */
+const ProductCardSchema = ProductSchema.safeExtend({
+  familyMinPrice: z.number().int().positive(),
+  familyPricesVary: z.boolean(),
+  familyInStock: z.boolean(),
+  familyHasMembers: z.boolean(),
+}).openapi('ProductCard');
+
+/** One chip on the product page. */
+const VariantChipSchema = z
+  .object({
+    id: z.uuid(),
+    slug: z.string(),
+    label: z.string(),
+    isCurrent: z.boolean(),
+  })
+  .openapi('VariantChip');
+
+/**
+ * The detail payload: the product plus its family's members, head first, the
+ * viewed one marked. Empty when the product has no siblings — including when
+ * its only sibling is inactive, since one already-selected chip is no choice.
+ */
+const ProductDetailSchema = ProductSchema.safeExtend({
+  variants: z.array(VariantChipSchema),
+}).openapi('ProductDetail');
+
 const ProductListSchema = z
   .object({
-    items: z.array(ProductSchema),
+    items: z.array(ProductCardSchema),
     /** One-based, echoed back so a client can trust what it is rendering. */
     page: z.number().int().positive(),
     limit: z.number().int().positive(),
@@ -167,6 +213,8 @@ const ProductSlugParamSchema = z.object({
 export type CategoryResponse = z.infer<typeof CategorySchema>;
 export type ProductImageResponse = z.infer<typeof ProductImageSchema>;
 export type ProductResponse = z.infer<typeof ProductSchema>;
+export type ProductCardResponse = z.infer<typeof ProductCardSchema>;
+export type ProductDetailResponse = z.infer<typeof ProductDetailSchema>;
 export type ProductListResponse = z.infer<typeof ProductListSchema>;
 export type ProductListQuery = z.infer<typeof ProductListQuerySchema>;
 
@@ -204,12 +252,31 @@ const toProductResponse = (row: ProductWithImages): ProductResponse => ({
   petTypes: row.petTypes,
   categoryId: row.categoryId,
   extraCategoryIds: row.extraCategoryIds,
+  variantOf: row.variantOf,
+  variantLabel: row.variantLabel,
   createdAt: row.createdAt.toISOString(),
   images: row.images.map((image) => ({
     id: image.id,
     objectKey: image.objectKey,
     sortOrder: image.sortOrder,
   })),
+});
+
+/** A listing row: the product, plus the three facts about its family. */
+const toProductCardResponse = (row: ProductCard): ProductCardResponse => ({
+  ...toProductResponse(row),
+  familyMinPrice: row.familyMinPrice,
+  familyPricesVary: row.familyPricesVary,
+  familyInStock: row.familyInStock,
+  familyHasMembers: row.familyHasMembers,
+});
+
+/** The detail payload: the product, plus its family's chips. */
+const toProductDetailResponse = (
+  row: ProductDetail,
+): ProductDetailResponse => ({
+  ...toProductResponse(row),
+  variants: row.variants,
 });
 
 const invalidQueryResponse = {
@@ -280,7 +347,7 @@ export const productListHandler: RouteHandler<typeof productListRoute> = async (
 
   return c.json(
     apiSuccess({
-      items: items.map(toProductResponse),
+      items: items.map(toProductCardResponse),
       page,
       limit,
       total,
@@ -300,7 +367,10 @@ export const productDetailRoute = createRoute({
     200: {
       content: {
         'application/json': {
-          schema: apiSuccessSchema(ProductSchema, 'ProductDetailResponse'),
+          schema: apiSuccessSchema(
+            ProductDetailSchema,
+            'ProductDetailResponse',
+          ),
         },
       },
       description: 'The product',
@@ -325,5 +395,5 @@ export const productDetailHandler: RouteHandler<
   const product = await ProductDao.getBySlug(slug);
   if (!product) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
 
-  return c.json(apiSuccess(toProductResponse(product)), 200);
+  return c.json(apiSuccess(toProductDetailResponse(product)), 200);
 };
