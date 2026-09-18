@@ -32,6 +32,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/lib/sentry.ts` | The one `Sentry.init` options object, shared by all three runtimes (`sentry.server.config.ts`, `sentry.edge.config.ts`, `src/instrumentation-client.ts`). Owns the privacy contract: explicit `dataCollection` opt-outs and the removal of the console-breadcrumb integration, without which every OTP in the server log rides along on the next event |
 | `src/lib/content/` | Storefront editorial content: the client-safe zod schemas + key enum + area map + `isVisible` (`site-content.ts`), the saved-link contract + `resolveLink` (`link.ts`; its id → slug targets load in `src/logic/content/link-targets.ts`), the typed defaults + `resolveContent` fallback (`defaults.ts`), and the header/footer request-time read `readSiteChrome` (`chrome.ts`, `await connection()`). Values live in the `site_content` table; the page-organized admin editor is `/admin-panel/content/[area]` |
 | `src/features/<area>/<feature>/` | Feature components; route files stay thin |
+| `src/lib/catalog/variant.ts` | Product families: `displayTitle` (the **single** derivation used by the product heading, the admin list and the `order_items` snapshot), the label cap and the Persian refusals. A family is `products.variant_of` + `variant_label` — a member is an ordinary product row, so the cart, the stock decrement and `order_items` are untouched; the storefront lists `variant_of is null` and reaches members from the head's page |
 | `design/` | **Canonical design reference** — vendored Figma prototype (own deps, own `pnpm dev` on :5173). FE stories port from it. Never imported by the app. |
 | `scripts/create-admin.ts` | Grant admin by phone (`pnpm create-admin <phone> [name]`) — creates or promotes |
 | `src/db/seed/`, `scripts/seed-catalog.ts` | Demo catalog seed (`pnpm seed-catalog`), idempotent; its images live in `public/products/` |
@@ -107,6 +108,12 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   (`src/lib/auth/phone.ts`) and the API accepts **nothing else** — clients
   normalize before sending, or one person ends up with two accounts. Any
   `?next=`-style redirect target goes through `safeNextPath`.
+- **A correlated subquery's outer reference goes through a nested `sql`
+  fragment**, never inlined into the scalar's own template. Drizzle renders
+  `${products.id}` unqualified inside a select field, so in `from products fam`
+  it binds to `fam.id` and the condition is silently false for every row — green
+  on every empty database, wrong on a populated one. `FAMILY_SCOPE` and
+  `MEMBER_SCOPE` in `ProductDao` are the pattern; this cost a real bug once.
 - **Persian search text** is normalized on write (ي→ی, ك→ک, ZWNJ) + `pg_trgm`.
 - **Local-first**: everything must run locally with no third-party signup — SMS
   uses a console driver, uploads use local storage behind the storage interface.
@@ -204,14 +211,20 @@ filter and under its sub-category's parent, reading «گربه و سگ» on its 
 each of those shelves also checked for a product it must *not* list; a product
 in two categories listed once under that parent and once under each of its own,
 its breadcrumb naming parent then sub-category and both its categories linked
-in the spec row; checkout by card to card — Jalali date and `format.ts`-formatted numbers
+in the spec row; a product family listed as **one** card reading «از …» with
+the cheapest member's price and an «انتخاب» link in place of the add button,
+its page headed title — label, its chips carrying the shopper to a sibling's
+own slug and the cart line naming that member; checkout by card to card — Jalali date and `format.ts`-formatted numbers
 on the result page, the order in `/account` — and through the mock Zarinpal
 gateway (paid, and failed → retry → paid). Admin: anonymous visitors and
 customers turned away; the dashboard figures; an order shipped, and one
 cancelled with its stock coming back; a product added with a photo — for both
 pets, filed under a sub-category and given a second category — repriced, found
 under both category filters and taken off the shop; a sub-category nested under
-a category the panel then refuses to delete until it is emptied; a discount
+a category the panel then refuses to delete until it is emptied; a product
+family's members each listed and named by their own label, the head's
+«زیرمجموعه‌ی» select disabled because it has members and a member's live
+(read-only, so it runs at both widths and leaves nothing behind); a discount
 code a shopper redeems,
 then cannot once it is switched off; a shipping rate that checkout then
 charges, and one fee applied to every province at once (cancelled at the
