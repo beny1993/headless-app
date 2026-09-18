@@ -2,14 +2,31 @@
 // checked without one in ./catalog-data.test.ts.
 import { inArray } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { productImages, products } from '@/db/schema/catalog';
-import { SEED_PRODUCTS } from '@/db/seed/catalog-data';
+import {
+  productCategories,
+  productImages,
+  products,
+} from '@/db/schema/catalog';
+import { SEED_PRODUCTS, SEED_SUBCATEGORIES } from '@/db/seed/catalog-data';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 
+const { CategoryDao } = await importWithDb(
+  () => import('@/db/dao/CategoryDao'),
+);
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
 const { seedCatalog } = await importWithDb(() => import('@/db/seed/catalog'));
 
 const skus = SEED_PRODUCTS.map((product) => product.sku);
+
+// Picked by what makes each one interesting, never by index: appending a row
+// to the seed must not be able to point these at a different product.
+const bothPets = SEED_PRODUCTS.find((product) => product.petTypes.length === 2);
+const multiCategory = SEED_PRODUCTS.find(
+  (product) => (product.extraCategorySlugs ?? []).length > 0,
+);
+if (!bothPets || !multiCategory) {
+  throw new Error('The catalog seed needs a both-pets and a two-category row.');
+}
 
 describe.skipIf(!databaseReachable)('seedCatalog', () => {
   const seededProducts = () =>
@@ -41,6 +58,8 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
   it('is idempotent — a second run changes no counts and no ids', async () => {
     const before = await seededProducts();
     const imagesBefore = await seededImages();
+    const categoriesBefore = await CategoryDao.list();
+    const junctionBefore = await testDb.select().from(productCategories);
 
     await seedCatalog();
 
@@ -49,6 +68,12 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
 
     expect(after).toHaveLength(before.length);
     expect(imagesAfter).toHaveLength(imagesBefore.length);
+    // Categories upsert by slug and the extras are replaced wholesale, so a
+    // re-run must neither add a second «مالت» nor stack junction rows.
+    expect(await CategoryDao.list()).toHaveLength(categoriesBefore.length);
+    expect(await testDb.select().from(productCategories)).toHaveLength(
+      junctionBefore.length,
+    );
     // Same rows updated in place, not deleted and recreated — an order item
     // that referenced one of these products would still resolve.
     expect(after.map((row) => row.id).sort()).toEqual(
@@ -94,6 +119,55 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
 
     expect(wet?.stock).toBe(0);
     expect(toy?.stock).toBe(3);
+  });
+
+  it('hangs every sub-category under the parent it names', async () => {
+    const bySlug = new Map(
+      (await CategoryDao.list()).map((row) => [row.slug, row]),
+    );
+
+    for (const sub of SEED_SUBCATEGORIES) {
+      expect(bySlug.get(sub.slug)?.parentId).toBe(
+        bySlug.get(sub.parentSlug)?.id,
+      );
+    }
+  });
+
+  it('seeds a product for both pets at once', async () => {
+    const row = await ProductDao.getBySlug(bothPets.slug);
+
+    expect(row?.petTypes).toEqual(bothPets.petTypes);
+  });
+
+  it('seeds a product filed under a second category', async () => {
+    const bySlug = new Map(
+      (await CategoryDao.list()).map((row) => [row.slug, row]),
+    );
+    const row = await ProductDao.getBySlug(multiCategory.slug);
+
+    expect(row?.categoryId).toBe(bySlug.get(multiCategory.categorySlug)?.id);
+    expect(row?.extraCategoryIds).toEqual(
+      (multiCategory.extraCategorySlugs ?? []).map(
+        (slug) => bySlug.get(slug)?.id,
+      ),
+    );
+  });
+
+  it('lists the two-category product once under its parent category', async () => {
+    // The story's own demo of D2: it is filed under one sub-category and an
+    // additional one, both under the same parent, and the parent's filter
+    // still counts it once.
+    const parentSlug = SEED_SUBCATEGORIES.find(
+      (sub) => sub.slug === multiCategory.categorySlug,
+    )?.parentSlug;
+    const { items, total } = await ProductDao.list({
+      categorySlug: parentSlug,
+    });
+
+    expect(items.filter((row) => row.sku === multiCategory.sku)).toHaveLength(
+      1,
+    );
+    expect(total).toBe(items.length);
   });
 
   it('files products under the categories the storefront filters on', async () => {

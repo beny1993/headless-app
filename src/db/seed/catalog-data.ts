@@ -1,6 +1,7 @@
 // The demo catalog's raw data: the six categories and eight products of the
 // design prototype (`design/src/app/App.tsx`), with its own Persian titles,
-// brands, benefit lines, SKUs and integer-Toman prices.
+// brands, benefit lines, SKUs and integer-Toman prices — plus the three
+// sub-categories and two products this shop's own stories need, appended.
 //
 // Deliberately free of database imports, so the checks on this data — image
 // files present, slugs legal, prices whole Toman — run without a database.
@@ -17,10 +18,44 @@ export const SEED_CATEGORIES = [
   { title: 'تشویقی', slug: 'treats', sortOrder: 3 },
   { title: 'مکمل', slug: 'supplements', sortOrder: 4 },
   { title: 'اسباب‌بازی', slug: 'toys', sortOrder: 5 },
-  // No demo product yet — the design lists the category, so the storefront's
-  // category strip should show it.
   { title: 'بهداشت', slug: 'hygiene', sortOrder: 6 },
 ] as const;
+
+/**
+ * One level of sub-categories, kept in an export of its own rather than mixed
+ * into `SEED_CATEGORIES`: the home strip shows top-level categories only and
+ * has a photo per slug in code (`CATEGORY_IMAGES`), and the quiz deep-links at
+ * top-level shelves. Both read `SEED_CATEGORIES` and would demand a photo, or
+ * a quiz answer, for every sub-category added here.
+ *
+ * `parentSlug` is typed from `SEED_CATEGORIES`, so a sub-category under a
+ * sub-category — or under nothing — fails `pnpm type-check`, not a test run.
+ */
+export const SEED_SUBCATEGORIES = [
+  {
+    title: 'شامپو و نظافت',
+    slug: 'grooming',
+    sortOrder: 1,
+    parentSlug: 'hygiene',
+  },
+  { title: 'مالت', slug: 'malt', sortOrder: 1, parentSlug: 'supplements' },
+  {
+    title: 'مولتی‌ویتامین',
+    slug: 'multivitamin',
+    sortOrder: 2,
+    parentSlug: 'supplements',
+  },
+] as const satisfies readonly {
+  title: string;
+  slug: string;
+  sortOrder: number;
+  parentSlug: (typeof SEED_CATEGORIES)[number]['slug'];
+}[];
+
+/** A product may be filed under a top-level category or under a sub-category. */
+type SeedCategorySlug =
+  | (typeof SEED_CATEGORIES)[number]['slug']
+  | (typeof SEED_SUBCATEGORIES)[number]['slug'];
 
 type SeedProduct = {
   title: string;
@@ -33,7 +68,10 @@ type SeedProduct = {
   price: number;
   oldPrice: number | null;
   stock: number;
-  categorySlug: (typeof SEED_CATEGORIES)[number]['slug'];
+  /** The main category — the one the breadcrumb follows. */
+  categorySlug: SeedCategorySlug;
+  /** Additional categories the product is also found under. Never the main one. */
+  extraCategorySlugs?: SeedCategorySlug[];
   petTypes: PetType[];
   imageKeys: string[];
 };
@@ -146,5 +184,40 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     categorySlug: 'toys',
     petTypes: [PET_TYPES.CAT],
     imageKeys: ['products/cat-toy.jpg'],
+  },
+  // Appended, never inserted: the two rows above are pinned by index, and
+  // e2e/support.ts picks the best-stocked, the sold-out and the low-stock
+  // product out of this list.
+  {
+    // For both animals at once, so the slug and the SKU carry no pet segment —
+    // the convention the product form's own hint teaches the admin.
+    title: 'شامپو ملایم حیوان خانگی',
+    slug: 'beaphar-gentle-shampoo-250',
+    sku: 'BP-SHAMPOO-250',
+    brand: 'Beaphar',
+    benefit: 'بدون اشک، مناسب پوست حساس',
+    price: 132_000,
+    oldPrice: null,
+    stock: 22,
+    categorySlug: 'grooming',
+    petTypes: [PET_TYPES.CAT, PET_TYPES.DOG],
+    // No new downloads: the supplement bottle stands in for the shampoo.
+    imageKeys: ['products/cat-supplement.jpg'],
+  },
+  {
+    // Benyamin's own example of a product in two categories: a malt paste that
+    // is also a multivitamin, so it is found under both shelves.
+    title: 'خمیر مالت گربه با مولتی‌ویتامین',
+    slug: 'gimcat-cat-malt-paste-100',
+    sku: 'GC-CAT-MALT-100',
+    brand: 'GimCat',
+    benefit: 'کمک به دفع گلوله مویی',
+    price: 148_000,
+    oldPrice: 165_000,
+    stock: 16,
+    categorySlug: 'malt',
+    extraCategorySlugs: ['multivitamin'],
+    petTypes: [PET_TYPES.CAT],
+    imageKeys: ['products/cat-supplement.jpg'],
   },
 ];
