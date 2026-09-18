@@ -124,32 +124,45 @@ redeploy with no persistent volume. The storage seam means nothing else changes.
 
 ## 5. Database migrations on deploy
 
-Migrations are **Drizzle SQL files** in `src/db/migrations/`, applied by
-`drizzle-kit migrate` (`pnpm migration:migrate`), which reads
-`src/db/migrations/meta/_journal.json` and applies only what's outstanding
-(idempotent — safe to re-run).
+Migrations are **Drizzle SQL files** in `src/db/migrations/`. The image applies
+them itself, **every time a container starts**, before the server does — its
+`CMD` is `node scripts/migrate.mjs && exec node server.js`. `scripts/migrate.mjs`
+is a plain-Node applier (drizzle-orm's `migrate()`; the slim runtime image has no
+`drizzle-kit`) that reads `src/db/migrations/meta/_journal.json` and applies only
+what is outstanding, so a restart with nothing pending is a no-op.
 
-**The slim runtime image does not contain `drizzle-kit`** (it's a devDependency),
-so Coolify's *pre-deployment command* — which runs inside that runtime image —
-**cannot** run migrations. Run them as a **separate release step** using the
-Dockerfile's `build` target, which already carries the source, dev deps,
-drizzle-kit and the migration files:
+Nothing is configured in Coolify for this. One deploy ships a migration *and*
+applies it, in the container that is about to serve:
+
+- **A migration fails** (or the database is unreachable): the script exits
+  non-zero, the server never starts, the new container never turns healthy, and
+  Coolify rolls back — the old container keeps serving and the deploy is marked
+  failed. Pending migrations run in one transaction, so a failed or interrupted
+  run leaves the schema as it was.
+- **A slow migration**: the new container has to answer `/api/ready` inside the
+  healthcheck window (start period + interval × retries, ~35 s as configured).
+  For a migration that needs longer, raise the *start period* for that deploy,
+  or the deploy fails although nothing is wrong.
+- **One replica.** Two containers starting at once would both try to migrate;
+  take a `pg_advisory_lock` in `scripts/migrate.mjs` before scaling out.
+
+> **Remove Coolify's pre-deployment command** (`node scripts/migrate.mjs`) if it
+> is still set. Coolify runs it with `docker exec` in the container that is
+> *already running*, before the new commit is cloned — so it applied the
+> **previous** image's migrations, and a new migration only landed on the deploy
+> *after* the one that shipped it. Left in place it is a harmless no-op.
+
+All migrations so far are additive. The old container keeps serving while the new
+one migrates, so a **destructive** migration still needs the compatible two-step:
+expand → deploy → contract.
+
+The `build` target (source, dev deps, `drizzle-kit`) is still the tool for one-off
+jobs against a deployed database — the seed steps below:
 
 ```bash
 # On the VPS (or CI), against the same DATABASE_URL the app uses:
 docker build --target build -t smokey-shop:migrate .
-docker run --rm -e APP_CONFIG_DATABASE_URL="$APP_CONFIG_DATABASE_URL" \
-  smokey-shop:migrate pnpm migration:migrate
 ```
-
-Order: **migrate before the new image goes live.** All migrations so far are
-additive, so run-then-deploy is safe; if a future migration is destructive,
-gate it behind a compatible two-step (expand → deploy → contract).
-
-> Follow-up for the PM: if a Coolify-native pre-deploy is wanted, ship a small
-> programmatic migrator (drizzle-orm's `migrate()` + the migrations folder) in
-> the runtime image so migrations can run in-image without drizzle-kit. Out of
-> this story's box-independent scope.
 
 ### Seed steps (first deploy only, from the `build`/`migrate` image)
 
@@ -165,8 +178,14 @@ docker run --rm -e APP_CONFIG_DATABASE_URL="$APP_CONFIG_DATABASE_URL" \
   smokey-shop:migrate pnpm create-admin 09121234567 "Admin Name"
 ```
 
-`seed-catalog` is demo data — skip it on a real production store; `seed-shipping`
-is real infrastructure (you then tune the per-province fees in the admin panel).
+`seed-catalog` is demo data — skip it on a real production store.
+
+`seed-shipping` is no longer needed on a deploy: migration `0011_seed_provinces`
+plants the 31 provinces and their placeholder fees wherever migrations run. It
+only adds what is missing — a province already typed in by hand keeps its name,
+fee and active flag, and is recognised even when spelled with different spacing
+or a ZWNJ. Then set the real fees in the admin panel: one fee for every province
+with «اعمال روی همه استان‌ها», and the exceptions row by row.
 
 ---
 
@@ -321,4 +340,4 @@ There is no CI workflow in the repo today. When one is added, it **must** set
 `APP_CONFIG_DATABASE_URL` and provide a Postgres service, or the DB-backed
 integration suites silently skip (they skip only when the variable is unset; a
 configured-but-down DB fails the run instead — see `CLAUDE.md` › Testing
-standard). CI is the natural home for the migrate/seed release step in §5.
+standard). CI is the natural home for the seed release step in §5.

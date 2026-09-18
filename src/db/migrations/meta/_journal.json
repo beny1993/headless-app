@@ -78,6 +78,13 @@
       "when": 1789300489551,
       "tag": "0010_fast_prima",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789683025359,
+      "tag": "0011_seed_provinces",
+      "breakpoints": true
     }
   ]
 }

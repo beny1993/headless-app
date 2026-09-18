@@ -9,8 +9,8 @@ export class HealthDao {
    *
    * Deliberately a real query against a real table rather than `select 1`: it
    * keeps the no-raw-SQL rule, and it proves more. A bare `select 1` succeeds
-   * against a reachable-but-unmigrated database — exactly the state a fresh
-   * environment is in before the pre-deployment migration runs — so it would
+   * against a reachable-but-unmigrated database — the state of a fresh
+   * environment whose migrations have not run — so it would
    * report ready while every page 500s on a missing table. Reading one row from
    * `categories` proves the connection AND that the schema exists.
    *

@@ -116,9 +116,8 @@ COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
 
-# Migrations are applied by a deploy step, not by the server on boot — so the
-# SQL and a devDependency-free applier travel with the image.
-# Coolify pre-deployment command:  node scripts/migrate.mjs
+# Migrations are applied when the container starts (see CMD) — so the SQL and a
+# devDependency-free applier travel with the image.
 COPY --from=build --chown=node:node /app/src/db/migrations ./src/db/migrations
 COPY --from=build --chown=node:node /app/scripts/migrate.mjs ./scripts/migrate.mjs
 COPY --from=build --chown=node:node /migrator/drizzle-orm ./node_modules/drizzle-orm
@@ -126,4 +125,27 @@ COPY --from=build --chown=node:node /migrator/drizzle-orm ./node_modules/drizzle
 USER node
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+# Migrate, then serve — in that order, in the container that is about to serve.
+# Coolify's pre-deployment command could not do this: it is a `docker exec` into
+# the container that is ALREADY running, before the new commit is even cloned, so
+# it applied the previous image's migrations and a new one landed a deploy late —
+# new code on the old schema until somebody redeployed.
+#
+# `&&`: a failed migration exits non-zero and the server never starts. The new
+# container never turns healthy (it exits, and under a restart policy retries,
+# until the healthcheck window runs out), Coolify rolls back, the deploy fails,
+# and the old container keeps serving. A database
+# that is not up yet (a cold server boot) converges the same way, no retry loop.
+# A migration slower than that window fails the deploy too: raise the
+# healthcheck start period for it.
+#
+# `exec`: node must end up as PID 1, as it was with `CMD ["node", "server.js"]` —
+# a shell left at PID 1 drops SIGTERM, and every rolling update would SIGKILL the
+# old server, requests in flight, after the 10 s grace period. Measured on this
+# image, busybox `sh` already execs the last command of a `-c` string, so node is
+# PID 1 with or without the keyword (`docker stop` < 1 s both ways); `exec` makes
+# that a guarantee instead of one shell's optimization, should the base change.
+#
+# ponytail: no lock around the migrate — one replica, one new container at a
+# time. Take a `pg_advisory_lock` in scripts/migrate.mjs if replicas ever go > 1.
+CMD ["sh", "-c", "node scripts/migrate.mjs && exec node server.js"]
