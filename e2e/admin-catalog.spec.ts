@@ -75,9 +75,19 @@ test('an admin adds a product with a photo, reprices it and takes it off the sho
   // One more category, alongside the main one. A seeded top-level one on
   // purpose: this product is never deleted, and the junction's restricting
   // foreign key would make a category the spec created undeletable for good.
-  await page
-    .locator('[data-umami-event="admin-panel-product-category-extra-add"]')
-    .selectOption({ label: EXTRA_CATEGORY.title });
+  const extraSelect = page.locator(
+    '[data-umami-event="admin-panel-product-category-extra-add"]',
+  );
+  // Picked by its title, so a second category carrying the same one — the
+  // debris a failed integration run leaves behind — would silently weld *that*
+  // row into this product for good. Say so here instead, where it is fixable.
+  await expect(
+    extraSelect.getByRole('option', {
+      name: EXTRA_CATEGORY.title,
+      exact: true,
+    }),
+  ).toHaveCount(1);
+  await extraSelect.selectOption({ label: EXTRA_CATEGORY.title });
   // The select snaps back to its placeholder, so the chip is the only sign the
   // choice was taken — and it carries the plain title, without the prefix.
   await expect(

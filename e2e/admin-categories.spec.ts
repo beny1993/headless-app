@@ -114,35 +114,42 @@ test('an admin nests a sub-category, and the parent waits for it to go first', a
   const parentId = await createCategory(page, parentTitle, parentSlug);
   await createCategory(page, `زیردسته ${id}`, subSlug, parentId);
 
-  // The nesting is announced, not merely indented: the sub-row's title cell
-  // opens with the parent's name for a screen reader, and that is the only
-  // place the parent's title turns up in this row.
-  await expect(rowFor(page, subSlug)).toContainText(parentTitle);
+  // In a `finally`, like the settings and province specs: a failed assertion
+  // below would otherwise leave this pair in the shared dev database, where
+  // the next run's «pick a category by its title» would have two to choose
+  // from. Child first — the parent's own foreign key refuses the other order.
+  try {
+    // The nesting is announced, not merely indented: the sub-row's title cell
+    // opens with the parent's name for a screen reader, and that is the only
+    // place the parent's title turns up in this row.
+    await expect(rowFor(page, subSlug)).toContainText(parentTitle);
 
-  page.once('dialog', (dialog) => dialog.accept());
-  const [refused] = await Promise.all([
-    page.waitForResponse(categoryCall('DELETE')),
-    rowFor(page, parentSlug)
-      .locator('[data-umami-event="admin-panel-categories-delete"]')
-      .click(),
-  ]);
-  expect(refused.status()).toBe(409);
+    page.once('dialog', (dialog) => dialog.accept());
+    const [refused] = await Promise.all([
+      page.waitForResponse(categoryCall('DELETE')),
+      rowFor(page, parentSlug)
+        .locator('[data-umami-event="admin-panel-categories-delete"]')
+        .click(),
+    ]);
+    expect(refused.status()).toBe(409);
 
-  // The refusal counts what blocks it, through src/lib/format.ts, and reaches
-  // the admin as the error toast the shipped delete flow already uses.
-  const { message } = z
-    .object({ message: z.string().min(1) })
-    .parse(await refused.json());
-  expect(message).toContain(`${formatNumber(1)} زیردسته`);
-  await expect(
-    page.locator('[data-sonner-toast][data-type="error"]'),
-  ).toContainText(message);
-  await expect(rowFor(page, parentSlug)).toBeVisible();
-
-  // Emptied, the parent goes — so this spec leaves no row behind and runs at
-  // both widths.
-  await deleteCategory(page, subSlug);
-  await deleteCategory(page, parentSlug);
+    // The refusal counts what blocks it, through src/lib/format.ts, and
+    // reaches the admin as the error toast the shipped delete flow already
+    // uses.
+    const { message } = z
+      .object({ message: z.string().min(1) })
+      .parse(await refused.json());
+    expect(message).toContain(`${formatNumber(1)} زیردسته`);
+    await expect(
+      page.locator('[data-sonner-toast][data-type="error"]'),
+    ).toContainText(message);
+    await expect(rowFor(page, parentSlug)).toBeVisible();
+  } finally {
+    // Emptied, the parent goes — so this spec leaves no row behind and runs at
+    // both widths.
+    await deleteCategory(page, subSlug);
+    await deleteCategory(page, parentSlug);
+  }
 });
 
 test('a category that still has products stays, and a toast says why', async ({

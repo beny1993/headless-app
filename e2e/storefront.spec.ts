@@ -18,8 +18,18 @@ const multiCategory = SEED_PRODUCTS.find(
 );
 const subOf = (slug: string) =>
   SEED_SUBCATEGORIES.find((sub) => sub.slug === slug);
+/** One pet each, so each is the control the other pet's shelf must not show. */
+const onlyFor = (pet: (typeof PET_TYPES)[keyof typeof PET_TYPES]) =>
+  SEED_PRODUCTS.find(
+    (product) => product.petTypes.length === 1 && product.petTypes[0] === pet,
+  );
+const catOnly = onlyFor(PET_TYPES.CAT);
+const dogOnly = onlyFor(PET_TYPES.DOG);
 if (!bothPets || !multiCategory) {
   throw new Error('The catalog seed needs a both-pets and a two-category row.');
+}
+if (!catOnly || !dogOnly) {
+  throw new Error('The catalog seed needs a cat-only and a dog-only row.');
 }
 const mainCategory = subOf(multiCategory.categorySlug);
 const grooming = subOf(bothPets.categorySlug);
@@ -81,13 +91,17 @@ test('a product for both pets is on both shelves', async ({ page }) => {
   // Suitable for cats *includes* suitable for both, so the shampoo answers
   // either pet filter, and its parent category's filter reaches down into the
   // sub-category it is actually filed under.
-  for (const href of [
-    shopPath({ pet: PET_TYPES.CAT }),
-    shopPath({ pet: PET_TYPES.DOG }),
-    shopPath({ category: grooming.parentSlug }),
+  // Each shelf carries a control the filter must keep *out*: without it a
+  // listing that ignored the filter and showed the whole catalogue would pass
+  // every line below.
+  for (const { href, absent } of [
+    { href: shopPath({ pet: PET_TYPES.CAT }), absent: dogOnly },
+    { href: shopPath({ pet: PET_TYPES.DOG }), absent: catOnly },
+    { href: shopPath({ category: grooming.parentSlug }), absent: catOnly },
   ]) {
     await page.goto(href);
     await expect(cardsFor(page, bothPets.title)).toHaveCount(1);
+    await expect(cardsFor(page, absent.title)).toHaveCount(0);
   }
 
   await page.goto(productPath(bothPets.slug));
@@ -106,6 +120,8 @@ test('a product in two categories is listed once under each', async ({
   // parent's filter matches it twice over and must still show it once.
   await page.goto(shopPath({ category: mainCategory.parentSlug }));
   await expect(cardsFor(page, multiCategory.title)).toHaveCount(1);
+  // The control, as above: a product from another shelf entirely.
+  await expect(cardsFor(page, catOnly.title)).toHaveCount(0);
   // The total counts what the page lists — once per product, not once per
   // matching category — and goes through src/lib/format.ts on the way out.
   const listed = await page
