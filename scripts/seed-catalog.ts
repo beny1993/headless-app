@@ -1,6 +1,6 @@
 /**
- * Seed the demo catalog — the design prototype's six categories and eight
- * products, with their locally-bundled images.
+ * Seed the demo catalog — the design prototype's categories and products, plus
+ * the sub-categories under them, with their locally-bundled images.
  *
  *   pnpm seed-catalog
  *
