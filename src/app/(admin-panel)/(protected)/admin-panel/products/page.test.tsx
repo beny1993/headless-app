@@ -53,6 +53,8 @@ const product = (
   oldPrice: null,
   stock: 5,
   isActive: true,
+  variantOf: null,
+  variantLabel: null,
   categoryId: '22222222-2222-4222-8222-222222222222',
   petTypes: ['cat'],
   createdAt: new Date('2026-09-01T00:00:00Z'),

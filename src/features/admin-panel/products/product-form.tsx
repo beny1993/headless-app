@@ -18,6 +18,7 @@ import {
   type PetType,
 } from '@/lib/catalog/product-query';
 import { SKU_SUFFIX_LENGTH, skuPreview } from '@/lib/catalog/sku';
+import { VARIANT_LABEL_LIMIT } from '@/lib/catalog/variant';
 import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import {
   API_PATHS,
@@ -54,6 +55,10 @@ export type ProductFormInitial = {
   categoryId: string;
   /** The others, in the order they were added. */
   extraCategoryIds: string[];
+  /** The product this one is a variant of, or null. */
+  variantOf: string | null;
+  /** «۱۰ کیلوگرم», «قرمز» — set on a member and on its head. */
+  variantLabel: string | null;
   petTypes: PetType[];
   isActive: boolean;
   /** The current image's storage key, if any, so the edit form can preview it. */
@@ -66,6 +71,14 @@ export type ProductFormInitial = {
  * one a chip shows. Both come from `categoryOptions`.
  */
 export type CategoryOption = { id: string; title: string; label: string };
+
+/** One candidate head for the «زیرمجموعه‌ی» select. */
+export type VariantHeadOption = {
+  id: string;
+  title: string;
+  /** Null when the candidate has no «نوع» of its own yet — offered, disabled. */
+  variantLabel: string | null;
+};
 
 const GENERIC_ERROR = 'خطای غیرمنتظره رخ داد. دوباره تلاش کن.';
 
@@ -107,9 +120,15 @@ async function uploadImage(productId: string, file: File): Promise<void> {
 export function ProductForm({
   categories,
   product,
+  variantHeads = [],
+  hasMembers = false,
 }: {
   categories: CategoryOption[];
   product?: ProductFormInitial;
+  /** Products this one may be filed under: active, not themselves members. */
+  variantHeads?: VariantHeadOption[];
+  /** True when this product already has members, so it cannot become one. */
+  hasMembers?: boolean;
 }) {
   const router = useRouter();
   const isEdit = Boolean(product);
@@ -126,6 +145,8 @@ export function ProductForm({
     stock: product ? String(product.stock) : '',
     categoryId: product?.categoryId ?? '',
     extraCategoryIds: product?.extraCategoryIds ?? [],
+    variantOf: product?.variantOf ?? '',
+    variantLabel: product?.variantLabel ?? '',
     // A new product starts with neither pet pressed: with toggle semantics a
     // pre-pressed «گربه» turns an admin who presses only «سگ» into a silent
     // both-pets product. One expression — flip it to `[PET_TYPES.CAT]` to
@@ -213,6 +234,11 @@ export function ProductForm({
     stock: numeric(form.stock),
     categoryId: form.categoryId,
     extraCategoryIds: form.extraCategoryIds,
+    // Empty select and empty field both mean «standalone», which is `null` in
+    // the column — the same «cleared is never set» rule every optional text
+    // field here follows.
+    variantOf: form.variantOf === '' ? null : form.variantOf,
+    variantLabel: form.variantLabel,
     petTypes: form.petTypes,
     isActive: form.isActive,
   });
@@ -416,6 +442,65 @@ export function ProductForm({
                 </Link>
               </p>
             )}
+          </Field>
+        </div>
+
+        {/* A product family: one card in the shop, the sizes or smells picked on
+            the product page. Both fields are optional and a product that uses
+            neither behaves exactly as before. */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            id={fid('variantLabel')}
+            label="نوع (اختیاری)"
+            error={fieldErrors.variantLabel}
+          >
+            <input
+              id={fid('variantLabel')}
+              value={form.variantLabel}
+              onChange={(e) => update('variantLabel', e.target.value)}
+              className={inputClass(fieldErrors.variantLabel)}
+              placeholder="مثلاً ۱۰ کیلوگرم یا قرمز"
+              maxLength={VARIANT_LABEL_LIMIT}
+            />
+            <p className="text-muted-foreground mt-1.5 text-xs">
+              اگر این محصول در چند اندازه، رنگ یا رایحه است، این‌جا نوعِ همین
+              مورد را بنویس.
+            </p>
+          </Field>
+          <Field
+            id={fid('variantOf')}
+            label="زیرمجموعه‌ی (اختیاری)"
+            error={fieldErrors.variantOf}
+          >
+            <select
+              id={fid('variantOf')}
+              value={form.variantOf}
+              onChange={(e) => update('variantOf', e.target.value)}
+              className={inputClass(fieldErrors.variantOf)}
+              // A product that already has members cannot itself become one:
+              // only one level is allowed, and moving it would orphan them.
+              disabled={hasMembers}
+            >
+              <option value="">هیچ‌کدام — محصول مستقل</option>
+              {variantHeads.map((head) => (
+                <option
+                  key={head.id}
+                  value={head.id}
+                  // A head with no «نوع» of its own would render an empty chip,
+                  // so it is shown but refused — the reason is in the hint.
+                  disabled={!head.variantLabel?.trim()}
+                >
+                  {head.variantLabel
+                    ? `${head.title} — ${head.variantLabel}`
+                    : `${head.title} (اول «نوع» آن را پر کن)`}
+                </option>
+              ))}
+            </select>
+            <p className="text-muted-foreground mt-1.5 text-xs">
+              {hasMembers
+                ? 'این محصول خودش زیرمجموعه دارد، پس نمی‌تواند زیرمجموعه‌ی محصول دیگری باشد.'
+                : 'فقط یک سطح: محصولی که خودش زیرمجموعه است در این فهرست نیست.'}
+            </p>
           </Field>
         </div>
 

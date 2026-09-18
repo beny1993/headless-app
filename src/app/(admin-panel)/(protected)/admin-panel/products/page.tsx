@@ -10,6 +10,7 @@ import { categoryOptions } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
 import type { ProductWithImages } from '@/db/schema/catalog';
 import { PET_TYPES } from '@/lib/catalog/product-query';
+import { displayTitle } from '@/lib/catalog/variant';
 import {
   adminEditProductPath,
   adminNewProductPath,
@@ -282,7 +283,9 @@ function ProductRow({
         </div>
       </td>
       <td className="max-w-xs px-4 py-3 font-medium">
-        <p className="line-clamp-2">{product.title}</p>
+        {/* `displayTitle`, so the 10kg bag is findable and distinguishable
+            from the 5kg one — the list shows every row, members included. */}
+        <p className="line-clamp-2">{displayTitle(product)}</p>
       </td>
       <td className="text-muted-foreground px-4 py-3 text-xs">
         {product.brand ?? '—'}
@@ -309,14 +312,18 @@ function ProductRow({
         <div className="flex items-center gap-1">
           <Link
             href={productPath(product.slug)}
-            aria-label={`مشاهده ${product.title} در فروشگاه`}
+            // `displayTitle` on every control in the row: the members of a
+            // family share one `title`, so plain titles give three rows three
+            // identically-named buttons — indistinguishable to a screen reader
+            // and to anyone trying to edit the 10kg rather than the 5kg.
+            aria-label={`مشاهده ${displayTitle(product)} در فروشگاه`}
             className="hover:bg-secondary flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
           >
             <Eye size={14} aria-hidden="true" />
           </Link>
           <Link
             href={adminEditProductPath(product.id)}
-            aria-label={`ویرایش ${product.title}`}
+            aria-label={`ویرایش ${displayTitle(product)}`}
             data-umami-event="admin-panel-products-edit"
             className="hover:bg-secondary flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
           >
@@ -325,7 +332,10 @@ function ProductRow({
           {/* Deactivating is a soft delete: an inactive product has nothing left
               to deactivate, and reactivating is the edit form's checkbox. */}
           {product.isActive && (
-            <DeleteProductButton id={product.id} title={product.title} />
+            <DeleteProductButton
+              id={product.id}
+              title={displayTitle(product)}
+            />
           )}
         </div>
       </td>

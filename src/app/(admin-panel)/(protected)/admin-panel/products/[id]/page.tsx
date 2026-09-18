@@ -24,9 +24,12 @@ export default async function EditProductPage({
   const parsed = z.uuid().safeParse(id);
   if (!parsed.success) notFound();
 
-  const [product, categories] = await Promise.all([
+  const [product, categories, variantHeads, hasMembers] = await Promise.all([
     ProductDao.findByIdForAdmin(parsed.data),
     CategoryDao.list(),
+    // Never this product itself: a row cannot be its own head.
+    ProductDao.listVariantHeads(parsed.data),
+    ProductDao.hasMembers(parsed.data),
   ]);
   if (!product) notFound();
 
@@ -34,6 +37,8 @@ export default async function EditProductPage({
     <ProductForm
       key={product.id}
       categories={categoryOptions(categories)}
+      variantHeads={variantHeads}
+      hasMembers={hasMembers}
       product={{
         id: product.id,
         title: product.title,
@@ -47,6 +52,8 @@ export default async function EditProductPage({
         stock: product.stock,
         categoryId: product.categoryId,
         extraCategoryIds: product.extraCategoryIds,
+        variantOf: product.variantOf,
+        variantLabel: product.variantLabel,
         petTypes: product.petTypes,
         isActive: product.isActive,
         imageKey: product.images[0]?.objectKey ?? null,
