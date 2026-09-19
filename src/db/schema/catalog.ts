@@ -257,6 +257,14 @@ export type VariantChip = {
   slug: string;
   label: string;
   isCurrent: boolean;
+  /**
+   * Integer Toman. The card advertises the family's cheapest member, so the
+   * page it links to has to say which member that is — otherwise «از ۱۴۹٬۰۰۰»
+   * lands on a heading priced ۱۸۵٬۰۰۰ with nothing explaining the gap.
+   */
+  price: number;
+  /** A chip for a sold-out size must say so before it is clicked. */
+  inStock: boolean;
 };
 
 /**

@@ -611,6 +611,8 @@ export class ProductDao {
         label: products.variantLabel,
         variantOf: products.variantOf,
         createdAt: products.createdAt,
+        price: products.price,
+        stock: products.stock,
       })
       .from(products)
       .where(
@@ -632,6 +634,8 @@ export class ProductDao {
         slug: row.slug,
         label: row.label ?? '',
         isCurrent: row.id === product.id,
+        price: row.price,
+        inStock: row.stock > 0,
       }));
   }
 
@@ -706,6 +710,22 @@ export class ProductDao {
       .from(products)
       .where(and(eq(products.variantOf, id), eq(products.isActive, true)));
     return counted.value;
+  }
+
+  /**
+   * Refuses hiding a product that still has active members.
+   *
+   * Both doors route through it — the edit form's visibility checkbox via
+   * {@link update}, and the panel's «حذف» button via {@link softDelete} — so
+   * neither can answer the refusal differently, which is exactly how the two
+   * came apart before.
+   */
+  private static async assertNoActiveMembers(
+    executor: Executor,
+    id: string,
+  ): Promise<void> {
+    const blocking = await ProductDao.countActiveMembers(id, executor);
+    if (blocking > 0) throw new ProductVariantError('hasMembers', blocking);
   }
 
   /**
@@ -793,6 +813,15 @@ export class ProductDao {
       // Before the write, on the same connection: the row this patch points at
       // is read and refused here, not by a constraint that cannot see it.
       await ProductDao.assertFamilyRules(tx, id, columns.variantOf);
+      // Hiding a head is hiding its whole family: the members are never listed
+      // on their own (`variant_of is null`), so they would stay active and
+      // purchasable by URL while appearing on no shelf. `softDelete` always
+      // refused this; `update` did not, and the edit form's «نمایش در فروشگاه»
+      // checkbox goes through here — so the refusal on one door sent admins
+      // through the other.
+      if (columns.isActive === false) {
+        await ProductDao.assertNoActiveMembers(tx, id);
+      }
       // Clearing a head's own label would leave its chips with nothing written
       // on them — `products_variant_label_present` only covers members, and the
       // «head needs a label» guard only fires when something is *pointed at* it.
@@ -894,28 +923,29 @@ export class ProductDao {
   static async softDelete(
     id: string,
   ): Promise<ProductWithExtraCategories | null> {
-    // A head hidden from the shop would take its members' chips with it while
-    // leaving them listed nowhere — the same refusal a category with children
-    // gets, for the same reason.
+    // In a transaction so the count and the write see one snapshot: on the pool
+    // they were two autocommit statements, and a member created between them
+    // left the orphan the guard exists to prevent.
     //
     // **Active members only.** Counting the inactive ones too would be a dead
     // end: deactivate every smell and the head could never be deactivated
     // after them, since the rows still point at it and nothing but re-pointing
     // each one by hand would clear the way. An inactive head over inactive
     // members is harmless — none of them is listed anywhere.
-    const blocking = await ProductDao.countActiveMembers(id);
-    if (blocking > 0) throw new ProductVariantError('hasMembers', blocking);
+    return db.transaction(async (tx) => {
+      await ProductDao.assertNoActiveMembers(tx, id);
 
-    const [row] = await db
-      .update(products)
-      .set({ isActive: false })
-      .where(eq(products.id, id))
-      .returning();
-    if (!row) return null;
-    return {
-      ...row,
-      extraCategoryIds: await ProductDao.readExtraCategories(db, id),
-    };
+      const [row] = await tx
+        .update(products)
+        .set({ isActive: false })
+        .where(eq(products.id, id))
+        .returning();
+      if (!row) return null;
+      return {
+        ...row,
+        extraCategoryIds: await ProductDao.readExtraCategories(tx, id),
+      };
+    });
   }
 
   /**

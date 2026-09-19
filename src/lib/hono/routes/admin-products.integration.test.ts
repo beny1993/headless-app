@@ -877,25 +877,50 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       );
     });
 
-    it('answers 400, not 500, when deactivating a head with members', async () => {
+    it('answers 409 with the refusal as the message, and leaves the head alone', async () => {
       const category = await makeCategory();
       const head = await create(category, { variantLabel: 'لاوندر' });
       await create(category, { variantOf: head.id, variantLabel: 'اقیانوس' });
 
-      // Deactivating could not fail before families existed, so the DELETE
-      // handler had no catch at all: this was a 500 until it got one.
       const { status, body: envelope } = await parse(
         await json(apiAdminProductPath(head.id), 'DELETE'),
       );
 
-      expect(status).toBe(400);
+      // The sentence is the envelope's `message`, not a field-keyed `errors[]`
+      // entry: a DELETE carries no form, so there is no field to key it to —
+      // and the button reads `message`. Keyed the old way it reached nobody.
+      expect(status).toBe(409);
       if (envelope.status !== 'error') throw new Error('expected an error');
-      expect(envelope.errors).toContain(
-        `variantLabel: ${hasMembersMessage(1)}`,
-      );
+      expect(envelope.message).toBe(hasMembersMessage(1));
+
+      // A refusal that half-applied would be worse than one that did not fire.
+      const [row] = await testDb
+        .select({ isActive: products.isActive })
+        .from(products)
+        .where(eq(products.id, head.id));
+      expect(row.isActive).toBe(true);
     });
 
-    it('still deactivates an ordinary member', async () => {
+    it('refuses the same thing through PUT, where the checkbox writes it', async () => {
+      const category = await makeCategory();
+      const head = await create(category, { variantLabel: 'لاوندر' });
+      await create(category, { variantOf: head.id, variantLabel: 'اقیانوس' });
+
+      const { status, body: envelope } = await parse(
+        await json(apiAdminProductPath(head.id), 'PUT', {
+          ...body(category, { variantLabel: 'لاوندر', isActive: false }),
+          expectedStock: head.stock,
+        }),
+      );
+
+      // Unprefixed, so `parseFieldErrors` routes it to `unmapped` and the form
+      // shows it in the top-level alert — there is no field for «visibility».
+      expect(status).toBe(400);
+      if (envelope.status !== 'error') throw new Error('expected an error');
+      expect(envelope.errors).toContain(hasMembersMessage(1));
+    });
+
+    it('still deactivates an ordinary member, and only it', async () => {
       const category = await makeCategory();
       const head = await create(category, { variantLabel: 'لاوندر' });
       const member = await create(category, {
@@ -903,11 +928,20 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
         variantLabel: 'اقیانوس',
       });
 
-      const { status } = await parse(
+      const { status, body: envelope } = await parse<{ isActive: boolean }>(
         await json(apiAdminProductPath(member.id), 'DELETE'),
       );
 
       expect(status).toBe(200);
+      if (envelope.status !== 'success') throw new Error('expected success');
+      // A 200 alone would pass on a handler that deactivated nothing — or the
+      // wrong row.
+      expect(envelope.data.isActive).toBe(false);
+      const [headRow] = await testDb
+        .select({ isActive: products.isActive })
+        .from(products)
+        .where(eq(products.id, head.id));
+      expect(headRow.isActive).toBe(true);
     });
 
     it('lets an update re-point a member at another head', async () => {

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { VariantChip } from '@/db/schema/catalog';
 import { productPath } from '@/lib/constant/paths';
+import { formatToman } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 /**
@@ -45,25 +46,44 @@ export function VariantChips({
             {variant.isCurrent ? (
               <span
                 aria-current="true"
-                className="border-primary bg-primary/10 text-foreground inline-flex min-h-11 items-center rounded-xl border-2 px-4 text-sm font-semibold"
+                className="border-primary bg-primary/10 text-foreground inline-flex min-h-11 flex-col items-start justify-center rounded-xl border-2 px-4 py-1 text-sm font-semibold"
               >
                 {variant.label}
+                <ChipPrice variant={variant} />
               </span>
             ) : (
               <Link
                 href={productPath(variant.slug)}
                 className={cn(
                   'border-border text-muted-foreground hover:border-primary hover:text-foreground',
-                  'inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-medium transition-colors',
+                  'inline-flex min-h-11 flex-col items-start justify-center rounded-xl border px-4 py-1 text-sm font-medium transition-colors',
+                  !variant.inStock && 'opacity-60',
                 )}
                 data-umami-event="product-variant-open"
               >
                 {variant.label}
+                <ChipPrice variant={variant} />
               </Link>
             )}
           </li>
         ))}
       </ul>
     </div>
+  );
+}
+
+/**
+ * The line under a chip's label: what that size costs, or that it is sold out.
+ *
+ * Without it the shop's «از ۱۴۹٬۰۰۰ تومان» card led to a page whose heading
+ * priced the head at ۱۸۵٬۰۰۰ and offered nothing to explain the difference —
+ * the cheapest member was on screen as a chip with no price on it. Every figure
+ * goes through `format.ts`, like the rest of the storefront.
+ */
+function ChipPrice({ variant }: { variant: VariantChip }) {
+  return (
+    <span className="nums text-muted-foreground text-xs font-normal">
+      {variant.inStock ? formatToman(variant.price) : 'ناموجود'}
+    </span>
   );
 }

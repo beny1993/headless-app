@@ -135,7 +135,12 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       expect(items.map((item) => item.id)).toEqual([head.id]);
     });
 
-    it('does not list a member even when the head is inactive', async () => {
+    // Constructed with raw inserts on purpose: this is the state the DAO now
+    // refuses to *create* (see «hiding a head» below), and the point here is
+    // that if one ever exists — a hand-edited row, a restored backup — the
+    // listing still hides the member rather than leaking a half-family.
+    // Read it as damage control, not as an outcome worth reaching.
+    it('hides a member whose head is inactive, if such a row exists at all', async () => {
       const category = await makeCategory();
       const head = await insert(category, {
         variantLabel: 'قرمز',
@@ -500,6 +505,30 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       expect(found?.variants.map((v) => v.id)).toEqual([head.id, member.id]);
     });
 
+    it('carries each member’s own price and stock onto its chip', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, {
+        price: 185_000,
+        stock: 4,
+        variantLabel: 'لاوندر',
+      });
+      await insert(category, {
+        price: 149_000,
+        stock: 0,
+        variantOf: head.id,
+        variantLabel: 'بدون بو',
+      });
+
+      const found = await ProductDao.getBySlug(head.slug);
+
+      // The card advertises the family's cheapest member, so the page it links
+      // to has to say which member that is — and that it is sold out.
+      expect(found?.variants.map((v) => [v.price, v.inStock])).toEqual([
+        [185_000, true],
+        [149_000, false],
+      ]);
+    });
+
     it('gives a standalone product an empty family, so the page shows no chips', async () => {
       const category = await makeCategory();
       const alone = await insert(category);
@@ -673,6 +702,52 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       await expect(ProductDao.softDelete(head.id)).rejects.toThrow(
         hasMembersMessage(2),
       );
+    });
+
+    it('refuses to hide a head with active members through update() too', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, { variantLabel: '۵ کیلوگرم' });
+      await insert(category, {
+        variantOf: head.id,
+        variantLabel: '۱۰ کیلوگرم',
+      });
+
+      // The edit form's «نمایش در فروشگاه» checkbox writes `isActive` through
+      // `update`, not `softDelete`. Before the guard was shared, «حذف» refused
+      // and this door accepted — leaving the members active, purchasable by
+      // URL, and listed on no shelf.
+      await expect(
+        ProductDao.update(head.id, { isActive: false }),
+      ).rejects.toThrow(hasMembersMessage(1));
+
+      const [row] = await testDb
+        .select({ isActive: products.isActive })
+        .from(products)
+        .where(eq(products.id, head.id));
+      expect(row.isActive).toBe(true);
+    });
+
+    it('lets update() hide a head whose members are already inactive', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, { variantLabel: '۵ کیلوگرم' });
+      await insert(category, {
+        variantOf: head.id,
+        variantLabel: '۱۰ کیلوگرم',
+        isActive: false,
+      });
+
+      const updated = await ProductDao.update(head.id, { isActive: false });
+
+      expect(updated?.isActive).toBe(false);
+    });
+
+    it('leaves an ordinary product free to be hidden', async () => {
+      const category = await makeCategory();
+      const alone = await insert(category);
+
+      const updated = await ProductDao.update(alone.id, { isActive: false });
+
+      expect(updated?.isActive).toBe(false);
     });
 
     it('lets a head go once its members are only inactive', async () => {

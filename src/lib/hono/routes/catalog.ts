@@ -276,7 +276,17 @@ const toProductDetailResponse = (
   row: ProductDetail,
 ): ProductDetailResponse => ({
   ...toProductResponse(row),
-  variants: row.variants,
+  // Field by field, like every other mapper here: handing the DAO's array out
+  // by reference is the one way a column added to `VariantChip` later would
+  // reach an anonymous visitor without appearing in the schema above.
+  variants: row.variants.map((variant) => ({
+    id: variant.id,
+    slug: variant.slug,
+    label: variant.label,
+    isCurrent: variant.isCurrent,
+    price: variant.price,
+    inStock: variant.inStock,
+  })),
 });
 
 const invalidQueryResponse = {

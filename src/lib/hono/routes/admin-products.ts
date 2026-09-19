@@ -152,12 +152,17 @@ const WRITE_ERROR_MESSAGES: Record<string, string> = {
  */
 export const productWriteErrors = (error: unknown): string[] | null => {
   // A family rule that had to read a second row, so neither zod nor a CHECK
-  // could refuse it. Keyed on the field the form renders: the head goes on the
-  // «زیرمجموعه‌ی» select, «this product still has members» on the label instead,
-  // because the select is not where the admin can fix that one.
+  // could refuse it. Keyed on «زیرمجموعه‌ی», the field the form renders and the
+  // one the admin fixes it on.
+  //
+  // `hasMembers` is the exception: it comes from the visibility checkbox (or
+  // the delete button), and there is no field on the form to hang it on — so it
+  // goes back unprefixed, which `parseFieldErrors` routes to `unmapped` and the
+  // form shows in its top-level alert rather than silently dropping.
   if (error instanceof ProductVariantError) {
-    const field = error.reason === 'hasMembers' ? 'variantLabel' : 'variantOf';
-    return [`${field}: ${error.message}`];
+    return error.reason === 'hasMembers'
+      ? [error.message]
+      : [`variantOf: ${error.message}`];
   }
   const pg = pgErrorOf(error);
   if (!pg) return null;
@@ -291,7 +296,7 @@ export const productDeleteRoute = createRoute({
       },
       description: 'The deactivated product (the row is kept, never removed)',
     },
-    400: errorResponse(
+    409: errorResponse(
       'A family head whose active members would be left with nothing to hang off',
     ),
     401: errorResponse('No session'),
@@ -312,11 +317,15 @@ export const productDeleteHandler: RouteHandler<
     return c.json(apiSuccess(toAdminProduct(removed)), 200);
   } catch (error) {
     // Deactivating could not fail before families existed, so this handler had
-    // no catch: a head with members would have escaped as a 500 instead of the
-    // Persian refusal the button shows.
-    const errors = productWriteErrors(error);
-    if (errors)
-      return c.json(apiError(PRODUCT_SAVE_FAILED_MESSAGE, errors), 400);
+    // no catch at all: a head with members escaped as a 500.
+    //
+    // The refusal is the envelope's `message`, not a field-keyed `errors[]`
+    // entry — a DELETE carries no form, so there is no field to key it to, and
+    // the button can show `message` directly. `categoryDeleteHandler` answers
+    // its own "other rows point at it" refusal exactly this way.
+    if (error instanceof ProductVariantError) {
+      return c.json(apiError(error.message), 409);
+    }
     throw error;
   }
 };

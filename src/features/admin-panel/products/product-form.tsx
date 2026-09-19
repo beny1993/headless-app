@@ -708,7 +708,12 @@ export function ProductForm({
             type="checkbox"
             checked={form.isActive}
             onChange={(e) => update('isActive', e.target.checked)}
-            className="accent-accent-strong mt-0.5 h-4 w-4"
+            // Hiding a head hides its whole family — the members are never
+            // listed on their own, so they would stay live and purchasable by
+            // URL on no shelf. The DAO refuses it; disabling here says so
+            // before the round trip, the way the «زیرمجموعه‌ی» select does.
+            disabled={hasMembers}
+            className="accent-accent-strong mt-0.5 h-4 w-4 disabled:opacity-50"
           />
           <div>
             <label
@@ -718,7 +723,9 @@ export function ProductForm({
               نمایش در فروشگاه
             </label>
             <p className="text-muted-foreground mt-0.5 text-xs">
-              محصولات حذف‌شده فقط غیرفعال می‌شوند تا سفارش‌های قبلی سالم بمانند.
+              {hasMembers
+                ? 'این محصول زیرمجموعه فعال دارد؛ تا وقتی آن‌ها فعال‌اند نمی‌توانی پنهانش کنی.'
+                : 'محصولات حذف‌شده فقط غیرفعال می‌شوند تا سفارش‌های قبلی سالم بمانند.'}
             </p>
           </div>
         </div>
