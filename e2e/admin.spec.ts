@@ -185,5 +185,23 @@ test.describe('a product family in the admin panel', () => {
       })
       .click();
     await expect(page.locator('select[id$="variantOf"]')).toBeEnabled();
+
+    // And it is offered no filing of its own: a family is filed once, on its
+    // head, because the shop lists heads and a member's own category could
+    // never reach a shelf. The head's form has all three.
+    await expect(page.locator('select[id$="categoryId"]')).toHaveCount(0);
+    // Exact: the note that replaces them reads «دسته‌بندی و نوع حیوان».
+    await expect(page.getByText('نوع حیوان', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('از محصول اصلی گرفته می‌شود')).toBeVisible();
+
+    await page.goto(
+      `${PROTECTED_PATHS.PRODUCTS}?${new URLSearchParams({ q: head.title })}`,
+    );
+    await page
+      .getByRole('link', {
+        name: `ویرایش ${head.title} — ${head.variantLabel}`,
+      })
+      .click();
+    await expect(page.locator('select[id$="categoryId"]')).toBeVisible();
   });
 });

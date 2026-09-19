@@ -77,6 +77,28 @@ export type ProductInput = Omit<
   'id' | 'createdAt' | 'updatedAt' | 'searchText'
 > & { extraCategoryIds?: string[] };
 
+/**
+ * Where a family is filed. A member does not carry its own: the shop lists
+ * heads, so a member's categories and pets could never reach a shelf, and a
+ * panel that offered them was offering a filing that did nothing. They are
+ * copied from the head on every write that names one, and pushed back down to
+ * the members whenever the head itself moves.
+ */
+type FamilyFiling = {
+  categoryId: string;
+  petTypes: PetType[];
+  extraCategoryIds: string[];
+};
+
+/** One candidate head for the «زیرمجموعه‌ی» select, and what it is filed as. */
+export type VariantHeadRow = {
+  id: string;
+  title: string;
+  variantLabel: string | null;
+  categoryId: string;
+  petTypes: PetType[];
+};
+
 /** A written product plus the additional categories now stored for it. */
 export type ProductWithExtraCategories = Product & {
   extraCategoryIds: string[];
@@ -206,6 +228,21 @@ export type AdminProductFilters = {
   /** `undefined` = active and inactive; `true` = active only; `false` = inactive only. */
   active?: boolean;
 };
+
+/** The head's filing as the columns a write sets. */
+const columnsOf = ({ categoryId, petTypes }: FamilyFiling) => ({
+  categoryId,
+  petTypes,
+});
+
+/** Whether a patch could have moved where a product is filed. */
+const touchesFiling = (
+  columns: Partial<ProductInput>,
+  extraCategoryIds: string[] | undefined,
+): boolean =>
+  'categoryId' in columns ||
+  'petTypes' in columns ||
+  extraCategoryIds !== undefined;
 
 export class ProductDao {
   /**
@@ -525,12 +562,17 @@ export class ProductDao {
   static async listVariantHeads(
     excludeId?: string,
     currentHeadId?: string | null,
-  ): Promise<{ id: string; title: string; variantLabel: string | null }[]> {
+  ): Promise<VariantHeadRow[]> {
     return db
       .select({
         id: products.id,
         title: products.title,
         variantLabel: products.variantLabel,
+        // The filing a member takes from it. The form needs these to send a
+        // body that satisfies its own schema for a product that has no filing
+        // of its own; the DAO copies them again on the way in regardless.
+        categoryId: products.categoryId,
+        petTypes: products.petTypes,
       })
       .from(products)
       .where(
@@ -617,8 +659,8 @@ export class ProductDao {
     executor: Executor,
     id: string | undefined,
     variantOf: string | null | undefined,
-  ): Promise<void> {
-    if (variantOf == null) return;
+  ): Promise<FamilyFiling | null> {
+    if (variantOf == null) return null;
     if (id && variantOf === id) throw new ProductVariantError('self');
 
     // `for update` on the pair, in id order — `CategoryDao.assertParent`'s
@@ -632,6 +674,8 @@ export class ProductDao {
         variantOf: products.variantOf,
         variantLabel: products.variantLabel,
         isActive: products.isActive,
+        categoryId: products.categoryId,
+        petTypes: products.petTypes,
       })
       .from(products)
       .where(inArray(products.id, id ? [variantOf, id] : [variantOf]))
@@ -656,6 +700,45 @@ export class ProductDao {
       const members = await ProductDao.countActiveMembers(id, executor);
       if (members > 0) throw new ProductVariantError('nested');
     }
+
+    return {
+      categoryId: head.categoryId,
+      petTypes: head.petTypes,
+      extraCategoryIds: await ProductDao.readExtraCategories(executor, head.id),
+    };
+  }
+
+  /**
+   * Copies a head's filing onto every member that hangs off it.
+   *
+   * The other half of «a family is filed once»: without it, re-filing a head
+   * would leave its members on the categories they were created under, and
+   * their own pages would disagree with the family's. Runs only when a write
+   * actually moved a head.
+   */
+  private static async refileMembers(
+    tx: Executor,
+    headId: string,
+    filing: FamilyFiling,
+  ): Promise<void> {
+    const members = await tx
+      .select({ id: products.id })
+      .from(products)
+      .where(eq(products.variantOf, headId));
+    if (members.length === 0) return;
+
+    await tx
+      .update(products)
+      .set({ categoryId: filing.categoryId, petTypes: filing.petTypes })
+      .where(eq(products.variantOf, headId));
+    for (const member of members) {
+      await ProductDao.replaceExtraCategories(
+        tx,
+        member.id,
+        filing.categoryId,
+        filing.extraCategoryIds,
+      );
+    }
   }
 
   static async create(
@@ -667,11 +750,19 @@ export class ProductDao {
     return db.transaction(async (tx) => {
       // Same transaction, so a head deleted between this check and the insert
       // rolls the product back with it instead of leaving an orphan behind.
-      await ProductDao.assertFamilyRules(tx, undefined, columns.variantOf);
+      const filing = await ProductDao.assertFamilyRules(
+        tx,
+        undefined,
+        columns.variantOf,
+      );
+      // A member takes its head's filing, whatever the caller sent: the shop
+      // lists heads, so its own would reach no shelf, and the two disagreeing
+      // is what made the panel show a category that did nothing.
+      const values = filing ? { ...columns, ...columnsOf(filing) } : columns;
       const [row] = await tx
         .insert(products)
         // Last, so a caller reaching past `ProductInput` cannot supply its own.
-        .values({ ...columns, searchText: buildProductSearchText(columns) })
+        .values({ ...values, searchText: buildProductSearchText(values) })
         .returning();
       return {
         ...row,
@@ -679,7 +770,7 @@ export class ProductDao {
           tx,
           row.id,
           row.categoryId,
-          extraCategoryIds,
+          filing ? filing.extraCategoryIds : extraCategoryIds,
         ),
       };
     });
@@ -703,7 +794,11 @@ export class ProductDao {
     return db.transaction(async (tx) => {
       // Before the write, on the same connection: the row this patch points at
       // is read and refused here, not by a constraint that cannot see it.
-      await ProductDao.assertFamilyRules(tx, id, columns.variantOf);
+      const filing = await ProductDao.assertFamilyRules(
+        tx,
+        id,
+        columns.variantOf,
+      );
       // Hiding a head is hiding its whole family: the members are never listed
       // on their own (`variant_of is null`), so they would stay active and
       // purchasable by URL while appearing on no shelf. `softDelete` always
@@ -725,28 +820,39 @@ export class ProductDao {
       const row = await ProductDao.updateColumns(
         tx,
         id,
-        columns,
+        filing ? { ...columns, ...columnsOf(filing) } : columns,
         expectedStock,
       );
       if (!row) return null;
-      return {
-        ...row,
-        extraCategoryIds:
-          // ponytail: a patch that omits the key leaves the extras alone — the
-          // one caller (the admin PUT) always sends the full body, a stray
-          // primary in the junction is harmless to the filter and the count,
-          // and the next full write strips it. `row.categoryId` is the primary
-          // *after* the update, so a category promoted to primary in this very
-          // write loses its junction row.
-          extraCategoryIds === undefined
-            ? await ProductDao.readExtraCategories(tx, id)
-            : await ProductDao.replaceExtraCategories(
-                tx,
-                id,
-                row.categoryId,
-                extraCategoryIds,
-              ),
-      };
+      // The head's own extras first: `refileMembers` copies what the head
+      // ends up with, not what it had.
+      const extras =
+        extraCategoryIds === undefined
+          ? // ponytail: a patch that omits the key leaves the extras alone —
+            // the one caller (the admin PUT) always sends the full body, a
+            // stray primary in the junction is harmless to the filter and the
+            // count, and the next full write strips it.
+            await ProductDao.readExtraCategories(tx, id)
+          : await ProductDao.replaceExtraCategories(
+              tx,
+              id,
+              // The primary *after* the update, so a category promoted to
+              // primary in this very write loses its junction row.
+              row.categoryId,
+              filing ? filing.extraCategoryIds : extraCategoryIds,
+            );
+      // Moving a head moves its family with it, or the members would keep the
+      // categories they were created under and their own pages would disagree
+      // with the head's. Only when this write is about a head, and only when
+      // it touched the filing.
+      if (row.variantOf === null && touchesFiling(columns, extraCategoryIds)) {
+        await ProductDao.refileMembers(tx, id, {
+          categoryId: row.categoryId,
+          petTypes: row.petTypes,
+          extraCategoryIds: extras,
+        });
+      }
+      return { ...row, extraCategoryIds: extras };
     });
   }
 

@@ -194,4 +194,22 @@ describe('the seeded product family', () => {
     const prices = new Set(family.map((product) => product.price));
     expect(prices.size).toBeGreaterThan(1);
   });
+
+  it('files every member where its head is', () => {
+    // No longer a change detector on data nobody reads: a family is filed
+    // once, on its head, and `ProductDao` copies the head's category and pets
+    // onto a member on every write. `upsertBySku` is the one writer that does
+    // not — the seed inserts the whole catalogue in one pass — so the seed
+    // data has to hold the invariant itself or a re-seed would quietly break
+    // it.
+    const bySku = new Map(SEED_PRODUCTS.map((p) => [p.sku, p]));
+    for (const member of members) {
+      const head = bySku.get(member.variantOfSku!);
+      expect(member.categorySlug).toBe(head?.categorySlug);
+      expect(member.petTypes).toEqual(head?.petTypes);
+      expect(member.extraCategorySlugs ?? []).toEqual(
+        head?.extraCategorySlugs ?? [],
+      );
+    }
+  });
 });

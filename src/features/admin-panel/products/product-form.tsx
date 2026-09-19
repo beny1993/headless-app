@@ -80,6 +80,9 @@ export type VariantHeadOption = {
   title: string;
   /** Null when the candidate has no «نوع» of its own yet — offered, disabled. */
   variantLabel: string | null;
+  /** What this head is filed as — a member picking it takes the same. */
+  categoryId: string;
+  petTypes: PetType[];
 };
 
 const GENERIC_ERROR = 'خطای غیرمنتظره رخ داد. دوباره تلاش کن.';
@@ -201,6 +204,35 @@ export function ProductForm({
 
   const setExtras = (extraCategoryIds: string[]) =>
     update('extraCategoryIds', extraCategoryIds);
+
+  /**
+   * Picking a head files this product where the head is filed.
+   *
+   * The controls for those three fields are hidden below while this is set —
+   * the shop lists heads, so a member's own filing could never reach a shelf —
+   * but the body still has to satisfy the same schema as any other product, so
+   * the values come with the head rather than being left blank. `ProductDao`
+   * copies them again on the way in; this is what keeps the form honest, not
+   * what makes the rule true.
+   */
+  const chooseHead = (variantOf: string) => {
+    const head = variantHeads.find((candidate) => candidate.id === variantOf);
+    setForm((current) => ({
+      ...current,
+      variantOf,
+      ...(head ? { categoryId: head.categoryId, petTypes: head.petTypes } : {}),
+    }));
+    setFieldErrors((current) => ({
+      ...current,
+      variantOf: '',
+      categoryId: '',
+      petTypes: '',
+    }));
+    setPromotedTitle(null);
+  };
+
+  /** True once this product hangs off another: its filing is the head's. */
+  const isMember = form.variantOf !== '';
 
   /** Add or remove one pet, keeping the stored order. */
   const togglePet = (pet: PetType) =>
@@ -412,39 +444,51 @@ export function ProductForm({
               className={inputClass(fieldErrors.brand)}
             />
           </Field>
-          <Field
-            id={fid('categoryId')}
-            label="دسته‌بندی"
-            error={fieldErrors.categoryId}
-          >
-            <select
+          {!isMember && (
+            <Field
               id={fid('categoryId')}
-              value={form.categoryId}
-              onChange={(e) => chooseCategory(e.target.value)}
-              className={inputClass(fieldErrors.categoryId)}
+              label="دسته‌بندی"
+              error={fieldErrors.categoryId}
             >
-              <option value="">انتخاب دسته‌بندی</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.label}
-                </option>
-              ))}
-            </select>
-            {/* ponytail: leaving the form drops what was typed; an inline
-                create beside the select is the upgrade if that bites. */}
-            {categories.length === 0 && (
-              <p className="text-muted-foreground mt-1.5 text-xs">
-                هنوز دسته‌بندی‌ای ساخته نشده است.{' '}
-                <Link
-                  href={PROTECTED_PATHS.CATEGORIES}
-                  data-umami-event="admin-panel-product-form-categories-link"
-                  className="text-accent-strong font-medium underline"
-                >
-                  ساخت دسته‌بندی
-                </Link>
+              <select
+                id={fid('categoryId')}
+                value={form.categoryId}
+                onChange={(e) => chooseCategory(e.target.value)}
+                className={inputClass(fieldErrors.categoryId)}
+              >
+                <option value="">انتخاب دسته‌بندی</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.label}
+                  </option>
+                ))}
+              </select>
+              {/* ponytail: leaving the form drops what was typed; an inline
+                  create beside the select is the upgrade if that bites. */}
+              {categories.length === 0 && (
+                <p className="text-muted-foreground mt-1.5 text-xs">
+                  هنوز دسته‌بندی‌ای ساخته نشده است.{' '}
+                  <Link
+                    href={PROTECTED_PATHS.CATEGORIES}
+                    data-umami-event="admin-panel-product-form-categories-link"
+                    className="text-accent-strong font-medium underline"
+                  >
+                    ساخت دسته‌بندی
+                  </Link>
+                </p>
+              )}
+            </Field>
+          )}
+          {isMember && (
+            <div className="border-border bg-secondary/40 rounded-xl border border-dashed p-3 sm:col-span-2">
+              <p className="text-sm font-medium">دسته‌بندی و نوع حیوان</p>
+              <p className="text-muted-foreground mt-1 text-xs">
+                از محصول اصلی گرفته می‌شود. فروشگاه محصول اصلی را فهرست می‌کند،
+                پس یک خانواده یک‌بار دسته‌بندی می‌شود؛ برای تغییر آن، محصول اصلی
+                را ویرایش کن.
               </p>
-            )}
-          </Field>
+            </div>
+          )}
         </div>
 
         {/* A product family: one card in the shop, the sizes or smells picked on
@@ -477,7 +521,7 @@ export function ProductForm({
             <select
               id={fid('variantOf')}
               value={form.variantOf}
-              onChange={(e) => update('variantOf', e.target.value)}
+              onChange={(e) => chooseHead(e.target.value)}
               className={inputClass(fieldErrors.variantOf)}
               // A product that already has members cannot itself become one:
               // only one level is allowed, and moving it would orphan them.
@@ -504,15 +548,10 @@ export function ProductForm({
                 : 'فقط یک سطح: محصولی که خودش زیرمجموعه است در این فهرست نیست.'}
             </p>
             {/* The one place the row's member-ness is declared, so the one
-                place to say what follows from it: the shop lists heads
-                (`variant_of is null`), so a member's own category and pet type
-                reach no filter — only its own page. Without this an admin files
-                the 10kg bag under a category, looks for it there and finds
-                nothing wrong to fix. */}
-            {form.variantOf !== '' && (
+                place to say what follows from it. */}
+            {isMember && (
               <p className="text-muted-foreground mt-1.5 text-xs">
-                چون زیرمجموعه است، دسته‌بندی و نوع حیوانِ آن فقط در صفحه‌ی خودش
-                دیده می‌شود؛ در فهرست و فیلترهای فروشگاه محصول اصلی می‌آید.
+                دسته‌بندی و نوع حیوان از همین محصول اصلی گرفته می‌شود.
               </p>
             )}
           </Field>
@@ -524,82 +563,85 @@ export function ProductForm({
             Chips plus an add-select rather than a checkbox list: a real
             catalogue reaches dozens of categories with sub-categories, and the
             admin is choosing at most five. */}
-        <fieldset aria-describedby={fid('extraCategoryIds-note')}>
-          <legend className="mb-1.5 block text-sm font-medium">
-            دسته‌بندی‌های دیگر (اختیاری)
-          </legend>
-          {/* Always rendered, so adding and removing are announced — the
-              select snapping back to its placeholder says nothing by itself. */}
-          <ul aria-live="polite" className="flex flex-wrap gap-2">
-            {form.extraCategoryIds.map((id) => {
-              const title =
-                categories.find((category) => category.id === id)?.title ?? id;
-              return (
-                <li
-                  key={id}
-                  className="border-border flex h-11 items-center rounded-xl border ps-3 text-sm"
-                >
-                  {title}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExtras(
-                        form.extraCategoryIds.filter((kept) => kept !== id),
-                      )
-                    }
-                    aria-label={`حذف ${title} از دسته‌بندی‌های دیگر`}
-                    data-umami-event="admin-panel-product-category-extra-remove"
-                    className="text-muted-foreground hover:text-foreground flex h-11 w-9 items-center justify-center"
+        {!isMember && (
+          <fieldset aria-describedby={fid('extraCategoryIds-note')}>
+            <legend className="mb-1.5 block text-sm font-medium">
+              دسته‌بندی‌های دیگر (اختیاری)
+            </legend>
+            {/* Always rendered, so adding and removing are announced — the
+                select snapping back to its placeholder says nothing by itself. */}
+            <ul aria-live="polite" className="flex flex-wrap gap-2">
+              {form.extraCategoryIds.map((id) => {
+                const title =
+                  categories.find((category) => category.id === id)?.title ??
+                  id;
+                return (
+                  <li
+                    key={id}
+                    className="border-border flex h-11 items-center rounded-xl border ps-3 text-sm"
                   >
-                    <X size={14} aria-hidden="true" />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          {/* A placeholder option is not a label. */}
-          <label htmlFor={fid('extraCategoryIds')} className="sr-only">
-            افزودن دسته‌بندی دیگر
-          </label>
-          {/* An action, not a value: it stays on its placeholder and pushes
-              what was chosen onto the list. The main category and the chosen
-              ones are removed from the options rather than disabled — there is
-              no rule to teach here, they are simply already used. */}
-          <select
-            id={fid('extraCategoryIds')}
-            value=""
-            disabled={atExtraCategoryCap}
-            onChange={(e) =>
-              setExtras([...form.extraCategoryIds, e.target.value])
-            }
-            data-umami-event="admin-panel-product-category-extra-add"
-            className={`${inputClass(fieldErrors.extraCategoryIds)} mt-2 disabled:opacity-60`}
-          >
-            <option value="">افزودن دسته‌بندی…</option>
-            {categories
-              .filter(
-                (category) =>
-                  category.id !== form.categoryId &&
-                  !form.extraCategoryIds.includes(category.id),
-              )
-              .map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.label}
-                </option>
-              ))}
-          </select>
-          <HintOrError
-            id={fid('extraCategoryIds-note')}
-            hint={
-              promotedTitle
-                ? `«${promotedTitle}» از دسته‌بندی‌های دیگر برداشته شد؛ حالا دسته‌بندی اصلی است.`
-                : atExtraCategoryCap
-                  ? `سقف ${toPersianDigits(MAX_EXTRA_CATEGORIES)} دسته‌بندی دیگر پر شده است؛ برای افزودن، یکی را حذف کن.`
-                  : `اگر محصول در دسته‌بندی دیگری هم جا می‌گیرد، اینجا اضافه کن. حداکثر ${toPersianDigits(MAX_EXTRA_CATEGORIES)} تا.`
-            }
-            error={fieldErrors.extraCategoryIds}
-          />
-        </fieldset>
+                    {title}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExtras(
+                          form.extraCategoryIds.filter((kept) => kept !== id),
+                        )
+                      }
+                      aria-label={`حذف ${title} از دسته‌بندی‌های دیگر`}
+                      data-umami-event="admin-panel-product-category-extra-remove"
+                      className="text-muted-foreground hover:text-foreground flex h-11 w-9 items-center justify-center"
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            {/* A placeholder option is not a label. */}
+            <label htmlFor={fid('extraCategoryIds')} className="sr-only">
+              افزودن دسته‌بندی دیگر
+            </label>
+            {/* An action, not a value: it stays on its placeholder and pushes
+                what was chosen onto the list. The main category and the chosen
+                ones are removed from the options rather than disabled — there is
+                no rule to teach here, they are simply already used. */}
+            <select
+              id={fid('extraCategoryIds')}
+              value=""
+              disabled={atExtraCategoryCap}
+              onChange={(e) =>
+                setExtras([...form.extraCategoryIds, e.target.value])
+              }
+              data-umami-event="admin-panel-product-category-extra-add"
+              className={`${inputClass(fieldErrors.extraCategoryIds)} mt-2 disabled:opacity-60`}
+            >
+              <option value="">افزودن دسته‌بندی…</option>
+              {categories
+                .filter(
+                  (category) =>
+                    category.id !== form.categoryId &&
+                    !form.extraCategoryIds.includes(category.id),
+                )
+                .map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.label}
+                  </option>
+                ))}
+            </select>
+            <HintOrError
+              id={fid('extraCategoryIds-note')}
+              hint={
+                promotedTitle
+                  ? `«${promotedTitle}» از دسته‌بندی‌های دیگر برداشته شد؛ حالا دسته‌بندی اصلی است.`
+                  : atExtraCategoryCap
+                    ? `سقف ${toPersianDigits(MAX_EXTRA_CATEGORIES)} دسته‌بندی دیگر پر شده است؛ برای افزودن، یکی را حذف کن.`
+                    : `اگر محصول در دسته‌بندی دیگری هم جا می‌گیرد، اینجا اضافه کن. حداکثر ${toPersianDigits(MAX_EXTRA_CATEGORIES)} تا.`
+              }
+              error={fieldErrors.extraCategoryIds}
+            />
+          </fieldset>
+        )}
 
         <Field
           id={fid('benefit')}
@@ -682,39 +724,41 @@ export function ProductForm({
             semantics — a pressed toggle is a button, not a radio — so «both»
             needs the handler to toggle rather than replace, and nothing else.
             The fieldset's legend is the group's label. */}
-        <fieldset aria-describedby={fid('petTypes-note')}>
-          <legend className="mb-1.5 block text-sm font-medium">
-            نوع حیوان
-          </legend>
-          <div className="flex max-w-xs gap-2">
-            {PET_TYPE_VALUES.map((value) => ({
-              value,
-              label: `${PET_EMOJI[value]} ${PET_LABELS[value]}`,
-            })).map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => togglePet(option.value)}
-                aria-pressed={form.petTypes.includes(option.value)}
-                data-umami-event={`admin-panel-product-pet-${option.value}`}
-                className={`flex-1 rounded-xl border-2 py-2.5 text-sm font-medium transition-colors ${
-                  form.petTypes.includes(option.value)
-                    ? 'border-accent-strong bg-accent/10 text-accent-strong'
-                    : 'border-border hover:border-accent-strong'
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-          {/* Deselecting the last pet is allowed and refused on submit with
-              every other field: silently ignoring the click says nothing. */}
-          <HintOrError
-            id={fid('petTypes-note')}
-            hint="یکی یا هر دو را انتخاب کن"
-            error={fieldErrors.petTypes}
-          />
-        </fieldset>
+        {!isMember && (
+          <fieldset aria-describedby={fid('petTypes-note')}>
+            <legend className="mb-1.5 block text-sm font-medium">
+              نوع حیوان
+            </legend>
+            <div className="flex max-w-xs gap-2">
+              {PET_TYPE_VALUES.map((value) => ({
+                value,
+                label: `${PET_EMOJI[value]} ${PET_LABELS[value]}`,
+              })).map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => togglePet(option.value)}
+                  aria-pressed={form.petTypes.includes(option.value)}
+                  data-umami-event={`admin-panel-product-pet-${option.value}`}
+                  className={`flex-1 rounded-xl border-2 py-2.5 text-sm font-medium transition-colors ${
+                    form.petTypes.includes(option.value)
+                      ? 'border-accent-strong bg-accent/10 text-accent-strong'
+                      : 'border-border hover:border-accent-strong'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {/* Deselecting the last pet is allowed and refused on submit with
+                every other field: silently ignoring the click says nothing. */}
+            <HintOrError
+              id={fid('petTypes-note')}
+              hint="یکی یا هر دو را انتخاب کن"
+              error={fieldErrors.petTypes}
+            />
+          </fieldset>
+        )}
 
         <div className="bg-secondary/50 border-border flex items-start gap-3 rounded-xl border p-4">
           <input

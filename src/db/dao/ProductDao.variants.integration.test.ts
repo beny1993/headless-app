@@ -1058,6 +1058,98 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
     });
   });
 
+  describe('a family is filed once, on its head', () => {
+    it('files a new member where its head is, whatever the caller sent', async () => {
+      const headCategory = await makeCategory();
+      const elsewhere = await makeCategory();
+      const head = await insert(headCategory, {
+        variantLabel: '۵ کیلوگرم',
+        petTypes: [PET_TYPES.DOG],
+      });
+
+      const member = await ProductDao.create({
+        ...productValues(elsewhere, {
+          variantOf: head.id,
+          variantLabel: '۱۰ کیلوگرم',
+          petTypes: [PET_TYPES.CAT],
+        }),
+        extraCategoryIds: [elsewhere.id],
+      });
+
+      // The shop lists heads, so a member's own filing could never reach a
+      // shelf — the panel was offering a category that did nothing.
+      expect(member.categoryId).toBe(headCategory.id);
+      expect(member.petTypes).toEqual([PET_TYPES.DOG]);
+      expect(member.extraCategoryIds).toEqual([]);
+    });
+
+    it('re-files a product the moment it becomes a member', async () => {
+      const headCategory = await makeCategory();
+      const elsewhere = await makeCategory();
+      const head = await insert(headCategory, {
+        variantLabel: '۵ کیلوگرم',
+        petTypes: [PET_TYPES.DOG],
+      });
+      const loner = await ProductDao.create(
+        productValues(elsewhere, { petTypes: [PET_TYPES.CAT] }),
+      );
+
+      const attached = await ProductDao.update(loner.id, {
+        variantOf: head.id,
+        variantLabel: '۱۰ کیلوگرم',
+      });
+
+      expect(attached?.categoryId).toBe(headCategory.id);
+      expect(attached?.petTypes).toEqual([PET_TYPES.DOG]);
+    });
+
+    it('moves the members when the head moves', async () => {
+      const before = await makeCategory();
+      const after = await makeCategory();
+      const extra = await makeCategory();
+      const head = await ProductDao.create(
+        productValues(before, {
+          variantLabel: '۵ کیلوگرم',
+          petTypes: [PET_TYPES.DOG],
+        }),
+      );
+      const member = await ProductDao.create(
+        productValues(before, {
+          variantOf: head.id,
+          variantLabel: '۱۰ کیلوگرم',
+        }),
+      );
+
+      await ProductDao.update(head.id, {
+        categoryId: after.id,
+        petTypes: [PET_TYPES.CAT, PET_TYPES.DOG],
+        extraCategoryIds: [extra.id],
+      });
+
+      // Without this the members keep the category they were created under,
+      // and their own pages disagree with the family's.
+      const moved = await ProductDao.findByIdForAdmin(member.id);
+      expect(moved?.categoryId).toBe(after.id);
+      expect(moved?.petTypes).toEqual([PET_TYPES.CAT, PET_TYPES.DOG]);
+      expect(moved?.extraCategoryIds).toEqual([extra.id]);
+    });
+
+    it('leaves a standalone product’s own filing alone', async () => {
+      const category = await makeCategory();
+      const other = await makeCategory();
+      const alone = await ProductDao.create(
+        productValues(category, { petTypes: [PET_TYPES.CAT] }),
+      );
+
+      const moved = await ProductDao.update(alone.id, {
+        categoryId: other.id,
+      });
+
+      expect(moved?.categoryId).toBe(other.id);
+      expect(moved?.petTypes).toEqual([PET_TYPES.CAT]);
+    });
+  });
+
   describe('re-seeding a family', () => {
     it('carries a corrected label onto the row, not only into its search text', async () => {
       const category = await makeCategory();

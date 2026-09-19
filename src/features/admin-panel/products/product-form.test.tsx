@@ -388,6 +388,7 @@ describe('the additional categories', () => {
  */
 describe('a product family in the form', () => {
   const HEAD = '123e4567-e89b-12d3-a456-426614174010';
+  const HEAD_CATEGORY = '123e4567-e89b-12d3-a456-426614174011';
   const renderMember = (
     props: Partial<Parameters<typeof ProductForm>[0]> = {},
   ) =>
@@ -402,7 +403,13 @@ describe('a product family in the form', () => {
           { id: EDIT_PRODUCT.categoryId, title: 'گربه', label: 'گربه' },
         ]}
         variantHeads={[
-          { id: HEAD, title: 'غذای خشک سگ', variantLabel: '۱۰ کیلوگرم' },
+          {
+            id: HEAD,
+            title: 'غذای خشک سگ',
+            variantLabel: '۱۰ کیلوگرم',
+            categoryId: HEAD_CATEGORY,
+            petTypes: ['dog'],
+          },
         ]}
         {...props}
       />,
@@ -426,7 +433,15 @@ describe('a product family in the form', () => {
     // Shown and disabled, with the reason: a head missing from the list is a
     // head the admin cannot work out how to use.
     renderMember({
-      variantHeads: [{ id: HEAD, title: 'غذای خشک سگ', variantLabel: null }],
+      variantHeads: [
+        {
+          id: HEAD,
+          title: 'غذای خشک سگ',
+          variantLabel: null,
+          categoryId: HEAD_CATEGORY,
+          petTypes: ['dog'],
+        },
+      ],
     });
 
     const option = screen.getByText(
@@ -435,12 +450,54 @@ describe('a product family in the form', () => {
     expect(option.disabled).toBe(true);
   });
 
-  it('says why a member’s category reaches no shelf', () => {
+  it('offers a member no filing controls of its own, and says why', () => {
     renderMember();
 
-    // The shop lists heads, so a member's own category and pet type only ever
-    // show on its own page — not something a select can convey by itself.
-    expect(screen.getByText(/فقط در صفحه‌ی خودش دیده می‌شود/)).toBeTruthy();
+    // The shop lists heads, so a member's own category and pets could never
+    // reach a shelf. Offering the fields was offering a filing that did
+    // nothing; the family is filed once, on the head.
+    expect(screen.queryByLabelText('دسته‌بندی')).toBeNull();
+    expect(screen.queryByText('دسته‌بندی‌های دیگر (اختیاری)')).toBeNull();
+    expect(screen.queryByText('نوع حیوان')).toBeNull();
+    expect(screen.getByText(/از محصول اصلی گرفته می‌شود/)).toBeTruthy();
+  });
+
+  it('keeps them for a product that stands alone', () => {
+    renderMember({ product: { ...EDIT_PRODUCT, variantOf: null } });
+
+    expect(screen.getByLabelText('دسته‌بندی')).toBeTruthy();
+    expect(screen.getByText('نوع حیوان')).toBeTruthy();
+  });
+
+  it('takes the head’s filing when one is picked', () => {
+    // A new member has no filing of its own to send, and the body still has to
+    // satisfy the same schema as any other product — so picking the head fills
+    // those fields rather than leaving the save to fail on a hidden one.
+    render(
+      <ProductForm
+        categories={[
+          { id: EDIT_PRODUCT.categoryId, title: 'گربه', label: 'گربه' },
+          { id: HEAD_CATEGORY, title: 'سگ', label: 'سگ' },
+        ]}
+        variantHeads={[
+          {
+            id: HEAD,
+            title: 'غذای خشک سگ',
+            variantLabel: '۱۰ کیلوگرم',
+            categoryId: HEAD_CATEGORY,
+            petTypes: ['dog'],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByLabelText('دسته‌بندی')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('زیرمجموعه‌ی (اختیاری)'), {
+      target: { value: HEAD },
+    });
+
+    expect(screen.queryByLabelText('دسته‌بندی')).toBeNull();
+    expect(screen.getByText(/از محصول اصلی گرفته می‌شود/)).toBeTruthy();
   });
 
   it('closes both doors on a head that already has members', () => {
