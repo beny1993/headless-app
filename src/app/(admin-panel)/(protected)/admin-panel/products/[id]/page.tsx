@@ -24,14 +24,18 @@ export default async function EditProductPage({
   const parsed = z.uuid().safeParse(id);
   if (!parsed.success) notFound();
 
-  const [product, categories, variantHeads, hasMembers] = await Promise.all([
-    ProductDao.findByIdForAdmin(parsed.data),
+  // The row first, on its own: the «زیرمجموعه‌ی» options depend on the head it
+  // already points at — a soft-deleted one has to stay in the list or the
+  // select would contradict the column — and a 404 then costs no other query.
+  const product = await ProductDao.findByIdForAdmin(parsed.data);
+  if (!product) notFound();
+
+  const [categories, variantHeads, hasMembers] = await Promise.all([
     CategoryDao.list(),
     // Never this product itself: a row cannot be its own head.
-    ProductDao.listVariantHeads(parsed.data),
+    ProductDao.listVariantHeads(parsed.data, product.variantOf),
     ProductDao.hasMembers(parsed.data),
   ]);
-  if (!product) notFound();
 
   return (
     <ProductForm

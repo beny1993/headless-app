@@ -4,6 +4,7 @@ import { Check, ShoppingBag } from 'lucide-react';
 import { AddToCartButton } from './add-to-cart-button';
 import type { ProductCard as ProductCardRow } from '@/db/schema/catalog';
 import { productPath } from '@/lib/constant/paths';
+import { displayTitle } from '@/lib/catalog/variant';
 import { formatToman } from '@/lib/format';
 import { imageSrc } from '@/lib/storage/image-url';
 
@@ -145,7 +146,12 @@ export function ProductCard({ product }: { product: ProductCardRow }) {
               line={{
                 productId: product.id,
                 slug: product.slug,
-                title: product.title,
+                // `displayTitle`, like the product page's own button and the
+                // `order_items` snapshot `create-order` writes: a head that
+                // still carries a label — a family whose members are all gone
+                // — would otherwise be named one way in the drawer and another
+                // on the invoice for the very same line.
+                title: displayTitle(product),
                 sku: product.sku,
                 brand: product.brand ?? undefined,
                 unitPrice: product.price,

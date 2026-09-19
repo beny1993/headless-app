@@ -17,7 +17,6 @@ import {
   getTableColumns,
   inArray,
   isNull,
-  lte,
   max,
   min,
   ne,
@@ -215,8 +214,23 @@ const MEMBER_SCOPE = sql`from products fam where fam.variant_of = ${products.id}
 /** Integer Toman. `bigint` comes back from `pg` as a string — coerced on read. */
 const familyMinPrice = sql<string>`(select min(fam.price) ${FAMILY_SCOPE})`;
 
-/** The dearest member, used only by the price-range overlap below. */
-const familyMaxPrice = sql<string>`(select max(fam.price) ${FAMILY_SCOPE})`;
+/**
+ * «Some member of this family costs between these two», as one `exists` over
+ * the family scope.
+ *
+ * One subquery rather than a bound apiece, because two would be satisfied by
+ * two *different* members — «someone costs at least ۱۶۰٬۰۰۰» and «someone
+ * costs at most ۱۷۰٬۰۰۰» are both true of a family priced ۱۴۹٬۰۰۰ and
+ * ۱۸۵٬۰۰۰, which is how the old pair of comparisons put a card with nothing in
+ * the window onto the shelf. Either bound may be absent; the caller only asks
+ * when at least one is set.
+ */
+const familyPriceWithin = (min?: number, max?: number): SQL => {
+  const bounds: SQL[] = [];
+  if (min !== undefined) bounds.push(sql`fam.price >= ${min}`);
+  if (max !== undefined) bounds.push(sql`fam.price <= ${max}`);
+  return sql`exists (select 1 ${FAMILY_SCOPE} and ${sql.join(bounds, sql` and `)})`;
+};
 
 /** `min <> max` — what makes a card read «از …» rather than a plain price. */
 const familyPricesVary = sql<boolean>`(select min(fam.price) <> max(fam.price) ${FAMILY_SCOPE})`;
@@ -451,16 +465,13 @@ export class ProductDao {
     }
     // Compared against undefined, not truthiness: a `minPrice` of 0 is a real
     // bound, even if the price check makes it a no-op.
-    // Interval overlap against the family, not a test on the head's own price:
-    // a family is in range when **any** member is. Filtering on the head alone
-    // both hides a card whose printed «از ۲۵۰٬۰۰۰» is inside the range and
-    // keeps one whose only affordable size was the member. For a standalone
-    // product min and max are its own price, so this is the old behaviour.
-    if (filters.minPrice !== undefined) {
-      where.push(gte(familyMaxPrice, filters.minPrice));
-    }
-    if (filters.maxPrice !== undefined) {
-      where.push(lte(familyMinPrice, filters.maxPrice));
+    // Asked of the family, not of the head's own price: a family belongs on the
+    // shelf when **one member** is inside the window. Filtering on the head
+    // alone would both hide a card whose printed «از ۲۵۰٬۰۰۰» is in range and
+    // keep one whose only affordable size was the member. For a standalone
+    // product the family is the row itself, so this is the old behaviour.
+    if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
+      where.push(familyPriceWithin(filters.minPrice, filters.maxPrice));
     }
     // `%>` rather than `word_similarity(…) >= x`: same meaning, but only the
     // operator reads the trigram index (`Bitmap Index Scan on
@@ -675,9 +686,17 @@ export class ProductDao {
    * A candidate without a label of its own is still listed — the form disables
    * it with the reason, which is more useful than a head that silently is not
    * there.
+   *
+   * `currentHeadId` is the head the edited row already points at, and it is
+   * listed even when it is soft-deleted. The select mirrors a column: a head
+   * left out of the options makes the form read «هیچ‌کدام — محصول مستقل» for a
+   * row whose `variant_of` says the opposite, and saving that form detaches the
+   * product the admin only opened to look at. Offering the row that is actually
+   * stored is the same thing the link picker does for a hidden product.
    */
   static async listVariantHeads(
     excludeId?: string,
+    currentHeadId?: string | null,
   ): Promise<{ id: string; title: string; variantLabel: string | null }[]> {
     return db
       .select({
@@ -688,7 +707,9 @@ export class ProductDao {
       .from(products)
       .where(
         and(
-          eq(products.isActive, true),
+          currentHeadId
+            ? or(eq(products.isActive, true), eq(products.id, currentHeadId))
+            : eq(products.isActive, true),
           isNull(products.variantOf),
           excludeId ? ne(products.id, excludeId) : undefined,
         ),

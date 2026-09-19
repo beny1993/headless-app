@@ -76,15 +76,11 @@ export default async function AdminContentAreaPage({
         keys={area.keys}
         values={values}
         options={{
-          // Tree order, sub-categories prefixed — the link picker's select and
-          // its `CategoryPicker` both read this one list.
-          categories: categoryOptions(categories).map(
-            ({ id, slug, label }) => ({
-              id,
-              slug,
-              title: label,
-            }),
-          ),
+          // Tree order, carrying both forms: `label` is the indented line the
+          // select shows, `title` the bare name a chip and the «به این ترتیب»
+          // sentence use — those were rendering the indent as «— شامپو و
+          // نظافت», a dash with nothing before it.
+          categories: categoryOptions(categories),
           products: products.map(productOption),
         }}
       />

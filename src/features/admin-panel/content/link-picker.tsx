@@ -14,7 +14,19 @@ import {
 import { MAX_ROUTINE_CATEGORIES } from '@/lib/content/site-content';
 
 /** A category or active product a destination can point at. */
-export type LinkOption = { id: string; title: string; slug: string };
+export type LinkOption = {
+  id: string;
+  title: string;
+  slug: string;
+  /**
+   * The indented form for a tree `<select>`, where «— شامپو و نظافت» is how a
+   * sub-category shows it sits under its parent. Anywhere the option is not a
+   * line in that list — a chip, a sentence naming what was picked — the
+   * prefix is a dash with nothing on the other side of it, so those read
+   * `title`. Absent for a flat list, where the two are the same thing.
+   */
+  label?: string;
+};
 export type LinkOptions = { categories: LinkOption[]; products: LinkOption[] };
 
 /** The pickers' Persian control names — exported so tests find controls by name. */
@@ -187,7 +199,7 @@ export function LinkPicker({
                 )}
               {options.categories.map((category) => (
                 <option key={category.id} value={category.id}>
-                  {category.title}
+                  {category.label ?? category.title}
                 </option>
               ))}
             </select>

@@ -501,6 +501,18 @@ export function ProductForm({
                 ? 'این محصول خودش زیرمجموعه دارد، پس نمی‌تواند زیرمجموعه‌ی محصول دیگری باشد.'
                 : 'فقط یک سطح: محصولی که خودش زیرمجموعه است در این فهرست نیست.'}
             </p>
+            {/* The one place the row's member-ness is declared, so the one
+                place to say what follows from it: the shop lists heads
+                (`variant_of is null`), so a member's own category and pet type
+                reach no filter — only its own page. Without this an admin files
+                the 10kg bag under a category, looks for it there and finds
+                nothing wrong to fix. */}
+            {form.variantOf !== '' && (
+              <p className="text-muted-foreground mt-1.5 text-xs">
+                چون زیرمجموعه است، دسته‌بندی و نوع حیوانِ آن فقط در صفحه‌ی خودش
+                دیده می‌شود؛ در فهرست و فیلترهای فروشگاه محصول اصلی می‌آید.
+              </p>
+            )}
           </Field>
         </div>
 

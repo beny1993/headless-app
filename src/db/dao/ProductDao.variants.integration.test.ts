@@ -400,6 +400,54 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       expect(items).toEqual([]);
       expect(total).toBe(0);
     });
+
+    it('drops a family that straddles the window with nothing inside it', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, {
+        price: 185_000,
+        variantLabel: 'لاوندر',
+      });
+      await insert(category, {
+        price: 149_000,
+        variantOf: head.id,
+        variantLabel: 'بدون بو',
+      });
+
+      const { items, total } = await ProductDao.list({
+        categorySlug: category.slug,
+        minPrice: 160_000,
+        maxPrice: 170_000,
+      });
+
+      // Nothing in this family costs between ۱۶۰٬۰۰۰ and ۱۷۰٬۰۰۰. Two
+      // comparisons — «the dearest is above the floor» and «the cheapest is
+      // below the ceiling» — are both true here and were satisfied by two
+      // different members, which put the card on a shelf where a shopper who
+      // set a budget could buy nothing on it.
+      expect(items).toEqual([]);
+      expect(total).toBe(0);
+    });
+
+    it('keeps it once the window reaches one of the members', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, {
+        price: 185_000,
+        variantLabel: 'لاوندر',
+      });
+      await insert(category, {
+        price: 149_000,
+        variantOf: head.id,
+        variantLabel: 'بدون بو',
+      });
+
+      const { items } = await ProductDao.list({
+        categorySlug: category.slug,
+        minPrice: 140_000,
+        maxPrice: 170_000,
+      });
+
+      expect(items.map((item) => item.id)).toEqual([head.id]);
+    });
   });
 
   describe('search reaches a family through its members', () => {
@@ -880,6 +928,63 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       });
 
       expect(updated?.variantLabel).toBeNull();
+    });
+  });
+
+  describe('the «زیرمجموعه‌ی» options the edit form renders', () => {
+    const idsFor = async (exclude?: string, current?: string | null) =>
+      (await ProductDao.listVariantHeads(exclude, current)).map(
+        (head) => head.id,
+      );
+
+    it('offers the heads and standalone products, never the members', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, { variantLabel: '۵ کیلوگرم' });
+      const member = await insert(category, {
+        variantOf: head.id,
+        variantLabel: '۱۰ کیلوگرم',
+      });
+      const alone = await insert(category);
+
+      const offered = await idsFor();
+
+      expect(offered).toContain(head.id);
+      expect(offered).toContain(alone.id);
+      // One level: a member cannot be somebody else's head.
+      expect(offered).not.toContain(member.id);
+    });
+
+    it('never offers the row being edited as its own head', async () => {
+      const category = await makeCategory();
+      const alone = await insert(category);
+
+      expect(await idsFor(alone.id)).not.toContain(alone.id);
+    });
+
+    it('leaves a soft-deleted product out of the options', async () => {
+      const category = await makeCategory();
+      const hidden = await insert(category, { isActive: false });
+
+      expect(await idsFor()).not.toContain(hidden.id);
+    });
+
+    it('still offers the soft-deleted head this row already points at', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, {
+        variantLabel: '۵ کیلوگرم',
+        isActive: false,
+      });
+      const member = await insert(category, {
+        variantOf: head.id,
+        variantLabel: '۱۰ کیلوگرم',
+        isActive: false,
+      });
+
+      // The select mirrors `variant_of`. Drop the stored head from the options
+      // and the form reads «هیچ‌کدام — محصول مستقل» for a row that is nothing
+      // of the sort — and saving it, which an admin might do after editing the
+      // price, detaches the product silently.
+      expect(await idsFor(member.id, member.variantOf)).toContain(head.id);
     });
   });
 
