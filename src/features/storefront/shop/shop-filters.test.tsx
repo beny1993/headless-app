@@ -60,6 +60,44 @@ it('ticks exactly one box — a sub-category never half-ticks its parent', () =>
   );
 });
 
+describe('«پاک کردن همه»', () => {
+  const clearAll = () => screen.getByText('پاک کردن همه');
+
+  it('drops every filter it shows a chip for', () => {
+    renderFilters({ category: 'toys', pet: 'cat', minPrice: '100000' });
+
+    fireEvent.click(clearAll());
+
+    const href = push.mock.calls[0][0] as string;
+    expect(href).not.toContain('category');
+    expect(href).not.toContain('pet');
+    expect(href).not.toContain('minPrice');
+  });
+
+  it('keeps the search term and the sort, which have no chip', () => {
+    // It used to be a bare link to `/shop`, which threw away both — neither is
+    // shown beside this button, so neither is what the shopper asked to undo.
+    renderFilters({ category: 'toys', q: 'غذا', sort: 'price-asc' });
+
+    fireEvent.click(clearAll());
+
+    const href = push.mock.calls[0][0] as string;
+    expect(decodeURIComponent(href)).toContain('غذا');
+    expect(href).toContain('price-asc');
+    expect(href).not.toContain('category');
+  });
+
+  it('goes through the panel’s own navigation, so the mobile sheet closes', () => {
+    // A link navigated past the sheet and left it open over the results it had
+    // just changed. `push` is what the sheet's `onApply` rides on.
+    renderFilters({ category: 'toys' });
+
+    fireEvent.click(clearAll());
+
+    expect(push).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('the price slider', () => {
   const handles = () => ({
     low: screen.getByLabelText('کمترین قیمت') as HTMLInputElement,
@@ -150,6 +188,63 @@ describe('the price slider', () => {
     // filter change and quietly hide anything cheaper added afterwards.
     expect(push.mock.calls[0][0]).not.toContain('minPrice');
     expect(push.mock.calls[0][0]).toContain('maxPrice=300000');
+  });
+
+  // Every test above moves a handle first, so none of them could catch a
+  // release that moved nothing — and `pointerUp`/`keyUp` fire for a bare click
+  // on the thumb and for the Tab that lands on it. Both navigated, and inside
+  // the mobile sheet both also closed it, which put the price filter out of a
+  // keyboard shopper's reach altogether.
+  it('does not navigate when a handle is released without moving', () => {
+    renderFilters();
+    const { low } = handles();
+
+    fireEvent.pointerUp(low);
+
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('does not navigate when the keyboard merely arrives on a handle', () => {
+    renderFilters();
+    const { high } = handles();
+
+    fireEvent.keyUp(high, { key: 'Tab' });
+
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('does not navigate twice when a handle is released back where it started', () => {
+    renderFilters({ minPrice: '100000' });
+    const { low } = handles();
+
+    fireEvent.change(low, { target: { value: '160000' } });
+    fireEvent.change(low, { target: { value: '100000' } });
+    fireEvent.pointerUp(low);
+
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('never shows a negative price, whatever the URL asks for', () => {
+    // `?maxPrice=1` is below the catalogue's floor. Clamped on one side each,
+    // the two handles arrived crossed and one nudge of the low one rendered
+    // «−۹٬۹۹۹ تا ۱» — a negative Toman price, against the money rule.
+    renderFilters({ maxPrice: '1' });
+    const { low, high } = handles();
+
+    expect(Number(low.value)).toBeGreaterThanOrEqual(BOUNDS.min);
+    expect(Number(high.value)).toBeGreaterThan(Number(low.value));
+
+    fireEvent.change(low, { target: { value: '0' } });
+
+    expect(Number(low.value)).toBeGreaterThanOrEqual(BOUNDS.min);
+  });
+
+  it('keeps both handles on the track for a URL above the ceiling too', () => {
+    renderFilters({ minPrice: '9999999' });
+    const { low, high } = handles();
+
+    expect(Number(high.value)).toBeLessThanOrEqual(BOUNDS.max);
+    expect(Number(low.value)).toBeLessThan(Number(high.value));
   });
 
   it('is not rendered when every product costs the same', () => {

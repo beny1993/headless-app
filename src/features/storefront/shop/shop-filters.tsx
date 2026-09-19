@@ -1,7 +1,6 @@
 'use client';
 
 import { useId, useRef, useState, useTransition } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Filter, X } from 'lucide-react';
 import {
@@ -10,7 +9,6 @@ import {
   updateShopQuery,
   type ShopQuery,
 } from './shop-query';
-import { PATHS } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -225,15 +223,29 @@ function ActiveFilters({
     <div className="border-border/70 mb-5 border-b pb-5">
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="text-sm font-semibold">فیلترهای فعال</p>
-        <Link
-          // A link to the canonical `/shop`, not a state reset: the URL is the
-          // state, so clearing the filters *is* going to the unfiltered URL.
-          href={PATHS.SHOP}
+        <button
+          type="button"
+          // Clears the filters this panel shows — the ones with a chip beside
+          // this button — and nothing else. A bare link to `/shop` also threw
+          // away the search term and the sort, neither of which is a chip and
+          // neither of which the shopper asked to undo; and being a link it
+          // navigated *past* the sheet on mobile, leaving it open over the
+          // results it had just changed.
+          onClick={() =>
+            onChange(
+              updateShopQuery(query, {
+                category: undefined,
+                pet: undefined,
+                minPrice: undefined,
+                maxPrice: undefined,
+              }),
+            )
+          }
           className="text-accent-strong rounded text-xs font-medium hover:underline focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
           data-umami-event="shop-filter-clear"
         >
           پاک کردن همه
-        </Link>
+        </button>
       </div>
       <ul className="flex flex-wrap gap-2">
         {chips.map((chip) => (
@@ -406,6 +418,29 @@ const floorTo = (value: number, step: number) =>
 const ceilTo = (value: number, step: number) => Math.ceil(value / step) * step;
 
 /**
+ * Where the two handles start, for any URL at all.
+ *
+ * Both ends are clamped into the track and then kept a step apart. Clamping one
+ * side each — the floor under `from`, the ceiling over `to` — left the pair
+ * free to arrive crossed: `?maxPrice=1` put the high handle below the low one,
+ * and one nudge of the low handle then rendered «−۹٬۹۹۹ تا ۱». A negative
+ * Toman price is against the money rule whether or not anyone can reach it by
+ * dragging, so the ordering is established here rather than trusted.
+ */
+const trackRange = (
+  query: ShopQuery,
+  floor: number,
+  ceiling: number,
+): { from: number; to: number } => {
+  const clamp = (value: number) => Math.min(ceiling, Math.max(floor, value));
+  const from = Math.min(clamp(query.minPrice ?? floor), ceiling - PRICE_STEP);
+  return {
+    from,
+    to: Math.max(clamp(query.maxPrice ?? ceiling), from + PRICE_STEP),
+  };
+};
+
+/**
  * The price range, as a two-handled slider over the catalogue's own bounds.
  *
  * Built from two native `<input type="range">` stacked on one track rather than
@@ -451,8 +486,7 @@ function PriceFilter({
         ids={ids}
         floor={floor}
         ceiling={ceiling}
-        from={Math.max(floor, query.minPrice ?? floor)}
-        to={Math.min(ceiling, query.maxPrice ?? ceiling)}
+        {...trackRange(query, floor, ceiling)}
         onCommit={(from, to) =>
           onSubmit(
             updateShopQuery(query, {
@@ -486,6 +520,13 @@ function PriceSlider({
 }) {
   const [range, setRange] = useState<[number, number]>([from, to]);
   const [low, high] = range;
+  // What the URL already says, so a release that moved nothing navigates
+  // nowhere. `pointerUp` and `keyUp` fire for a bare click on the thumb and
+  // for the Tab that lands on it — both used to push, and on mobile both also
+  // closed the sheet, which put the price filter out of a keyboard shopper's
+  // reach entirely. Remounted with the fieldset's `key`, so it never holds a
+  // range the URL has moved on from.
+  const applied = useRef<[number, number]>([from, to]);
 
   const pct = (value: number) => ((value - floor) / (ceiling - floor)) * 100;
 
@@ -497,25 +538,47 @@ function PriceSlider({
     width: `${pct(high) - pct(low)}%`,
   };
 
-  const commit = () => onCommit(low, high);
+  const commit = () => {
+    const [appliedLow, appliedHigh] = applied.current;
+    if (low === appliedLow && high === appliedHigh) return;
+    applied.current = [low, high];
+    onCommit(low, high);
+  };
 
-  /** Handles never cross: each one stops a step short of the other. */
+  /**
+   * Handles never cross — each stops a step short of the other — and neither
+   * leaves the track. The ends are re-imposed here as well as on the way in:
+   * this is the arithmetic that produced a negative price, and money is not a
+   * place to rely on the caller.
+   */
   const setLow = (value: number) =>
     setRange(([, currentHigh]) => [
-      Math.min(value, currentHigh - PRICE_STEP),
+      Math.max(floor, Math.min(value, currentHigh - PRICE_STEP)),
       currentHigh,
     ]);
   const setHigh = (value: number) =>
     setRange(([currentLow]) => [
       currentLow,
-      Math.max(value, currentLow + PRICE_STEP),
+      Math.min(ceiling, Math.max(value, currentLow + PRICE_STEP)),
     ]);
+
+  // Which thumb takes the pointer where they overlap. They are a step apart at
+  // most, which on a wide track is fewer pixels than a thumb is across, and the
+  // max input — later in the DOM — swallowed every press once they met, so the
+  // min handle could not be dragged back out. Whichever one is crowded against
+  // the far end gets priority, so there is always a way out of the corner.
+  const minOnTop = low > (floor + ceiling) / 2;
 
   const thumb =
     'pointer-events-none absolute inset-x-0 top-1/2 m-0 h-11 -translate-y-1/2 appearance-none bg-transparent focus-visible:outline-none ' +
     '[&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:size-5 [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-accent-strong [&::-webkit-slider-thumb]:shadow ' +
     '[&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:size-5 [&::-moz-range-thumb]:cursor-grab [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-accent-strong ' +
-    'focus-visible:[&::-webkit-slider-thumb]:ring-accent-strong/40 focus-visible:[&::-webkit-slider-thumb]:ring-4';
+    'focus-visible:[&::-webkit-slider-thumb]:ring-accent-strong/40 focus-visible:[&::-webkit-slider-thumb]:ring-4 ' +
+    // The same ring for Gecko. `focus-visible:outline-none` above takes the
+    // native indicator away from every browser, so a ring written only for
+    // `::-webkit-slider-thumb` left Firefox with no visible focus at all
+    // (WCAG 2.4.7) — the keyboard still worked, silently.
+    'focus-visible:[&::-moz-range-thumb]:ring-accent-strong/40 focus-visible:[&::-moz-range-thumb]:ring-4';
 
   return (
     <>
@@ -543,7 +606,7 @@ function PriceSlider({
           onPointerUp={commit}
           onKeyUp={commit}
           aria-label="کمترین قیمت"
-          className={thumb}
+          className={cn(thumb, minOnTop ? 'z-20' : 'z-10')}
           data-umami-event="shop-filter-min-price"
         />
         <input
@@ -557,7 +620,7 @@ function PriceSlider({
           onPointerUp={commit}
           onKeyUp={commit}
           aria-label="بیشترین قیمت"
-          className={thumb}
+          className={cn(thumb, minOnTop ? 'z-10' : 'z-20')}
           data-umami-event="shop-filter-max-price"
         />
       </div>
