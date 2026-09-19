@@ -319,6 +319,30 @@ export function ProductForm({
       // new is that the gallery write runs whether or not a file was picked —
       // a reorder-only or removal-only save carries no file at all, and the
       // old `if (file)` would have skipped it in silence.
+      //
+      // The photos the admin dropped go FIRST, before a byte is uploaded. The
+      // POST refuses a photo that would take the product past
+      // `MAX_PRODUCT_IMAGES`, and it counts what the server holds, not what
+      // the form shows — so swapping a photo (drop one of five, add one) would
+      // otherwise upload against the five still stored and be refused.
+      // `server` is the best knowledge of that stored list, and it is only
+      // advanced by a write that actually landed.
+      let server = product?.images.map((image) => image.objectKey) ?? [];
+      const kept = photos
+        .filter((photo) => photo.kind === 'saved')
+        .map((photo) => photo.objectKey);
+      let orderFailed = false;
+      if (!sameOrder(server, kept)) {
+        try {
+          await putData(apiAdminProductImagesPath(saved.id), {
+            objectKeys: kept,
+          });
+          server = kept;
+        } catch {
+          orderFailed = true;
+        }
+      }
+
       const uploaded: string[] = [];
       const objectKeys: string[] = [];
       let failed = 0;
@@ -336,16 +360,12 @@ export function ProductForm({
         }
       }
 
-      // What the product now holds server-side: what it held, plus whatever
-      // went up, appended. Writing the order is only worth a request when the
-      // admin's arrangement differs from that — a removal, a reorder, or a new
-      // photo dragged anywhere but the end.
-      const stored = [
-        ...(product?.images.map((image) => image.objectKey) ?? []),
-        ...uploaded,
-      ];
-      let orderFailed = false;
-      if (!sameOrder(stored, objectKeys)) {
+      // What the product now holds server-side: the list the write above left
+      // it with, plus whatever went up, appended. Writing the order is only
+      // worth a second request when the admin's arrangement differs from that
+      // — a new photo dragged anywhere but the end, or a first write that did
+      // not land.
+      if (!sameOrder([...server, ...uploaded], objectKeys)) {
         try {
           await putData(apiAdminProductImagesPath(saved.id), { objectKeys });
         } catch {

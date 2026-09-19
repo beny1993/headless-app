@@ -9,9 +9,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError } from '@/lib/api-client';
 import {
   MAX_EXTRA_CATEGORIES,
+  MAX_PRODUCT_IMAGES,
   PRODUCT_MESSAGES,
 } from '@/lib/catalog/product-input';
-import { PROTECTED_PATHS } from '@/lib/constant/paths';
+import {
+  apiAdminProductImagesPath,
+  PROTECTED_PATHS,
+} from '@/lib/constant/paths';
 import { toPersianDigits } from '@/lib/format';
 import { ProductForm, type ProductFormInitial } from './product-form';
 
@@ -169,6 +173,73 @@ describe('product save failures', () => {
     );
     expect(router.push).toHaveBeenCalledWith(PROTECTED_PATHS.PRODUCTS);
     expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('the gallery write order', () => {
+  const GALLERY = Array.from({ length: MAX_PRODUCT_IMAGES }, (_, n) => ({
+    id: `row-${n}`,
+    objectKey: `uploads/photo-${n}.jpg`,
+  }));
+
+  it('drops the removed photos before uploading, so a swap at the cap fits', async () => {
+    api.putData.mockResolvedValue({ id: EDIT_PRODUCT.id });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: 'success',
+        data: { objectKey: 'uploads/new.jpg' },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    render(
+      <ProductForm
+        product={{ ...EDIT_PRODUCT, images: GALLERY }}
+        categories={[
+          { id: EDIT_PRODUCT.categoryId, title: 'گربه', label: 'گربه' },
+        ]}
+      />,
+    );
+
+    // Swap one photo for another — the admin gesture the single-slot field
+    // used to do in one pick. The add tile only exists once there is room.
+    fireEvent.click(screen.getByRole('button', { name: 'حذف عکس اصلی' }));
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['image'], 'cat.png', { type: 'image/png' })],
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    const imagesPath = apiAdminProductImagesPath(EDIT_PRODUCT.id);
+    await waitFor(() =>
+      expect(api.putData.mock.calls.some(([path]) => path === imagesPath)).toBe(
+        true,
+      ),
+    );
+    const order = api.putData.mock.calls.findIndex(
+      ([path]) => path === imagesPath,
+    );
+    // The pin: the four kept keys are written FIRST, so the POST that follows
+    // counts four stored photos and has room. Attach-then-order refuses the
+    // upload against the five the server still holds and loses the new photo.
+    expect(api.putData.mock.invocationCallOrder[order]).toBeLessThan(
+      fetchMock.mock.invocationCallOrder[0],
+    );
+    expect(api.putData.mock.calls[order][1]).toEqual({
+      objectKeys: GALLERY.slice(1).map((image) => image.objectKey),
+    });
+    // And the final order needs no second write: the upload appended exactly
+    // where the admin left it.
+    expect(
+      api.putData.mock.calls.filter(([path]) => path === imagesPath),
+    ).toHaveLength(1);
+    await waitFor(() =>
+      expect(router.push).toHaveBeenCalledWith(PROTECTED_PATHS.PRODUCTS),
+    );
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 });
 
