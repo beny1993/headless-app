@@ -137,10 +137,18 @@ const priceToman = z
   .positive(PRODUCT_MESSAGES.price);
 
 /**
- * An optional free-text field: trimmed, and an empty (or whitespace-only) value
+ * An optional free-text field: trimmed, and a value with nothing readable in it
  * becomes `null` rather than `''`, so "cleared in the form" and "never set" are
  * one state in the column. Accepts a missing key, `null`, or a string. Capped at
  * `max` and free of forbidden characters; `multiline` keeps line breaks.
+ *
+ * `VISIBLE_CHAR` rather than a bare truthiness test, and it is the same rule
+ * {@link requiredText} applies: `trim()` does not remove ZWNJ, which
+ * `FORBIDDEN_TEXT_CHARS` deliberately allows because Persian words need it — so
+ * a field of nothing but ZWNJ survived as a string that renders as blank
+ * everywhere it is shown. `variantLabel` is where that bites hardest: a member
+ * whose label is invisible gets a chip with no text on it, and the cross-field
+ * rule below can only see it once the label is `null`.
  */
 const optionalText = (max: number, lengthMessage: string, multiline = false) =>
   z
@@ -151,7 +159,7 @@ const optionalText = (max: number, lengthMessage: string, multiline = false) =>
       error: PRODUCT_MESSAGES.textChars,
     })
     .nullish()
-    .transform((value) => value || null);
+    .transform((value) => (value && VISIBLE_CHAR.test(value) ? value : null));
 
 export const productInputSchema = z
   .object({

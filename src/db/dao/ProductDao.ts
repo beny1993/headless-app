@@ -74,7 +74,12 @@ export type ProductWithExtraCategories = Product & {
 
 /** Which family rule refused the write; the routes map it onto a form field. */
 export type VariantRuleReason =
-  'self' | 'unknownHead' | 'nested' | 'headNeedsLabel' | 'hasMembers';
+  | 'self'
+  | 'unknownHead'
+  | 'inactiveHead'
+  | 'nested'
+  | 'headNeedsLabel'
+  | 'hasMembers';
 
 /**
  * A family rule that needs to read a second row, so it can be neither a CHECK
@@ -724,6 +729,18 @@ export class ProductDao {
     executor: Executor,
     id: string,
   ): Promise<void> {
+    // Lock the head before counting. The race is «attach a member» running
+    // beside «hide the head»: both read zero, both commit, and the family is
+    // orphaned by two writes that were each legal on their own.
+    // `assertFamilyRules` takes this same row's lock from the other side, so
+    // one of them waits and then re-reads the committed state — this one
+    // counts the new member and refuses; the other finds the head inactive
+    // and is refused by `inactiveHead`. Either order ends in a refusal.
+    await executor
+      .select({ id: products.id })
+      .from(products)
+      .where(eq(products.id, id))
+      .for('update');
     const blocking = await ProductDao.countActiveMembers(id, executor);
     if (blocking > 0) throw new ProductVariantError('hasMembers', blocking);
   }
@@ -744,18 +761,32 @@ export class ProductDao {
     if (variantOf == null) return;
     if (id && variantOf === id) throw new ProductVariantError('self');
 
-    const [head] = await executor
+    // `for update` on the pair, in id order — `CategoryDao.assertParent`'s
+    // pattern, for its reason: a guard that reads without locking is checking
+    // a state another transaction is free to leave behind it. Ordering by id
+    // gives the opposite moves (X under Y, Y under X) the same lock order, so
+    // they cannot deadlock; there is no row to lock on a create.
+    const locked = await executor
       .select({
+        id: products.id,
         variantOf: products.variantOf,
         variantLabel: products.variantLabel,
+        isActive: products.isActive,
       })
       .from(products)
-      .where(eq(products.id, variantOf))
-      .limit(1);
+      .where(inArray(products.id, id ? [variantOf, id] : [variantOf]))
+      .orderBy(asc(products.id))
+      .for('update');
 
+    const head = locked.find((row) => row.id === variantOf);
     if (!head) throw new ProductVariantError('unknownHead');
     // One level: the head must itself be a head, not a member.
     if (head.variantOf !== null) throw new ProductVariantError('nested');
+    // A soft-deleted head is not a place to hang anything: the storefront
+    // drops it for `is_active` and never listed its members for
+    // `variant_of is null`, so this would mint exactly the live-but-unlisted
+    // row that `hasMembers` refuses to create from the other direction.
+    if (!head.isActive) throw new ProductVariantError('inactiveHead');
     // A head with no label of its own renders an empty chip on the page.
     if (!head.variantLabel?.trim())
       throw new ProductVariantError('headNeedsLabel');
@@ -1052,6 +1083,14 @@ export class ProductDao {
             stock: columns.stock ?? 0,
             categoryId: columns.categoryId,
             petTypes: columns.petTypes,
+            // The family shape is part of what the seed asserts, so it is part
+            // of what a re-run corrects. Leaving these out while still
+            // rewriting `searchText` — which is built FROM `variantLabel` —
+            // made the two disagree: the row became findable by a word its own
+            // page never showed, and a family broken once could never be
+            // re-seeded straight. `isActive` stays out on purpose (below).
+            variantOf: columns.variantOf ?? null,
+            variantLabel: columns.variantLabel ?? null,
             // On the update branch too, or a corrected title in the seed would
             // never reach the index — the row would keep the text it was first
             // inserted with, and re-running the seed would look like a no-op.

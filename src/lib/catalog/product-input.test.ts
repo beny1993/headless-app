@@ -514,4 +514,43 @@ describe('product families (variant_of / variant_label)', () => {
       }).success,
     ).toBe(false);
   });
+
+  // ZWNJ, constructed rather than typed (the repo's control-character rule).
+  // It is deliberately allowed *inside* Persian words — `FORBIDDEN_TEXT_CHARS`
+  // lets it through for that reason — and `trim()` does not remove it, so a
+  // label made of nothing else survived as a string and rendered as a chip with
+  // no text on it.
+  const ZWNJ = String.fromCharCode(0x200c);
+
+  it('treats a label of nothing but ZWNJ as no label at all', () => {
+    const parsed = productInputSchema.parse({
+      ...valid,
+      variantLabel: ZWNJ + ZWNJ,
+    });
+    expect(parsed.variantLabel).toBeNull();
+  });
+
+  it('refuses a member whose label is only ZWNJ', () => {
+    // Follows from the rule above: the label is `null` by the time the
+    // cross-field rule runs, so it is refused as a missing one — and on the
+    // field the admin types in.
+    const result = productInputSchema.safeParse({
+      ...valid,
+      variantOf: HEAD,
+      variantLabel: ZWNJ,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.some((i) => i.path[0] === 'variantLabel')).toBe(
+      true,
+    );
+  });
+
+  it('keeps a ZWNJ that is doing its job inside a word', () => {
+    const parsed = productInputSchema.parse({
+      ...valid,
+      variantOf: HEAD,
+      variantLabel: `بی${ZWNJ}بو`,
+    });
+    expect(parsed.variantLabel).toBe(`بی${ZWNJ}بو`);
+  });
 });

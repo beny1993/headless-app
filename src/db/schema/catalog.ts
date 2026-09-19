@@ -154,10 +154,23 @@ export const products = pgTable(
     // The one half of «one level deep» the database can enforce by itself.
     check('products_variant_not_self', sql`${table.variantOf} <> ${table.id}`),
     // A member with no label renders an empty chip and an order line ending in
-    // a bare dash. `btrim` rather than `<> ''`: a label of spaces is no label.
+    // a bare dash. Presence only — a CHECK is false, never NULL, so this one
+    // cannot be satisfied by the missing value it exists to refuse (the shape
+    // `variant_label is not null` has, and `length(btrim(null)) > 0` does not).
     check(
       'products_variant_label_present',
-      sql`${table.variantOf} is null or length(btrim(${table.variantLabel})) > 0`,
+      sql`${table.variantOf} is null or ${table.variantLabel} is not null`,
+    ),
+    // …and a label that is *set* carries something a shopper can read. ZWNJ is
+    // the gap every other guard leaves open: Persian words need it, so it is
+    // deliberately allowed by `FORBIDDEN_TEXT_CHARS`, and neither `trim()` nor
+    // `btrim` removes it — a label of nothing but ZWNJ passed all three and
+    // rendered as a chip with no text on it. Stripped here by code point
+    // (`chr(8204)`, constructed — never a typed invisible byte), then every
+    // space class, leaving the question «is anything left».
+    check(
+      'products_variant_label_visible',
+      sql`${table.variantLabel} is null or regexp_replace(replace(${table.variantLabel}, chr(8204), ''), '[[:space:]]', '', 'g') <> ''`,
     ),
     index('products_category_id_idx').on(table.categoryId),
     // Read by the family scalars on every storefront card, and by the guard

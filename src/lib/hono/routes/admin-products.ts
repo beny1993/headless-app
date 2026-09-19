@@ -20,6 +20,7 @@ import { z } from 'zod';
 import {
   ProductDao,
   ProductVariantError,
+  type VariantRuleReason,
   StockConflictError,
   type ProductWithExtraCategories,
 } from '@/db/dao/ProductDao';
@@ -144,25 +145,53 @@ const WRITE_ERROR_MESSAGES: Record<string, string> = {
 };
 
 /**
+ * Which form field a family refusal belongs under, or `null` for one with no
+ * field to hang on — `parseFieldErrors` routes an unprefixed message to
+ * `unmapped`, which the form shows in its top-level alert rather than dropping.
+ *
+ * Most of them are about «زیرمجموعه‌ی», the select the admin picked a head in.
+ * Two are not:
+ *
+ * - `hasMembers` comes from the visibility checkbox or the delete button, and
+ *   the form has no field for «visibility».
+ * - `headNeedsLabel` depends on the request, not the rule. Sent *with* a
+ *   `variantOf` it means «the head you picked has no label of its own» and
+ *   belongs on that select. Sent without one it means «you cleared the label of
+ *   a head that has members» — and the select is disabled for that row, so
+ *   keying it there points the admin at a control they cannot use. The label
+ *   field is where they can act.
+ */
+const variantErrorField = (
+  reason: VariantRuleReason,
+  variantOf: string | null,
+): string | null => {
+  if (reason === 'hasMembers') return null;
+  if (reason === 'headNeedsLabel')
+    return variantOf == null ? 'variantLabel' : 'variantOf';
+  return 'variantOf';
+};
+
+/**
  * The `errors[]` detail for a known write conflict, or `null` to rethrow. Covers
  * unique (23505) and FK (23503) violations by constraint name, plus any CHECK
  * (23514) as a generic message — the input schema already blocks the CHECKs, but
  * a psql-side change could still surface one, and a 400 beats a 500. The caller
  * rethrows on `null`, so an unrecognized error stays the 500 it is.
  */
-export const productWriteErrors = (error: unknown): string[] | null => {
+export const productWriteErrors = (
+  error: unknown,
+  /**
+   * The `variantOf` this request sent. One family rule means two different
+   * things depending on it — see {@link variantErrorField} — and the mapper
+   * cannot read that off the error alone.
+   */
+  variantOf: string | null = null,
+): string[] | null => {
   // A family rule that had to read a second row, so neither zod nor a CHECK
-  // could refuse it. Keyed on «زیرمجموعه‌ی», the field the form renders and the
-  // one the admin fixes it on.
-  //
-  // `hasMembers` is the exception: it comes from the visibility checkbox (or
-  // the delete button), and there is no field on the form to hang it on — so it
-  // goes back unprefixed, which `parseFieldErrors` routes to `unmapped` and the
-  // form shows in its top-level alert rather than silently dropping.
+  // could refuse it.
   if (error instanceof ProductVariantError) {
-    return error.reason === 'hasMembers'
-      ? [error.message]
-      : [`variantOf: ${error.message}`];
+    const field = variantErrorField(error.reason, variantOf);
+    return [field ? `${field}: ${error.message}` : error.message];
   }
   const pg = pgErrorOf(error);
   if (!pg) return null;
@@ -221,7 +250,7 @@ export const productCreateHandler: RouteHandler<
     });
     return c.json(apiSuccess(toAdminProduct(created)), 201);
   } catch (error) {
-    const errors = productWriteErrors(error);
+    const errors = productWriteErrors(error, body.variantOf);
     if (errors)
       return c.json(apiError(PRODUCT_SAVE_FAILED_MESSAGE, errors), 400);
     throw error;
@@ -272,7 +301,7 @@ export const productUpdateHandler: RouteHandler<
   } catch (error) {
     if (error instanceof StockConflictError)
       return c.json(apiError(error.message, [`stock: ${error.message}`]), 409);
-    const errors = productWriteErrors(error);
+    const errors = productWriteErrors(error, body.variantOf);
     if (errors)
       return c.json(apiError(PRODUCT_SAVE_FAILED_MESSAGE, errors), 400);
     throw error;

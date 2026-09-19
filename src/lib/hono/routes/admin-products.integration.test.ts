@@ -877,6 +877,50 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       );
     });
 
+    it('refuses an inactive head, on the select the admin picked it in', async () => {
+      const category = await makeCategory();
+      const head = await create(category, { variantLabel: 'لاوندر' });
+      await parse(await json(apiAdminProductPath(head.id), 'DELETE'));
+
+      const { status, body: envelope } = await parse(
+        await json(
+          API_PATHS.ADMIN_PRODUCTS,
+          'POST',
+          body(category, { variantOf: head.id, variantLabel: 'اقیانوس' }),
+        ),
+      );
+
+      expect(status).toBe(400);
+      if (envelope.status !== 'error') throw new Error('expected an error');
+      expect(envelope.errors).toContain(
+        `variantOf: ${VARIANT_MESSAGES.inactiveHead}`,
+      );
+    });
+
+    it('keys a head clearing its own label to the label, not the disabled select', async () => {
+      const category = await makeCategory();
+      const head = await create(category, { variantLabel: 'لاوندر' });
+      await create(category, { variantOf: head.id, variantLabel: 'اقیانوس' });
+
+      const { status, body: envelope } = await parse(
+        await json(apiAdminProductPath(head.id), 'PUT', {
+          ...body(category, { variantLabel: '' }),
+          expectedStock: head.stock,
+        }),
+      );
+
+      // Same rule, two meanings. Sent *with* a `variantOf` it is «the head you
+      // picked has no label» and belongs on that select; sent without one — as
+      // here — it is «you cleared your own», and the select is disabled for a
+      // row with members, so keying it there points at a control the admin
+      // cannot use.
+      expect(status).toBe(400);
+      if (envelope.status !== 'error') throw new Error('expected an error');
+      expect(envelope.errors).toContain(
+        `variantLabel: ${VARIANT_MESSAGES.headNeedsLabel}`,
+      );
+    });
+
     it('answers 409 with the refusal as the message, and leaves the head alone', async () => {
       const category = await makeCategory();
       const head = await create(category, { variantLabel: 'لاوندر' });

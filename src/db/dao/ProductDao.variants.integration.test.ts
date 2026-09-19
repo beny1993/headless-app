@@ -7,7 +7,7 @@
 // are CHECK constraints and are proven here too, because a CHECK is also
 // something only a real database enforces.
 import { faker } from '@faker-js/faker';
-import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   categories,
@@ -21,6 +21,15 @@ import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { VARIANT_MESSAGES, hasMembersMessage } from '@/lib/catalog/variant';
 
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
+
+/**
+ * ZERO WIDTH NON-JOINER, constructed rather than typed — the repo's
+ * control-character rule. A raw one here would be invisible in the diff and in
+ * review, which is exactly how it got past three guards in the first place.
+ */
+const ZWNJ = String.fromCharCode(0x200c);
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
   const createdCategoryIds: string[] = [];
@@ -610,6 +619,85 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       ).rejects.toThrow(VARIANT_MESSAGES.headNeedsLabel);
     });
 
+    it('refuses hanging a member off a soft-deleted head', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, {
+        variantLabel: '۵ کیلوگرم',
+        isActive: false,
+      });
+
+      // The mirror image of the `hasMembers` refusal, and the same bad row at
+      // the end of it: the storefront drops the head for `is_active` and never
+      // listed the members for `variant_of is null`, so this member would be
+      // live and buyable by URL while appearing on no shelf at all.
+      await expect(
+        ProductDao.create(
+          productValues(category, {
+            variantOf: head.id,
+            variantLabel: '۱۰ کیلوگرم',
+          }),
+        ),
+      ).rejects.toThrow(VARIANT_MESSAGES.inactiveHead);
+    });
+
+    it('refuses moving an existing product under a soft-deleted head', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, {
+        variantLabel: '۵ کیلوگرم',
+        isActive: false,
+      });
+      const loner = await insert(category);
+
+      await expect(
+        ProductDao.update(loner.id, {
+          variantOf: head.id,
+          variantLabel: '۱۰ کیلوگرم',
+        }),
+      ).rejects.toThrow(VARIANT_MESSAGES.inactiveHead);
+    });
+
+    it('waits on a member being attached before it counts the members', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, { variantLabel: '۵ کیلوگرم' });
+
+      // The race that orphans a family: «attach a member» beside «hide the
+      // head». Each write is legal on its own, and neither sees the other.
+      //
+      // Postgres does not close it for free. A transaction writing a member
+      // holds `for key share` on the head — the lock its foreign key takes —
+      // and a plain `update products set is_active = false` asks only for
+      // `for no key update`, which does **not** conflict with it. So both
+      // commit, and the shop ends up with an active product hanging off a
+      // hidden one, listed nowhere and buyable by URL.
+      //
+      // The other connection here holds exactly that foreign-key lock. Hiding
+      // the head must not get past its guard until the attach is done, which
+      // is what the recorded order proves — and `for key share` is why the
+      // guard has to ask for `for update` rather than merely reading.
+      const order: string[] = [];
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const attaching = testDb.transaction(async (tx) => {
+        await tx.execute(
+          sql`select id from products where id = ${head.id} for key share`,
+        );
+        await held;
+      });
+      await sleep(50);
+
+      const hide = ProductDao.update(head.id, { isActive: false }).then(() =>
+        order.push('hidden'),
+      );
+
+      await sleep(200);
+      order.push('released');
+      release();
+      await attaching;
+      await hide;
+
+      expect(order).toEqual(['released', 'hidden']);
+    });
+
     it('refuses a head that does not exist', async () => {
       const category = await makeCategory();
 
@@ -795,6 +883,54 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
     });
   });
 
+  describe('re-seeding a family', () => {
+    it('carries a corrected label onto the row, not only into its search text', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, { variantLabel: '۵ کیلوگرم' });
+      const member = productValues(category, {
+        variantOf: head.id,
+        variantLabel: 'لاوندر',
+      });
+      await ProductDao.upsertBySku(member);
+
+      const corrected = await ProductDao.upsertBySku({
+        ...member,
+        variantLabel: 'اقیانوس',
+      });
+
+      // The conflict `set` rebuilt `search_text` — which is built FROM the
+      // label — while leaving the label itself at whatever the first run
+      // inserted. The row then answered a search for a word its own page never
+      // showed, and no re-run could ever put it right.
+      expect(corrected.variantLabel).toBe('اقیانوس');
+      const [row] = await testDb
+        .select({ searchText: products.searchText })
+        .from(products)
+        .where(eq(products.id, corrected.id));
+      expect(row.searchText).toContain('اقیانوس');
+      expect(row.searchText).not.toContain('لاوندر');
+    });
+
+    it('re-attaches a product the seed moved into a family', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, { variantLabel: '۵ کیلوگرم' });
+      const input = productValues(category);
+      const standalone = await ProductDao.upsertBySku(input);
+      expect(standalone.variantOf).toBeNull();
+
+      const attached = await ProductDao.upsertBySku({
+        ...input,
+        variantOf: head.id,
+        variantLabel: '۱۰ کیلوگرم',
+      });
+
+      // A family broken once had no way back: the seed is the truth about the
+      // catalogue's shape, so a re-run has to be able to correct it.
+      expect(attached.id).toBe(standalone.id);
+      expect(attached.variantOf).toBe(head.id);
+    });
+  });
+
   describe('the one-row rules the database itself enforces', () => {
     it('refuses a member with a whitespace-only label', async () => {
       const category = await makeCategory();
@@ -807,6 +943,54 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
             productValues(category, { variantOf: head.id, variantLabel: '  ' }),
           ),
       ).rejects.toThrow();
+    });
+
+    it('refuses a member carrying no label at all', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, { variantLabel: '۵ کیلوگرم' });
+
+      // The one value the old constraint could not refuse: a CHECK passes when
+      // it evaluates to NULL, and `length(btrim(null)) > 0` is NULL — so the
+      // rule about a missing label was satisfied by the label being missing.
+      await expect(
+        testDb.insert(products).values(
+          productValues(category, {
+            variantOf: head.id,
+            variantLabel: null,
+          }),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('refuses a label made of nothing but ZWNJ', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, { variantLabel: '۵ کیلوگرم' });
+
+      // ZWNJ is the hole every other guard leaves open: `FORBIDDEN_TEXT_CHARS`
+      // allows it on purpose, and neither `trim()` nor `btrim` removes it — so
+      // this reached the column as a label that renders as an empty chip.
+      await expect(
+        testDb.insert(products).values(
+          productValues(category, {
+            variantOf: head.id,
+            variantLabel: ZWNJ + ZWNJ,
+          }),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('still accepts a Persian label that needs a ZWNJ inside it', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, { variantLabel: '۵ کیلوگرم' });
+
+      // The other half of the rule, and the reason it strips rather than
+      // forbids: «بی‌بو» is a word, and the seed ships it.
+      const member = await insert(category, {
+        variantOf: head.id,
+        variantLabel: `بی${ZWNJ}بو`,
+      });
+
+      expect(member.variantLabel).toBe(`بی${ZWNJ}بو`);
     });
 
     it('refuses a row that points at itself', async () => {

@@ -29,6 +29,12 @@ export const VARIANT_MESSAGES = {
   headNeedsLabel: 'ابتدا برای محصول اصلی یک نوع تعیین کن.',
   /** `variant_of` pointing at a row that is gone, or at the product itself. */
   unknownHead: 'محصول اصلی انتخاب‌شده یافت نشد؛ صفحه را تازه کن.',
+  /**
+   * The head is soft-deleted. Hanging a member off it would produce the exact
+   * row the `hasMembers` guard exists to prevent — active, buyable by its own
+   * slug, listed on no shelf, because the storefront lists heads only.
+   */
+  inactiveHead: 'محصول اصلی انتخاب‌شده غیرفعال است؛ اول آن را فعال کن.',
   self: 'یک محصول نمی‌تواند زیرمجموعه خودش باشد.',
   /**
    * Soft delete, mirroring the category manager's refusal — and, like it,
