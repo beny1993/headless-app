@@ -65,6 +65,18 @@ async function deleteCategory(page: Page, slug: string) {
   await expect(rowFor(page, slug)).toHaveCount(0);
 }
 
+/**
+ * Teardown that survives a spec which failed before it finished setting up.
+ * A row that was never created is nothing to clean up; one that was has to go,
+ * because `categories.parent_id` restricts and the next run picks its category
+ * by title. Reloads first: after a failed assertion the page can be anywhere.
+ */
+async function removeIfPresent(page: Page, slug: string) {
+  await page.goto(PROTECTED_PATHS.CATEGORIES);
+  if ((await rowFor(page, slug).count()) === 0) return;
+  await deleteCategory(page, slug);
+}
+
 test('an admin creates a category, renames it and deletes it', async ({
   page,
 }) => {
@@ -74,26 +86,37 @@ test('an admin creates a category, renames it and deletes it', async ({
   const slug = `e2e-category-${id}`;
 
   await page.goto(PROTECTED_PATHS.CATEGORIES);
-  await createCategory(page, title, slug);
+  try {
+    await createCategory(page, title, slug);
 
-  // Renamed in place: the row turns into its own fields, then saves.
-  await rowFor(page, slug)
-    .locator('[data-umami-event="admin-panel-categories-edit"]')
-    .click();
-  const editing = page.locator('tr', {
-    has: page.locator('[data-umami-event="admin-panel-categories-row-title"]'),
-  });
-  await editing
-    .locator('[data-umami-event="admin-panel-categories-row-title"]')
-    .fill(renamed);
-  await Promise.all([
-    page.waitForResponse(categoryCall('PUT')),
-    editing.locator('[data-umami-event="admin-panel-categories-save"]').click(),
-  ]);
-  await expect(rowFor(page, slug)).toContainText(renamed);
+    // Renamed in place: the row turns into its own fields, then saves.
+    await rowFor(page, slug)
+      .locator('[data-umami-event="admin-panel-categories-edit"]')
+      .click();
+    const editing = page.locator('tr', {
+      has: page.locator(
+        '[data-umami-event="admin-panel-categories-row-title"]',
+      ),
+    });
+    await editing
+      .locator('[data-umami-event="admin-panel-categories-row-title"]')
+      .fill(renamed);
+    await Promise.all([
+      page.waitForResponse(categoryCall('PUT')),
+      editing
+        .locator('[data-umami-event="admin-panel-categories-save"]')
+        .click(),
+    ]);
+    await expect(rowFor(page, slug)).toContainText(renamed);
 
-  // No product uses it, so it deletes outright.
-  await deleteCategory(page, slug);
+    // No product uses it, so it deletes outright.
+    await deleteCategory(page, slug);
+  } finally {
+    // The delete above is the assertion; this is the safety net for a failure
+    // anywhere before it, which would otherwise leave the row in the shared
+    // dev database for the next run to trip over.
+    await removeIfPresent(page, slug);
+  }
 });
 
 test('an admin nests a sub-category, and the parent waits for it to go first', async ({
@@ -111,14 +134,16 @@ test('an admin nests a sub-category, and the parent waits for it to go first', a
   );
 
   await page.goto(PROTECTED_PATHS.CATEGORIES);
-  const parentId = await createCategory(page, parentTitle, parentSlug);
-  await createCategory(page, `زیردسته ${id}`, subSlug, parentId);
 
-  // In a `finally`, like the settings and province specs: a failed assertion
-  // below would otherwise leave this pair in the shared dev database, where
-  // the next run's «pick a category by its title» would have two to choose
-  // from. Child first — the parent's own foreign key refuses the other order.
+  // The creates are inside the `try` as well, not only the assertions: the
+  // second one can fail on its own, and it used to leave the parent behind —
+  // an undeletable row in the shared dev database, since the next run's «pick
+  // a category by its title» would then have two to choose from. Child first
+  // in the teardown; the parent's own foreign key refuses the other order.
   try {
+    const parentId = await createCategory(page, parentTitle, parentSlug);
+    await createCategory(page, `زیردسته ${id}`, subSlug, parentId);
+
     // The nesting is announced, not merely indented: the sub-row's title cell
     // opens with the parent's name for a screen reader, and that is the only
     // place the parent's title turns up in this row.
@@ -146,9 +171,9 @@ test('an admin nests a sub-category, and the parent waits for it to go first', a
     await expect(rowFor(page, parentSlug)).toBeVisible();
   } finally {
     // Emptied, the parent goes — so this spec leaves no row behind and runs at
-    // both widths.
-    await deleteCategory(page, subSlug);
-    await deleteCategory(page, parentSlug);
+    // both widths. Tolerant of a run that never got as far as creating them.
+    await removeIfPresent(page, subSlug);
+    await removeIfPresent(page, parentSlug);
   }
 });
 
