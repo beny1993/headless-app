@@ -1,7 +1,7 @@
 // All Drizzle DB access goes through DAOs like this one. `markCodPaid` is the
 // only write the state machine composes; the rest serve checkout (story 14) and
 // the Zarinpal verify callback (story 15).
-import { and, asc, eq, isNotNull, lt, ne } from 'drizzle-orm';
+import { and, asc, count, eq, isNotNull, lt, ne } from 'drizzle-orm';
 import { db, type Executor, type Tx } from '@/db';
 
 import { payments, type NewPayment, type Payment } from '@/db/schema/orders';
@@ -55,6 +55,26 @@ export class PaymentDao {
       .from(payments)
       .where(eq(payments.orderId, orderId))
       .orderBy(asc(payments.createdAt), asc(payments.id));
+  }
+
+  /**
+   * How many payment attempts an order already has — **every** status, not just
+   * pending. A `failed` row was still one minted gateway authority and is still
+   * re-verified by every future reconcile sweep, so counting only open ones
+   * would let a caller reset their own ceiling by failing on purpose.
+   *
+   * Pass `executor` to count inside the transaction that already holds the
+   * order's lock, so a concurrent burst cannot land two attempts over the cap.
+   */
+  static async countByOrder(
+    orderId: string,
+    executor: Executor = db,
+  ): Promise<number> {
+    const [row] = await executor
+      .select({ value: count() })
+      .from(payments)
+      .where(eq(payments.orderId, orderId));
+    return row.value;
   }
 
   /**
