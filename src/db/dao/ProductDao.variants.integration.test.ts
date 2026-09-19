@@ -7,7 +7,7 @@
 // are CHECK constraints and are proven here too, because a CHECK is also
 // something only a real database enforces.
 import { faker } from '@faker-js/faker';
-import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   categories,
@@ -19,6 +19,7 @@ import {
 } from '@/db/schema/catalog';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { VARIANT_MESSAGES, hasMembersMessage } from '@/lib/catalog/variant';
+import { pgErrorOf } from '@/lib/hono/pg-error';
 
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
 
@@ -30,6 +31,23 @@ const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
 const ZWNJ = String.fromCharCode(0x200c);
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * A write the database itself must refuse, **by the named constraint**.
+ *
+ * `.rejects.toThrow()` passes on any rejection at all — a slug collision, a
+ * typo in the fixture — so it proves the write failed and not that the rule
+ * under test is the reason. `CategoryDao.integration.test.ts` reads the code
+ * and the constraint off the driver error; this is the same thing.
+ */
+const expectConstraint = async (
+  write: Promise<unknown> | { then: PromiseLike<unknown>['then'] },
+  constraint: string,
+  code = '23514',
+) => {
+  const error = await Promise.resolve(write).catch((caught: unknown) => caught);
+  expect(pgErrorOf(error)).toMatchObject({ code, constraint });
+};
 
 describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
   const createdCategoryIds: string[] = [];
@@ -547,6 +565,26 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
         '۵ کیلوگرم',
         '۱۰ کیلوگرم',
       ]);
+      // `isCurrent` decides the whole chip: `<span aria-current>` for the one
+      // being viewed, a `<Link>` for the rest. Inverted, the page renders the
+      // size you are already looking at as a link back to itself and every
+      // sibling as dead text — and nothing else here would notice.
+      expect(found?.variants.map((v) => v.isCurrent)).toEqual([false, true]);
+    });
+
+    it('marks the head instead when the head is the one being viewed', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, { variantLabel: '۵ کیلوگرم' });
+      await insert(category, {
+        variantOf: head.id,
+        variantLabel: '۱۰ کیلوگرم',
+      });
+
+      const found = await ProductDao.getBySlug(head.slug);
+
+      // The other half: hardcoded `true` and every chip is a dead `<span>`,
+      // which makes the family unnavigable.
+      expect(found?.variants.map((v) => v.isCurrent)).toEqual([true, false]);
     });
 
     it('returns the same family from the head', async () => {
@@ -1073,13 +1111,14 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       const category = await makeCategory();
       const head = await insert(category, { variantLabel: '۵ کیلوگرم' });
 
-      await expect(
+      await expectConstraint(
         testDb
           .insert(products)
           .values(
             productValues(category, { variantOf: head.id, variantLabel: '  ' }),
           ),
-      ).rejects.toThrow();
+        'products_variant_label_visible',
+      );
     });
 
     it('refuses a member carrying no label at all', async () => {
@@ -1089,14 +1128,15 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       // The one value the old constraint could not refuse: a CHECK passes when
       // it evaluates to NULL, and `length(btrim(null)) > 0` is NULL — so the
       // rule about a missing label was satisfied by the label being missing.
-      await expect(
+      await expectConstraint(
         testDb.insert(products).values(
           productValues(category, {
             variantOf: head.id,
             variantLabel: null,
           }),
         ),
-      ).rejects.toThrow();
+        'products_variant_label_present',
+      );
     });
 
     it('refuses a label made of nothing but ZWNJ', async () => {
@@ -1106,14 +1146,15 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       // ZWNJ is the hole every other guard leaves open: `FORBIDDEN_TEXT_CHARS`
       // allows it on purpose, and neither `trim()` nor `btrim` removes it — so
       // this reached the column as a label that renders as an empty chip.
-      await expect(
+      await expectConstraint(
         testDb.insert(products).values(
           productValues(category, {
             variantOf: head.id,
             variantLabel: ZWNJ + ZWNJ,
           }),
         ),
-      ).rejects.toThrow();
+        'products_variant_label_visible',
+      );
     });
 
     it('still accepts a Persian label that needs a ZWNJ inside it', async () => {
@@ -1134,12 +1175,13 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       const category = await makeCategory();
       const alone = await insert(category, { variantLabel: 'قرمز' });
 
-      await expect(
+      await expectConstraint(
         testDb
           .update(products)
           .set({ variantOf: alone.id })
           .where(eq(products.id, alone.id)),
-      ).rejects.toThrow();
+        'products_variant_not_self',
+      );
     });
 
     it('refuses hard-deleting a head while a member points at it', async () => {
@@ -1150,9 +1192,11 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
         variantLabel: '۱۰ کیلوگرم',
       });
 
-      await expect(
+      await expectConstraint(
         testDb.delete(products).where(eq(products.id, head.id)),
-      ).rejects.toThrow();
+        'products_variant_of_products_id_fk',
+        '23503',
+      );
     });
   });
 
@@ -1254,16 +1298,42 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
 
   it('never lists a member, whatever the filters say', async () => {
     const category = await makeCategory();
-    const head = await insert(category, { variantLabel: 'لاوندر' });
-    await insert(category, { variantOf: head.id, variantLabel: 'اقیانوس' });
+    // Through the DAO, so the member's own `search_text` is derived from its
+    // label — the raw insert helper leaves it empty, and the search case below
+    // is the whole reason this fixture exists.
+    const head = await ProductDao.create(
+      productValues(category, { price: 200_000, variantLabel: 'لاوندر' }),
+    );
+    const member = await ProductDao.create(
+      productValues(category, {
+        price: 150_000,
+        variantOf: head.id,
+        variantLabel: 'اقیانوس',
+      }),
+    );
 
-    const asMembers = await testDb
-      .select({ id: products.id })
-      .from(products)
-      .where(isNull(products.variantOf));
+    // Every shape of listing the storefront offers. The previous version of
+    // this test asserted on a raw `select … where variant_of is null` and
+    // never called `list` at all, so `storefrontWhere` could lose the
+    // predicate entirely and stay green.
+    const listings = await Promise.all([
+      ProductDao.list({ categorySlug: category.slug }),
+      ProductDao.list({ categorySlug: category.slug, petType: PET_TYPES.DOG }),
+      ProductDao.list({ categorySlug: category.slug, minPrice: 100_000 }),
+      ProductDao.list({ categorySlug: category.slug, maxPrice: 300_000 }),
+      ProductDao.list({ categorySlug: category.slug, sort: 'price-asc' }),
+      ProductDao.list({ categorySlug: category.slug, sort: 'price-desc' }),
+      ProductDao.list({ categorySlug: category.slug, sort: 'newest' }),
+      ProductDao.list({ categorySlug: category.slug, search: 'اقیانوس' }),
+    ]);
 
-    // A sanity check on the fixture itself: the head is among the null rows and
-    // the member is not, so the predicate above is the one under test.
-    expect(asMembers.some((row) => row.id === head.id)).toBe(true);
+    for (const { items, total } of listings) {
+      expect(items.map((item) => item.id)).not.toContain(member.id);
+      // The count rides the same clause, so it cannot disagree with the page.
+      expect(total).toBe(items.length);
+    }
+    // And the search still reaches the family *through* the member: the term
+    // is the member's label, and the head is what comes back for it.
+    expect(listings[7].items.map((item) => item.id)).toEqual([head.id]);
   });
 });

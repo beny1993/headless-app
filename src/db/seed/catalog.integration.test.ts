@@ -28,6 +28,15 @@ if (!bothPets || !multiCategory) {
   throw new Error('The catalog seed needs a both-pets and a two-category row.');
 }
 
+/** The seeded family: the members that name a head, and the head they name. */
+const members = SEED_PRODUCTS.filter((product) => product.variantOfSku);
+const familyHead = SEED_PRODUCTS.find((product) =>
+  members.some((member) => member.variantOfSku === product.sku),
+);
+if (!familyHead || members.length === 0) {
+  throw new Error('The catalog seed needs one product family.');
+}
+
 describe.skipIf(!databaseReachable)('seedCatalog', () => {
   const seededProducts = () =>
     testDb.select().from(products).where(inArray(products.sku, skus));
@@ -130,6 +139,40 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
       expect(bySlug.get(sub.slug)?.parentId).toBe(
         bySlug.get(sub.parentSlug)?.id,
       );
+    }
+  });
+
+  it('hangs every member off the head its sku names', async () => {
+    // The seed's whole family mechanism had no database-level test: replacing
+    // the `variantOf` lookup with `null` left `vitest run src/db/seed/` green,
+    // and the first thing to notice was `pnpm test:e2e`, as «expected 2 chips,
+    // got 0». The chips are the feature; this is where they come from.
+    const bySku = new Map(
+      (await seededProducts()).map((row) => [row.sku, row]),
+    );
+    const head = bySku.get(familyHead.sku);
+
+    expect(head?.variantOf).toBeNull();
+    expect(head?.variantLabel).toBe(familyHead.variantLabel);
+    for (const member of members) {
+      expect(bySku.get(member.sku)?.variantOf).toBe(head?.id);
+      expect(bySku.get(member.sku)?.variantLabel).toBe(member.variantLabel);
+    }
+  });
+
+  it('keeps the family intact on a second run', async () => {
+    // `upsertBySku`'s conflict set has to carry both columns: it rewrites
+    // `search_text` from the label, so leaving them out let the two disagree
+    // and no re-run could ever put a broken family right.
+    await seedCatalog();
+
+    const bySku = new Map(
+      (await seededProducts()).map((row) => [row.sku, row]),
+    );
+    const head = bySku.get(familyHead.sku);
+    for (const member of members) {
+      expect(bySku.get(member.sku)?.variantOf).toBe(head?.id);
+      expect(bySku.get(member.sku)?.variantLabel).toBe(member.variantLabel);
     }
   });
 

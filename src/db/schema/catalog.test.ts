@@ -7,13 +7,28 @@ import { describe, expect, it } from 'vitest';
 import {
   categories,
   PET_TYPES,
+  PET_TYPE_VALUES,
   petTypeEnum,
+  productCategories,
   productImages,
   products,
 } from '@/db/schema/catalog';
 
 const checkNames = (table: Parameters<typeof getTableConfig>[0]) =>
   getTableConfig(table).checks.map((c) => c.name);
+
+/**
+ * Every foreign key as `name -> onDelete`, sorted.
+ *
+ * Named pairs rather than a bare list of modes: an array of `['restrict',
+ * 'restrict']` says nothing about *which* key is which, and depends on the
+ * order the columns happen to be declared in — so moving a column past another
+ * rewrites the expectation without changing the schema.
+ */
+const foreignKeyRules = (table: Parameters<typeof getTableConfig>[0]) =>
+  getTableConfig(table)
+    .foreignKeys.map((fk) => `${fk.getName()} -> ${fk.onDelete}`)
+    .sort();
 
 describe('catalog schema', () => {
   it('stores every timestamp with a timezone', () => {
@@ -73,7 +88,9 @@ describe('catalog schema', () => {
     // An array of the enum, not a third `both` value: the same enum types a
     // customer's pet, and a pet is one species.
     expect(products.petTypes.getSQLType()).toBe('pet_type[]');
-    expect(petTypeEnum.enumValues).toEqual(['cat', 'dog']);
+    // Read off the constant the column is built from, so a third pet type
+    // added there does not need this line edited to stay true.
+    expect(petTypeEnum.enumValues).toEqual([...PET_TYPE_VALUES]);
     expect(products.petTypes.notNull).toBe(true);
     expect(Object.values(PET_TYPES)).toEqual(['cat', 'dog']);
     // An empty array is still «no pet» — the CHECK is what refuses it.
@@ -81,18 +98,34 @@ describe('catalog schema', () => {
   });
 
   it('cascades images with their product but restricts category deletes', () => {
-    const imageFks = getTableConfig(productImages).foreignKeys.map(
-      (fk) => fk.onDelete,
-    );
-    expect(imageFks).toEqual(['cascade']);
+    expect(foreignKeyRules(productImages)).toEqual([
+      'product_images_product_id_products_id_fk -> cascade',
+    ]);
 
     // Neither a category with products nor a head with members may silently
-    // take them down with it — both of the table's keys restrict.
-    const productFks = getTableConfig(products).foreignKeys.map(
-      (fk) => fk.onDelete,
-    );
-    expect(productFks).toEqual(['restrict', 'restrict']);
-    expect(productFks).toHaveLength(2);
+    // take them down with it — both of the table's keys restrict, and the
+    // expectation names which is which.
+    expect(foreignKeyRules(products)).toEqual([
+      'products_category_id_categories_id_fk -> restrict',
+      'products_variant_of_products_id_fk -> restrict',
+    ]);
+  });
+
+  it('files a product under extra categories without loosening either end', () => {
+    // The junction and the self-FK are what this story adds, and the sweep
+    // above hand-listed three tables and read neither. Flip the junction's
+    // category key to `cascade` and deleting a category would take every
+    // product filed under it out of its *other* categories as well; flip
+    // `categories.parent_id` and deleting a parent would silently take its
+    // sub-categories. Both stay green on a machine with no Docker, which is
+    // the gap this file exists to close.
+    expect(foreignKeyRules(productCategories)).toEqual([
+      'product_categories_category_id_categories_id_fk -> restrict',
+      'product_categories_product_id_products_id_fk -> cascade',
+    ]);
+    expect(foreignKeyRules(categories)).toEqual([
+      'categories_parent_id_categories_id_fk -> restrict',
+    ]);
   });
 
   it('keeps a product family one level deep and its label present', () => {
