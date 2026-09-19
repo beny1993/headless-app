@@ -45,7 +45,12 @@ export default async function HomePage() {
 
   // Narrow rows to what the sections render: `Category` also carries
   // timestamps, and several of these sections are client components.
-  const tiles = categories.map(({ id, title, slug }) => ({ id, title, slug }));
+  // Top-level only — sub-categories have no photo in `CATEGORY_IMAGES` and
+  // would crowd the strip. `loadLinkTargets` above still sees every row, so a
+  // saved link to a sub-category keeps resolving.
+  const tiles = categories
+    .filter((category) => category.parentId === null)
+    .map(({ id, title, slug }) => ({ id, title, slug }));
 
   // Every section is editable now, and each renders unless the admin has
   // explicitly hidden it (`isVisible` = "shown unless visible === false"); an

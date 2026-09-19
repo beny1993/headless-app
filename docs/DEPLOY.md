@@ -152,9 +152,53 @@ applies it, in the container that is about to serve:
 > **previous** image's migrations, and a new migration only landed on the deploy
 > *after* the one that shipped it. Left in place it is a harmless no-op.
 
-All migrations so far are additive. The old container keeps serving while the new
-one migrates, so a **destructive** migration still needs the compatible two-step:
-expand → deploy → contract.
+Migrations up to `0011` are additive. The old container keeps serving while the
+new one migrates, so a **destructive** migration still needs the compatible
+two-step: expand → deploy → contract.
+
+**`0012` is the first one that is not additive** — it rewrites
+`products.pet_type` from an enum to an enum array, in place. Its `USING` clause
+is hand-written and the file says so at the top: drizzle-kit's generated cast
+fails on a populated table, so regenerating this migration does not reproduce
+it. From the moment the
+new container has migrated until Coolify swaps it in (its healthcheck window,
+~35 s as configured), the old container is talking to the new column: its
+`?pet=` listings answer 500 (there is no `pet_type[] = pet_type` operator) and an
+admin product save is refused — both fail closed, nothing is written wrong. It
+ships as one step on purpose — the window is seconds — so for that deploy:
+
+- **Dump `products (id, pet_type, category_id)` first** — off-box database
+  backups are still open on the Docker-deploy story, and this is the one column
+  this release cannot reconstruct.
+- **Deploy when nobody is editing products**, and do not raise the start period
+  for it: the gap is the outage.
+
+**Going back.** Rolling the image back does not roll the column back, and the
+previous image cannot read `pet_type[]` at all — so a rollback without this is
+a shop whose every `?pet=` listing answers 500. Against the same database,
+before the old image starts:
+
+```sql
+-- The reverse of 0012. Keeps the FIRST pet of a both-pets product; the dump
+-- above is the only thing that can say which rows those were.
+ALTER TABLE products DROP CONSTRAINT products_pet_type_not_empty;
+ALTER TABLE products ALTER COLUMN pet_type TYPE pet_type USING pet_type[1];
+```
+
+And put it back by hand before deploying forward again — **the migration
+runner will not do it for you.** `drizzle-kit migrate` applies whatever is
+newer than the newest row in `drizzle.__drizzle_migrations`, and that row is
+still `0016`, so `0012` is behind the mark and never re-runs:
+
+```sql
+ALTER TABLE products ALTER COLUMN pet_type TYPE pet_type[] USING ARRAY[pet_type];
+ALTER TABLE products
+  ADD CONSTRAINT products_pet_type_not_empty CHECK (cardinality(pet_type) >= 1);
+```
+
+`0013`–`0016` need none of this: new nullable columns, indexes, and CHECKs that
+only constrain writes the old code never makes. `0012` is the one migration in
+this release that a rollback has to undo.
 
 The `build` target (source, dev deps, `drizzle-kit`) is still the tool for one-off
 jobs against a deployed database — the seed steps below:

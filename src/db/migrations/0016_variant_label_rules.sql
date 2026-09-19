@@ -1,0 +1,3 @@
+ALTER TABLE "products" DROP CONSTRAINT "products_variant_label_present";--> statement-breakpoint
+ALTER TABLE "products" ADD CONSTRAINT "products_variant_label_visible" CHECK ("products"."variant_label" is null or regexp_replace(replace("products"."variant_label", chr(8204), ''), '[[:space:]]', '', 'g') <> '');--> statement-breakpoint
+ALTER TABLE "products" ADD CONSTRAINT "products_variant_label_present" CHECK ("products"."variant_of" is null or "products"."variant_label" is not null);

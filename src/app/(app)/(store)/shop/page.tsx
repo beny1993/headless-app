@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { CategoryDao } from '@/db/dao/CategoryDao';
+import { orderAsTree } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { ProductCard } from '@/features/storefront/product/product-card';
 import {
@@ -52,7 +53,7 @@ export default async function ShopPage({
 }) {
   const query = parseShopQuery(await searchParams);
 
-  const [{ items, total }, categories] = await Promise.all([
+  const [{ items, total }, categories, priceBounds] = await Promise.all([
     ProductDao.list({
       categorySlug: query.category,
       petType: query.pet,
@@ -64,14 +65,18 @@ export default async function ShopPage({
       limit: query.limit,
     }),
     CategoryDao.list(),
+    // The slider's ends. Catalogue-wide on purpose: bounds that narrowed with
+    // the current category would move the handles under the shopper's hand
+    // every time they picked a shelf.
+    ProductDao.priceBounds(),
   ]);
 
   // Narrowed to what the filter panel renders: `Category` also carries
-  // timestamps, and the panel is a client component.
-  const categoryOptions = categories.map(({ title, slug }) => ({
-    title,
-    slug,
-  }));
+  // timestamps, and the panel is a client component. Tree order, so each
+  // sub-category arrives straight after its parent and the panel can nest it.
+  const categoryOptions = orderAsTree(categories).map(
+    ({ title, slug, depth }) => ({ title, slug, depth }),
+  );
 
   const totalPages = Math.ceil(total / query.limit);
   // A page past the end is not the same as a filter set that matches nothing,
@@ -109,6 +114,7 @@ export default async function ShopPage({
           <ShopFilterSheet
             query={query}
             categories={categoryOptions}
+            priceBounds={priceBounds}
             total={total}
           />
         </div>
@@ -116,7 +122,11 @@ export default async function ShopPage({
         <div className="flex gap-8">
           <aside className="hidden w-56 shrink-0 lg:block">
             <p className="mb-4 font-bold">فیلترها</p>
-            <ShopFilters query={query} categories={categoryOptions} />
+            <ShopFilters
+              query={query}
+              categories={categoryOptions}
+              priceBounds={priceBounds}
+            />
           </aside>
 
           <div className="min-w-0 flex-1">

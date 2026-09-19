@@ -37,7 +37,7 @@ describe.skipIf(!databaseReachable)('content link targets', () => {
         sku: `LINKS-${token.toUpperCase()}`,
         price: 1_000_000,
         categoryId: category.id,
-        petType: PET_TYPES.CAT,
+        petTypes: [PET_TYPES.CAT],
         isActive,
       })
       .returning();

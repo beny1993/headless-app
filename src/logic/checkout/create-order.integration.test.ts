@@ -152,6 +152,37 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       expect(item.qty).toBe(1);
     });
 
+    it('snapshots a family member by its displayed name, label and all', async () => {
+      const user = await fx.user();
+      const category = await fx.category();
+      const head = await fx.product(category, {
+        title: 'غذای خشک سگ',
+        variantLabel: '۵ کیلوگرم',
+        price: 250_000,
+        stock: 5,
+      });
+      const member = await fx.product(category, {
+        title: 'غذای خشک سگ',
+        variantOf: head.id,
+        variantLabel: '۱۰ کیلوگرم',
+        price: 450_000,
+        stock: 5,
+      });
+      const prov = await province();
+
+      const order = await createOrder(
+        user.id,
+        buildInput(prov, [{ productId: member.id, qty: 1 }]),
+      );
+      fx.remember(order.id);
+
+      // The snapshot is the only record of *which* size was bought once the
+      // product row is edited — the bare `title` is shared by the whole family,
+      // so an invoice reading «غذای خشک سگ» could mean either.
+      expect(order.items[0].title).toBe('غذای خشک سگ — ۱۰ کیلوگرم');
+      expect(order.items[0].unitPrice).toBe(450_000);
+    });
+
     it('snapshots the price from the reservation RETURNING row, not the pre-load', async () => {
       // Deviation 1's load-bearing claim: the snapshot is decrementStock's fresh
       // RETURNING row, NOT the getByIds pre-load. The only case that tells the two

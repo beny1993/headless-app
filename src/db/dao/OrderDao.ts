@@ -3,7 +3,7 @@
 // lives in src/logic/orders/state-machine.ts, which composes these methods.
 // Never write raw SQL — the CAS below is the query builder, not a string.
 import { and, asc, count, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
-import { db } from '@/db';
+import { db, type Executor, type Tx } from '@/db';
 import {
   orderItems,
   orders,
@@ -85,25 +85,6 @@ const hasPaidPayment = sql<boolean>`exists (select 1 from ${payments} where ${pa
 /** The full revenue predicate: a booked status AND a settled payment. */
 const isRevenueOrder = () =>
   and(inArray(orders.status, REVENUE_ORDER_STATUSES), hasPaidPayment);
-
-/**
- * A transaction on one connection of the pool. It carries `rollback()`, which
- * the pool does not — so a parameter typed `Tx` structurally rejects the bare
- * `db`. The status CAS and its side effects must commit together, so the methods
- * that perform them (`casStatus`, `markCodPaid`, `transitionOrder`) take a `Tx`,
- * never an `Executor`: passing the pool there is a compile error, not a silent
- * run of each statement in its own autocommit.
- */
-export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-/**
- * Whatever a write can run on: the pool, or a transaction. Checkout (story 14)
- * composes several writes in one transaction, but each is also correct on its
- * own connection — so the writes that don't *require* a shared transaction
- * (`create`, `PaymentDao.create`, `decrementStock`, `restock`, reads) take this
- * wider type. Shared from here so the DAOs and the state machine speak one type.
- */
-export type Executor = typeof db | Tx;
 
 /** One line of an order at creation time — the snapshot the item will keep. */
 export type OrderItemInput = {

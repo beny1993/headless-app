@@ -9,7 +9,7 @@
 // it marks the payment row paid and CASes `pending_payment → paid` in one
 // transaction, and if the CAS loses (a second verify already won), the payment
 // write rolls back with it.
-import type { Tx } from '@/db/dao/OrderDao';
+import type { Tx } from '@/db';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { PaymentDao } from '@/db/dao/PaymentDao';
 import { ProductDao } from '@/db/dao/ProductDao';

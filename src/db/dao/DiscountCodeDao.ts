@@ -9,8 +9,8 @@
 // ONLY by `claim` (never by `create`/`setActive`), which is why the admin input
 // type omits it — the checkout claim is the single writer of that column.
 import { and, desc, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
-import { db } from '@/db';
-import type { Executor, Tx } from '@/db/dao/OrderDao';
+import { db, type Executor, type Tx } from '@/db';
+
 import {
   discountCodes,
   type DiscountCode,

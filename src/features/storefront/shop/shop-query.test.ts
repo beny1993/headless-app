@@ -3,8 +3,6 @@ import {
   DEFAULT_SHOP_QUERY,
   buildShopHref,
   parseShopQuery,
-  toggleShopCategory,
-  toggleShopPet,
   updateShopQuery,
   type ShopQuery,
 } from '@/features/storefront/shop/shop-query';
@@ -503,45 +501,6 @@ describe('updateShopQuery', () => {
       category: 'toys',
       page: 5,
     });
-  });
-});
-
-describe('toggleShopCategory', () => {
-  it('selects when nothing is selected', () => {
-    expect(toggleShopCategory(DEFAULT_SHOP_QUERY, 'toys').category).toBe(
-      'toys',
-    );
-  });
-
-  it('replaces the selection rather than accumulating one', () => {
-    // The API takes exactly one category slug. Checkbox UI, radio semantics.
-    const query = toggleShopCategory(DEFAULT_SHOP_QUERY, 'toys');
-    expect(toggleShopCategory(query, 'treats').category).toBe('treats');
-  });
-
-  it('clears when the selected one is clicked again', () => {
-    const query = toggleShopCategory(DEFAULT_SHOP_QUERY, 'toys');
-    expect(toggleShopCategory(query, 'toys').category).toBeUndefined();
-  });
-
-  it('returns to the first page', () => {
-    const deep = { ...DEFAULT_SHOP_QUERY, page: 3 };
-    expect(toggleShopCategory(deep, 'toys').page).toBe(1);
-  });
-});
-
-describe('toggleShopPet', () => {
-  it('selects, replaces and clears the same way', () => {
-    const cat = toggleShopPet(DEFAULT_SHOP_QUERY, 'cat');
-    expect(cat.pet).toBe('cat');
-    expect(toggleShopPet(cat, 'dog').pet).toBe('dog');
-    expect(toggleShopPet(cat, 'cat').pet).toBeUndefined();
-  });
-
-  it('returns to the first page', () => {
-    expect(toggleShopPet({ ...DEFAULT_SHOP_QUERY, page: 9 }, 'dog').page).toBe(
-      1,
-    );
   });
 });
 
