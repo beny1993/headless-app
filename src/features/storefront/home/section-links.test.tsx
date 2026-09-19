@@ -119,6 +119,31 @@ describe('CategoriesSection all-categories link', () => {
       shopPath({ category: 'toys' }),
     );
   });
+
+  // The mosaic is built for six tiles; a seventh category would break the
+  // pattern rather than extend it, so the strip stops there.
+  it('shows at most six tiles, the first six, however many categories there are', () => {
+    const many = Array.from({ length: 9 }, (_, index) => ({
+      id: `${index}`,
+      title: `دسته ${index}`,
+      slug: `category-${index}`,
+    }));
+    const { container } = render(
+      <CategoriesSection
+        content={content}
+        categories={many}
+        targets={targets}
+      />,
+    );
+
+    const links = container.querySelectorAll(
+      '[data-umami-event="home-category-click"]',
+    );
+    expect(links).toHaveLength(6);
+    expect([...links].map((link) => link.getAttribute('href'))).toEqual(
+      many.slice(0, 6).map((tile) => shopPath({ category: tile.slug })),
+    );
+  });
 });
 
 describe('PhilosophySection link', () => {

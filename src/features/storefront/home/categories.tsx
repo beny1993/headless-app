@@ -15,8 +15,10 @@ export type CategoryTile = { id: string; title: string; slug: string };
  * bare shop); the tiles themselves —
  * titles and slugs from the database, photos from `CATEGORY_IMAGES[slug]` — stay
  * in code (a `categories.image_key` catalog story would move the photos later). A
- * category added in the admin panel appears here without a code change; one with
- * no photo falls back to a plain surface rather than a broken image.
+ * category added in the admin panel appears here without a code change — the
+ * first six of them, since the mosaic is built for exactly that many and the
+ * rest are one «همه دسته‌بندی‌ها» click away. One with no photo falls back to a
+ * plain surface rather than a broken image.
  *
  * Real `<Link>`s, not clickable `<div>`s (design review) — keyboard-reachable,
  * cmd-clickable, and crawlable.
@@ -49,7 +51,7 @@ export function CategoriesSection({
         </div>
 
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-          {categories.map((category, index) => {
+          {categories.slice(0, 6).map((category, index) => {
             const image = CATEGORY_IMAGES[category.slug];
             // The first and fourth tiles run tall, as in the design's mosaic.
             const tall = index === 0 || index === 3;
