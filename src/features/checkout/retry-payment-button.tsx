@@ -41,7 +41,7 @@ export function RetryPaymentButton({ orderId }: { orderId: string }) {
         type="button"
         onClick={retry}
         disabled={busy}
-        className="bg-accent-strong hover:bg-accent-hover flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+        className="bg-brand hover:bg-brand-hover text-brand-foreground flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60"
         data-umami-event="checkout-result-retry-pay"
       >
         <RefreshCw size={16} aria-hidden="true" />{' '}

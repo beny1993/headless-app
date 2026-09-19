@@ -737,7 +737,7 @@ export function ShopFilterSheet({
           <button
             type="button"
             onClick={close}
-            className="bg-accent-strong hover:bg-accent-hover w-full rounded-xl py-3.5 font-bold text-white transition-colors"
+            className="bg-brand hover:bg-brand-hover text-brand-foreground w-full rounded-xl py-3.5 font-bold transition-colors"
             data-umami-event="shop-filter-sheet-apply"
           >
             نمایش {formatNumber(total)} محصول
