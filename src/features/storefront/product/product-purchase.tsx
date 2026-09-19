@@ -101,7 +101,7 @@ export function ProductPurchase({
           addToCart(line, qty);
           openCartDrawer();
         }}
-        className="bg-accent-strong hover:bg-accent-hover min-w-48 flex-1 rounded-xl py-3.5 font-bold text-white transition-colors"
+        className="bg-brand hover:bg-brand-hover text-brand-foreground min-w-48 flex-1 rounded-xl py-3.5 font-bold transition-colors"
         data-umami-event="product-add-to-cart"
       >
         افزودن به سبد خرید

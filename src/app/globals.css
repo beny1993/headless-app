@@ -27,13 +27,26 @@
   --muted-foreground: #6b6158;
 
   /* Accent scale. #C9623F is 3.96:1 on white — decoration and large type only.
-     Anything that is small text or a filled button uses --accent-strong. */
+     Anything that is small text or a filled surface uses --accent-strong.
+     On the storefront this is the *attention* role — price, badge, link, the
+     current step — not the click target; --brand below owns filled CTAs. The
+     admin panel still fills its buttons with it. */
   --accent: #c9623f;
   --accent-foreground: #ffffff;
-  --accent-strong: #b5522f; /* 4.98:1 on white — buttons, links, labels */
+  --accent-strong: #b5522f; /* 4.98:1 on white — links, badges, labels */
   --accent-hover: #9c4527; /* hover for accent-strong fills; badge text */
   --accent-on-dark: #e0845f; /* accent text on --ink / --ink-soft (4.7:1) */
   --accent-soft: #f7e6df;
+
+  /* Brand blue, sampled from the logo (wordmark #2DC0FC, circle #44C5FC) — the
+     one accent the mark actually contains. It is a light fill, so the label is
+     ink, exactly as the logo draws its own wordmark: white on it is 2.09:1 and
+     fails AA, ink is 7.57:1. --brand-hover keeps ink at 5.97:1. Darkening the
+     blue until white passed would land on generic corporate blue and lose the
+     only reason to use it. */
+  --brand: #2dc0fc;
+  --brand-hover: #0eaae8;
+  --brand-foreground: #2a2118;
 
   /* Brand ink surfaces (dark sections, sidebar, footer) */
   --ink: #2a2118;
@@ -111,6 +124,9 @@
   --color-accent-hover: var(--accent-hover);
   --color-accent-on-dark: var(--accent-on-dark);
   --color-accent-soft: var(--accent-soft);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-foreground: var(--brand-foreground);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
   --color-success: var(--success);
@@ -168,6 +184,13 @@
   *:focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
+  }
+
+  /* …except on a brand fill, where the terracotta ring is the one place the
+     two hues touch and goes muddy. Ink reads on the blue and on the cream the
+     offset puts it over. */
+  .bg-brand:focus-visible {
+    outline-color: var(--brand-foreground);
   }
 
   /* Prices, quantities and table numerals align in Persian digits. */

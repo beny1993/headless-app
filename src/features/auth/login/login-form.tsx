@@ -399,7 +399,7 @@ export function LoginForm({ next }: { next: string }) {
                 <button
                   type="submit"
                   disabled={isBusy}
-                  className="bg-accent-strong hover:bg-accent-hover focus-visible:ring-ring disabled:bg-muted disabled:text-muted-foreground mt-6 w-full rounded-xl py-3.5 font-bold text-white transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                  className="bg-brand hover:bg-brand-hover focus-visible:ring-brand-foreground disabled:bg-muted disabled:text-muted-foreground text-brand-foreground mt-6 w-full rounded-xl py-3.5 font-bold transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
                   data-umami-event="login-request-code"
                 >
                   {isBusy ? 'در حال ارسال…' : 'دریافت کد تایید'}
@@ -498,7 +498,7 @@ export function LoginForm({ next }: { next: string }) {
                 type="button"
                 onClick={() => verify(code)}
                 disabled={!isComplete || isBusy}
-                className="bg-accent-strong hover:bg-accent-hover focus-visible:ring-ring disabled:bg-muted disabled:text-muted-foreground mt-6 w-full rounded-xl py-3.5 font-bold text-white transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed"
+                className="bg-brand hover:bg-brand-hover focus-visible:ring-brand-foreground disabled:bg-muted disabled:text-muted-foreground text-brand-foreground mt-6 w-full rounded-xl py-3.5 font-bold transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed"
                 data-umami-event="login-verify-code"
               >
                 {isBusy ? 'در حال بررسی…' : 'تایید و ورود'}
