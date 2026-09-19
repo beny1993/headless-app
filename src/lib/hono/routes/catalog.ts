@@ -64,13 +64,21 @@ const ProductCardSchema = ProductSchema.safeExtend({
   familyHasMembers: z.boolean(),
 }).openapi('ProductCard');
 
-/** One chip on the product page. */
+/**
+ * One chip on the product page: which sibling it is, what it costs and whether
+ * it can be bought. The price is on the chip because the card advertises the
+ * family's cheapest — «از ۱۴۹٬۰۰۰» — and the page it links to has to say which
+ * member that is.
+ */
 const VariantChipSchema = z
   .object({
     id: z.uuid(),
     slug: z.string(),
     label: z.string(),
     isCurrent: z.boolean(),
+    /** Integer Toman, this member's own. */
+    price: z.number().int().positive(),
+    inStock: z.boolean(),
   })
   .openapi('VariantChip');
 

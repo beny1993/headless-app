@@ -5,7 +5,7 @@
 // Needs a live database (see src/db/test-db.ts); the query-validation half of
 // these routes runs without one in ./catalog.test.ts.
 import { faker } from '@faker-js/faker';
-import { inArray } from 'drizzle-orm';
+import { and, inArray, isNotNull } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   categories,
@@ -20,6 +20,7 @@ import { API_PATHS, apiProductPath } from '@/lib/constant/paths';
 import type { ApiResponse } from '@/lib/hono/envelope';
 import type {
   CategoryResponse,
+  ProductDetailResponse,
   ProductListResponse,
   ProductResponse,
 } from '@/lib/hono/routes/catalog';
@@ -116,6 +117,11 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       await testDb
         .delete(productImages)
         .where(inArray(productImages.productId, ids));
+      // Members first — `variant_of` restricts, so a head cannot go while one
+      // of its members still points at it.
+      await testDb
+        .delete(products)
+        .where(and(inArray(products.id, ids), isNotNull(products.variantOf)));
       await testDb.delete(products).where(inArray(products.id, ids));
     }
     await testDb
@@ -287,6 +293,54 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       expect(page.totalPages).toBe(0);
     });
 
+    it('reports the whole family on the head’s card, and lists it once', async () => {
+      const category = await makeCategory();
+      const head = await ProductDao.create(
+        makeProduct(category, { price: 185_000, variantLabel: 'لاوندر' }),
+      );
+      await ProductDao.create(
+        makeProduct(category, {
+          price: 149_000,
+          stock: 0,
+          variantOf: head.id,
+          variantLabel: 'بدون بو',
+        }),
+      );
+
+      const page = await getData<ProductListResponse>(
+        `${API_PATHS.PRODUCTS}?category=${category.slug}`,
+      );
+
+      // The four scalars a card reads. They are computed in SQL, mapped in the
+      // route and serialized here — this is the only layer that sees all three.
+      expect(page.items).toHaveLength(1);
+      expect(page.total).toBe(1);
+      const [card] = page.items;
+      expect(card.id).toBe(head.id);
+      expect(card.familyMinPrice).toBe(149_000);
+      expect(card.familyPricesVary).toBe(true);
+      expect(card.familyHasMembers).toBe(true);
+      // The head has stock even though the cheap member does not.
+      expect(card.familyInStock).toBe(true);
+    });
+
+    it('reports a standalone product as its own family of one', async () => {
+      const category = await makeCategory();
+      const alone = await ProductDao.create(
+        makeProduct(category, { price: 90_000 }),
+      );
+
+      const page = await getData<ProductListResponse>(
+        `${API_PATHS.PRODUCTS}?category=${category.slug}`,
+      );
+
+      // A consumer that knows nothing about families still reads the truth.
+      expect(page.items[0].id).toBe(alone.id);
+      expect(page.items[0].familyMinPrice).toBe(90_000);
+      expect(page.items[0].familyPricesVary).toBe(false);
+      expect(page.items[0].familyHasMembers).toBe(false);
+    });
+
     it('returns an empty page for a category slug nobody has', async () => {
       const page = await getData<ProductListResponse>(
         `${API_PATHS.PRODUCTS}?category=no-such-category`,
@@ -448,6 +502,61 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
         'products/second.jpg',
       ]);
       expect(detail.images.map((image) => image.sortOrder)).toEqual([0, 1]);
+    });
+
+    it('carries the family’s chips, head first, with the viewed one marked', async () => {
+      const category = await makeCategory();
+      const head = await ProductDao.create(
+        makeProduct(category, { price: 185_000, variantLabel: 'لاوندر' }),
+      );
+      const member = await ProductDao.create(
+        makeProduct(category, {
+          price: 149_000,
+          stock: 0,
+          variantOf: head.id,
+          variantLabel: 'بدون بو',
+        }),
+      );
+
+      const detail = await getData<ProductDetailResponse>(
+        apiProductPath(member.slug),
+      );
+
+      // Each chip names its sibling, prices it and says whether it can be
+      // bought — the card advertises «از ۱۴۹٬۰۰۰» and this is what tells the
+      // shopper which member that is.
+      expect(detail.variants.map((chip) => chip.label)).toEqual([
+        'لاوندر',
+        'بدون بو',
+      ]);
+      expect(detail.variants.map((chip) => chip.isCurrent)).toEqual([
+        false,
+        true,
+      ]);
+      expect(detail.variants.map((chip) => chip.price)).toEqual([
+        185_000, 149_000,
+      ]);
+      expect(detail.variants.map((chip) => chip.inStock)).toEqual([
+        true,
+        false,
+      ]);
+      expect(detail.variants.map((chip) => chip.slug)).toEqual([
+        head.slug,
+        member.slug,
+      ]);
+    });
+
+    it('gives a standalone product no chips at all', async () => {
+      const category = await makeCategory();
+      const alone = await ProductDao.create(makeProduct(category));
+
+      const detail = await getData<ProductDetailResponse>(
+        apiProductPath(alone.slug),
+      );
+
+      // The field is present and empty, never absent — the page renders no
+      // chip row rather than guarding against `undefined`.
+      expect(detail.variants).toEqual([]);
     });
 
     it('returns an empty image list rather than omitting the field', async () => {

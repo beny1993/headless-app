@@ -247,6 +247,32 @@ describe('the price slider', () => {
     expect(Number(low.value)).toBeLessThan(Number(high.value));
   });
 
+  // The third of the repo's three reasons a component gets a test: a control
+  // that writes the URL and reads it back. The handles are local state, so
+  // between a drag and the navigation that follows it they and the URL
+  // disagree — and if a *different* URL arrives in that window (the back
+  // button, a chip dropping the price filter, «پاک کردن همه»), the stale
+  // handles would outlive it.
+  it('takes the URL’s bounds back after a change it did not make', () => {
+    const { rerender } = renderFilters({
+      minPrice: '100000',
+      maxPrice: '300000',
+    });
+    fireEvent.change(handles().low, { target: { value: '200000' } });
+    expect(handles().low.value).toBe('200000');
+
+    rerender(
+      <ShopFilters
+        query={parseShopQuery({})}
+        categories={OPTIONS}
+        priceBounds={BOUNDS}
+      />,
+    );
+
+    expect(handles().low.value).toBe(String(BOUNDS.min));
+    expect(handles().high.value).toBe(String(BOUNDS.max));
+  });
+
   it('is not rendered when every product costs the same', () => {
     render(
       <ShopFilters

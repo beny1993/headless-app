@@ -122,8 +122,10 @@ const SEARCHABLE_FIELDS = [
 type SearchableFields = Pick<NewProduct, (typeof SEARCHABLE_FIELDS)[number]>;
 
 /**
- * A product's searchable text: its title, brand and benefit line as one
- * normalized string, exactly as `products.search_text` holds it.
+ * A product's searchable text: every field in {@link SEARCHABLE_FIELDS} as one
+ * normalized string, exactly as `products.search_text` holds it — its title,
+ * brand and benefit line, and its own «نوع» if it has one, so «۱۰ کیلو» finds
+ * the 10kg bag through the member's row rather than the head's.
  *
  * `description` is not in it. Trigram similarity is measured over the whole
  * stored string, so a paragraph of prose would push the words a shopper

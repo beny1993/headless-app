@@ -378,3 +378,101 @@ describe('the additional categories', () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The two props this branch adds to the form. Neither is reachable from a unit
+ * test — both decide whether a control is usable and what it says instead — and
+ * one of them is the last door onto the bug that orphaned a family: refusing
+ * the delete while leaving the visibility checkbox open sent the admin straight
+ * round it.
+ */
+describe('a product family in the form', () => {
+  const HEAD = '123e4567-e89b-12d3-a456-426614174010';
+  const renderMember = (
+    props: Partial<Parameters<typeof ProductForm>[0]> = {},
+  ) =>
+    render(
+      <ProductForm
+        product={{
+          ...EDIT_PRODUCT,
+          variantOf: HEAD,
+          variantLabel: '۵ کیلوگرم',
+        }}
+        categories={[
+          { id: EDIT_PRODUCT.categoryId, title: 'گربه', label: 'گربه' },
+        ]}
+        variantHeads={[
+          { id: HEAD, title: 'غذای خشک سگ', variantLabel: '۱۰ کیلوگرم' },
+        ]}
+        {...props}
+      />,
+    );
+
+  const headSelect = () =>
+    screen.getByLabelText('زیرمجموعه‌ی (اختیاری)') as HTMLSelectElement;
+  const visible = () =>
+    screen.getByLabelText('نمایش در فروشگاه') as HTMLInputElement;
+
+  it('offers each candidate head by its own «نوع»', () => {
+    // The members of a family share one `title`, so a select that listed them
+    // plainly would offer identical options.
+    renderMember();
+
+    expect(headSelect().value).toBe(HEAD);
+    expect(screen.getByText('غذای خشک سگ — ۱۰ کیلوگرم')).toBeTruthy();
+  });
+
+  it('offers a head with no «نوع» of its own, but refuses it', () => {
+    // Shown and disabled, with the reason: a head missing from the list is a
+    // head the admin cannot work out how to use.
+    renderMember({
+      variantHeads: [{ id: HEAD, title: 'غذای خشک سگ', variantLabel: null }],
+    });
+
+    const option = screen.getByText(
+      'غذای خشک سگ (اول «نوع» آن را پر کن)',
+    ) as HTMLOptionElement;
+    expect(option.disabled).toBe(true);
+  });
+
+  it('says why a member’s category reaches no shelf', () => {
+    renderMember();
+
+    // The shop lists heads, so a member's own category and pet type only ever
+    // show on its own page — not something a select can convey by itself.
+    expect(screen.getByText(/فقط در صفحه‌ی خودش دیده می‌شود/)).toBeTruthy();
+  });
+
+  it('closes both doors on a head that already has members', () => {
+    renderMember({
+      product: { ...EDIT_PRODUCT, variantLabel: '۵ کیلوگرم' },
+      hasMembers: true,
+    });
+
+    // The select, because only one level is allowed — and the checkbox,
+    // because hiding a head hides a family the shop then lists nowhere while
+    // its members stay live. The DAO refuses both; the form must not offer
+    // them and then explain afterwards.
+    expect(headSelect().disabled).toBe(true);
+    expect(visible().disabled).toBe(true);
+    expect(
+      screen.getByText(
+        'این محصول خودش زیرمجموعه دارد، پس نمی‌تواند زیرمجموعه‌ی محصول دیگری باشد.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('leaves both open on an ordinary product', () => {
+    render(
+      <ProductForm
+        product={EDIT_PRODUCT}
+        categories={[
+          { id: EDIT_PRODUCT.categoryId, title: 'گربه', label: 'گربه' },
+        ]}
+      />,
+    );
+
+    expect(headSelect().disabled).toBe(false);
+    expect(visible().disabled).toBe(false);
+  });
+});
