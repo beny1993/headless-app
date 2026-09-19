@@ -1,7 +1,11 @@
 'use client';
 
 import { AlertCircle } from 'lucide-react';
-import { PET_TYPES, type PetType } from '@/lib/catalog/product-query';
+import {
+  PET_LABELS,
+  PET_TYPES,
+  type PetType,
+} from '@/lib/catalog/product-query';
 import {
   LINK_PAGES,
   LINK_TYPES,
@@ -51,11 +55,6 @@ const PAGE_LABELS: Record<LinkPage, string> = {
   shop: 'فروشگاه',
   about: 'درباره ما',
   account: 'حساب کاربری',
-};
-
-const PET_LABELS: Record<PetType, string> = {
-  [PET_TYPES.CAT]: 'گربه',
-  [PET_TYPES.DOG]: 'سگ',
 };
 
 const MISSING_CATEGORY = 'دسته‌بندی حذف‌شده';

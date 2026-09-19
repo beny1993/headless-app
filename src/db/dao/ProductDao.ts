@@ -25,7 +25,7 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { db } from '@/db';
+import { db, type Executor } from '@/db';
 import {
   DEFAULT_PRODUCT_PAGE_SIZE,
   MAX_PRODUCT_PAGE_SIZE,
@@ -371,13 +371,6 @@ export type AdminProductFilters = {
   /** `undefined` = active and inactive; `true` = active only; `false` = inactive only. */
   active?: boolean;
 };
-
-/**
- * Whatever a query can run on: the pool, or a transaction on one connection of
- * it. The listing builds the same two queries either way — only a search needs
- * the transaction, and only because its threshold lives in one.
- */
-type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export class ProductDao {
   /**

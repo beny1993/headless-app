@@ -29,7 +29,6 @@ import {
   productInputSchema,
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
-import { PET_TYPE_VALUES } from '@/lib/catalog/product-query';
 import { generateSku } from '@/lib/catalog/sku';
 import { replaceProductImage } from '@/logic/admin/product-images';
 import { readImageUpload } from '../image-upload';
@@ -41,6 +40,7 @@ import {
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
 import { VARIANT_MESSAGES } from '@/lib/catalog/variant';
+import { ProductSchema } from '../product-schema';
 import { pgErrorOf } from '../pg-error';
 
 /** User-facing copy, so Persian. */
@@ -50,33 +50,18 @@ export const PRODUCT_SAVE_FAILED_MESSAGE =
   'محصول ذخیره نشد؛ ورودی را بررسی کن.';
 
 /**
- * The admin view of a product — the full row the form round-trips, including
- * `isActive` (which the storefront's `Product` omits) but never the internal
- * `searchText`, which the DAO owns.
+ * The admin view of a product: the storefront's own payload, minus the images
+ * (the panel loads those through their own endpoint) and plus the two columns
+ * only an admin sees — `isActive`, which the shop expresses by simply not
+ * listing the row, and `updatedAt`.
+ *
+ * Derived, never restated. The two were written out field for field and this
+ * story widened both copies by hand; the `Category` pair next door has already
+ * drifted on `sortOrder` that way.
  */
-const AdminProductSchema = z
-  .object({
-    id: z.uuid(),
-    title: z.string(),
-    slug: z.string(),
-    sku: z.string(),
-    brand: z.string().nullable(),
-    description: z.string().nullable(),
-    benefit: z.string().nullable(),
-    price: z.number().int().positive(),
-    oldPrice: z.number().int().positive().nullable(),
-    stock: z.number().int().nonnegative(),
+const AdminProductSchema = ProductSchema.omit({ images: true })
+  .safeExtend({
     isActive: z.boolean(),
-    /** The product's **main** category — unchanged by this story. */
-    categoryId: z.uuid(),
-    /** The categories it is also filed under, in the order they were added. */
-    extraCategoryIds: z.array(z.uuid()),
-    /** The product this one is a variant of, or null for a standalone/head. */
-    variantOf: z.uuid().nullable(),
-    /** «۱۰ کیلوگرم», «قرمز» — set on a member and on its head. */
-    variantLabel: z.string().nullable(),
-    petTypes: z.array(z.enum(PET_TYPE_VALUES)).min(1),
-    createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
   .openapi('AdminProduct');

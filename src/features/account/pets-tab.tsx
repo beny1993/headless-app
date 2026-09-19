@@ -15,7 +15,12 @@ import {
   ApiRequestError,
 } from '@/lib/api-client';
 import { PET_GENDERS, isHttpsUrl, type PetInput } from '@/lib/account/pet';
-import { PET_TYPES } from '@/lib/catalog/product-query';
+import {
+  PET_EMOJI,
+  PET_LABELS,
+  PET_TYPES,
+  PET_TYPE_VALUES,
+} from '@/lib/catalog/product-query';
 import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiMePetPath } from '@/lib/constant/paths';
 import type { PetResponse } from '@/lib/hono/routes/me-pets';
@@ -417,12 +422,10 @@ function PetForm({
 
         <FieldShell id="pet-type" label="نوع">
           <div className="flex gap-2">
-            {(
-              [
-                { v: PET_TYPES.CAT, l: '🐱 گربه' },
-                { v: PET_TYPES.DOG, l: '🐶 سگ' },
-              ] as const
-            ).map((option) => (
+            {PET_TYPE_VALUES.map((v) => ({
+              v,
+              l: `${PET_EMOJI[v]} ${PET_LABELS[v]}`,
+            })).map((option) => (
               <button
                 key={option.v}
                 type="button"

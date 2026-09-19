@@ -1,8 +1,8 @@
+import { formatPetTypes } from '@/lib/catalog/product-query';
 import { randomInt } from 'node:crypto';
 import { z } from 'zod';
 import { PET_TYPES } from '@/db/schema/catalog';
 import { SEED_CATEGORIES, SEED_SUBCATEGORIES } from '@/db/seed/catalog-data';
-import { formatPetTypes } from '@/features/storefront/shop/shop-query';
 import { SUBCATEGORY_PREFIX } from '@/lib/catalog/category-tree';
 import { SKU_SUFFIX_LENGTH, skuPreview } from '@/lib/catalog/sku';
 import {

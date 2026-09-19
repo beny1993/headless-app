@@ -41,6 +41,37 @@ export const PET_TYPE_VALUES = [PET_TYPES.CAT, PET_TYPES.DOG] as const;
 export const normalizePetTypes = (values: readonly PetType[]): PetType[] =>
   PET_TYPE_VALUES.filter((value) => values.includes(value));
 
+/**
+ * One Persian word per `pet_type` value, keyed by the union so a third pet type
+ * stops the build here rather than rendering a bare `cat` somewhere.
+ *
+ * Beside the enum, because everything that shows a pet shows these two words:
+ * the shop's filter, the product page's specification row, the admin product
+ * form, the content link picker, the home quiz and the account pet form. They
+ * had been written out four times over, and each copy is a place the wording
+ * can drift from the others.
+ */
+export const PET_LABELS: Record<PetType, string> = {
+  [PET_TYPES.CAT]: 'گربه',
+  [PET_TYPES.DOG]: 'سگ',
+};
+
+/** The face each one wears where a control has room for it. */
+export const PET_EMOJI: Record<PetType, string> = {
+  [PET_TYPES.CAT]: '\u{1F431}',
+  [PET_TYPES.DOG]: '\u{1F436}',
+};
+
+/**
+ * A product's whole pet selection as one Persian phrase — «گربه», «سگ» or
+ * «گربه و سگ». Normalized first, so the phrase does not depend on the order the
+ * row happens to be written in.
+ */
+export const formatPetTypes = (petTypes: readonly PetType[]): string =>
+  normalizePetTypes(petTypes)
+    .map((pet) => PET_LABELS[pet])
+    .join(' و ');
+
 /** The orderings the storefront offers. Never compare against bare strings. */
 export const PRODUCT_SORTS = {
   NEWEST: 'newest',

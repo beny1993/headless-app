@@ -30,7 +30,7 @@ import { z } from 'zod';
 import {
   PET_TYPES,
   PRODUCT_SORTS,
-  normalizePetTypes,
+  PET_LABELS,
   productListQueryShape,
   type ProductListQuery,
 } from '@/lib/catalog/product-query';
@@ -111,27 +111,6 @@ const SORT_LABELS: Record<ShopSort, string> = {
   'price-asc': 'ارزان‌ترین',
   'price-desc': 'گران‌ترین',
 };
-
-/**
- * Exported because the product page's specification rows name the same enum:
- * one Persian word per `pet_type` value, in one place. Keyed by the union, so
- * a third pet type stops the build here rather than rendering a bare `cat`.
- */
-export const PET_LABELS: Record<ShopPet, string> = {
-  cat: 'گربه',
-  dog: 'سگ',
-};
-
-/**
- * A product's whole pet selection as one Persian phrase — «گربه», «سگ» or
- * «گربه و سگ». Here rather than in the product page so that page, and whatever
- * shows the selection next, cannot invent a second wording; normalized first,
- * so the phrase does not depend on the order the row was written in.
- */
-export const formatPetTypes = (petTypes: readonly ShopPet[]): string =>
-  normalizePetTypes(petTypes)
-    .map((pet) => PET_LABELS[pet])
-    .join(' و ');
 
 /** The sort control's options: the API's orderings with their Persian labels. */
 export const SHOP_SORT_OPTIONS: readonly { value: ShopSort; label: string }[] =

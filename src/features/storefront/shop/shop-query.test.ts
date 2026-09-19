@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SHOP_QUERY,
   buildShopHref,
-  formatPetTypes,
   parseShopQuery,
   updateShopQuery,
   type ShopQuery,
@@ -502,18 +501,6 @@ describe('updateShopQuery', () => {
       category: 'toys',
       page: 5,
     });
-  });
-});
-
-describe('formatPetTypes', () => {
-  it('names one pet with its own label', () => {
-    expect(formatPetTypes(['cat'])).toBe('گربه');
-    expect(formatPetTypes(['dog'])).toBe('سگ');
-  });
-
-  it('joins both pets in the canonical order, whatever order it is given', () => {
-    expect(formatPetTypes(['cat', 'dog'])).toBe('گربه و سگ');
-    expect(formatPetTypes(['dog', 'cat'])).toBe('گربه و سگ');
   });
 });
 

@@ -1,7 +1,7 @@
 // All Drizzle DB access goes through DAOs like this one. Multi-DAO operations
 // belong in src/logic/, not in route handlers or components. Never write raw SQL.
 import { asc, count, eq, inArray, or } from 'drizzle-orm';
-import { db } from '@/db';
+import { db, type Executor } from '@/db';
 import {
   categories,
   productCategories,
@@ -33,9 +33,6 @@ export class CategoryParentError extends Error {
     this.name = 'CategoryParentError';
   }
 }
-
-/** The pool, or a transaction on one connection of it — as in `ProductDao`. */
-type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export class CategoryDao {
   /** Storefront order: the hand-set `sortOrder` first, title as the tiebreak. */

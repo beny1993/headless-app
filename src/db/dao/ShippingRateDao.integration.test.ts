@@ -9,7 +9,7 @@
 import { TransactionRollbackError, eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { provinces, shippingRates } from '@/db/schema/shipping';
-import type { Tx } from '@/db/dao/OrderDao';
+import type { Tx } from '@/db';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 
 const { ShippingRateDao } = await importWithDb(

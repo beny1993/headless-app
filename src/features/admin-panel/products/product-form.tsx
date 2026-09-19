@@ -13,7 +13,9 @@ import {
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
 import {
-  PET_TYPES,
+  PET_EMOJI,
+  PET_LABELS,
+  PET_TYPE_VALUES,
   normalizePetTypes,
   type PetType,
 } from '@/lib/catalog/product-query';
@@ -685,10 +687,10 @@ export function ProductForm({
             نوع حیوان
           </legend>
           <div className="flex max-w-xs gap-2">
-            {[
-              { value: PET_TYPES.CAT, label: '🐱 گربه' },
-              { value: PET_TYPES.DOG, label: '🐶 سگ' },
-            ].map((option) => (
+            {PET_TYPE_VALUES.map((value) => ({
+              value,
+              label: `${PET_EMOJI[value]} ${PET_LABELS[value]}`,
+            })).map((option) => (
               <button
                 key={option.value}
                 type="button"

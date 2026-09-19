@@ -2,8 +2,8 @@
 // only write the state machine composes; the rest serve checkout (story 14) and
 // the Zarinpal verify callback (story 15).
 import { and, asc, eq, isNotNull, lt, ne } from 'drizzle-orm';
-import { db } from '@/db';
-import type { Executor, Tx } from '@/db/dao/OrderDao';
+import { db, type Executor, type Tx } from '@/db';
+
 import { payments, type NewPayment, type Payment } from '@/db/schema/orders';
 import { PAYMENT_METHODS, PAYMENT_STATUSES } from '@/lib/orders/order-status';
 

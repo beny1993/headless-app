@@ -1,3 +1,4 @@
+import { formatPetTypes } from '@/lib/catalog/product-query';
 import type { Page } from '@playwright/test';
 import { PET_TYPES } from '@/db/schema/catalog';
 import {
@@ -5,7 +6,6 @@ import {
   SEED_PRODUCTS,
   SEED_SUBCATEGORIES,
 } from '@/db/seed/catalog-data';
-import { formatPetTypes } from '@/features/storefront/shop/shop-query';
 import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import { IN_STOCK_PRODUCT, SOLD_OUT_PRODUCT, expect, test } from './support';
