@@ -55,6 +55,14 @@ const MAX_STOCK = 2_147_483_647;
  */
 export const MAX_EXTRA_CATEGORIES = 5;
 
+/**
+ * How many photos a product may carry. The first is the cover — the shop card,
+ * the admin list thumbnail and the product page's opening image — and the rest
+ * are the other views. Client-safe, so the admin field, the reorder schema and
+ * the upload route all read one number.
+ */
+export const MAX_PRODUCT_IMAGES = 5;
+
 /** Persian, user-facing — these strings surface on the form's fields. */
 export const PRODUCT_MESSAGES = {
   title: 'عنوان محصول الزامی است.',
@@ -77,6 +85,11 @@ export const PRODUCT_MESSAGES = {
   // refusal onto this same string.
   extraCategories: 'یکی از دسته‌بندی‌های انتخاب‌شده یافت نشد؛ صفحه را تازه کن.',
   extraCategoriesMax: `حداکثر ${toPersianDigits(MAX_EXTRA_CATEGORIES)} دسته‌بندی دیگر می‌توانی انتخاب کنی.`,
+  // The gallery pair, said the same way as the categories pair above: one
+  // sentence for a key that is malformed and for one no image of this product
+  // has, because to the admin both mean «the page you are looking at is stale».
+  images: 'یکی از عکس‌های انتخاب‌شده یافت نشد؛ صفحه را تازه کن.',
+  imagesMax: `حداکثر ${toPersianDigits(MAX_PRODUCT_IMAGES)} عکس برای هر محصول می‌توانی بارگذاری کنی.`,
 };
 
 /** Latin URL segment; the same shape the categories schema documents. */
@@ -282,3 +295,44 @@ export type ProductInputBody = z.infer<typeof productInputSchema>;
 export const productUpdateInputSchema = productInputSchema.safeExtend({
   expectedStock: z.number().int().nonnegative().max(MAX_STOCK),
 });
+
+/** Longer than any key `objectKeyFor` produces; a bound, not a format check. */
+const MAX_OBJECT_KEY_LENGTH = 200;
+
+const isObjectKey = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  value.length > 0 &&
+  value.length <= MAX_OBJECT_KEY_LENGTH;
+
+/**
+ * The gallery-order body: this product's own image keys, in the order the admin
+ * arranged them, with the removed ones simply absent.
+ *
+ * Keys rather than `product_images.id`, and that is deliberate: `setImages`
+ * replaces the gallery wholesale, so every row id changes on every append,
+ * while the object key — generated server-side by `objectKeyFor` and never by
+ * the client — survives. A form that had sent ids would be sending dead ones
+ * the moment it uploaded a photo.
+ *
+ * Shape only, as with `extraCategoryIds`: «every key is one of *this* product's»
+ * is set membership against a row no schema can read, so the route checks it
+ * and answers with this same sentence.
+ */
+export const productImagesOrderSchema = z.object({
+  objectKeys: z
+    .array(anyElement({ type: 'string' }), PRODUCT_MESSAGES.images)
+    .max(MAX_PRODUCT_IMAGES, PRODUCT_MESSAGES.imagesMax)
+    .refine((keys) => keys.every(isObjectKey), {
+      error: PRODUCT_MESSAGES.images,
+    })
+    // A repeated key would store the same photo twice and make «remove this
+    // one» ambiguous. Refused rather than deduped: it can only come from a
+    // client bug, and silently changing what was sent hides it.
+    .refine((keys) => new Set(keys).size === keys.length, {
+      error: PRODUCT_MESSAGES.images,
+    })
+    .transform((keys) => keys as string[]),
+});
+
+/** The validated gallery-order body. */
+export type ProductImagesOrderBody = z.infer<typeof productImagesOrderSchema>;
