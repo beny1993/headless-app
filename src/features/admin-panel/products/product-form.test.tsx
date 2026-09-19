@@ -65,7 +65,7 @@ it('submits the observed inventory when editing a product', async () => {
     variantLabel: null,
     petTypes: ['cat'],
     isActive: true,
-    imageKey: null,
+    images: [],
   };
   api.putData.mockResolvedValue({ id: product.id });
   render(
@@ -122,7 +122,7 @@ const EDIT_PRODUCT: ProductFormInitial = {
   variantLabel: null,
   petTypes: ['cat'],
   isActive: true,
-  imageKey: null,
+  images: [],
 };
 
 describe('product save failures', () => {
@@ -148,7 +148,7 @@ describe('product save failures', () => {
     expect(router.push).not.toHaveBeenCalled();
   });
 
-  it('lands on the list with a warning toast when the photo fails after the save', async () => {
+  it('lands on the list with a warning toast when a photo fails after the save', async () => {
     api.putData.mockResolvedValue({ id: EDIT_PRODUCT.id });
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
@@ -161,9 +161,10 @@ describe('product save failures', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
 
+    // Counted, since a save can now carry several photos and lose only some.
     await waitFor(() =>
       expect(toast.warning).toHaveBeenCalledWith(
-        'محصول ذخیره شد اما بارگذاری تصویر ناموفق بود. از فهرست محصولات دوباره تلاش کن.',
+        `محصول ذخیره شد اما ${toPersianDigits(1)} عکس بارگذاری نشد. از فهرست محصولات دوباره تلاش کن.`,
       ),
     );
     expect(router.push).toHaveBeenCalledWith(PROTECTED_PATHS.PRODUCTS);

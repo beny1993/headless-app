@@ -60,7 +60,12 @@ export default async function EditProductPage({
         variantLabel: product.variantLabel,
         petTypes: product.petTypes,
         isActive: product.isActive,
-        imageKey: product.images[0]?.objectKey ?? null,
+        // The whole gallery, in sort order: the form reorders and removes,
+        // not just replaces, so the first photo alone is no longer enough.
+        images: product.images.map((image) => ({
+          id: image.id,
+          objectKey: image.objectKey,
+        })),
       }}
     />
   );

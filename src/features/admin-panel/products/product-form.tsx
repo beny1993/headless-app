@@ -30,11 +30,10 @@ import {
 } from '@/lib/constant/paths';
 import { formatToman, toAsciiDigits, toPersianDigits } from '@/lib/format';
 import { IMAGE_FIELD_NAME } from '@/lib/storage/image-upload';
-import { imageSrc } from '@/lib/storage/image-url';
 import {
-  ImagePicker,
-  validateImageFile,
-} from '@/features/admin-panel/shared/image-picker';
+  ProductImagesField,
+  type ProductPhoto,
+} from '@/features/admin-panel/products/product-images-field';
 
 // The form imports nothing from the route module: that would pull `pg` into the
 // browser bundle. It only reads the saved product's id back, so this narrow
@@ -63,8 +62,8 @@ export type ProductFormInitial = {
   variantLabel: string | null;
   petTypes: PetType[];
   isActive: boolean;
-  /** The current image's storage key, if any, so the edit form can preview it. */
-  imageKey: string | null;
+  /** The gallery, in the stored order — the first is the cover. */
+  images: { id: string; objectKey: string }[];
 };
 
 /**
@@ -104,9 +103,11 @@ const zodFieldErrors = (error: z.ZodError): Record<string, string> => {
   return fields;
 };
 
-/** Upload the chosen image to the just-saved product. Multipart, so a raw fetch
- *  rather than the JSON api-client; same-origin, so the session cookie rides. */
-async function uploadImage(productId: string, file: File): Promise<void> {
+/** Append one picked photo to the just-saved product and return its stored key.
+ *  Multipart, so a raw fetch rather than the JSON api-client; same-origin, so
+ *  the session cookie rides. One request per file: the 2 MB ceiling is mounted
+ *  per request, so batching would turn it into a shared cap. */
+async function uploadImage(productId: string, file: File): Promise<string> {
   const form = new FormData();
   form.set(IMAGE_FIELD_NAME, file);
   const response = await fetch(apiAdminProductImagesPath(productId), {
@@ -116,11 +117,26 @@ async function uploadImage(productId: string, file: File): Promise<void> {
   const body = (await response.json().catch(() => null)) as {
     status?: string;
     message?: string;
+    data?: { objectKey?: string };
   } | null;
-  if (!response.ok || body?.status !== 'success') {
+  const objectKey = body?.data?.objectKey;
+  if (!response.ok || body?.status !== 'success' || !objectKey) {
     throw new Error(body?.message ?? 'بارگذاری تصویر ناموفق بود.');
   }
+  return objectKey;
 }
+
+/** The product was saved; some of its photos were not. */
+const photosFailedMessage = (failed: number) =>
+  `محصول ذخیره شد اما ${toPersianDigits(failed)} عکس بارگذاری نشد. از فهرست محصولات دوباره تلاش کن.`;
+
+/** The photos went up; the order they were meant to be in did not. */
+const ORDER_FAILED_MESSAGE =
+  'محصول ذخیره شد اما ترتیب عکس‌ها ذخیره نشد. از فهرست محصولات دوباره تلاش کن.';
+
+/** Same keys, same order. */
+const sameOrder = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((key, index) => key === b[index]);
 
 export function ProductForm({
   categories,
@@ -159,9 +175,18 @@ export function ProductForm({
     petTypes: product?.petTypes ?? [],
     isActive: product?.isActive ?? true,
   });
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(
-    product?.imageKey ? imageSrc(product.imageKey) : null,
+  // The gallery as the admin is arranging it: stored photos and just-picked
+  // files in one ordered list, so a reorder that mixes the two is a plain array
+  // move. The stored rows keep their ids as tile keys, which is all those ids
+  // are for — the write below speaks in object keys, because `setImages`
+  // replaces the rows and their ids change on every upload.
+  const [photos, setPhotos] = useState<ProductPhoto[]>(
+    () =>
+      product?.images.map((image) => ({
+        id: image.id,
+        kind: 'saved' as const,
+        objectKey: image.objectKey,
+      })) ?? [],
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -245,18 +270,6 @@ export function ProductForm({
       ),
     );
 
-  const onPickFile = (chosen: File | undefined) => {
-    if (!chosen) return;
-    const invalid = validateImageFile(chosen);
-    if (invalid) {
-      setFieldErrors((current) => ({ ...current, image: invalid }));
-      return;
-    }
-    setFieldErrors((current) => ({ ...current, image: '' }));
-    setFile(chosen);
-    setPreview(URL.createObjectURL(chosen));
-  };
-
   const buildBody = () => ({
     title: form.title,
     slug: form.slug,
@@ -300,24 +313,50 @@ export function ProductForm({
           )
         : await postData<SavedProduct>(API_PATHS.ADMIN_PRODUCTS, parsed.data);
 
-      if (file) {
-        // The product is already saved; a failed image attach must not look like
-        // the save failed (and must not re-POST and duplicate the slug). Land on
-        // the list and say the image did not attach — it can be retried there.
+      // Save-then-attach, unchanged in spirit: the product row is already
+      // stored, so a photo that fails must never look like a failed save and
+      // must never re-POST (a second POST would duplicate the slug). What is
+      // new is that the gallery write runs whether or not a file was picked —
+      // a reorder-only or removal-only save carries no file at all, and the
+      // old `if (file)` would have skipped it in silence.
+      const uploaded: string[] = [];
+      const objectKeys: string[] = [];
+      let failed = 0;
+      for (const photo of photos) {
+        if (photo.kind === 'saved') {
+          objectKeys.push(photo.objectKey);
+          continue;
+        }
         try {
-          await uploadImage(saved.id, file);
+          const key = await uploadImage(saved.id, photo.file);
+          uploaded.push(key);
+          objectKeys.push(key);
         } catch {
-          router.push(PROTECTED_PATHS.PRODUCTS);
-          router.refresh();
-          toast.warning(
-            'محصول ذخیره شد اما بارگذاری تصویر ناموفق بود. از فهرست محصولات دوباره تلاش کن.',
-          );
-          return;
+          failed += 1;
+        }
+      }
+
+      // What the product now holds server-side: what it held, plus whatever
+      // went up, appended. Writing the order is only worth a request when the
+      // admin's arrangement differs from that — a removal, a reorder, or a new
+      // photo dragged anywhere but the end.
+      const stored = [
+        ...(product?.images.map((image) => image.objectKey) ?? []),
+        ...uploaded,
+      ];
+      let orderFailed = false;
+      if (!sameOrder(stored, objectKeys)) {
+        try {
+          await putData(apiAdminProductImagesPath(saved.id), { objectKeys });
+        } catch {
+          orderFailed = true;
         }
       }
 
       router.push(PROTECTED_PATHS.PRODUCTS);
       router.refresh();
+      if (failed > 0) toast.warning(photosFailedMessage(failed));
+      else if (orderFailed) toast.warning(ORDER_FAILED_MESSAGE);
     } catch (error) {
       setBusy(false);
       if (
@@ -368,13 +407,10 @@ export function ProductForm({
         noValidate
         className="border-border space-y-5 rounded-2xl border bg-white p-6"
       >
-        <ImagePicker
-          id={fid('image')}
-          label="تصویر محصول"
-          preview={preview}
-          error={fieldErrors.image}
-          buttonLabel={isEdit || preview ? 'تغییر تصویر' : 'انتخاب تصویر'}
-          onPick={onPickFile}
+        <ProductImagesField
+          id={fid('images')}
+          photos={photos}
+          onChange={setPhotos}
         />
 
         <Field id={fid('title')} label="عنوان محصول" error={fieldErrors.title}>
@@ -798,7 +834,9 @@ export function ProductForm({
             {busy && (
               <Loader2 size={16} className="animate-spin" aria-hidden="true" />
             )}
-            ذخیره محصول
+            {busy && photos.some((photo) => photo.kind === 'pending')
+              ? 'در حال بارگذاری عکس‌ها…'
+              : 'ذخیره محصول'}
           </button>
           <button
             type="button"
