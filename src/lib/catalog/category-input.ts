@@ -41,7 +41,27 @@ export const CATEGORY_MESSAGES = {
   slug: 'نشانی فقط با حروف کوچک انگلیسی، عدد و خط تیره (حداقل ۳ نویسه).',
   slugLength: `نشانی حداکثر ${toPersianDigits(MAX_SLUG_LENGTH)} نویسه است.`,
   sortOrder: 'ترتیب نمایش باید عددی صحیح و صفر یا بیشتر باشد.',
+  parent: 'دسته‌بندی مادر نامعتبر است.',
 } as const;
+
+/**
+ * Why a parent was refused. The database cannot see another row, so these four
+ * are `CategoryDao`'s to decide — the schema only checks that the id is an id.
+ */
+export type CategoryParentReason =
+  'self' | 'unknown' | 'nested' | 'hasChildren';
+
+/**
+ * The refusals, in Persian. The routes send them as `parentId: <message>`, which
+ * `parseFieldErrors` drops under the manager's parent select; `hasChildren` is
+ * also that select's hint while it is disabled, so both say the same sentence.
+ */
+export const CATEGORY_PARENT_MESSAGES: Record<CategoryParentReason, string> = {
+  self: 'یک دسته‌بندی نمی‌تواند مادر خودش باشد.',
+  unknown: 'دسته‌بندی مادر یافت نشد؛ صفحه را تازه کن.',
+  nested: 'دسته‌بندی مادر خودش زیردسته است؛ بیش از یک سطح زیردسته نداریم.',
+  hasChildren: 'این دسته‌بندی زیردسته دارد و خودش نمی‌تواند زیردسته شود.',
+};
 
 // `{ error }` on each base type too, not only on the refinements: a missing or
 // wrong-typed field fails the base check, and without it zod falls back to its
@@ -72,6 +92,12 @@ export const categoryInputSchema = z.object({
     .int(CATEGORY_MESSAGES.sortOrder)
     .nonnegative(CATEGORY_MESSAGES.sortOrder)
     .max(MAX_SORT_ORDER, CATEGORY_MESSAGES.sortOrder),
+  // PUT replaces the whole category, so an omitted parent means «top-level»,
+  // not «leave it alone» — which is also what keeps every body written before
+  // sub-categories existed valid. Whether the id names a category, and whether
+  // that category may be a parent, is `CategoryDao`'s call: a schema cannot see
+  // another row.
+  parentId: z.uuid(CATEGORY_MESSAGES.parent).nullable().default(null),
 });
 
 /** The validated body — assignable to `CategoryDao`'s `CategoryInput`. */

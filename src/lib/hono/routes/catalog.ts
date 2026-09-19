@@ -17,17 +17,22 @@ import { ProductDao } from '@/db/dao/ProductDao';
 import {
   MAX_PRODUCT_PAGE_SIZE,
   MAX_SEARCH_TERM_LENGTH,
-  PET_TYPES,
   productListQueryShape,
   productSlugSchema,
 } from '@/lib/catalog/product-query';
-import { type Category, type ProductWithImages } from '@/db/schema/catalog';
+import {
+  type Category,
+  type ProductCard,
+  type ProductDetail,
+  type ProductWithImages,
+} from '@/db/schema/catalog';
 import {
   apiError,
   apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
 } from '../envelope';
+import { ProductImageSchema, ProductSchema } from '../product-schema';
 
 /** User-facing copy, so Persian. `errors` stays English developer detail. */
 export const PRODUCT_NOT_FOUND_MESSAGE = 'محصول یافت نشد';
@@ -38,44 +43,57 @@ const CategorySchema = z
     title: z.string(),
     slug: z.string(),
     sortOrder: z.number().int(),
+    /**
+     * The category this one sits under; `null` for a top-level one. The list
+     * stays flat — consumers nest it with `@/lib/catalog/category-tree`.
+     */
+    parentId: z.uuid().nullable(),
   })
   .openapi('Category');
 
-const ProductImageSchema = z
-  .object({
-    id: z.uuid(),
-    /**
-     * A storage key, not a URL — `products/cat-toy.jpg`. Resolving it to a URL
-     * is the storage interface's job, not this endpoint's.
-     */
-    objectKey: z.string(),
-    sortOrder: z.number().int(),
-  })
-  .openapi('ProductImage');
+/**
+ * A listing row: the product plus what its whole family costs and whether any
+ * of it is in stock. A client rendering a grid needs these to print «از …» and
+ * to grey out a card; a standalone product reports its own price, no variation
+ * and its own stock, so a consumer that ignores families still reads the truth.
+ */
+const ProductCardSchema = ProductSchema.safeExtend({
+  familyMinPrice: z.number().int().positive(),
+  familyPricesVary: z.boolean(),
+  familyInStock: z.boolean(),
+  familyHasMembers: z.boolean(),
+}).openapi('ProductCard');
 
-const ProductSchema = z
+/**
+ * One chip on the product page: which sibling it is, what it costs and whether
+ * it can be bought. The price is on the chip because the card advertises the
+ * family's cheapest — «از ۱۴۹٬۰۰۰» — and the page it links to has to say which
+ * member that is.
+ */
+const VariantChipSchema = z
   .object({
     id: z.uuid(),
-    title: z.string(),
     slug: z.string(),
-    sku: z.string(),
-    brand: z.string().nullable(),
-    benefit: z.string().nullable(),
-    description: z.string().nullable(),
-    /** Integer Toman. Never a float, never a string. */
+    label: z.string(),
+    isCurrent: z.boolean(),
+    /** Integer Toman, this member's own. */
     price: z.number().int().positive(),
-    oldPrice: z.number().int().positive().nullable(),
-    stock: z.number().int().nonnegative(),
-    petType: z.enum([PET_TYPES.CAT, PET_TYPES.DOG]),
-    categoryId: z.uuid(),
-    createdAt: z.iso.datetime(),
-    images: z.array(ProductImageSchema),
+    inStock: z.boolean(),
   })
-  .openapi('Product');
+  .openapi('VariantChip');
+
+/**
+ * The detail payload: the product plus its family's members, head first, the
+ * viewed one marked. Empty when the product has no siblings — including when
+ * its only sibling is inactive, since one already-selected chip is no choice.
+ */
+const ProductDetailSchema = ProductSchema.safeExtend({
+  variants: z.array(VariantChipSchema),
+}).openapi('ProductDetail');
 
 const ProductListSchema = z
   .object({
-    items: z.array(ProductSchema),
+    items: z.array(ProductCardSchema),
     /** One-based, echoed back so a client can trust what it is rendering. */
     page: z.number().int().positive(),
     limit: z.number().int().positive(),
@@ -154,6 +172,8 @@ const ProductSlugParamSchema = z.object({
 export type CategoryResponse = z.infer<typeof CategorySchema>;
 export type ProductImageResponse = z.infer<typeof ProductImageSchema>;
 export type ProductResponse = z.infer<typeof ProductSchema>;
+export type ProductCardResponse = z.infer<typeof ProductCardSchema>;
+export type ProductDetailResponse = z.infer<typeof ProductDetailSchema>;
 export type ProductListResponse = z.infer<typeof ProductListSchema>;
 export type ProductListQuery = z.infer<typeof ProductListQuerySchema>;
 
@@ -162,6 +182,7 @@ const toCategoryResponse = (row: Category): CategoryResponse => ({
   title: row.title,
   slug: row.slug,
   sortOrder: row.sortOrder,
+  parentId: row.parentId,
 });
 
 /**
@@ -187,13 +208,43 @@ const toProductResponse = (row: ProductWithImages): ProductResponse => ({
   price: row.price,
   oldPrice: row.oldPrice,
   stock: row.stock,
-  petType: row.petType,
+  petTypes: row.petTypes,
   categoryId: row.categoryId,
+  extraCategoryIds: row.extraCategoryIds,
+  variantOf: row.variantOf,
+  variantLabel: row.variantLabel,
   createdAt: row.createdAt.toISOString(),
   images: row.images.map((image) => ({
     id: image.id,
     objectKey: image.objectKey,
     sortOrder: image.sortOrder,
+  })),
+});
+
+/** A listing row: the product, plus the three facts about its family. */
+const toProductCardResponse = (row: ProductCard): ProductCardResponse => ({
+  ...toProductResponse(row),
+  familyMinPrice: row.familyMinPrice,
+  familyPricesVary: row.familyPricesVary,
+  familyInStock: row.familyInStock,
+  familyHasMembers: row.familyHasMembers,
+});
+
+/** The detail payload: the product, plus its family's chips. */
+const toProductDetailResponse = (
+  row: ProductDetail,
+): ProductDetailResponse => ({
+  ...toProductResponse(row),
+  // Field by field, like every other mapper here: handing the DAO's array out
+  // by reference is the one way a column added to `VariantChip` later would
+  // reach an anonymous visitor without appearing in the schema above.
+  variants: row.variants.map((variant) => ({
+    id: variant.id,
+    slug: variant.slug,
+    label: variant.label,
+    isCurrent: variant.isCurrent,
+    price: variant.price,
+    inStock: variant.inStock,
   })),
 });
 
@@ -265,7 +316,7 @@ export const productListHandler: RouteHandler<typeof productListRoute> = async (
 
   return c.json(
     apiSuccess({
-      items: items.map(toProductResponse),
+      items: items.map(toProductCardResponse),
       page,
       limit,
       total,
@@ -285,7 +336,10 @@ export const productDetailRoute = createRoute({
     200: {
       content: {
         'application/json': {
-          schema: apiSuccessSchema(ProductSchema, 'ProductDetailResponse'),
+          schema: apiSuccessSchema(
+            ProductDetailSchema,
+            'ProductDetailResponse',
+          ),
         },
       },
       description: 'The product',
@@ -310,5 +364,5 @@ export const productDetailHandler: RouteHandler<
   const product = await ProductDao.getBySlug(slug);
   if (!product) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
 
-  return c.json(apiSuccess(toProductResponse(product)), 200);
+  return c.json(apiSuccess(toProductDetailResponse(product)), 200);
 };

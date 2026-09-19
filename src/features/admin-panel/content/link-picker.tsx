@@ -1,7 +1,11 @@
 'use client';
 
 import { AlertCircle } from 'lucide-react';
-import { PET_TYPES, type PetType } from '@/lib/catalog/product-query';
+import {
+  PET_LABELS,
+  PET_TYPES,
+  type PetType,
+} from '@/lib/catalog/product-query';
 import {
   LINK_PAGES,
   LINK_TYPES,
@@ -14,7 +18,19 @@ import {
 import { MAX_ROUTINE_CATEGORIES } from '@/lib/content/site-content';
 
 /** A category or active product a destination can point at. */
-export type LinkOption = { id: string; title: string; slug: string };
+export type LinkOption = {
+  id: string;
+  title: string;
+  slug: string;
+  /**
+   * The indented form for a tree `<select>`, where «— شامپو و نظافت» is how a
+   * sub-category shows it sits under its parent. Anywhere the option is not a
+   * line in that list — a chip, a sentence naming what was picked — the
+   * prefix is a dash with nothing on the other side of it, so those read
+   * `title`. Absent for a flat list, where the two are the same thing.
+   */
+  label?: string;
+};
 export type LinkOptions = { categories: LinkOption[]; products: LinkOption[] };
 
 /** The pickers' Persian control names — exported so tests find controls by name. */
@@ -39,11 +55,6 @@ const PAGE_LABELS: Record<LinkPage, string> = {
   shop: 'فروشگاه',
   about: 'درباره ما',
   account: 'حساب کاربری',
-};
-
-const PET_LABELS: Record<PetType, string> = {
-  [PET_TYPES.CAT]: 'گربه',
-  [PET_TYPES.DOG]: 'سگ',
 };
 
 const MISSING_CATEGORY = 'دسته‌بندی حذف‌شده';
@@ -187,7 +198,7 @@ export function LinkPicker({
                 )}
               {options.categories.map((category) => (
                 <option key={category.id} value={category.id}>
-                  {category.title}
+                  {category.label ?? category.title}
                 </option>
               ))}
             </select>

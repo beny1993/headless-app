@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { z } from 'zod';
 import { CategoryDao } from '@/db/dao/CategoryDao';
+import { categoryOptions } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { ProductForm } from '@/features/admin-panel/products/product-form';
 
@@ -23,16 +24,25 @@ export default async function EditProductPage({
   const parsed = z.uuid().safeParse(id);
   if (!parsed.success) notFound();
 
-  const [product, categories] = await Promise.all([
-    ProductDao.findByIdForAdmin(parsed.data),
-    CategoryDao.list(),
-  ]);
+  // The row first, on its own: the «زیرمجموعه‌ی» options depend on the head it
+  // already points at — a soft-deleted one has to stay in the list or the
+  // select would contradict the column — and a 404 then costs no other query.
+  const product = await ProductDao.findByIdForAdmin(parsed.data);
   if (!product) notFound();
+
+  const [categories, variantHeads, hasMembers] = await Promise.all([
+    CategoryDao.list(),
+    // Never this product itself: a row cannot be its own head.
+    ProductDao.listVariantHeads(parsed.data, product.variantOf),
+    ProductDao.hasMembers(parsed.data),
+  ]);
 
   return (
     <ProductForm
       key={product.id}
-      categories={categories.map(({ id, title }) => ({ id, title }))}
+      categories={categoryOptions(categories)}
+      variantHeads={variantHeads}
+      hasMembers={hasMembers}
       product={{
         id: product.id,
         title: product.title,
@@ -45,7 +55,10 @@ export default async function EditProductPage({
         oldPrice: product.oldPrice,
         stock: product.stock,
         categoryId: product.categoryId,
-        petType: product.petType,
+        extraCategoryIds: product.extraCategoryIds,
+        variantOf: product.variantOf,
+        variantLabel: product.variantLabel,
+        petTypes: product.petTypes,
         isActive: product.isActive,
         imageKey: product.images[0]?.objectKey ?? null,
       }}

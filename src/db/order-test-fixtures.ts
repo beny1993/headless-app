@@ -71,7 +71,7 @@ export class OrderFixtures {
         price: 100_000,
         stock: 5,
         categoryId: category.id,
-        petType: PET_TYPES.CAT,
+        petTypes: [PET_TYPES.CAT],
         ...overrides,
       })
       .returning();

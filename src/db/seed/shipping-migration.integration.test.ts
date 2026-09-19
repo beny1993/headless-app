@@ -16,7 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { TransactionRollbackError, asc, eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import type { Tx } from '@/db/dao/OrderDao';
+import type { Tx } from '@/db';
 import { provinces, shippingRates } from '@/db/schema/shipping';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
 import { databaseReachable, testDb } from '@/db/test-db';

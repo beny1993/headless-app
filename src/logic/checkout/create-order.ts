@@ -17,6 +17,7 @@ import { PaymentDao } from '@/db/dao/PaymentDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
 import type { OrderWithItems } from '@/db/schema/orders';
+import { displayTitle } from '@/lib/catalog/variant';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 import { computeDiscount } from '@/lib/discount/discount-code';
 import {
@@ -192,7 +193,10 @@ export const createOrder = async (
         );
         // 0 rows: the atomic `stock >= qty` guard did not match — out of stock.
         if (!reserved) {
-          throw new CheckoutError(field, insufficientStock(product.title));
+          throw new CheckoutError(
+            field,
+            insufficientStock(displayTitle(product)),
+          );
         }
         // A soft-delete that landed between the load and the decrement: the
         // guard ignores `isActive`, so re-check the fresh row and roll back if
@@ -206,7 +210,11 @@ export const createOrder = async (
         // so this price/title/sku is current even if the cart was built earlier.
         items.push({
           productId: reserved.id,
-          title: reserved.title,
+          // `displayTitle`, not the bare column: a family member's line has to
+          // read «غذای خشک سگ — ۱۰ کیلوگرم», or an invoice cannot say which
+          // size was bought. The snapshot is the only record of that once the
+          // product row is edited, so it is written here and never derived later.
+          title: displayTitle(reserved),
           sku: reserved.sku,
           unitPrice: reserved.price,
           qty: line.qty,

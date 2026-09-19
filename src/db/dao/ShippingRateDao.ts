@@ -12,8 +12,8 @@
 // the name through `normalizeProvinceName`, so the unique constraint on
 // `provinces.name` is the real duplicate backstop.
 import { and, asc, eq } from 'drizzle-orm';
-import { db } from '@/db';
-import type { Executor } from '@/db/dao/OrderDao';
+import { db, type Executor } from '@/db';
+
 import { provinces, shippingRates } from '@/db/schema/shipping';
 import { normalizeProvinceName } from '@/lib/shipping/province-input';
 

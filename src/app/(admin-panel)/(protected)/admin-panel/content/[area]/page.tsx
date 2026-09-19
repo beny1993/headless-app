@@ -2,8 +2,11 @@ import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { CategoryDao } from '@/db/dao/CategoryDao';
+import { categoryOptions } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { SiteContentDao } from '@/db/dao/SiteContentDao';
+import type { ProductWithImages } from '@/db/schema/catalog';
+import { displayTitle } from '@/lib/catalog/variant';
 import { CONTENT_AREAS, contentAreaSchema } from '@/lib/content/site-content';
 import { ContentEditor } from '@/features/admin-panel/content/content-editor';
 import type { LinkOption } from '@/features/admin-panel/content/link-picker';
@@ -49,10 +52,15 @@ export default async function AdminContentAreaPage({
     // id/title/slug listing when the catalog grows.
     ProductDao.listForAdmin({ active: true }),
   ]);
-  const option = ({ id, title, slug }: LinkOption): LinkOption => ({
-    id,
-    title,
-    slug,
+  /**
+   * Products need the label too: the members of a family share one `title`, so
+   * a picker listing them plainly offers three identical options and the admin
+   * cannot tell which size they are linking to.
+   */
+  const productOption = (product: ProductWithImages): LinkOption => ({
+    id: product.id,
+    title: displayTitle(product),
+    slug: product.slug,
   });
 
   return (
@@ -68,8 +76,12 @@ export default async function AdminContentAreaPage({
         keys={area.keys}
         values={values}
         options={{
-          categories: categories.map(option),
-          products: products.map(option),
+          // Tree order, carrying both forms: `label` is the indented line the
+          // select shows, `title` the bare name a chip and the «به این ترتیب»
+          // sentence use — those were rendering the indent as «— شامپو و
+          // نظافت», a dash with nothing before it.
+          categories: categoryOptions(categories),
+          products: products.map(productOption),
         }}
       />
     </div>

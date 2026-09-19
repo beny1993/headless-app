@@ -6,29 +6,75 @@
 // soft-deleted stays deleted (see `ProductDao.upsertBySku`).
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
-import { SEED_CATEGORIES, SEED_PRODUCTS } from '@/db/seed/catalog-data';
+import {
+  SEED_CATEGORIES,
+  SEED_PRODUCTS,
+  SEED_SUBCATEGORIES,
+} from '@/db/seed/catalog-data';
 
 export const seedCatalog = async (): Promise<{
   categories: number;
   products: number;
 }> => {
   const categoryIdBySlug = new Map<string, string>();
+  const idFor = (slug: string, sku: string) => {
+    const id = categoryIdBySlug.get(slug);
+    if (!id) throw new Error(`Seed product ${sku}: no category ${slug}`);
+    return id;
+  };
+
+  // Parents before children: `upsertBySlug` sets the parent on insert, so a
+  // sub-category seeded first would land top-level and stay there — the
+  // conflict branch never re-parents, which is what keeps a re-seed from
+  // undoing an admin's move.
   for (const category of SEED_CATEGORIES) {
     const row = await CategoryDao.upsertBySlug(category);
     categoryIdBySlug.set(row.slug, row.id);
   }
+  for (const { parentSlug, ...sub } of SEED_SUBCATEGORIES) {
+    const row = await CategoryDao.upsertBySlug({
+      ...sub,
+      parentId: idFor(parentSlug, sub.slug),
+    });
+    categoryIdBySlug.set(row.slug, row.id);
+  }
 
-  for (const { categorySlug, imageKeys, ...product } of SEED_PRODUCTS) {
-    const categoryId = categoryIdBySlug.get(categorySlug);
-    if (!categoryId) {
+  // A family's head has to exist before its members can point at it, so the
+  // runner keeps the ids it has written and `SEED_PRODUCTS` lists heads first.
+  const productIdBySku = new Map<string, string>();
+  const headIdFor = (headSku: string, sku: string) => {
+    const id = productIdBySku.get(headSku);
+    if (!id)
       throw new Error(
-        `Seed product ${product.sku}: no category ${categorySlug}`,
+        `Seed product ${sku}: head ${headSku} not seeded yet — list it first`,
       );
-    }
+    return id;
+  };
 
-    const row = await ProductDao.upsertBySku({ ...product, categoryId });
+  for (const {
+    categorySlug,
+    extraCategorySlugs = [],
+    imageKeys,
+    variantOfSku,
+    ...product
+  } of SEED_PRODUCTS) {
+    // Passed on every run, empty list and all: `upsertBySku` replaces a
+    // product's additional categories wholesale, so leaving the key off would
+    // clear them on the next re-seed.
+    const row = await ProductDao.upsertBySku({
+      ...product,
+      categoryId: idFor(categorySlug, product.sku),
+      extraCategoryIds: extraCategorySlugs.map((slug) =>
+        idFor(slug, product.sku),
+      ),
+      variantOf: variantOfSku ? headIdFor(variantOfSku, product.sku) : null,
+    });
+    productIdBySku.set(row.sku, row.id);
     await ProductDao.setImages(row.id, imageKeys);
   }
 
-  return { categories: SEED_CATEGORIES.length, products: SEED_PRODUCTS.length };
+  return {
+    categories: SEED_CATEGORIES.length + SEED_SUBCATEGORIES.length,
+    products: SEED_PRODUCTS.length,
+  };
 };

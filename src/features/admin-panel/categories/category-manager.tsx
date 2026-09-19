@@ -4,6 +4,7 @@ import { useId, useState } from 'react';
 import {
   AlertCircle,
   Check,
+  CornerDownLeft,
   Layers,
   Loader2,
   Pencil,
@@ -14,9 +15,11 @@ import {
 import { toast } from 'sonner';
 import { ApiRequestError, delData, postData, putData } from '@/lib/api-client';
 import {
+  CATEGORY_PARENT_MESSAGES,
   type CategoryInputBody,
   categoryInputSchema,
 } from '@/lib/catalog/category-input';
+import { orderAsTree } from '@/lib/catalog/category-tree';
 import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiAdminCategoryPath } from '@/lib/constant/paths';
 import { formatNumber, toAsciiDigits } from '@/lib/format';
@@ -34,13 +37,24 @@ import { cn } from '@/lib/utils';
  * starts; a successful save leaves edit mode, so the next edit reads the fresh
  * row. No field mirrors a prop across a save.
  */
-type Draft = { title: string; slug: string; sortOrder: string };
+type Draft = {
+  title: string;
+  slug: string;
+  sortOrder: string;
+  /** The select's value — `''` is «no parent», which the schema reads as null. */
+  parentId: string;
+};
 
 type SaveResult =
   | { ok: true; category: CategoryView }
   | { ok: false; fields: Record<string, string>; message?: string };
 
-const EMPTY_DRAFT: Draft = { title: '', slug: '', sortOrder: '0' };
+const EMPTY_DRAFT: Draft = {
+  title: '',
+  slug: '',
+  sortOrder: '0',
+  parentId: '',
+};
 
 const GENERIC_ERROR = 'ذخیره دسته‌بندی ناموفق بود. دوباره تلاش کن.';
 
@@ -62,6 +76,8 @@ async function saveCategory(
     title: draft.title,
     slug: draft.slug,
     sortOrder: sortOrder === '' ? Number.NaN : Number(sortOrder),
+    // `z.uuid()` refuses `''`; the empty option means top-level.
+    parentId: draft.parentId === '' ? null : draft.parentId,
   });
   if (!parsed.success) {
     const fields: Record<string, string> = {};
@@ -105,13 +121,18 @@ export function CategoryManager({
   const onDeleted = (id: string) =>
     setCategories((prev) => prev.filter((c) => c.id !== id));
 
+  // Only a top-level category may be a parent, and only one level deep — the
+  // same rule `CategoryDao` enforces, so the UI never offers a save it refuses.
+  const parents = categories.filter((c) => c.parentId === null);
+
   return (
     // `min-w-0`: a flex item holding a wide table; without it the table's
     // `overflow-x-auto` never scrolls and the page overflows at narrow widths.
     <div className="flex min-w-0 flex-col gap-6">
-      <CreateForm onCreated={onSaved} />
+      <CreateForm parents={parents} onCreated={onSaved} />
       <CategoryTable
         categories={categories}
+        parents={parents}
         onSaved={onSaved}
         onDeleted={onDeleted}
       />
@@ -120,8 +141,10 @@ export function CategoryManager({
 }
 
 function CreateForm({
+  parents,
   onCreated,
 }: {
+  parents: CategoryView[];
   onCreated: (created: CategoryView) => void;
 }) {
   const id = useId();
@@ -162,7 +185,9 @@ function CreateForm({
         <h2 className="font-bold">ساخت دسته‌بندی</h2>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* Two columns, not three: four fields in `sm:grid-cols-3` leave one
+          orphan on a half-width row. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <CategoryField
           id={`${id}-title`}
           label="عنوان"
@@ -192,6 +217,14 @@ function CreateForm({
           dir="ltr"
           inputMode="numeric"
           umami="admin-panel-categories-sort"
+        />
+        <ParentField
+          id={`${id}-parent`}
+          value={draft.parentId}
+          onChange={(parentId) => setDraft((d) => ({ ...d, parentId }))}
+          parents={parents}
+          error={errors.parentId}
+          umami="admin-panel-categories-parent"
         />
       </div>
 
@@ -224,10 +257,12 @@ function CreateForm({
 
 function CategoryTable({
   categories,
+  parents,
   onSaved,
   onDeleted,
 }: {
   categories: CategoryView[];
+  parents: CategoryView[];
   onSaved: (saved: CategoryView) => void;
   onDeleted: (id: string) => void;
 }) {
@@ -260,10 +295,19 @@ function CategoryTable({
             </tr>
           </thead>
           <tbody>
-            {categories.map((category) => (
+            {/* Sub-rows sit directly under their parent — the nesting *is* the
+                count, so no badge. */}
+            {orderAsTree(categories).map(({ depth, ...category }) => (
               <CategoryRow
                 key={category.id}
                 category={category}
+                depth={depth}
+                parentTitle={
+                  parents.find((p) => p.id === category.parentId)?.title
+                }
+                // A category with children cannot itself become one.
+                hasChildren={categories.some((c) => c.parentId === category.id)}
+                parents={parents.filter((p) => p.id !== category.id)}
                 onSaved={onSaved}
                 onDeleted={onDeleted}
               />
@@ -277,10 +321,19 @@ function CategoryTable({
 
 function CategoryRow({
   category,
+  depth,
+  parentTitle,
+  hasChildren,
+  parents,
   onSaved,
   onDeleted,
 }: {
   category: CategoryView;
+  depth: 0 | 1;
+  parentTitle?: string;
+  hasChildren: boolean;
+  /** Every top-level category but this one. */
+  parents: CategoryView[];
   onSaved: (saved: CategoryView) => void;
   onDeleted: (id: string) => void;
 }) {
@@ -298,6 +351,7 @@ function CategoryRow({
       title: category.title,
       slug: category.slug,
       sortOrder: String(category.sortOrder),
+      parentId: category.parentId ?? '',
     });
   };
 
@@ -350,11 +404,14 @@ function CategoryRow({
   const actionButton =
     'border-border hover:bg-secondary inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50';
 
+  /** Logical padding, so the indent stays on the correct side in RTL. */
+  const titleCell = cn('px-4 py-3', depth === 1 && 'ps-8');
+
   return (
     <tr className="border-border border-t align-top">
       {draft ? (
         <>
-          <td className="px-4 py-3">
+          <td className={titleCell}>
             <CategoryField
               id={`${id}-title`}
               label="عنوان"
@@ -364,6 +421,24 @@ function CategoryRow({
               onChange={(title) => setDraft({ ...draft, title })}
               error={errors.title}
               umami="admin-panel-categories-row-title"
+            />
+            {/* Under the title rather than in a new column: the table is
+                already sideways-scrollable at 375px. */}
+            <ParentField
+              id={`${id}-parent`}
+              hideLabel
+              compact
+              value={draft.parentId}
+              onChange={(parentId) => setDraft({ ...draft, parentId })}
+              parents={parents}
+              disabled={hasChildren}
+              // Disabled, never hidden: a control that vanishes teaches the
+              // admin nothing, one with a reason teaches the rule.
+              hint={
+                hasChildren ? CATEGORY_PARENT_MESSAGES.hasChildren : undefined
+              }
+              error={errors.parentId}
+              umami="admin-panel-categories-row-parent"
             />
           </td>
           <td className="px-4 py-3">
@@ -396,7 +471,23 @@ function CategoryRow({
         </>
       ) : (
         <>
-          <td className="px-4 py-3 font-medium">{category.title}</td>
+          <td className={cn(titleCell, 'font-medium')}>
+            {depth === 1 && (
+              <>
+                {/* Not mirrored in RTL: the glyph already reads
+                    down-from-the-parent, then toward the title. */}
+                <CornerDownLeft
+                  size={14}
+                  className="text-muted-foreground me-1.5 inline"
+                  aria-hidden="true"
+                />
+                {/* The indent is invisible to a screen reader, so the nesting
+                    is said out loud instead. */}
+                <span className="sr-only">زیردسته‌ی {parentTitle} — </span>
+              </>
+            )}
+            {category.title}
+          </td>
           <td className="px-4 py-3 font-mono" dir="ltr">
             {category.slug}
           </td>
@@ -533,19 +624,101 @@ function CategoryField({
           error ? 'border-destructive bg-destructive-soft/40' : 'border-border',
         )}
       />
-      {error ? (
-        <p
-          id={`${id}-error`}
-          className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
-        >
-          <AlertCircle size={12} className="shrink-0" aria-hidden="true" />{' '}
-          {error}
-        </p>
-      ) : hint ? (
-        <p id={`${id}-hint`} className="text-muted-foreground mt-1.5 text-xs">
-          {hint}
-        </p>
-      ) : null}
+      <FieldMessage id={id} error={error} hint={hint} />
     </div>
   );
+}
+
+/**
+ * The «دسته‌بندی مادر» select — one control for create, move and promote, in the
+ * create form and in every edit row. A native `<select>`: the platform picker is
+ * full-screen on mobile and type-ahead on desktop, and it costs no dependency.
+ */
+function ParentField({
+  id,
+  value,
+  onChange,
+  parents,
+  error,
+  hint,
+  disabled,
+  hideLabel,
+  compact,
+  umami,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  parents: CategoryView[];
+  error?: string;
+  hint?: string;
+  disabled?: boolean;
+  hideLabel?: boolean;
+  compact?: boolean;
+  umami: string;
+}) {
+  const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
+  return (
+    <div className={compact ? 'mt-2 min-w-32' : undefined}>
+      <label
+        htmlFor={id}
+        className={hideLabel ? 'sr-only' : 'mb-1.5 block text-sm font-medium'}
+      >
+        دسته‌بندی مادر
+      </label>
+      <select
+        id={id}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        aria-invalid={Boolean(error)}
+        aria-describedby={describedBy}
+        data-umami-event={umami}
+        className={cn(
+          'bg-secondary focus-visible:border-accent-strong w-full rounded-xl border px-4 text-start transition-colors outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60',
+          compact ? 'h-10' : 'h-12',
+          error ? 'border-destructive bg-destructive-soft/40' : 'border-border',
+        )}
+      >
+        <option value="">بدون مادر (دسته‌بندی اصلی)</option>
+        {parents.map((parent) => (
+          <option key={parent.id} value={parent.id}>
+            {parent.title}
+          </option>
+        ))}
+      </select>
+      <FieldMessage id={id} error={error} hint={hint} />
+    </div>
+  );
+}
+
+/** The hint-or-error slot under a field — the error wins while there is one. */
+function FieldMessage({
+  id,
+  error,
+  hint,
+}: {
+  id: string;
+  error?: string;
+  hint?: string;
+}) {
+  if (error) {
+    return (
+      <p
+        id={`${id}-error`}
+        className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
+      >
+        <AlertCircle size={12} className="shrink-0" aria-hidden="true" />{' '}
+        {error}
+      </p>
+    );
+  }
+  if (hint) {
+    return (
+      <p id={`${id}-hint`} className="text-muted-foreground mt-1.5 text-xs">
+        {hint}
+      </p>
+    );
+  }
+  return null;
 }

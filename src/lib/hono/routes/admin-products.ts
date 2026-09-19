@@ -17,13 +17,18 @@
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Context, Env } from 'hono';
 import { z } from 'zod';
-import { ProductDao, StockConflictError } from '@/db/dao/ProductDao';
-import type { Product } from '@/db/schema/catalog';
 import {
+  ProductDao,
+  ProductVariantError,
+  type VariantRuleReason,
+  StockConflictError,
+  type ProductWithExtraCategories,
+} from '@/db/dao/ProductDao';
+import {
+  PRODUCT_MESSAGES,
   productInputSchema,
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
-import { PET_TYPES } from '@/lib/catalog/product-query';
 import { generateSku } from '@/lib/catalog/sku';
 import { replaceProductImage } from '@/logic/admin/product-images';
 import { readImageUpload } from '../image-upload';
@@ -34,6 +39,8 @@ import {
   apiSuccessSchema,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
+import { VARIANT_MESSAGES } from '@/lib/catalog/variant';
+import { ProductSchema } from '../product-schema';
 import { pgErrorOf } from '../pg-error';
 
 /** User-facing copy, so Persian. */
@@ -43,26 +50,18 @@ export const PRODUCT_SAVE_FAILED_MESSAGE =
   'محصول ذخیره نشد؛ ورودی را بررسی کن.';
 
 /**
- * The admin view of a product — the full row the form round-trips, including
- * `isActive` (which the storefront's `Product` omits) but never the internal
- * `searchText`, which the DAO owns.
+ * The admin view of a product: the storefront's own payload, minus the images
+ * (the panel loads those through their own endpoint) and plus the two columns
+ * only an admin sees — `isActive`, which the shop expresses by simply not
+ * listing the row, and `updatedAt`.
+ *
+ * Derived, never restated. The two were written out field for field and this
+ * story widened both copies by hand; the `Category` pair next door has already
+ * drifted on `sortOrder` that way.
  */
-const AdminProductSchema = z
-  .object({
-    id: z.uuid(),
-    title: z.string(),
-    slug: z.string(),
-    sku: z.string(),
-    brand: z.string().nullable(),
-    description: z.string().nullable(),
-    benefit: z.string().nullable(),
-    price: z.number().int().positive(),
-    oldPrice: z.number().int().positive().nullable(),
-    stock: z.number().int().nonnegative(),
+const AdminProductSchema = ProductSchema.omit({ images: true })
+  .safeExtend({
     isActive: z.boolean(),
-    categoryId: z.uuid(),
-    petType: z.enum([PET_TYPES.CAT, PET_TYPES.DOG]),
-    createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
   .openapi('AdminProduct');
@@ -71,7 +70,9 @@ const AdminProductSchema = z
 export type AdminProductResponse = z.infer<typeof AdminProductSchema>;
 
 /** Project a DAO row to the admin response — drops `searchText`, ISO the dates. */
-const toAdminProduct = (p: Product): AdminProductResponse => ({
+const toAdminProduct = (
+  p: ProductWithExtraCategories,
+): AdminProductResponse => ({
   id: p.id,
   title: p.title,
   slug: p.slug,
@@ -84,7 +85,10 @@ const toAdminProduct = (p: Product): AdminProductResponse => ({
   stock: p.stock,
   isActive: p.isActive,
   categoryId: p.categoryId,
-  petType: p.petType,
+  extraCategoryIds: p.extraCategoryIds,
+  variantOf: p.variantOf,
+  variantLabel: p.variantLabel,
+  petTypes: p.petTypes,
   createdAt: p.createdAt.toISOString(),
   updatedAt: p.updatedAt.toISOString(),
 });
@@ -115,6 +119,41 @@ const WRITE_ERROR_MESSAGES: Record<string, string> = {
   products_sku_unique: 'sku: این کد کالا قبلاً برای محصول دیگری ثبت شده است.',
   products_category_id_categories_id_fk:
     'categoryId: دسته‌بندی انتخاب‌شده معتبر نیست.',
+  // The junction's category key. Keyed on the bare field name, like every
+  // entry here, because that is what the form looks an error up by — and the
+  // product row is rolled back with it, since the DAO writes both in one
+  // transaction.
+  product_categories_category_id_categories_id_fk: `extraCategoryIds: ${PRODUCT_MESSAGES.extraCategories}`,
+  // A backstop the DAO's own guard makes unreachable — but a 23503 from this
+  // key means «that head is gone» either way, and it must not read as a 500.
+  products_variant_of_products_id_fk: `variantOf: ${VARIANT_MESSAGES.unknownHead}`,
+};
+
+/**
+ * Which form field a family refusal belongs under, or `null` for one with no
+ * field to hang on — `parseFieldErrors` routes an unprefixed message to
+ * `unmapped`, which the form shows in its top-level alert rather than dropping.
+ *
+ * Most of them are about «زیرمجموعه‌ی», the select the admin picked a head in.
+ * Two are not:
+ *
+ * - `hasMembers` comes from the visibility checkbox or the delete button, and
+ *   the form has no field for «visibility».
+ * - `headNeedsLabel` depends on the request, not the rule. Sent *with* a
+ *   `variantOf` it means «the head you picked has no label of its own» and
+ *   belongs on that select. Sent without one it means «you cleared the label of
+ *   a head that has members» — and the select is disabled for that row, so
+ *   keying it there points the admin at a control they cannot use. The label
+ *   field is where they can act.
+ */
+const variantErrorField = (
+  reason: VariantRuleReason,
+  variantOf: string | null,
+): string | null => {
+  if (reason === 'hasMembers') return null;
+  if (reason === 'headNeedsLabel')
+    return variantOf == null ? 'variantLabel' : 'variantOf';
+  return 'variantOf';
 };
 
 /**
@@ -124,7 +163,21 @@ const WRITE_ERROR_MESSAGES: Record<string, string> = {
  * a psql-side change could still surface one, and a 400 beats a 500. The caller
  * rethrows on `null`, so an unrecognized error stays the 500 it is.
  */
-export const productWriteErrors = (error: unknown): string[] | null => {
+export const productWriteErrors = (
+  error: unknown,
+  /**
+   * The `variantOf` this request sent. One family rule means two different
+   * things depending on it — see {@link variantErrorField} — and the mapper
+   * cannot read that off the error alone.
+   */
+  variantOf: string | null = null,
+): string[] | null => {
+  // A family rule that had to read a second row, so neither zod nor a CHECK
+  // could refuse it.
+  if (error instanceof ProductVariantError) {
+    const field = variantErrorField(error.reason, variantOf);
+    return [field ? `${field}: ${error.message}` : error.message];
+  }
   const pg = pgErrorOf(error);
   if (!pg) return null;
   if (
@@ -182,7 +235,7 @@ export const productCreateHandler: RouteHandler<
     });
     return c.json(apiSuccess(toAdminProduct(created)), 201);
   } catch (error) {
-    const errors = productWriteErrors(error);
+    const errors = productWriteErrors(error, body.variantOf);
     if (errors)
       return c.json(apiError(PRODUCT_SAVE_FAILED_MESSAGE, errors), 400);
     throw error;
@@ -233,7 +286,7 @@ export const productUpdateHandler: RouteHandler<
   } catch (error) {
     if (error instanceof StockConflictError)
       return c.json(apiError(error.message, [`stock: ${error.message}`]), 409);
-    const errors = productWriteErrors(error);
+    const errors = productWriteErrors(error, body.variantOf);
     if (errors)
       return c.json(apiError(PRODUCT_SAVE_FAILED_MESSAGE, errors), 400);
     throw error;
@@ -257,6 +310,9 @@ export const productDeleteRoute = createRoute({
       },
       description: 'The deactivated product (the row is kept, never removed)',
     },
+    409: errorResponse(
+      'A family head whose active members would be left with nothing to hang off',
+    ),
     401: errorResponse('No session'),
     403: errorResponse('Signed in, but not an admin'),
     404: errorResponse('No such product'),
@@ -268,10 +324,24 @@ export const productDeleteHandler: RouteHandler<
   Env & AuthedEnv
 > = async (c) => {
   const { id } = c.req.valid('param');
-  // Soft delete only — the row stays so past order snapshots keep resolving.
-  const removed = await ProductDao.softDelete(id);
-  if (!removed) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
-  return c.json(apiSuccess(toAdminProduct(removed)), 200);
+  try {
+    // Soft delete only — the row stays so past order snapshots keep resolving.
+    const removed = await ProductDao.softDelete(id);
+    if (!removed) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
+    return c.json(apiSuccess(toAdminProduct(removed)), 200);
+  } catch (error) {
+    // Deactivating could not fail before families existed, so this handler had
+    // no catch at all: a head with members escaped as a 500.
+    //
+    // The refusal is the envelope's `message`, not a field-keyed `errors[]`
+    // entry — a DELETE carries no form, so there is no field to key it to, and
+    // the button can show `message` directly. `categoryDeleteHandler` answers
+    // its own "other rows point at it" refusal exactly this way.
+    if (error instanceof ProductVariantError) {
+      return c.json(apiError(error.message), 409);
+    }
+    throw error;
+  }
 };
 
 // ── Image upload (multipart) ────────────────────────────────────────────────────
