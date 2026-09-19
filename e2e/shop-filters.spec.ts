@@ -101,8 +101,8 @@ test('the price slider filters on release, and only then', async ({ page }) => {
   const everything = await resultCount(page).innerText();
 
   await openFilters(page);
-  const lowest = control(page, 'shop-filter-min-price');
-  const highest = control(page, 'shop-filter-max-price');
+  const lowest = control(page, 'shop-filter-min-price-drag');
+  const highest = control(page, 'shop-filter-max-price-drag');
 
   // Arriving on a handle is not a filter. The browser sends `keyup` to the
   // element the Tab *lands* on, so tabbing from one handle to the other used
@@ -139,15 +139,17 @@ test('a price bound below the catalogue never shows a negative price', async ({
   await page.goto(`${shopPath({})}?maxPrice=1`);
   await openFilters(page);
 
-  const printed = await control(page, 'shop-filter-min-price')
+  const printed = await control(page, 'shop-filter-min-price-drag')
     .locator('xpath=ancestor::fieldset')
     .innerText();
   expect(printed).not.toContain(String.fromCharCode(0x2212));
   expect(printed).not.toContain('-');
 
-  const low = Number(await control(page, 'shop-filter-min-price').inputValue());
+  const low = Number(
+    await control(page, 'shop-filter-min-price-drag').inputValue(),
+  );
   const high = Number(
-    await control(page, 'shop-filter-max-price').inputValue(),
+    await control(page, 'shop-filter-max-price-drag').inputValue(),
   );
   expect(low).toBeGreaterThanOrEqual(0);
   expect(high).toBeGreaterThan(low);

@@ -20,16 +20,25 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { PET_TYPES, type PetType } from '@/lib/catalog/product-query';
+import {
+  PET_TYPES,
+  PET_TYPE_VALUES,
+  type PetType,
+} from '@/lib/catalog/product-query';
 
 // The `pet_type` domain is defined in `@/lib/catalog/product-query`, not here:
 // the storefront's URL parser is a client module and cannot import this file
 // (it would put drizzle in the browser bundle), so the values live where both
 // sides can reach them and this column is built from them. Re-exported so every
 // existing importer of the schema keeps working — one definition, one alias.
-export { PET_TYPES, type PetType };
+export { PET_TYPES, PET_TYPE_VALUES, type PetType };
 
-export const petTypeEnum = pgEnum('pet_type', [PET_TYPES.CAT, PET_TYPES.DOG]);
+// Built from the array, like `order_status`, `payment_method`, `payment_status`,
+// `discount_type` and `pet_gender`: the database's domain and the client's are
+// one definition. Hand-listed, a third pet type would pass every zod schema and
+// `normalizePetTypes` while drizzle generated no `ALTER TYPE … ADD VALUE`, and
+// each write of it would fail at the driver.
+export const petTypeEnum = pgEnum('pet_type', PET_TYPE_VALUES);
 
 const createdAt = timestamp('created_at', { withTimezone: true })
   .defaultNow()

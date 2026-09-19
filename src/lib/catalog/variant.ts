@@ -36,33 +36,38 @@ export const VARIANT_MESSAGES = {
    */
   inactiveHead: 'محصول اصلی انتخاب‌شده غیرفعال است؛ اول آن را فعال کن.',
   self: 'یک محصول نمی‌تواند زیرمجموعه خودش باشد.',
-  /**
-   * Soft delete, mirroring the category manager's refusal — and, like it,
-   * naming how many rows are in the way, because «some» sends an admin hunting.
-   * Counts **active** members only: an already-deactivated one is listed
-   * nowhere, so it must not lock its head out of being deactivated too.
-   */
-  hasMembers: 'این محصول زیرمجموعه دارد؛ اول آن‌ها را جابه‌جا یا حذف کن.',
 };
+// `hasMembers` is deliberately NOT in there. Its copy needs the blocking count,
+// so it is the function below — and a constant beside these would be a second
+// Persian sentence for one refusal that nothing could ever reach. With the key
+// absent, `VARIANT_MESSAGES[reason]` stops type-checking for that reason, which
+// is what forces the thrower through `hasMembersMessage`.
 
-/** The soft-delete refusal with the blocking count in it. */
+/**
+ * The refusal with the blocking count in it, mirroring the category manager's —
+ * and, like it, naming how many rows are in the way, because «some» sends an
+ * admin hunting. Counts **active** members only: an already-deactivated one is
+ * listed nowhere, so it must not lock its head out of being deactivated too.
+ *
+ * «غیرفعال کن», not «حذف کن»: products are soft-deleted, so deleting is not a
+ * thing the admin can be told to go and do.
+ */
 export const hasMembersMessage = (count: number): string =>
   `این محصول ${toPersianDigits(count)} زیرمجموعه فعال دارد؛ اول آن‌ها را جابه‌جا یا غیرفعال کن.`;
 
-/** The two columns every helper here reads; a `Product` row satisfies it. */
+/** What `displayTitle` reads; a `Product` row satisfies it. */
 type VariantFields = {
-  title?: string;
+  /**
+   * Required, though every caller passes a whole row anyway: this function
+   * writes `order_items.title`, a permanent money document. While it was
+   * optional, `displayTitle({ variantLabel: 'قرمز' })` type-checked and
+   * returned a string opening with a bare dash — an invoice line naming no
+   * product at all.
+   */
+  title: string;
   variantOf?: string | null;
   variantLabel?: string | null;
 };
-
-/**
- * `true` when this row hangs off another product. A **head** is not a member —
- * it points at nothing itself and carries its own label, which is what lets the
- * storefront listing be the single predicate `variant_of is null`.
- */
-export const isFamilyMember = (product: VariantFields): boolean =>
-  product.variantOf != null;
 
 /**
  * What a shopper reads: «غذای خشک سگ — ۱۰ کیلوگرم», or just the title when the
@@ -76,7 +81,7 @@ export const isFamilyMember = (product: VariantFields): boolean =>
  * as a doubled separator, and a whitespace-only label reads as no label at all.
  */
 export const displayTitle = (product: VariantFields): string => {
-  const title = (product.title ?? '').trim();
+  const title = product.title.trim();
   const label = (product.variantLabel ?? '').trim();
   return label ? `${title} — ${label}` : title;
 };

@@ -26,11 +26,18 @@ export type ShopCategoryOption = {
  * below — so every id is namespaced with `useId`; two `<input id="f-toys">` on
  * one page would point both labels at the first checkbox.
  *
- * Real `<input type="checkbox">` in a labelled `<fieldset>`, per the design
- * review (finding 3: the prototype's `div onClick` had no input element at
- * all). Native rather than a Radix checkbox on purpose — the platform control
- * already brings the keyboard, the announcement and the focus ring, and
- * `accent-color` is the whole styling gap.
+ * Real inputs in labelled `<fieldset>`s, per the design review (finding 3: the
+ * prototype's `div onClick` had no input element at all) — but `peer sr-only`
+ * radios with the indicator drawn on the `<label>`, not the visible-control
+ * card `checkout-form.tsx` uses. The rows are a dense list where the design
+ * asks for a dot and a background rather than a box, which a native radio
+ * cannot be styled into; `sr-only` keeps the real control for the keyboard and
+ * the screen reader and lets the label carry the look.
+ *
+ * The cost is that the UA's focus ring is invisible too, so it is rebuilt on
+ * the label through `peer-focus-visible:`. Anything that hides a native
+ * indicator owes one back for **every** engine — the slider below is where
+ * that debt went unpaid for Gecko.
  *
  * The panel holds no state of its own. Every change navigates to the URL that
  * describes the new filter set, and the next render reads it back — the URL is
@@ -161,7 +168,7 @@ export function ShopFilters({
         </div>
       </fieldset>
 
-      <PriceFilter query={query} ids={ids} bounds={priceBounds} onSubmit={go} />
+      <PriceFilter query={query} bounds={priceBounds} onSubmit={go} />
     </div>
   );
 }
@@ -401,15 +408,6 @@ function PetSegment({
   );
 }
 
-/**
- * The price range, which the prototype never had (ledger finding 18 left it to
- * porting time). Two integer-Toman bounds, applied on submit rather than on
- * every keystroke — a navigation per digit would be unusable.
- *
- * Entry is a plain number input, so the numeric keypad and the browser's own
- * validation apply; everything *rendered* — the applied range, the placeholder
- * — goes through `format.ts` and is therefore in Persian digits.
- */
 /** Slider granularity, and what the offered bounds are rounded to. */
 const PRICE_STEP = 10_000;
 
@@ -460,12 +458,10 @@ const trackRange = (
  */
 function PriceFilter({
   query,
-  ids,
   bounds,
   onSubmit,
 }: {
   query: ShopQuery;
-  ids: string;
   /** The catalogue's own cheapest and dearest, before rounding. */
   bounds: { min: number; max: number };
   onSubmit: (next: ShopQuery) => void;
@@ -478,12 +474,15 @@ function PriceFilter({
   if (ceiling <= floor) return null;
 
   return (
-    <fieldset key={`${query.minPrice}-${query.maxPrice}`}>
+    // Keyed on the bounds AND the track: a catalogue whose cheapest or
+    // dearest product changed between navigations moves the ends the
+    // handles are positioned against, and stale handles would be showing a
+    // percentage of a track that no longer exists.
+    <fieldset key={`${query.minPrice}-${query.maxPrice}-${floor}-${ceiling}`}>
       <legend className="mb-2 text-sm font-semibold">
         محدوده قیمت (تومان)
       </legend>
       <PriceSlider
-        ids={ids}
         floor={floor}
         ceiling={ceiling}
         {...trackRange(query, floor, ceiling)}
@@ -504,14 +503,12 @@ function PriceFilter({
 }
 
 function PriceSlider({
-  ids,
   floor,
   ceiling,
   from,
   to,
   onCommit,
 }: {
-  ids: string;
   floor: number;
   ceiling: number;
   from: number;
@@ -597,7 +594,6 @@ function PriceSlider({
         />
         <input
           type="range"
-          id={`${ids}-min-price`}
           min={floor}
           max={ceiling}
           step={PRICE_STEP}
@@ -606,12 +602,15 @@ function PriceSlider({
           onPointerUp={commit}
           onKeyUp={commit}
           aria-label="کمترین قیمت"
+          // What the figure above the track says, not `150000` — every number
+          // a shopper is given goes through `format.ts`, and a screen reader
+          // is given this one.
+          aria-valuetext={`${formatNumber(low)} تومان`}
           className={cn(thumb, minOnTop ? 'z-20' : 'z-10')}
-          data-umami-event="shop-filter-min-price"
+          data-umami-event="shop-filter-min-price-drag"
         />
         <input
           type="range"
-          id={`${ids}-max-price`}
           min={floor}
           max={ceiling}
           step={PRICE_STEP}
@@ -620,8 +619,9 @@ function PriceSlider({
           onPointerUp={commit}
           onKeyUp={commit}
           aria-label="بیشترین قیمت"
+          aria-valuetext={`${formatNumber(high)} تومان`}
           className={cn(thumb, minOnTop ? 'z-10' : 'z-20')}
-          data-umami-event="shop-filter-max-price"
+          data-umami-event="shop-filter-max-price-drag"
         />
       </div>
 
@@ -669,11 +669,13 @@ export function ShopFilterSheet({
     setOpen(false);
   };
 
+  // The same three groups `ActiveFilters` renders a chip for, price counted
+  // once however many of its two bounds are set — «فیلتر (۲)» opening onto one
+  // chip is the badge disagreeing with the panel it opens.
   const activeCount = [
     query.category,
     query.pet,
-    query.minPrice,
-    query.maxPrice,
+    query.minPrice ?? query.maxPrice,
   ].filter((value) => value !== undefined).length;
 
   return (

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { toPersianDigits } from '@/lib/format';
 import {
   VARIANT_LABEL_LIMIT,
   VARIANT_MESSAGES,
   displayTitle,
-  isFamilyMember,
+  hasMembersMessage,
 } from './variant';
 
 describe('displayTitle', () => {
@@ -48,33 +49,42 @@ describe('displayTitle', () => {
   });
 });
 
-describe('isFamilyMember', () => {
-  it('is false for a standalone product', () => {
-    expect(isFamilyMember({ variantOf: null })).toBe(false);
-  });
-
-  it('is false for a head, which points at nothing itself', () => {
-    expect(isFamilyMember({ variantOf: null, variantLabel: 'لاوندر' })).toBe(
-      false,
-    );
-  });
-
-  it('is true for a row that points at a head', () => {
-    expect(
-      isFamilyMember({ variantOf: '11111111-1111-4111-8111-111111111111' }),
-    ).toBe(true);
-  });
-});
-
 describe('the label limit and messages', () => {
   it('bounds the label, because it renders on the card and the order line', () => {
     expect(VARIANT_LABEL_LIMIT).toBeGreaterThan(0);
     expect(VARIANT_LABEL_LIMIT).toBeLessThanOrEqual(60);
   });
 
-  it('says every refusal in Persian', () => {
+  it('has a Persian sentence for every refusal reason', () => {
+    // The key set, like `category-input.test.ts` next door: a reason added to
+    // `VariantRuleReason` without copy fails here rather than at the DAO's
+    // index site, where the failure is a `undefined` message on a real save.
+    // `hasMembers` is not among them on purpose — its copy takes the count, so
+    // it is `hasMembersMessage`, asserted below.
+    expect(Object.keys(VARIANT_MESSAGES).sort()).toEqual([
+      'headNeedsLabel',
+      'inactiveHead',
+      'label',
+      'labelLength',
+      'nested',
+      'self',
+      'unknownHead',
+    ]);
+    // `\p{Script=Arabic}`, not a hand-written character range: the range that
+    // was here opened on a raw U+0600, an invisible byte typed into the source
+    // where the project's rule says to construct one — and `lint` and
+    // `format:check` passed straight over it.
     for (const message of Object.values(VARIANT_MESSAGES)) {
-      expect(message).toMatch(/[؀-ۿ]/);
+      expect(message).toMatch(/\p{Script=Arabic}/u);
     }
+  });
+
+  it('counts the blocking members in Persian digits', () => {
+    const message = hasMembersMessage(2);
+    expect(message).toMatch(/\p{Script=Arabic}/u);
+    expect(message).toContain(toPersianDigits(2));
+    // Soft delete is the only delete there is, so the sentence cannot tell an
+    // admin to delete the members.
+    expect(message).toContain('غیرفعال');
   });
 });

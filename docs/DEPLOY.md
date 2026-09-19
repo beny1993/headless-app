@@ -157,7 +157,10 @@ new one migrates, so a **destructive** migration still needs the compatible
 two-step: expand → deploy → contract.
 
 **`0012` is the first one that is not additive** — it rewrites
-`products.pet_type` from an enum to an enum array, in place. From the moment the
+`products.pet_type` from an enum to an enum array, in place. Its `USING` clause
+is hand-written and the file says so at the top: drizzle-kit's generated cast
+fails on a populated table, so regenerating this migration does not reproduce
+it. From the moment the
 new container has migrated until Coolify swaps it in (its healthcheck window,
 ~35 s as configured), the old container is talking to the new column: its
 `?pet=` listings answer 500 (there is no `pet_type[] = pet_type` operator) and an

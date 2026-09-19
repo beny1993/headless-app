@@ -8,7 +8,11 @@
 // a sub-category must not also tick its parent.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ShopFilters, type ShopCategoryOption } from './shop-filters';
+import {
+  ShopFilterSheet,
+  ShopFilters,
+  type ShopCategoryOption,
+} from './shop-filters';
 import { parseShopQuery } from './shop-query';
 
 // The panel uses exactly one thing from the router. A recorder, not a stub:
@@ -58,6 +62,112 @@ it('ticks exactly one box — a sub-category never half-ticks its parent', () =>
   expect((screen.getByLabelText('بهداشت') as HTMLInputElement).checked).toBe(
     false,
   );
+});
+
+describe('the mobile sheet\u2019s badge', () => {
+  const openButton = () => screen.getByRole('button', { name: /فیلتر/ });
+  const renderSheet = (search: Record<string, string> = {}) =>
+    render(
+      <ShopFilterSheet
+        query={parseShopQuery(search)}
+        categories={OPTIONS}
+        priceBounds={BOUNDS}
+        total={7}
+      />,
+    );
+
+  it('counts a price range once, like the chip behind it', () => {
+    renderSheet({ minPrice: '100000', maxPrice: '300000' });
+
+    // «فیلتر (۲)» opening onto one chip is the badge disagreeing with the
+    // panel it opens.
+    expect(openButton().textContent).toContain('(۱)');
+  });
+
+  it('counts the three groups the chips show', () => {
+    renderSheet({ category: 'hygiene', pet: 'cat', maxPrice: '300000' });
+
+    expect(openButton().textContent).toContain('(۳)');
+  });
+
+  it('shows no number when nothing is filtering', () => {
+    renderSheet();
+
+    expect(openButton().textContent).not.toContain('(');
+  });
+});
+
+describe('the active-filter chips', () => {
+  const chips = () =>
+    screen
+      .getAllByRole('button', { name: /^حذف فیلتر / })
+      .map((button) => button.getAttribute('aria-label'));
+
+  it('renders nothing at all when nothing is filtering', () => {
+    renderFilters();
+
+    expect(screen.queryByText('فیلترهای فعال')).toBeNull();
+  });
+
+  it('names each filter, so three of them are not three identical controls', () => {
+    renderFilters({ category: 'hygiene', pet: 'cat', minPrice: '100000' });
+
+    // The `aria-label` is the assertion: a screen reader reading three «remove»
+    // buttons in a row hears the same word three times.
+    expect(chips()).toEqual([
+      'حذف فیلتر بهداشت',
+      'حذف فیلتر گربه',
+      'حذف فیلتر از ۱۰۰٬۰۰۰',
+    ]);
+  });
+
+  it('falls back to the slug for a category the page does not know', () => {
+    renderFilters({ category: 'gone-since' });
+
+    expect(chips()).toEqual(['حذف فیلتر gone-since']);
+  });
+
+  it('words the price chip for each of its three shapes', () => {
+    renderFilters({ minPrice: '100000', maxPrice: '300000' });
+    expect(chips()).toEqual(['حذف فیلتر ۱۰۰٬۰۰۰ تا ۳۰۰٬۰۰۰']);
+    cleanup();
+
+    renderFilters({ maxPrice: '300000' });
+    expect(chips()).toEqual(['حذف فیلتر تا ۳۰۰٬۰۰۰']);
+    cleanup();
+
+    renderFilters({ minPrice: '100000' });
+    expect(chips()).toEqual(['حذف فیلتر از ۱۰۰٬۰۰۰']);
+  });
+
+  it('shows one chip for a price range, not one per bound', () => {
+    renderFilters({ minPrice: '100000', maxPrice: '300000' });
+
+    expect(chips()).toHaveLength(1);
+  });
+
+  it('drops exactly its own filter and leaves the rest alone', () => {
+    renderFilters({ category: 'hygiene', pet: 'cat', minPrice: '100000' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'حذف فیلتر گربه' }));
+
+    const href = push.mock.calls[0][0] as string;
+    expect(href).not.toContain('pet=');
+    expect(href).toContain('category=hygiene');
+    expect(href).toContain('minPrice=100000');
+  });
+
+  it('drops both price bounds together, since it is one chip', () => {
+    renderFilters({ minPrice: '100000', maxPrice: '300000' });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'حذف فیلتر ۱۰۰٬۰۰۰ تا ۳۰۰٬۰۰۰' }),
+    );
+
+    const href = push.mock.calls[0][0] as string;
+    expect(href).not.toContain('minPrice');
+    expect(href).not.toContain('maxPrice');
+  });
 });
 
 describe('«پاک کردن همه»', () => {
@@ -271,6 +381,53 @@ describe('the price slider', () => {
 
     expect(handles().low.value).toBe(String(BOUNDS.min));
     expect(handles().high.value).toBe(String(BOUNDS.max));
+  });
+
+  it('rounds the offered ends outwards from the catalogue\u2019s own', () => {
+    // Every `BOUNDS` above is a clean multiple of the step, so nothing here
+    // exercised the rounding: the floor has to go *down* to a step and the
+    // ceiling *up*, or the cheapest and dearest products fall outside the
+    // range the slider can express.
+    render(
+      <ShopFilters
+        query={parseShopQuery({})}
+        categories={OPTIONS}
+        priceBounds={{ min: 55_000, max: 494_000 }}
+      />,
+    );
+
+    expect(handles().low.min).toBe('50000');
+    expect(handles().high.max).toBe('500000');
+  });
+
+  it('stops the high handle a step above the low one too', () => {
+    // The mirror of the crossing test above, which only ever moved the low
+    // handle — so `setHigh`'s clamp could be deleted and stay green.
+    renderFilters({ minPrice: '200000', maxPrice: '300000' });
+
+    fireEvent.change(handles().high, { target: { value: '60000' } });
+
+    expect(Number(handles().high.value)).toBeGreaterThan(
+      Number(handles().low.value),
+    );
+  });
+
+  it('takes new catalogue ends back, not just new bounds', () => {
+    // The resync key has to carry the track as well as the handles: a
+    // catalogue whose cheapest product changed moves the ends the handles are
+    // positioned against, and the URL's own bounds may not have changed at all.
+    const { rerender } = renderFilters();
+    expect(handles().low.value).toBe(String(BOUNDS.min));
+
+    rerender(
+      <ShopFilters
+        query={parseShopQuery({})}
+        categories={OPTIONS}
+        priceBounds={{ min: 120_000, max: 500_000 }}
+      />,
+    );
+
+    expect(handles().low.value).toBe('120000');
   });
 
   it('is not rendered when every product costs the same', () => {

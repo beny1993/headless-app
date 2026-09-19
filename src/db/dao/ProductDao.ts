@@ -86,14 +86,19 @@ export type VariantRuleReason =
  * {@link CategoryParentError}, so no caller can write the row by ignoring it.
  */
 export class ProductVariantError extends Error {
+  /** `hasMembers` cannot be thrown without saying how many are in the way. */
+  constructor(reason: 'hasMembers', count: number);
+  constructor(reason: Exclude<VariantRuleReason, 'hasMembers'>);
   constructor(
     readonly reason: VariantRuleReason,
-    /** How many active members are in the way — only `hasMembers` uses it. */
     count?: number,
   ) {
     super(
-      reason === 'hasMembers' && count !== undefined
-        ? hasMembersMessage(count)
+      reason === 'hasMembers'
+        ? // The overloads above are what make this non-null: there is no way
+          // to reach it without the count, and a «some members» sentence is
+          // the thing this refusal most needs not to say.
+          hasMembersMessage(count as number)
         : VARIANT_MESSAGES[reason],
     );
     this.name = 'ProductVariantError';
@@ -178,12 +183,7 @@ export {
 };
 
 /**
- * Every ordering ends in `sku`, which is unique. Without that tiebreak Postgres
- * is free to return rows with equal prices in a different order per query, and
- * two products at the same price can appear on both page 1 and page 2.
- */
-/**
- * The three numbers a storefront card needs about the whole family, each as a
+ * The four numbers a storefront card needs about the whole family, each as a
  * **scalar subquery** over `products` aliased `fam`.
  *
  * Subqueries, never a join — the same trap the additional-categories work paid
@@ -247,6 +247,11 @@ const familyInStock = sql<boolean>`(exists (select 1 ${FAMILY_SCOPE} and fam.sto
  */
 const familyHasMembers = sql<boolean>`(exists (select 1 ${MEMBER_SCOPE}))`;
 
+/**
+ * Every ordering ends in `sku`, which is unique. Without that tiebreak Postgres
+ * is free to return rows with equal prices in a different order per query, and
+ * two products at the same price can appear on both page 1 and page 2.
+ */
 const ORDER_BY: Record<ProductSort, SQL[]> = {
   [PRODUCT_SORTS.NEWEST]: [desc(products.createdAt), asc(products.sku)],
   // The family's own cheapest, not the head's price — otherwise a family whose
