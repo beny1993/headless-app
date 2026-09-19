@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { API_PATHS, API_PRODUCT_DETAIL_TEMPLATE } from '@/lib/constant/paths';
 import { app } from './index';
+import { RATE_LIMITS } from './middleware/rate-limit';
 
 // The app reaches the catalog routes, which reach the DAOs: importing it now
 // imports `@/db`, which throws when APP_CONFIG_DATABASE_URL is unset. Nothing
@@ -119,5 +120,80 @@ describe('hono app in production', () => {
     const response = await productionApp.request(API_PATHS.HEALTH);
 
     expect(response.status).toBe(200);
+  });
+});
+
+// The mount POSITION of the rate limiter, pinned on the real exported `app`.
+//
+// Hono runs an `app.use('*')` only for routes registered AFTER it, so moving
+// the mount below the `app.openapi(...)` calls — or adding a public route above
+// it — silently stops limiting the public catalogue and the Zarinpal callback,
+// the two routes the limiter exists for, while every other test stays green.
+// That is the exact regression this describes; the unit tests in
+// ./middleware/rate-limit.test.ts mount their own app and cannot see it.
+describe('the rate limiter is mounted ahead of the routes', () => {
+  const flood = async (path: string, ip: string, times: number) => {
+    let lastStatus = 0;
+    for (let i = 0; i < times; i++) {
+      const response = await app.request(path, {
+        headers: { 'cf-connecting-ip': ip },
+      });
+      lastStatus = response.status;
+      if (lastStatus === 429 || lastStatus === 302) break;
+    }
+    return lastStatus;
+  };
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('covers the public catalogue, which is registered first', async () => {
+    vi.stubEnv('APP_CONFIG_TRUST_CF_HEADER', 'true');
+
+    expect(
+      await flood(API_PATHS.PRODUCTS, '198.51.100.71', RATE_LIMITS.catalog + 5),
+    ).toBe(429);
+  });
+
+  it('covers the unauthenticated payment callback', async () => {
+    vi.stubEnv('APP_CONFIG_TRUST_CF_HEADER', 'true');
+
+    // Over budget this route redirects rather than returning the envelope, so
+    // a 302 here is the limiter answering, not the handler.
+    expect(
+      await flood(
+        `${API_PATHS.PAYMENT_CALLBACK}?Authority=x&Status=NOK`,
+        '198.51.100.72',
+        RATE_LIMITS.paymentCallback + 5,
+      ),
+    ).toBe(302);
+  });
+
+  it('leaves the readiness probe uncounted', async () => {
+    vi.stubEnv('APP_CONFIG_TRUST_CF_HEADER', 'true');
+
+    expect(
+      await flood(API_PATHS.READY, '198.51.100.73', RATE_LIMITS.default * 2),
+    ).not.toBe(429);
+  });
+});
+
+describe('the OpenAPI document declares the limiter', () => {
+  it('attaches a 429 to every operation, including routes added later', async () => {
+    // Declared once where the document is generated rather than in 35 route
+    // files: the limiter is app-wide middleware, so a route file cannot know
+    // it is limited, and per-route copies would drift the first time someone
+    // adds a route without one.
+    const document = await (await app.request(API_PATHS.DOC)).json();
+
+    const operations = Object.values(
+      document.paths as Record<string, Record<string, { responses?: object }>>,
+    ).flatMap((path) => Object.values(path));
+
+    expect(operations.length).toBeGreaterThan(0);
+    for (const operation of operations) {
+      expect(operation.responses).toHaveProperty('429');
+    }
   });
 });

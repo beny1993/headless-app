@@ -138,3 +138,119 @@ describe.skipIf(!databaseReachable)('requestZarinpalPayment', () => {
     ).rejects.toMatchObject({ status: 422 });
   });
 });
+
+describe.skipIf(!databaseReachable)('payment attempt cap per order', () => {
+  const fx = new OrderFixtures();
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await fx.cleanup();
+  });
+
+  const zarinpalOrder = async () => {
+    const user = await fx.user();
+    const category = await fx.category();
+    const product = await fx.product(category, { stock: 10 });
+    const order = await OrderDao.create(
+      fx.buildOrder(user, [{ product, qty: 1 }], { total: 120_000 }),
+    );
+    fx.remember(order.id);
+    return { user, order };
+  };
+
+  const attempts = async (orderId: string) =>
+    testDb.select().from(payments).where(eq(payments.orderId, orderId));
+
+  it('allows attempts up to the cap', async () => {
+    const { user, order } = await zarinpalOrder();
+
+    for (let i = 0; i < request.MAX_PAYMENT_ATTEMPTS_PER_ORDER; i++) {
+      await expect(
+        request.requestZarinpalPayment(user.id, order.id),
+      ).resolves.toMatchObject({ redirectUrl: expect.any(String) });
+    }
+
+    expect(await attempts(order.id)).toHaveLength(
+      request.MAX_PAYMENT_ATTEMPTS_PER_ORDER,
+    );
+  });
+
+  it('refuses the attempt past the cap with a 422 and Persian copy', async () => {
+    const { user, order } = await zarinpalOrder();
+    for (let i = 0; i < request.MAX_PAYMENT_ATTEMPTS_PER_ORDER; i++) {
+      await request.requestZarinpalPayment(user.id, order.id);
+    }
+
+    await expect(
+      request.requestZarinpalPayment(user.id, order.id),
+    ).rejects.toMatchObject({
+      status: 422,
+      message: request.TOO_MANY_PAYMENT_ATTEMPTS,
+    });
+  });
+
+  it('does not mint a gateway authority for a refused attempt', async () => {
+    // The whole point of the cap is the outbound request each attempt costs.
+    // A refusal that still called the gateway would bound the row count and
+    // nothing else.
+    const { user, order } = await zarinpalOrder();
+    for (let i = 0; i < request.MAX_PAYMENT_ATTEMPTS_PER_ORDER; i++) {
+      await request.requestZarinpalPayment(user.id, order.id);
+    }
+
+    const requestPayment = vi.spyOn(mockDriver, 'requestPayment');
+    await expect(
+      request.requestZarinpalPayment(user.id, order.id),
+    ).rejects.toThrow();
+
+    expect(requestPayment).not.toHaveBeenCalled();
+    expect(await attempts(order.id)).toHaveLength(
+      request.MAX_PAYMENT_ATTEMPTS_PER_ORDER,
+    );
+  });
+
+  it('counts per order, not per user', async () => {
+    const user = await fx.user();
+    const category = await fx.category();
+    const product = await fx.product(category, { stock: 50 });
+    const makeOrder = async () => {
+      const order = await OrderDao.create(
+        fx.buildOrder(user, [{ product, qty: 1 }], { total: 90_000 }),
+      );
+      fx.remember(order.id);
+      return order;
+    };
+
+    const first = await makeOrder();
+    const second = await makeOrder();
+
+    for (let i = 0; i < request.MAX_PAYMENT_ATTEMPTS_PER_ORDER; i++) {
+      await request.requestZarinpalPayment(user.id, first.id);
+    }
+    await expect(
+      request.requestZarinpalPayment(user.id, first.id),
+    ).rejects.toMatchObject({ status: 422 });
+
+    // The second order has its own ceiling — one exhausted order must not
+    // lock the shopper out of a different one.
+    await expect(
+      request.requestZarinpalPayment(user.id, second.id),
+    ).resolves.toMatchObject({ redirectUrl: expect.any(String) });
+  });
+
+  it('counts failed attempts too, so failing on purpose cannot reset the cap', async () => {
+    const { user, order } = await zarinpalOrder();
+    for (let i = 0; i < request.MAX_PAYMENT_ATTEMPTS_PER_ORDER; i++) {
+      await request.requestZarinpalPayment(user.id, order.id);
+    }
+
+    const rows = await attempts(order.id);
+    await testDb
+      .update(payments)
+      .set({ status: PAYMENT_STATUSES.FAILED })
+      .where(eq(payments.id, rows[0].id));
+
+    await expect(
+      request.requestZarinpalPayment(user.id, order.id),
+    ).rejects.toMatchObject({ status: 422 });
+  });
+});

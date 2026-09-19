@@ -5,6 +5,8 @@
 import 'dotenv/config';
 import { defineConfig } from '@playwright/test';
 
+import { API_PATHS } from './src/lib/constant/paths';
+
 // Its own port, never :3000. That one is usually a developer's `pnpm dev`,
 // possibly from another checkout on another branch, and nothing about a reused
 // server says which code it runs. Better Auth trusts only the origin in
@@ -57,7 +59,7 @@ export default defineConfig({
     // resets each seeded product's stock, which the checkout specs spend.
     command: `pnpm migration:migrate && pnpm seed-catalog && pnpm seed-shipping && pnpm dev --port ${PORT}`,
     // Readiness, not liveness: the server is up AND the database answers.
-    url: `${baseURL}/api/ready`,
+    url: `${baseURL}${API_PATHS.READY}`,
     reuseExistingServer: false,
     timeout: 180_000,
     // Pinned over whatever .env says. An empty string wins over the file too:
@@ -71,6 +73,11 @@ export default defineConfig({
       APP_CONFIG_ZARINPAL_PROVIDER: 'mock',
       // Online payment is off by default; the gateway specs need the option.
       APP_CONFIG_ZARINPAL_ENABLED: 'true',
+      // On, so the rate-limit spec can present a synthetic CF-Connecting-IP and
+      // spend its OWN budget. Off, that header is ignored, every request in the
+      // run collapses into one bucket, and the spec would throttle the rest of
+      // the suite instead of itself.
+      APP_CONFIG_TRUST_CF_HEADER: 'true',
       APP_CONFIG_EMAIL_ENABLED: 'false',
       // Off whatever .env says, or every storefront spec meets the maintenance
       // screen instead of the shop.
