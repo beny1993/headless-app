@@ -93,7 +93,7 @@ export function AddressesTab({
           <button
             type="button"
             onClick={() => setEditing({ id: null })}
-            className="bg-accent-strong hover:bg-accent-hover flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-white transition-colors"
+            className="bg-brand hover:bg-brand-hover text-brand-foreground flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors"
             data-umami-event="account-addresses-add"
           >
             <Plus size={14} aria-hidden="true" /> آدرس جدید
@@ -460,7 +460,7 @@ function AddressForm({
           type="button"
           onClick={save}
           disabled={busy}
-          className="bg-accent-strong hover:bg-accent-hover flex-1 rounded-xl py-3 font-bold text-white transition-colors disabled:opacity-60"
+          className="bg-brand hover:bg-brand-hover text-brand-foreground flex-1 rounded-xl py-3 font-bold transition-colors disabled:opacity-60"
           data-umami-event="account-addresses-save"
         >
           {busy ? 'در حال ذخیره…' : 'ذخیره'}

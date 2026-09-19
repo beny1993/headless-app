@@ -222,7 +222,7 @@ function PriceFilter({
         />
         <button
           type="submit"
-          className="bg-secondary hover:bg-accent-strong shrink-0 rounded-xl px-3 py-2 text-sm font-semibold transition-colors hover:text-white"
+          className="bg-secondary hover:bg-brand shrink-0 rounded-xl px-3 py-2 text-sm font-semibold transition-colors"
           data-umami-event="shop-filter-price-apply"
         >
           اعمال
@@ -325,7 +325,7 @@ export function ShopFilterSheet({
           <button
             type="button"
             onClick={close}
-            className="bg-accent-strong hover:bg-accent-hover w-full rounded-xl py-3.5 font-bold text-white transition-colors"
+            className="bg-brand hover:bg-brand-hover text-brand-foreground w-full rounded-xl py-3.5 font-bold transition-colors"
             data-umami-event="shop-filter-sheet-apply"
           >
             نمایش {formatNumber(total)} محصول

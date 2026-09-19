@@ -821,7 +821,7 @@ export function CheckoutForm({
               <button
                 type="button"
                 onClick={goNext}
-                className="bg-accent-strong hover:bg-accent-hover mt-6 w-full rounded-xl py-3.5 font-bold text-white transition-colors"
+                className="bg-brand hover:bg-brand-hover text-brand-foreground mt-6 w-full rounded-xl py-3.5 font-bold transition-colors"
                 data-umami-event="checkout-step-next"
               >
                 ادامه
@@ -832,7 +832,7 @@ export function CheckoutForm({
                 onClick={submit}
                 disabled={busy}
                 aria-describedby={topError ? errorId : undefined}
-                className="bg-accent-strong hover:bg-accent-hover mt-6 w-full rounded-xl py-3.5 font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                className="bg-brand hover:bg-brand-hover text-brand-foreground mt-6 w-full rounded-xl py-3.5 font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 data-umami-event="checkout-submit-order"
               >
                 {status === 'submitting'

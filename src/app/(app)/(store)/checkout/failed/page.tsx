@@ -38,7 +38,7 @@ export default function Page() {
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             <Link
               href={shopPath()}
-              className="bg-accent-strong hover:bg-accent-hover rounded-xl px-6 py-3 font-bold text-white transition-colors"
+              className="bg-brand hover:bg-brand-hover text-brand-foreground rounded-xl px-6 py-3 font-bold transition-colors"
               data-umami-event="checkout-failed-continue-shopping"
             >
               بازگشت به فروشگاه

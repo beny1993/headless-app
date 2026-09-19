@@ -164,7 +164,7 @@ export function CartDrawer({ className }: { className?: string }) {
                   // not unmount it — without this the modal would sit on top
                   // of /checkout and block it.
                   onClick={close}
-                  className="bg-accent-strong hover:bg-accent-hover block w-full rounded-xl py-3.5 text-center font-bold text-white transition-colors"
+                  className="bg-brand hover:bg-brand-hover text-brand-foreground block w-full rounded-xl py-3.5 text-center font-bold transition-colors"
                   data-umami-event="cart-checkout-click"
                 >
                   تکمیل خرید
@@ -201,7 +201,7 @@ function EmptyCart({ onNavigate }: { onNavigate: () => void }) {
       <Link
         href={PATHS.SHOP}
         onClick={onNavigate}
-        className="bg-accent-strong hover:bg-accent-hover rounded-xl px-6 py-3 font-bold text-white transition-colors"
+        className="bg-brand hover:bg-brand-hover text-brand-foreground rounded-xl px-6 py-3 font-bold transition-colors"
         data-umami-event="cart-empty-shop-click"
       >
         مشاهده محصولات

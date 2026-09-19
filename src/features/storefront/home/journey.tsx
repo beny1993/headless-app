@@ -151,7 +151,7 @@ export function JourneySection({
               <div className="flex flex-wrap justify-center gap-3">
                 <Link
                   href={shopPath(quizFilters({ pet, need }))}
-                  className="bg-accent-strong hover:bg-accent-hover rounded-xl px-6 py-3 font-bold text-white transition-colors"
+                  className="bg-brand hover:bg-brand-hover text-brand-foreground rounded-xl px-6 py-3 font-bold transition-colors"
                   data-umami-event="home-quiz-results-click"
                 >
                   مشاهده محصولات

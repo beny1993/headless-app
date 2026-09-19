@@ -54,7 +54,7 @@ export function FeaturedStorySection({
                 shopPath({ category: 'wet-food' }),
                 targets,
               )}
-              className="bg-accent-strong hover:bg-accent-hover self-start rounded-xl px-6 py-3 font-bold text-white transition-colors"
+              className="bg-brand hover:bg-brand-hover text-brand-foreground self-start rounded-xl px-6 py-3 font-bold transition-colors"
               data-umami-event="home-story-shop-click"
             >
               {content.cta}
