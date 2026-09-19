@@ -26,7 +26,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/app/(app)/` | Public storefront (own root layout + `globals.css`). Every page lives in `(store)`, whose layout is the `APP_CONFIG_MAINTENANCE_MODE` gate; only `login/` sits outside it, so admins can sign in while the shop is closed |
 | `src/app/(admin-panel)/` | Admin panel: `(protected)` pages behind `requireAdmin()`. Sign-in is the storefront's `/login` — there is one login for the whole site |
 | `src/app/api/[[...route]]/` | Hono catch-all; Better Auth at `src/app/api/auth/[...all]/` |
-| `src/db/schema/`, `src/db/dao/`, `src/db/migrations/` | Drizzle schema, DAOs, generated migrations |
+| `src/db/schema/`, `src/db/dao/`, `src/db/migrations/` | Drizzle schema, DAOs, generated migrations. `dao/product-sql.ts` is the product listing's SQL vocabulary — the family scalars, the orderings, the category and pet scopes — composed by `ProductDao` and imported by nothing else |
 | `src/lib/hono/` | API app, router factory, response envelope, routes |
 | `src/lib/auth/`, `src/lib/email/`, `src/lib/utils/env.ts` | Better Auth, mailer, env accessor |
 | `src/lib/sentry.ts` | The one `Sentry.init` options object, shared by all three runtimes (`sentry.server.config.ts`, `sentry.edge.config.ts`, `src/instrumentation-client.ts`). Owns the privacy contract: explicit `dataCollection` opt-outs and the removal of the console-breadcrumb integration, without which every OTP in the server log rides along on the next event |
@@ -113,7 +113,8 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   `${products.id}` unqualified inside a select field, so in `from products fam`
   it binds to `fam.id` and the condition is silently false for every row — green
   on every empty database, wrong on a populated one. `FAMILY_SCOPE` and
-  `MEMBER_SCOPE` in `ProductDao` are the pattern; this cost a real bug once.
+  `MEMBER_SCOPE` in `src/db/dao/product-sql.ts` are the pattern, and the
+  warning lives beside them; this cost a real bug once.
 - **Persian search text** is normalized on write (ي→ی, ك→ک, ZWNJ) + `pg_trgm`.
 - **Local-first**: everything must run locally with no third-party signup — SMS
   uses a console driver, uploads use local storage behind the storage interface.
