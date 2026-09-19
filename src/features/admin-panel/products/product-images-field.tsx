@@ -161,9 +161,16 @@ export function ProductImagesField({
     }
 
     setRejections(refused);
-    if (taken.length === 0) return;
-    onChange([...photos, ...taken]);
-    setAnnouncement(addedMessage(taken.length));
+    if (taken.length > 0) onChange([...photos, ...taken]);
+    // The refusals ride the live region too, not just the red lines. Those are
+    // wired through the file input's `aria-describedby`, which is read when
+    // focus lands on the input — and the pick that fills the last slot takes
+    // the add tile, input and all, off the page, leaving nothing to describe.
+    setAnnouncement(
+      [taken.length > 0 ? addedMessage(taken.length) : '', ...refused]
+        .filter(Boolean)
+        .join(' '),
+    );
   };
 
   const removeAt = (index: number) => {

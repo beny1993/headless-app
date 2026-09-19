@@ -65,6 +65,10 @@ const fileInput = () =>
 
 const activeLabel = () => document.activeElement?.getAttribute('aria-label');
 
+/** The one polite line reorder, add, remove and a refusal all speak through. */
+const announced = () =>
+  document.querySelector('[aria-live="polite"]')?.textContent ?? '';
+
 describe('keyboard reorder', () => {
   it('moves a photo toward the start on ArrowRight and keeps its handle focused', () => {
     show(3);
@@ -186,6 +190,9 @@ describe('adding', () => {
     expect(
       screen.getByText('فقط ۱ عکس اول اضافه شد؛ سقف ۵ عکس است.'),
     ).toBeTruthy();
+    // And said out loud: this pick fills the last slot, which takes the add
+    // tile — and the `aria-describedby` that points at the red line — away.
+    expect(announced()).toContain('فقط ۱ عکس اول اضافه شد');
     // And the two that did not fit gave their blobs straight back.
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
   });
@@ -220,5 +227,6 @@ describe('adding', () => {
     ).toBeTruthy();
     expect(handleLabels()).toEqual(['جابه‌جایی عکس اصلی']);
     expect(fileInput().getAttribute('aria-invalid')).toBe('true');
+    expect(announced()).toContain('فایل «cat.gif» اضافه نشد');
   });
 });
