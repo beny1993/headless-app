@@ -8,6 +8,7 @@ import { apiErrorHandler, createRouter } from './create-router';
 import { apiError } from './envelope';
 import { IMAGE_TOO_LARGE_MESSAGE } from './image-upload';
 import { requireAdmin, requireAuth, type AuthedEnv } from './middleware/auth';
+import { rateLimit, RATE_LIMITED_MESSAGE } from './middleware/rate-limit';
 import {
   categoryCreateHandler,
   categoryCreateRoute,
@@ -111,6 +112,19 @@ import {
 export const app = createRouter().basePath('/api');
 
 app.onError(apiErrorHandler);
+
+// The ONE legitimate `app.use('*')` on this app. The convention documented
+// further down (see the `authed` sub-router) forbids the wildcard for AUTHZ,
+// where it would leak a guard onto public routes. A rate limit is the opposite
+// case: it must cover every route, and the public ones most of all — those are
+// the ones an unauthenticated caller can spend.
+//
+// Position is load-bearing, and NOT interchangeable with "before
+// `app.route('/', authed)`". Hono runs a wildcard only for routes registered
+// AFTER it, so mounting this any later would leave the public catalogue and the
+// Zarinpal callback — the two costliest routes per call, and the reason this
+// exists — silently uncovered, with every test still green.
+app.use('*', rateLimit);
 
 app.openapi(healthRoute, healthHandler);
 // Readiness sits beside liveness: `/health` says the process is up, `/ready`
@@ -245,14 +259,61 @@ admin.openapi(contentUpdateRoute, contentUpdateHandler);
 admin.post('/admin/content/images', contentImageUploadHandler);
 app.route('/', admin);
 
+/**
+ * The 429 the rate limiter can return from ANY route, declared once and
+ * attached to every operation when the document is generated (below).
+ */
+const RATE_LIMITED_RESPONSE = {
+  description:
+    'Rate limit exceeded for this caller. Carries a `Retry-After` header ' +
+    'with the seconds to wait. The Zarinpal callback answers a 302 to the ' +
+    'payment failure page instead, since a browser is what arrives there.',
+  content: {
+    'application/json': {
+      schema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['error'] },
+          message: { type: 'string', example: RATE_LIMITED_MESSAGE },
+        },
+        required: ['status', 'message'],
+      },
+    },
+  },
+} as const;
+
 // OpenAPI document + interactive reference — never expose in production.
 if (getEnvVariable(VARS.NODE_ENV, false, '') !== 'production') {
-  app.doc('/doc', {
-    openapi: '3.0.0',
-    info: {
-      title: `${DEFAULT_SITE_NAME} API`,
-      version: '0.1.0',
-    },
+  // Served by hand rather than with `app.doc`, so the 429 every route can now
+  // answer is documented in ONE place. The limiter is middleware over the whole
+  // app, so declaring it per route would be 35 identical copies that drift the
+  // first time one is added without it — and a route file cannot know it is
+  // limited. Post-processing the generated document keeps it true for routes
+  // that do not exist yet.
+  app.get('/doc', (c) => {
+    const document = app.getOpenAPIDocument({
+      openapi: '3.0.0',
+      info: {
+        title: `${DEFAULT_SITE_NAME} API`,
+        version: '0.1.0',
+      },
+    });
+
+    for (const path of Object.values(document.paths ?? {})) {
+      for (const operation of Object.values(path ?? {})) {
+        if (
+          typeof operation !== 'object' ||
+          operation === null ||
+          !('responses' in operation)
+        ) {
+          continue;
+        }
+        (operation.responses as Record<string, unknown>)[429] =
+          RATE_LIMITED_RESPONSE;
+      }
+    }
+
+    return c.json(document);
   });
   app.get('/reference', Scalar({ url: '/api/doc' }));
 }
