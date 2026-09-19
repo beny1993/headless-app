@@ -196,6 +196,18 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
   // The cover is the first photo the admin arranged, not whichever uploaded
   // fastest — which is what the reorder below then changes.
   expect(await renderedKey(photo)).toBe(uploadedKeys[0]);
+  // Clicking a thumb in a real engine: the only place the RTL scroll maths and
+  // the IntersectionObserver both actually run. The component test stubs the
+  // observer and spies on `scrollBy`, so neither the sign of the visual-rect
+  // delta nor whether the observer fires at all is proven anywhere else.
+  // `toHaveAttribute` retries, which absorbs the smooth-scroll ripple through
+  // the intermediate slides.
+  const thumbs = page.locator(
+    '[data-umami-event="product-gallery-thumb-select"]',
+  );
+  await thumbs.nth(1).click();
+  await expect(thumbs.nth(1)).toHaveAttribute('aria-pressed', 'true');
+  await expect(thumbs.nth(0)).toHaveAttribute('aria-pressed', 'false');
   // Both toggles were pressed, so «مناسب برای» names both animals — through
   // the one helper that wording comes from, never a literal.
   await page
