@@ -115,10 +115,24 @@ redeploy with no persistent volume. The storage seam means nothing else changes.
 5. Networking: assign the domain, let Coolify issue the Let's Encrypt cert (TLS
    is terminated at Coolify's proxy). The app listens on port **3000** inside the
    container (`EXPOSE 3000`, `HOSTNAME=0.0.0.0`).
-6. **Health check:** point Coolify's health check at **`GET /api/health`** — it
-   returns `{"status":"success","data":{"status":"ok",...}}` and touches no DB,
-   so it reports process liveness, not database reachability. (There is
-   deliberately no Dockerfile `HEALTHCHECK`; Coolify owns it.)
+6. **Health check:** point Coolify's health check at **`GET /api/ready`** — it
+   answers only when the process is up AND Postgres is reachable and migrated.
+   (There is deliberately no Dockerfile `HEALTHCHECK`; Coolify owns it.)
+
+   > **Corrected 2026-09-19.** This step used to say `/api/health`, on the
+   > reasoning that liveness is what a health check wants. That is wrong *here*,
+   > and it silently disables the rollback §5 promises: `/api/health` touches no
+   > database, so a container whose migration failed still answers it and still
+   > turns healthy — Coolify would then retire the old container and serve the
+   > broken one. §5 already assumes `/api/ready`. **Check what the Coolify
+   > health check is actually set to before the next deploy**; if it is
+   > `/api/health`, the migration-failure rollback has never been armed.
+   > `GET /api/health` stays available for an uptime pinger that should not
+   > depend on the database.
+
+   Both paths are exempt from the `/api/*` rate limiter (`rateLimitGroupFor` in
+   `src/lib/hono/middleware/rate-limit.ts`) — a throttled probe would mark the
+   container unhealthy and roll a perfectly good deploy back.
 
 ---
 

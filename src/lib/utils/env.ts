@@ -42,6 +42,16 @@ export enum VARS {
   // the Zarinpal option disabled and preselects card to card. Runtime, no rebuild.
   APP_CONFIG_ZARINPAL_ENABLED = 'APP_CONFIG_ZARINPAL_ENABLED',
 
+  // `true` declares that this deploy sits behind Cloudflare, so `CF-Connecting-IP`
+  // may be trusted as the client address. Default OFF, and deliberately so: the
+  // header is attacker-supplied on any origin reachable directly, and a forged
+  // value per request mints a fresh rate-limit bucket every time — which would
+  // make both the OTP limiter and the `/api/*` limiter no protection at all.
+  // Off, both fall back to `x-forwarded-for`, which Traefik overwrites. Turn this
+  // on only once 443 refuses non-Cloudflare traffic ([[Story - Cloudflare Origin
+  // Lockdown]] / docs/DEPLOY.md §6). Fail safe, never fail open.
+  APP_CONFIG_TRUST_CF_HEADER = 'APP_CONFIG_TRUST_CF_HEADER',
+
   // Which storage driver `src/lib/storage` dispatches through for product image
   // uploads. `local` (the default) writes files under APP_CONFIG_STORAGE_LOCAL_ROOT
   // and serves them from `/uploads/*` — the shipped default so uploads work on

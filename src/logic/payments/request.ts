@@ -39,6 +39,21 @@ const ORDER_NOT_FOUND = 'سفارش یافت نشد';
 const NOT_AWAITING_PAYMENT = 'این سفارش در انتظار پرداخت نیست.';
 const NOT_A_ZARINPAL_ORDER = 'این سفارش با درگاه پرداخت آنلاین ثبت نشده است.';
 
+export const TOO_MANY_PAYMENT_ATTEMPTS =
+  'تعداد تلاش‌های پرداخت برای این سفارش بیش از حد مجاز است. لطفاً با پشتیبانی تماس بگیرید.';
+
+/**
+ * How many payment attempts one order may ever make.
+ *
+ * `MAX_OPEN_ORDERS` caps orders per user; nothing capped attempts per order.
+ * Each attempt mints a fresh gateway authority, inserts another payment row,
+ * and is then re-verified by EVERY future reconcile sweep once it is 15 minutes
+ * stale — so an uncapped order is a permanent, growing outbound-request
+ * amplifier. Generous on purpose: a shopper whose bank declines tries two or
+ * three times, so five leaves real retries untouched.
+ */
+export const MAX_PAYMENT_ATTEMPTS_PER_ORDER = 5;
+
 /**
  * Start a Zarinpal payment for `orderId` on behalf of `userId`.
  *
@@ -64,6 +79,15 @@ export async function requestZarinpalPayment(
     throw new PaymentRequestError(422, NOT_A_ZARINPAL_ORDER);
   }
 
+  // Fail fast, before the gateway call: a capped order must not cost one more
+  // outbound request per refused retry. The authoritative check is under the
+  // lock below — this one only saves the round-trip.
+  if (
+    (await PaymentDao.countByOrder(order.id)) >= MAX_PAYMENT_ATTEMPTS_PER_ORDER
+  ) {
+    throw new PaymentRequestError(422, TOO_MANY_PAYMENT_ATTEMPTS);
+  }
+
   const client = getZarinpalClient();
   const { authority, redirectUrl } = await client.requestPayment({
     amountToman: order.total,
@@ -83,6 +107,15 @@ export async function requestZarinpalPayment(
     const status = await OrderDao.lockStatus(tx, order.id);
     if (status !== ORDER_STATUSES.PENDING_PAYMENT) {
       throw new PaymentRequestError(422, NOT_AWAITING_PAYMENT);
+    }
+    // The authoritative count, inside the transaction that already holds the
+    // order lock — so a concurrent burst that passed the fail-fast check above
+    // cannot land two attempts over the ceiling.
+    if (
+      (await PaymentDao.countByOrder(order.id, tx)) >=
+      MAX_PAYMENT_ATTEMPTS_PER_ORDER
+    ) {
+      throw new PaymentRequestError(422, TOO_MANY_PAYMENT_ATTEMPTS);
     }
     await PaymentDao.create(
       {
