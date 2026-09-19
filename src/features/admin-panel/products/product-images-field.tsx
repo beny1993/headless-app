@@ -47,7 +47,7 @@ export type ProductPhoto =
   | { id: string; kind: 'saved'; objectKey: string }
   | { id: string; kind: 'pending'; file: File; blobUrl: string };
 
-export const PRODUCT_IMAGES_LABEL = 'تصاویر محصول';
+const FIELD_LABEL = 'تصاویر محصول';
 const FIELD_HINT = `عکس اول، عکس اصلی است و در فهرست فروشگاه و سبد خرید دیده می‌شود. حداکثر ${toPersianDigits(MAX_PRODUCT_IMAGES)} عکس.`;
 const FORMAT_HINT = 'JPG، PNG یا WEBP، تا ۲ مگابایت';
 const ADD_LABEL = 'افزودن عکس';
@@ -238,7 +238,7 @@ export function ProductImagesField({
   return (
     <div>
       <p id={id} className="mb-1.5 block text-sm font-medium">
-        {PRODUCT_IMAGES_LABEL}
+        {FIELD_LABEL}
       </p>
 
       <ul
