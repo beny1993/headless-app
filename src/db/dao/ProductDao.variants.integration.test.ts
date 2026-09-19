@@ -746,6 +746,38 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       expect(order).toEqual(['released', 'hidden']);
     });
 
+    it('waits the same way before letting a head clear its own label', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, { variantLabel: '۵ کیلوگرم' });
+
+      // The second count in `update()`, and the same race: a member arriving
+      // beside «clear the label» would leave a head with members and nothing
+      // written on its chips. Both guards take the row's own lock now.
+      const order: string[] = [];
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const attaching = testDb.transaction(async (tx) => {
+        await tx.execute(
+          sql`select id from products where id = ${head.id} for key share`,
+        );
+        await held;
+      });
+      await sleep(50);
+
+      const clear = ProductDao.update(head.id, { variantLabel: null }).then(
+        () => order.push('cleared'),
+        () => order.push('cleared'),
+      );
+
+      await sleep(200);
+      order.push('released');
+      release();
+      await attaching;
+      await clear;
+
+      expect(order).toEqual(['released', 'cleared']);
+    });
+
     it('refuses a head that does not exist', async () => {
       const category = await makeCategory();
 

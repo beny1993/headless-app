@@ -745,20 +745,31 @@ export class ProductDao {
     executor: Executor,
     id: string,
   ): Promise<void> {
-    // Lock the head before counting. The race is «attach a member» running
-    // beside «hide the head»: both read zero, both commit, and the family is
-    // orphaned by two writes that were each legal on their own.
-    // `assertFamilyRules` takes this same row's lock from the other side, so
-    // one of them waits and then re-reads the committed state — this one
-    // counts the new member and refuses; the other finds the head inactive
-    // and is refused by `inactiveHead`. Either order ends in a refusal.
+    await ProductDao.lockRow(executor, id);
+    const blocking = await ProductDao.countActiveMembers(id, executor);
+    if (blocking > 0) throw new ProductVariantError('hasMembers', blocking);
+  }
+
+  /**
+   * Takes this row's own write lock, so a count taken after it cannot be made
+   * stale by a member arriving beside it.
+   *
+   * Every «is anything pointing at me» guard needs this. A transaction writing
+   * a member holds `for key share` on the head through its foreign key, and a
+   * plain `update products set …` asks only for `for no key update`, which does
+   * not conflict with it — so both writes commit and the family comes apart
+   * between two statements that were each legal.
+   *
+   * One row, not a pair: `assertFamilyRules` has already locked this one when
+   * the write names a head, and when it does not there is nothing else to take,
+   * so no transaction here holds two of these locks in a disagreeing order.
+   */
+  private static async lockRow(executor: Executor, id: string): Promise<void> {
     await executor
       .select({ id: products.id })
       .from(products)
       .where(eq(products.id, id))
       .for('update');
-    const blocking = await ProductDao.countActiveMembers(id, executor);
-    if (blocking > 0) throw new ProductVariantError('hasMembers', blocking);
   }
 
   /**
@@ -872,12 +883,11 @@ export class ProductDao {
       // Clearing a head's own label would leave its chips with nothing written
       // on them — `products_variant_label_present` only covers members, and the
       // «head needs a label» guard only fires when something is *pointed at* it.
-      if (
-        'variantLabel' in columns &&
-        !columns.variantLabel?.trim() &&
-        (await ProductDao.countActiveMembers(id, tx)) > 0
-      ) {
-        throw new ProductVariantError('headNeedsLabel');
+      if ('variantLabel' in columns && !columns.variantLabel?.trim()) {
+        await ProductDao.lockRow(tx, id);
+        if ((await ProductDao.countActiveMembers(id, tx)) > 0) {
+          throw new ProductVariantError('headNeedsLabel');
+        }
       }
       const row = await ProductDao.updateColumns(
         tx,
