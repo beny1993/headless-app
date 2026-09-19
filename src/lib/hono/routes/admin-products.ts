@@ -46,7 +46,7 @@ import {
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
 import { VARIANT_MESSAGES } from '@/lib/catalog/variant';
-import { ProductSchema } from '../product-schema';
+import { ProductImageSchema, ProductSchema } from '../product-schema';
 import { pgErrorOf } from '../pg-error';
 
 /** User-facing copy, so Persian. */
@@ -401,14 +401,19 @@ export const productImageUploadHandler = async (
 
 // ── Gallery: store the order (JSON) ───────────────────────────────────────────
 
-const StoredImageSchema = z
-  .object({
-    id: z.uuid(),
-    objectKey: z.string(),
-    url: z.string(),
-    sortOrder: z.number().int(),
-  })
-  .openapi('ProductImage');
+/**
+ * One stored photo as the two gallery writes answer with it: the storefront's
+ * own image row plus the URL to render it, which only the writer knows (the
+ * driver resolves the key).
+ *
+ * Derived from `ProductImageSchema`, never restated — and under a name of its
+ * own. Restating it registered a second `ProductImage` component, and
+ * zod-to-openapi resolves a duplicate ref by keeping the first: the document
+ * silently described this response without its `url`.
+ */
+const StoredImageSchema = ProductImageSchema.safeExtend({
+  url: z.string(),
+}).openapi('StoredProductImage');
 
 /**
  * What a save sends back once its uploads are done: the product's photos, in the
