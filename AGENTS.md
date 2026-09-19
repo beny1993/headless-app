@@ -219,8 +219,14 @@ own slug and the cart line naming that member; checkout by card to card — Jala
 on the result page, the order in `/account` — and through the mock Zarinpal
 gateway (paid, and failed → retry → paid). Admin: anonymous visitors and
 customers turned away; the dashboard figures; an order shipped, and one
-cancelled with its stock coming back; a product added with a photo — for both
-pets, filed under a sub-category and given a second category — repriced, found
+cancelled with its stock coming back; a product added with two photos — for
+both pets, filed under a sub-category and given a second category — its
+gallery read on the product page (the strip, the numbered later slides, the
+first photo as the opening image), then dragged into a new order that changes
+which photo opens, then one photo removed, whose `uploads/…` file stops
+serving while the kept one goes on serving (both probed with `request.get`,
+never an `<img>`: `next/image` caches what it optimized, so a deleted file
+renders on from `.next/cache`) — repriced, found
 under both category filters and taken off the shop; a sub-category nested under
 a category the panel then refuses to delete until it is emptied; a product
 family's members each listed and named by their own label, the head's
@@ -271,7 +277,8 @@ suite pins it on; the disabled option is component-tested in
   (`e2e/support.ts`). send-otp allows 3 a minute for the whole machine, so a run
   started within a minute of the last one waits about a minute.
 - **What a run leaves in the dev database:** two throwaway `0999…` accounts, a
-  few orders, one inactive `e2e-…` product (its photo stays under `uploads/`)
+  few orders, one inactive `e2e-…` product (it is given two photos and has one
+  of them removed again, so one file stays under `uploads/`)
   filed under a seeded sub-category and a seeded second category — seeded, and
   never one the spec made, because the junction's restricting foreign key would
   pin that category for good — one switched-off `E2E…` discount code and one

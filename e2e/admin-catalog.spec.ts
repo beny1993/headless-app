@@ -1,5 +1,6 @@
 import { formatPetTypes } from '@/lib/catalog/product-query';
 import { randomInt } from 'node:crypto';
+import type { Locator, Page } from '@playwright/test';
 import { z } from 'zod';
 import { PET_TYPES } from '@/db/schema/catalog';
 import { SEED_CATEGORIES, SEED_SUBCATEGORIES } from '@/db/seed/catalog-data';
@@ -14,10 +15,11 @@ import {
   shopPath,
 } from '@/lib/constant/paths';
 import { DISCOUNT_TYPES } from '@/lib/discount/discount-code';
-import { formatToman } from '@/lib/format';
+import { formatNumber, formatToman } from '@/lib/format';
 import {
   ADMIN_STATE,
   PRODUCT_PHOTO,
+  SECOND_PRODUCT_PHOTO,
   completeCheckout,
   expect,
   expectFailedRequest,
@@ -44,7 +46,41 @@ if (!EXTRA_CATEGORY) {
   throw new Error('The catalog seed has no category outside the sub’s parent.');
 }
 
-test('an admin adds a product with a photo, reprices it and takes it off the shop', async ({
+/**
+ * The storage key an `<img>` is actually showing. `next/image` wraps it as
+ * `/_next/image?url=%2Fuploads%2F…`, so the raw `src` is never string-matched:
+ * the inner URL is read out of the query and unwrapped back to a key.
+ */
+async function renderedKey(img: Locator): Promise<string> {
+  const src = await img.getAttribute('src');
+  const url = new URL(src ?? '', 'http://localhost');
+  const inner = url.searchParams.get('url') ?? url.pathname;
+  return decodeURIComponent(inner).replace(/^\//, '');
+}
+
+/**
+ * The `<img>` in the admin form's nth photo tile — a list item that holds a
+ * remove button is a photo tile and nothing else is.
+ */
+function tileImage(page: Page, index: number): Locator {
+  return page
+    .locator('li', {
+      has: page.locator(
+        '[data-umami-event="admin-panel-product-image-remove"]',
+      ),
+    })
+    .nth(index)
+    .locator('img');
+}
+
+/** An image the browser managed to decode — a broken one has no natural width. */
+async function expectRendered(img: Locator) {
+  await expect
+    .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+}
+
+test('an admin adds a product with photos, reorders them, reprices it and takes it off the shop', async ({
   page,
 }) => {
   const id = runId();
@@ -97,7 +133,28 @@ test('an admin adds a product with a photo, reprices it and takes it off the sho
       ),
     }),
   ).toHaveText([EXTRA_CATEGORY.title]);
-  await page.locator('input[type="file"]').setInputFiles(PRODUCT_PHOTO);
+  // Two photos in one pick. Selected by event name, not `input[type=file]`:
+  // the multi-photo field renders one input per add tile, so the bare tag
+  // selector is ambiguous the moment a photo is on the form.
+  await page
+    .locator('[data-umami-event="admin-panel-product-image-add"]')
+    .setInputFiles([PRODUCT_PHOTO, SECOND_PRODUCT_PHOTO]);
+  await expect(
+    page.locator('[data-umami-event="admin-panel-product-image-reorder"]'),
+  ).toHaveCount(2);
+
+  // Every photo goes up in its own request after the product row saves, so the
+  // stored keys arrive in gallery order — which is how the assertions below
+  // know which file is on screen.
+  const uploadedKeys: string[] = [];
+  page.on('response', async (response) => {
+    if (response.request().method() !== 'POST') return;
+    if (!new URL(response.url()).pathname.endsWith('/images')) return;
+    const parsed = z
+      .object({ data: z.object({ objectKey: z.string().min(1) }) })
+      .safeParse(await response.json().catch(() => null));
+    if (parsed.success) uploadedKeys.push(parsed.data.data.objectKey);
+  });
 
   const [created] = await Promise.all([
     page.waitForResponse(
@@ -121,10 +178,24 @@ test('an admin adds a product with a photo, reprices it and takes it off the sho
   ).toBeVisible();
   await expect(page.getByText(formatToman(150_000)).first()).toBeVisible();
   // Stored and served: an image that failed to load has no natural width.
-  const photo = page.getByRole('img', { name: title });
-  await expect
-    .poll(() => photo.evaluate((img) => (img as HTMLImageElement).naturalWidth))
-    .toBeGreaterThan(0);
+  // `exact`, because the second slide's alt reads «تصویر ۲ از {title}» and so
+  // contains the title — a substring match resolves to every slide.
+  const photo = page.getByRole('img', { name: title, exact: true });
+  await expectRendered(photo);
+  // Two photos, so the strip appears — the first thing in the suite with more
+  // than one, since `seed-catalog` re-runs `setImages` before every run and
+  // resets every seeded gallery to its single image.
+  await expect.poll(() => uploadedKeys.length).toBe(2);
+  await expect(
+    page.locator('[data-umami-event="product-gallery-thumb-select"]'),
+  ).toHaveCount(2);
+  // The later slides are numbered rather than repeating the title five times.
+  await expect(
+    page.getByAltText(`تصویر ${formatNumber(2)} از ${title}`),
+  ).toHaveCount(1);
+  // The cover is the first photo the admin arranged, not whichever uploaded
+  // fastest — which is what the reorder below then changes.
+  expect(await renderedKey(photo)).toBe(uploadedKeys[0]);
   // Both toggles were pressed, so «مناسب برای» names both animals — through
   // the one helper that wording comes from, never a literal.
   await page
@@ -142,6 +213,31 @@ test('an admin adds a product with a photo, reprices it and takes it off the sho
     new RegExp(`^${slug.toUpperCase()}-[A-Z0-9]{${SKU_SUFFIX_LENGTH}}$`),
   );
   await expect(sku).toHaveJSProperty('readOnly', true);
+
+  // Drag the second photo onto the first. This is the only place the pointer
+  // path runs at all: happy-dom reports zero-size rects, so a component test
+  // can reach the keyboard fallback and nothing else.
+  const handles = page.locator(
+    '[data-umami-event="admin-panel-product-image-reorder"]',
+  );
+  await expect(handles).toHaveCount(2);
+  expect(await renderedKey(tileImage(page, 0))).toBe(uploadedKeys[0]);
+  const from = await handles.nth(1).boundingBox();
+  const onto = await handles.nth(0).boundingBox();
+  if (!from || !onto) throw new Error('a photo handle has no box to drag');
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(onto.x + onto.width / 2, onto.y + onto.height / 2, {
+    steps: 12,
+  });
+  await page.mouse.up();
+  // Asserted on which FILE is in the first tile, never on the caption: the
+  // captions are positional, so «عکس اصلی» reads the same before and after a
+  // drag that did nothing at all.
+  await expect
+    .poll(() => renderedKey(tileImage(page, 0)))
+    .toBe(uploadedKeys[1]);
+
   await page.getByLabel('قیمت (تومان)', { exact: true }).fill('175000');
   await page.locator('[data-umami-event="admin-panel-product-save"]').click();
   await expect(page).toHaveURL(
@@ -149,6 +245,46 @@ test('an admin adds a product with a photo, reprices it and takes it off the sho
   );
   await page.goto(productPath(slug));
   await expect(page.getByText(formatToman(175_000)).first()).toBeVisible();
+  // The reorder reached the shopper: the opening image is the other photo now.
+  // Nothing was uploaded this time round, so the save carried the order alone.
+  expect(
+    await renderedKey(page.getByRole('img', { name: title, exact: true })),
+  ).toBe(uploadedKeys[1]);
+  // And a reorder deleted nothing: both files still serve. Probed through the
+  // uploads route rather than an `<img>` — `next/image` caches what it
+  // optimized, so a deleted file goes on rendering from `.next/cache` and an
+  // on-page check passes against the very bug this is here to catch.
+  for (const key of uploadedKeys) {
+    expect((await page.request.get(`/${key}`)).status()).toBe(200);
+  }
+
+  // Now remove one, which is the only thing that deletes a file.
+  await page.goto(adminEditProductPath(productId));
+  await page
+    .getByRole('button', { name: `حذف عکس ${formatNumber(2)}` })
+    .click();
+  await expect(handles).toHaveCount(1);
+  await page.locator('[data-umami-event="admin-panel-product-save"]').click();
+  await expect(page).toHaveURL(
+    (url) => url.pathname === PROTECTED_PATHS.PRODUCTS,
+  );
+
+  await page.goto(productPath(slug));
+  const kept = page.getByRole('img', { name: title, exact: true });
+  expect(await renderedKey(kept)).toBe(uploadedKeys[1]);
+  // The photo that stayed still has its file — the defect this guards against
+  // deleted every one of them whenever any one of them went.
+  await expectRendered(kept);
+  // One photo left, so no strip: a one-item picker cannot do anything.
+  await expect(
+    page.locator('[data-umami-event="product-gallery-thumb-select"]'),
+  ).toHaveCount(0);
+  // The removed photo's file is gone and the kept one's is not — the pair is
+  // the point, since «delete everything» also satisfies the first half.
+  // Fetched rather than visited: the watch would count a 404 document as a
+  // failed request, and the optimizer would serve either from its cache.
+  expect((await page.request.get(`/${uploadedKeys[0]}`)).status()).toBe(404);
+  expect((await page.request.get(`/${uploadedKeys[1]}`)).status()).toBe(200);
 
   // Both shelves find it: the sub-category it is filed under, and the extra
   // one — which only the junction can answer for. Checked while it is still on

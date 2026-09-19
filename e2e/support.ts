@@ -142,6 +142,19 @@ export const LOW_STOCK_PRODUCT = {
 /** A seeded product photo, bundled in public/, to upload as a new product's. */
 export const PRODUCT_PHOTO = `public/${mostStocked.imageKeys[0]}`;
 
+/**
+ * A second, visibly different bundled photo, so a gallery spec can tell which
+ * of a product's two photos is the cover. Read from the seed rather than named
+ * here — the pair only has to be two different files.
+ */
+const otherPhotoKey = SEED_PRODUCTS.map((product) => product.imageKeys[0]).find(
+  (key) => key && key !== mostStocked.imageKeys[0],
+);
+if (!otherPhotoKey) {
+  throw new Error('The catalog seed needs two products with different photos.');
+}
+export const SECOND_PRODUCT_PHOTO = `public/${otherPhotoKey}`;
+
 /** Puts one of `product` in the cart and opens checkout from the drawer. */
 export async function openCheckout(page: Page, product = IN_STOCK_PRODUCT) {
   await page.goto(product);
