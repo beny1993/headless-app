@@ -6,6 +6,7 @@ vi.mock('@/db', () => ({ db: {} }));
 vi.stubEnv('APP_CONFIG_AUTH_SECRET', 'test-secret');
 
 const { auth } = await import('./index');
+const { clientIpHeaders } = await import('./client-ip');
 
 const options = auth.options;
 
@@ -142,6 +143,16 @@ describe('rate limiting', () => {
     expect(rules?.['/phone-number/send-otp']).toEqual({ window: 60, max: 3 });
     expect(rules?.['/phone-number/verify']).toEqual({ window: 60, max: 10 });
   });
+
+  it('resolves the caller from the same header list the Hono limiter uses', () => {
+    // Not "an equal list" — the same call. Two limiters that disagree about
+    // who a caller is would bucket one visitor two ways, and nothing would say
+    // so. This is also what makes APP_CONFIG_TRUST_CF_HEADER a single switch
+    // instead of two that can drift apart.
+    expect(options.advanced?.ipAddress?.ipAddressHeaders).toEqual(
+      clientIpHeaders(),
+    );
+  });
 });
 
 describe('sessions', () => {
@@ -159,12 +170,18 @@ describe('sessions', () => {
 describe('client IP resolution', () => {
   const ipAddress = options.advanced?.ipAddress;
 
-  it('reads CF-Connecting-IP first — Cloudflare fronts the origin', () => {
-    // Cloudflare sets this itself and overwrites a client-supplied copy, so it
-    // is the only header carrying the true visitor IP once the domain is
-    // proxied. Better Auth walks `ipAddressHeaders` in order and takes the
-    // first that resolves, so position matters, not just membership.
-    expect(ipAddress?.ipAddressHeaders?.[0]).toBe('cf-connecting-ip');
+  // CHANGED 2026-09-19 (issue #59 item 1): this block used to assert
+  // `ipAddressHeaders[0] === 'cf-connecting-ip'` unconditionally. That is the
+  // defect, not the contract. Cloudflare sets the header itself and overwrites
+  // a client copy, so it is trustworthy *through Cloudflare* — but on an origin
+  // reachable directly it is a string the caller picked, and a fresh value per
+  // request mints a fresh bucket, which is no limit at all. It is now gated on
+  // APP_CONFIG_TRUST_CF_HEADER, and the gate defaults OFF so an un-proxied
+  // deploy fails safe. Per-header behaviour is covered in client-ip.test.ts.
+
+  it('does not trust CF-Connecting-IP unless the deploy declares Cloudflare', () => {
+    // The suite runs with the flag unset, i.e. the shipped default.
+    expect(ipAddress?.ipAddressHeaders).not.toContain('cf-connecting-ip');
   });
 
   it('keeps x-forwarded-for as the fallback', () => {
