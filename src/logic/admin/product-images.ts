@@ -6,20 +6,24 @@
 // A product holds up to `MAX_PRODUCT_IMAGES` photos in the admin's order, so
 // there are two writes, and only one of them deletes:
 //
-//   · an upload APPENDS — it adds a key to the end of the gallery and touches
-//     no file that is already there;
+//   · an upload APPENDS — one row at the end of the gallery, touching no file
+//     that is already there. It runs under a row lock and re-checks the ceiling
+//     inside the transaction, so two uploads racing cannot both win and strand
+//     the loser's file with no row to find it by;
 //   · a gallery-order write REPLACES the list, and is the only place a file is
 //     ever deleted — and then only the keys the admin dropped, never the whole
 //     previous list.
 //
-// `ProductDao.setImages` is «replace with this ordered list» for both, which is
-// why the cleanup, not the write, is where the thinking is. A seed product's
+// `ProductDao.setImages` is «replace with this ordered list» and belongs to the
+// second of those; the append has its own atomic write. The cleanup, not the
+// write, is where the thinking is. A seed product's
 // bundled `products/…` asset is never handed to the driver: it lives in
 // `public/`, it is not ours to delete, and the local driver refuses keys outside
 // `uploads/` anyway — the filter here is what keeps that refusal from ever
 // firing and being swallowed.
 import * as Sentry from '@sentry/nextjs';
 import { ProductDao } from '@/db/dao/ProductDao';
+import { MAX_PRODUCT_IMAGES } from '@/lib/catalog/product-input';
 import type { ProductWithImages } from '@/db/schema/catalog';
 import {
   objectKeyFor,
@@ -65,26 +69,35 @@ export async function appendProductImage(
   product: ProductWithImages,
   bytes: Uint8Array,
   type: AcceptedImageType,
-): Promise<StoredImage> {
+): Promise<StoredImage | null> {
   const driver = getStorageDriver();
   const key = objectKeyFor(type);
 
   await driver.put(key, bytes, type);
   // ponytail: no orphan sweep for a put that succeeds but whose row write then
-  // fails — a rare crash leaves one unreferenced file on disk, cleaned by a
-  // future storage audit, not worth a saga here.
-  //
-  // ponytail: `setImages` replaces the list, so two *concurrent* appends do not
-  // exceed the ceiling — the second overwrites the first and one photo is lost.
-  // The form uploads its files one after another, so this cannot happen from
-  // the UI; it needs a per-product lock or an insert-returning-count if it ever
-  // does.
-  const images = await ProductDao.setImages(product.id, [
-    ...product.images.map((image) => image.objectKey),
+  // throws — a rare crash leaves one unreferenced file on disk, cleaned by a
+  // future storage audit, not worth a saga here. A *refusal* is different: it
+  // is an ordinary outcome, it lands after the file is already written, and it
+  // is handled below rather than left to that audit.
+  const image = await ProductDao.appendImage(
+    product.id,
     key,
-  ]);
+    MAX_PRODUCT_IMAGES,
+  );
 
-  return toStoredImage(images[images.length - 1], (key) => driver.url(key));
+  if (!image) {
+    // The gallery filled while these bytes were in flight, or the product went.
+    // The file has no row and never will, so take it back out — the only other
+    // deleter works out what to delete from `product_images` and would never
+    // see it.
+    await driver.delete(key).catch((error: unknown) => {
+      console.warn('[admin] deleting a refused product image failed', error);
+      Sentry.captureException(error);
+    });
+    return null;
+  }
+
+  return toStoredImage(image, (key) => driver.url(key));
 }
 
 /**

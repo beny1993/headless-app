@@ -1910,4 +1910,88 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       expect((await ProductDao.getBySlug(product.slug))?.images).toEqual([]);
     });
   });
+
+  describe('appendImage', () => {
+    it('adds one photo to the end and leaves the rest alone', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+      await ProductDao.setImages(product.id, [
+        'products/a.jpg',
+        'products/b.jpg',
+      ]);
+
+      const added = await ProductDao.appendImage(
+        product.id,
+        'uploads/c.jpg',
+        5,
+      );
+
+      expect(added?.sortOrder).toBe(2);
+      expect(
+        (await ProductDao.getBySlug(product.slug))?.images.map(
+          (image) => image.objectKey,
+        ),
+      ).toEqual(['products/a.jpg', 'products/b.jpg', 'uploads/c.jpg']);
+    });
+
+    it('refuses once the gallery is full, storing nothing', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+      await ProductDao.setImages(product.id, ['products/a.jpg']);
+
+      const refused = await ProductDao.appendImage(
+        product.id,
+        'uploads/b.jpg',
+        1,
+      );
+
+      expect(refused).toBeNull();
+      expect(
+        (await ProductDao.getBySlug(product.slug))?.images.map(
+          (image) => image.objectKey,
+        ),
+      ).toEqual(['products/a.jpg']);
+    });
+
+    it('refuses for a product that does not exist', async () => {
+      expect(
+        await ProductDao.appendImage(
+          '11111111-1111-4111-8111-111111111111',
+          'uploads/a.jpg',
+          5,
+        ),
+      ).toBeNull();
+    });
+
+    // The reason this method exists. An append built on `setImages` reads the
+    // current keys and writes the list back, so racers all read the same list
+    // and the last write wins — every loser's file then has no row, and the
+    // only deleter works out what to delete *from* the rows, so nothing will
+    // ever collect them. Serialized on the product row, the ceiling holds and
+    // every photo that was accepted is still there.
+    it('holds the ceiling when appends race, and loses no accepted photo', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+      const max = 5;
+
+      const results = await Promise.all(
+        Array.from({ length: 12 }, (_, index) =>
+          ProductDao.appendImage(product.id, `uploads/race-${index}.jpg`, max),
+        ),
+      );
+
+      const accepted = results.filter((image) => image !== null);
+      expect(accepted).toHaveLength(max);
+
+      const stored = (await ProductDao.getBySlug(product.slug))?.images ?? [];
+      expect(stored).toHaveLength(max);
+      // Every key the DAO said it stored is really there: an accepted append
+      // that a later racer overwrote would be a file with no row.
+      expect(new Set(stored.map((image) => image.objectKey))).toEqual(
+        new Set(accepted.map((image) => image.objectKey)),
+      );
+      // And no two photos claim the same position.
+      expect(new Set(stored.map((image) => image.sortOrder)).size).toBe(max);
+    });
+  });
 });

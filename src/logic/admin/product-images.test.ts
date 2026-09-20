@@ -10,16 +10,21 @@
 // `delete`, not on a directory listing afterwards.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductImage, ProductWithImages } from '@/db/schema/catalog';
+import { MAX_PRODUCT_IMAGES } from '@/lib/catalog/product-input';
 
-const { setImages, put, remove, url, captureException } = vi.hoisted(() => ({
-  setImages: vi.fn(),
-  put: vi.fn(),
-  remove: vi.fn(),
-  url: vi.fn((key: string) => `/${key}`),
-  captureException: vi.fn(),
-}));
+const { setImages, appendImage, put, remove, url, captureException } =
+  vi.hoisted(() => ({
+    setImages: vi.fn(),
+    appendImage: vi.fn(),
+    put: vi.fn(),
+    remove: vi.fn(),
+    url: vi.fn((key: string) => `/${key}`),
+    captureException: vi.fn(),
+  }));
 vi.mock('@sentry/nextjs', () => ({ captureException }));
-vi.mock('@/db/dao/ProductDao', () => ({ ProductDao: { setImages } }));
+vi.mock('@/db/dao/ProductDao', () => ({
+  ProductDao: { setImages, appendImage },
+}));
 vi.mock('@/lib/storage', () => ({
   getStorageDriver: () => ({ put, delete: remove, url }),
 }));
@@ -60,6 +65,11 @@ beforeEach(() => {
   setImages.mockImplementation(async (_id: string, keys: string[]) =>
     keys.map(image),
   );
+  // The append is its own atomic write now: one row at the end, or `null` when
+  // the gallery is full. The fake answers the way the DAO does.
+  appendImage.mockImplementation(async (_id: string, key: string) =>
+    image(key, 0),
+  );
 });
 
 describe('appendProductImage', () => {
@@ -72,15 +82,37 @@ describe('appendProductImage', () => {
       'image/jpeg',
     );
 
-    expect(setImages).toHaveBeenCalledWith(PRODUCT_ID, [
-      'uploads/a.jpg',
-      'uploads/b.jpg',
-      stored.objectKey,
-    ]);
+    // One atomic append, not a read-then-replace: the keys already on the
+    // product are never restated, which is what made two racing uploads able
+    // to overwrite each other.
+    expect(setImages).not.toHaveBeenCalled();
+    expect(appendImage).toHaveBeenCalledWith(
+      PRODUCT_ID,
+      stored?.objectKey,
+      MAX_PRODUCT_IMAGES,
+    );
     // The whole point: the two photos already on the product keep their files.
     expect(deletedKeys()).toEqual([]);
-    expect(stored.sortOrder).toBe(2);
-    expect(stored.objectKey).toMatch(/^uploads\/[0-9a-f-]{36}\.jpg$/);
+    expect(stored?.objectKey).toMatch(/^uploads\/[0-9a-f-]{36}\.jpg$/);
+  });
+
+  it('takes its own file back out when the gallery filled up in flight', async () => {
+    // The refusal lands after the bytes are written, and the only other
+    // deleter works from `product_images` — so a file left here is one nothing
+    // would ever collect.
+    appendImage.mockResolvedValue(null);
+
+    const stored = await appendProductImage(
+      productWith('uploads/a.jpg'),
+      new Uint8Array([0xff, 0xd8, 0xff]),
+      'image/jpeg',
+    );
+
+    expect(stored).toBeNull();
+    const written = put.mock.calls[0][0];
+    expect(deletedKeys()).toEqual([written]);
+    // And nothing that was already on the product.
+    expect(deletedKeys()).not.toContain('uploads/a.jpg');
   });
 
   it('stores the bytes under the server-generated key before recording it', async () => {
@@ -88,10 +120,10 @@ describe('appendProductImage', () => {
 
     const stored = await appendProductImage(productWith(), bytes, 'image/png');
 
-    expect(put).toHaveBeenCalledWith(stored.objectKey, bytes, 'image/png');
-    expect(stored.objectKey).toMatch(/^uploads\/[0-9a-f-]{36}\.png$/);
+    expect(put).toHaveBeenCalledWith(stored?.objectKey, bytes, 'image/png');
+    expect(stored?.objectKey).toMatch(/^uploads\/[0-9a-f-]{36}\.png$/);
     expect(put.mock.invocationCallOrder[0]).toBeLessThan(
-      setImages.mock.invocationCallOrder[0],
+      appendImage.mock.invocationCallOrder[0],
     );
   });
 
@@ -103,7 +135,9 @@ describe('appendProductImage', () => {
     );
 
     expect(deletedKeys()).toEqual([]);
-    expect(setImages.mock.calls[0][1][0]).toBe('products/cat-dry-food.jpg');
+    // Untouched: an append names only its own key, so a bundled asset cannot
+    // be caught up in it at all.
+    expect(setImages).not.toHaveBeenCalled();
   });
 });
 

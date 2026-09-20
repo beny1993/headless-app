@@ -396,6 +396,10 @@ export const productImageUploadHandler = async (
   if (!upload.ok) return upload.response;
 
   const stored = await appendProductImage(product, upload.bytes, upload.type);
+  // The check above is the fast path, which keeps a refused photo from being
+  // buffered at all; this is the one that still holds when two uploads race.
+  // Same refusal either way, so an admin cannot tell which caught it.
+  if (!stored) return c.json(apiError(PRODUCT_MESSAGES.imagesMax), 400);
   return c.json(apiSuccess(stored), 201);
 };
 

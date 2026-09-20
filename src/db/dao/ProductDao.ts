@@ -1105,6 +1105,62 @@ export class ProductDao {
   }
 
   /**
+   * Append one image to a product's gallery, refusing once it holds `max`.
+   * Returns the stored row, or `null` when the gallery is full or the product
+   * is gone — either way the caller still holds a file nothing references.
+   *
+   * Atomic where an append built on `setImages` cannot be. `setImages` replaces
+   * the list, so an append on top of it has to read the current keys first, and
+   * two uploads racing both read the same list, both write their file and the
+   * last write wins. The loser's file then sits on disk with no row and nothing
+   * that will ever collect it: the only deleter works out what to delete from
+   * `product_images`, so a file with no row there is invisible to it forever.
+   * Locking the product row makes the readers queue, so the second sees the
+   * first's image and refuses at the ceiling instead of overwriting it.
+   *
+   * The route still checks the ceiling before it reads the body — that is the
+   * fast path that keeps a refused photo from being buffered at all. This is
+   * the one that is *true* under concurrency.
+   */
+  static async appendImage(
+    productId: string,
+    objectKey: string,
+    max: number,
+  ): Promise<ProductImage | null> {
+    return db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.id, productId))
+        .for('update');
+      if (!locked) return null;
+
+      const existing = await tx
+        .select({ sortOrder: productImages.sortOrder })
+        .from(productImages)
+        .where(eq(productImages.productId, productId));
+
+      if (existing.length >= max) return null;
+
+      const [row] = await tx
+        .insert(productImages)
+        .values({
+          productId,
+          objectKey,
+          // One past the highest, never the count: the two agree only while the
+          // orders are gapless, and nothing here may assume that of a gallery
+          // some other write has been reordering.
+          sortOrder: existing.reduce(
+            (highest, image) => Math.max(highest, image.sortOrder + 1),
+            0,
+          ),
+        })
+        .returning();
+      return row ?? null;
+    });
+  }
+
+  /**
    * Replaces a product's additional categories wholesale — position in `ids`
    * becomes `sortOrder`, which is what makes the form, the stored rows and the
    * product page's spec row agree on an order. The `product_images` pattern.
