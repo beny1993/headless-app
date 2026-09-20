@@ -12,6 +12,7 @@
 import type { Context } from 'hono';
 import {
   IMAGE_FIELD_NAME,
+  IMAGE_TYPE_ERROR,
   MAX_UPLOAD_BYTES,
   sniffImageType,
   type AcceptedImageType,
@@ -21,8 +22,7 @@ import { apiError } from './envelope';
 /** No usable image file on an upload request. */
 export const NO_IMAGE_FILE_MESSAGE = 'فایلی برای بارگذاری ارسال نشده است.';
 /** The uploaded bytes are not one of the accepted image formats. */
-export const INVALID_IMAGE_MESSAGE =
-  'فقط تصویر JPEG، PNG یا WEBP پذیرفته می‌شود.';
+export const INVALID_IMAGE_MESSAGE = `${IMAGE_TYPE_ERROR.replace(/\.$/, '')} پذیرفته می‌شود.`;
 /** The uploaded file is larger than the allowed size. */
 export const IMAGE_TOO_LARGE_MESSAGE = 'حجم تصویر بیش از حد مجاز است.';
 

@@ -144,7 +144,11 @@ export default async function ProductDetailPage({ params }: Params) {
         </nav>
 
         <div className="mb-16 grid grid-cols-1 gap-12 lg:grid-cols-2">
+          {/* Keyed: without it React keeps the gallery's tree position across a
+              client-side move from one product page to another, and the photo
+              the visitor had selected on the last product opens on this one. */}
           <ProductGallery
+            key={product.id}
             images={product.images}
             title={displayTitle(product)}
           />

@@ -8,7 +8,13 @@ import {
 } from '@/db/seed/catalog-data';
 import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
-import { IN_STOCK_PRODUCT, SOLD_OUT_PRODUCT, expect, test } from './support';
+import {
+  GALLERY_PRODUCT,
+  IN_STOCK_PRODUCT,
+  SOLD_OUT_PRODUCT,
+  expect,
+  test,
+} from './support';
 
 // Picked out of the seed by what makes each one interesting, never by index:
 // appending a row to the catalog must not point these at another product.
@@ -244,4 +250,32 @@ test('a product family is one card, and its page picks the member', async ({
     `${cheapest.title} — ${cheapest.variantLabel}`,
   );
   await drawer.locator('[data-umami-event="cart-line-remove"]').click();
+});
+
+test('a product gallery moves to the photo its thumbnail names', async ({
+  page,
+}) => {
+  // Runs at 375px as well as 1280px, which is the reason it exists: the admin
+  // spec that builds a multi-photo product is desktop-only, so before this the
+  // strip and the swipe track were never opened at phone width at all.
+  await page.goto(GALLERY_PRODUCT.path);
+
+  const thumbs = page.locator(
+    '[data-umami-event="product-gallery-thumb-select"]',
+  );
+  await expect(thumbs).toHaveCount(GALLERY_PRODUCT.photoCount);
+  await expect(thumbs.nth(0)).toHaveAttribute('aria-pressed', 'true');
+
+  // The LAST thumb: two or more slides away, so the jump has to pass a snap
+  // point to arrive. `scroll-snap-stop: always` refuses to let any scroll pass
+  // one, so this landed on the middle photo until the track learned to
+  // suspend snapping for a jump it was told to make.
+  await thumbs.last().click();
+  await expect(thumbs.last()).toHaveAttribute('aria-pressed', 'true');
+  await expect(thumbs.nth(0)).toHaveAttribute('aria-pressed', 'false');
+
+  // And back to the first, so the return trip is covered too — the delta is
+  // the other sign, which in RTL is where the arithmetic would go wrong.
+  await thumbs.first().click();
+  await expect(thumbs.first()).toHaveAttribute('aria-pressed', 'true');
 });

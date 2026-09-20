@@ -99,7 +99,17 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     stock: 24,
     categorySlug: 'dry-food',
     petTypes: [PET_TYPES.CAT],
-    imageKeys: ['products/cat-dry-food.jpg'],
+    // The one seeded gallery. Every other product carries a single photo, which
+    // left the thumbnail strip and the swipe track reachable only from a
+    // product a spec had built itself — and the admin spec that builds one runs
+    // at desktop width alone, so nothing walked the gallery at 375px at all.
+    // The two extra keys are stand-ins from the bundled set; they only have to
+    // be visibly different from each other and from the first.
+    imageKeys: [
+      'products/cat-dry-food.jpg',
+      'products/cat-toy.jpg',
+      'products/cat-supplement.jpg',
+    ],
   },
   {
     title: 'غذای خشک سگ با مرغ و برنج',

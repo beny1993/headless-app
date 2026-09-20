@@ -30,11 +30,10 @@ import {
 } from '@/lib/constant/paths';
 import { formatToman, toAsciiDigits, toPersianDigits } from '@/lib/format';
 import { IMAGE_FIELD_NAME } from '@/lib/storage/image-upload';
-import { imageSrc } from '@/lib/storage/image-url';
 import {
-  ImagePicker,
-  validateImageFile,
-} from '@/features/admin-panel/shared/image-picker';
+  ProductImagesField,
+  type ProductPhoto,
+} from '@/features/admin-panel/products/product-images-field';
 
 // The form imports nothing from the route module: that would pull `pg` into the
 // browser bundle. It only reads the saved product's id back, so this narrow
@@ -63,8 +62,8 @@ export type ProductFormInitial = {
   variantLabel: string | null;
   petTypes: PetType[];
   isActive: boolean;
-  /** The current image's storage key, if any, so the edit form can preview it. */
-  imageKey: string | null;
+  /** The gallery, in the stored order — the first is the cover. */
+  images: { id: string; objectKey: string }[];
 };
 
 /**
@@ -104,9 +103,11 @@ const zodFieldErrors = (error: z.ZodError): Record<string, string> => {
   return fields;
 };
 
-/** Upload the chosen image to the just-saved product. Multipart, so a raw fetch
- *  rather than the JSON api-client; same-origin, so the session cookie rides. */
-async function uploadImage(productId: string, file: File): Promise<void> {
+/** Append one picked photo to the just-saved product and return its stored key.
+ *  Multipart, so a raw fetch rather than the JSON api-client; same-origin, so
+ *  the session cookie rides. One request per file: the 2 MB ceiling is mounted
+ *  per request, so batching would turn it into a shared cap. */
+async function uploadImage(productId: string, file: File): Promise<string> {
   const form = new FormData();
   form.set(IMAGE_FIELD_NAME, file);
   const response = await fetch(apiAdminProductImagesPath(productId), {
@@ -116,11 +117,75 @@ async function uploadImage(productId: string, file: File): Promise<void> {
   const body = (await response.json().catch(() => null)) as {
     status?: string;
     message?: string;
+    errors?: string[];
+    data?: { objectKey?: string };
   } | null;
-  if (!response.ok || body?.status !== 'success') {
-    throw new Error(body?.message ?? 'بارگذاری تصویر ناموفق بود.');
+  const objectKey = body?.data?.objectKey;
+  if (!response.ok || body?.status !== 'success' || !objectKey) {
+    // `ApiRequestError`, so a refusal the server explained is distinguishable
+    // from a connection that simply died: only the former carries a sentence
+    // fit to show an admin, and only the former should replace the generic
+    // advice in the toast.
+    throw new ApiRequestError(
+      response.status,
+      body?.message ?? 'بارگذاری تصویر ناموفق بود.',
+      body?.errors,
+    );
   }
+  return objectKey;
 }
+
+/**
+ * Where the admin is when they read these: the products list, because the save
+ * has already navigated. So the instruction has to be one that works from
+ * there — and «open it and save» is not, because reopening loads the server's
+ * own order and `sameOrder` then short-circuits both writes, sending nothing.
+ * Whatever went wrong has to be redone, not merely re-saved.
+ */
+const RETRY_ADVICE = 'محصول را باز کن و دوباره مرتب کن.';
+
+/** The picked files are gone once the form unmounts, so they must be re-chosen. */
+const REPICK_ADVICE = 'محصول را باز کن و عکس‌ها را دوباره انتخاب کن.';
+
+/**
+ * The product was saved; some of its photos were not.
+ *
+ * `reason` is the server's own sentence when it gave one — «حداکثر ۵ عکس…» is
+ * the case that matters, and it says more than the generic advice can.
+ */
+const photosFailedMessage = (failed: number, reason?: string) =>
+  `محصول ذخیره شد اما ${toPersianDigits(failed)} عکس بارگذاری نشد. ${
+    reason ?? REPICK_ADVICE
+  }`;
+
+/**
+ * The photos went up; the order they were meant to be in did not.
+ *
+ * No server sentence here, deliberately. The refusal this write actually
+ * produces is «صفحه را تازه کن» — refresh the page — which is sound advice
+ * for the form and useless by the time it is read, because the save has
+ * already navigated to the list and the stale keys it refers to lived in a
+ * form that no longer exists. An upload refusal is about the file and travels
+ * fine; this one is about page state that is gone.
+ */
+const orderFailedMessage = () =>
+  `محصول ذخیره شد اما ترتیب عکس‌ها ذخیره نشد. ${RETRY_ADVICE}`;
+
+/**
+ * The server's sentence for a refusal, when it sent one written for a person.
+ *
+ * `message` only, and only on a 4xx. `errors` is field paths and Zod's text,
+ * English by the contract in `create-router.ts`; a 5xx `message` is the
+ * literal `Internal server error`. Neither belongs in Persian admin copy.
+ */
+const reasonFrom = (error: unknown): string | undefined =>
+  error instanceof ApiRequestError && error.status >= 400 && error.status < 500
+    ? error.message
+    : undefined;
+
+/** Same keys, same order. */
+const sameOrder = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((key, index) => key === b[index]);
 
 export function ProductForm({
   categories,
@@ -159,9 +224,20 @@ export function ProductForm({
     petTypes: product?.petTypes ?? [],
     isActive: product?.isActive ?? true,
   });
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(
-    product?.imageKey ? imageSrc(product.imageKey) : null,
+  // The gallery as the admin is arranging it: stored photos and just-picked
+  // files in one ordered list, so a reorder that mixes the two is a plain array
+  // move. The stored rows keep their ids as tile keys, which is all those ids
+  // are for — the write below speaks in object keys, because a gallery-order
+  // write replaces every row and their ids change with it. (An upload appends
+  // one row and leaves the others alone, so it is that write, not the upload,
+  // that makes ids unusable on the wire.)
+  const [photos, setPhotos] = useState<ProductPhoto[]>(
+    () =>
+      product?.images.map((image) => ({
+        id: image.id,
+        kind: 'saved' as const,
+        objectKey: image.objectKey,
+      })) ?? [],
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -245,18 +321,6 @@ export function ProductForm({
       ),
     );
 
-  const onPickFile = (chosen: File | undefined) => {
-    if (!chosen) return;
-    const invalid = validateImageFile(chosen);
-    if (invalid) {
-      setFieldErrors((current) => ({ ...current, image: invalid }));
-      return;
-    }
-    setFieldErrors((current) => ({ ...current, image: '' }));
-    setFile(chosen);
-    setPreview(URL.createObjectURL(chosen));
-  };
-
   const buildBody = () => ({
     title: form.title,
     slug: form.slug,
@@ -300,24 +364,77 @@ export function ProductForm({
           )
         : await postData<SavedProduct>(API_PATHS.ADMIN_PRODUCTS, parsed.data);
 
-      if (file) {
-        // The product is already saved; a failed image attach must not look like
-        // the save failed (and must not re-POST and duplicate the slug). Land on
-        // the list and say the image did not attach — it can be retried there.
+      // Save-then-attach, unchanged in spirit: the product row is already
+      // stored, so a photo that fails must never look like a failed save and
+      // must never re-POST (a second POST would duplicate the slug). What is
+      // new is that the gallery write runs whether or not a file was picked —
+      // a reorder-only or removal-only save carries no file at all, and the
+      // old `if (file)` would have skipped it in silence.
+      //
+      // The photos the admin dropped go FIRST, before a byte is uploaded. The
+      // POST refuses a photo that would take the product past
+      // `MAX_PRODUCT_IMAGES`, and it counts what the server holds, not what
+      // the form shows — so swapping a photo (drop one of five, add one) would
+      // otherwise upload against the five still stored and be refused.
+      // `server` is the best knowledge of that stored list, and it is only
+      // advanced by a write that actually landed.
+      let server = product?.images.map((image) => image.objectKey) ?? [];
+      const kept = photos
+        .filter((photo) => photo.kind === 'saved')
+        .map((photo) => photo.objectKey);
+      let orderFailed = false;
+      if (!sameOrder(server, kept)) {
         try {
-          await uploadImage(saved.id, file);
+          await putData(apiAdminProductImagesPath(saved.id), {
+            objectKeys: kept,
+          });
+          server = kept;
         } catch {
-          router.push(PROTECTED_PATHS.PRODUCTS);
-          router.refresh();
-          toast.warning(
-            'محصول ذخیره شد اما بارگذاری تصویر ناموفق بود. از فهرست محصولات دوباره تلاش کن.',
-          );
-          return;
+          orderFailed = true;
+        }
+      }
+
+      const uploaded: string[] = [];
+      const objectKeys: string[] = [];
+      let failed = 0;
+      let uploadReason: string | undefined;
+      for (const photo of photos) {
+        if (photo.kind === 'saved') {
+          objectKeys.push(photo.objectKey);
+          continue;
+        }
+        try {
+          const key = await uploadImage(saved.id, photo.file);
+          uploaded.push(key);
+          objectKeys.push(key);
+        } catch (error) {
+          failed += 1;
+          // The first refusal's own words. `uploadImage` already builds the
+          // server's sentence and it used to be thrown away here.
+          uploadReason ??= reasonFrom(error);
+        }
+      }
+
+      // What the product now holds server-side: the list the write above left
+      // it with, plus whatever went up, appended. Writing the order is only
+      // worth a second request when the admin's arrangement differs from that
+      // — a new photo dragged anywhere but the end, or a first write that did
+      // not land.
+      if (!sameOrder([...server, ...uploaded], objectKeys)) {
+        try {
+          await putData(apiAdminProductImagesPath(saved.id), { objectKeys });
+        } catch {
+          orderFailed = true;
         }
       }
 
       router.push(PROTECTED_PATHS.PRODUCTS);
       router.refresh();
+      // Both can fail in one save, and each says something different about what
+      // to do next — so each gets its own line rather than the louder one
+      // hiding the other.
+      if (failed > 0) toast.warning(photosFailedMessage(failed, uploadReason));
+      if (orderFailed) toast.warning(orderFailedMessage());
     } catch (error) {
       setBusy(false);
       if (
@@ -368,13 +485,10 @@ export function ProductForm({
         noValidate
         className="border-border space-y-5 rounded-2xl border bg-white p-6"
       >
-        <ImagePicker
-          id={fid('image')}
-          label="تصویر محصول"
-          preview={preview}
-          error={fieldErrors.image}
-          buttonLabel={isEdit || preview ? 'تغییر تصویر' : 'انتخاب تصویر'}
-          onPick={onPickFile}
+        <ProductImagesField
+          id={fid('images')}
+          photos={photos}
+          onChange={setPhotos}
         />
 
         <Field id={fid('title')} label="عنوان محصول" error={fieldErrors.title}>
@@ -798,7 +912,9 @@ export function ProductForm({
             {busy && (
               <Loader2 size={16} className="animate-spin" aria-hidden="true" />
             )}
-            ذخیره محصول
+            {busy && photos.some((photo) => photo.kind === 'pending')
+              ? 'در حال بارگذاری عکس‌ها…'
+              : 'ذخیره محصول'}
           </button>
           <button
             type="button"

@@ -9,9 +9,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError } from '@/lib/api-client';
 import {
   MAX_EXTRA_CATEGORIES,
+  MAX_PRODUCT_IMAGES,
   PRODUCT_MESSAGES,
 } from '@/lib/catalog/product-input';
-import { PROTECTED_PATHS } from '@/lib/constant/paths';
+import {
+  apiAdminProductImagesPath,
+  PROTECTED_PATHS,
+} from '@/lib/constant/paths';
 import { toPersianDigits } from '@/lib/format';
 import { ProductForm, type ProductFormInitial } from './product-form';
 
@@ -65,7 +69,7 @@ it('submits the observed inventory when editing a product', async () => {
     variantLabel: null,
     petTypes: ['cat'],
     isActive: true,
-    imageKey: null,
+    images: [],
   };
   api.putData.mockResolvedValue({ id: product.id });
   render(
@@ -122,7 +126,7 @@ const EDIT_PRODUCT: ProductFormInitial = {
   variantLabel: null,
   petTypes: ['cat'],
   isActive: true,
-  imageKey: null,
+  images: [],
 };
 
 describe('product save failures', () => {
@@ -136,19 +140,107 @@ describe('product save failures', () => {
       />,
     );
 
-  it('reports a failed save as an error toast and stays on the form', async () => {
-    api.putData.mockRejectedValue(new Error('server down'));
+  /** A POST /images answering with the envelope a refusal really sends. */
+  const refusingUpload = (message: string, status = 400) =>
+    vi.fn().mockResolvedValue({
+      ok: false,
+      status,
+      json: async () => ({ status: 'error', message }),
+    });
+
+  it('shows the server\u2019s own reason for a refused photo', async () => {
+    // The generic advice is «retry from the product list». A stale-key refusal
+    // says «refresh the page» — the opposite — and an admin following the
+    // wrong one retries with the same stale keys forever.
+    api.putData.mockResolvedValue({ id: EDIT_PRODUCT.id });
+    vi.stubGlobal('fetch', refusingUpload(PRODUCT_MESSAGES.imagesMax));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
     renderEdit();
 
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['image'], 'cat.png', { type: 'image/png' })],
+      },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
 
     await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith('server down'),
+      expect(toast.warning).toHaveBeenCalledWith(
+        `محصول ذخیره شد اما ${toPersianDigits(1)} عکس بارگذاری نشد. ${PRODUCT_MESSAGES.imagesMax}`,
+      ),
     );
-    expect(router.push).not.toHaveBeenCalled();
   });
 
-  it('lands on the list with a warning toast when the photo fails after the save', async () => {
+  it.each([
+    ['a 500 the server could not explain', 500, 'Internal server error'],
+    ['a refusal with no Persian sentence', 503, 'Service Unavailable'],
+  ])('keeps the generic advice for %s', async (_name, status, message) => {
+    // The hole the earlier test could not see: these arrive as a real
+    // `ApiRequestError`, so «it came from the server» is not enough to put a
+    // sentence in front of an admin. Only a 4xx carries one written for them.
+    api.putData.mockResolvedValue({ id: EDIT_PRODUCT.id });
+    vi.stubGlobal('fetch', refusingUpload(message, status));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+    renderEdit();
+
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['image'], 'cat.png', { type: 'image/png' })],
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'محصول را باز کن و عکس‌ها را دوباره انتخاب کن.',
+        ),
+      ),
+    );
+    expect(toast.warning).not.toHaveBeenCalledWith(
+      expect.stringContaining(message),
+    );
+  });
+
+  it('never puts the console-facing errors field in front of an admin', async () => {
+    // `errors` is field paths and Zod's English text by documented contract.
+    // A schema refusal sends both; only `message` is written for a person.
+    api.putData.mockResolvedValue({ id: EDIT_PRODUCT.id });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          status: 'error',
+          message: PRODUCT_MESSAGES.images,
+          errors: ['objectKeys: Invalid input'],
+        }),
+      }),
+    );
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+    renderEdit();
+
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['image'], 'cat.png', { type: 'image/png' })],
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        expect.stringContaining(PRODUCT_MESSAGES.images),
+      ),
+    );
+    expect(toast.warning).not.toHaveBeenCalledWith(
+      expect.stringContaining('objectKeys'),
+    );
+  });
+
+  it('keeps the generic advice when the connection simply died', async () => {
+    // A dropped fetch is an `Error` whose message is technical English. It has
+    // no business in Persian admin copy.
     api.putData.mockResolvedValue({ id: EDIT_PRODUCT.id });
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
@@ -163,11 +255,157 @@ describe('product save failures', () => {
 
     await waitFor(() =>
       expect(toast.warning).toHaveBeenCalledWith(
-        'محصول ذخیره شد اما بارگذاری تصویر ناموفق بود. از فهرست محصولات دوباره تلاش کن.',
+        expect.stringContaining(
+          'محصول را باز کن و عکس‌ها را دوباره انتخاب کن.',
+        ),
+      ),
+    );
+    expect(toast.warning).not.toHaveBeenCalledWith(
+      expect.stringContaining('offline'),
+    );
+  });
+
+  it('says both when the photos and the order both fail', async () => {
+    // One toast used to hide the other, though they say different things
+    // about what to do next. Needs a saved photo to drop, so that the order
+    // write fires at all.
+    api.putData.mockImplementation(async (path: string) =>
+      path.endsWith('/images')
+        ? Promise.reject(new ApiRequestError(400, PRODUCT_MESSAGES.images))
+        : { id: EDIT_PRODUCT.id },
+    );
+    vi.stubGlobal('fetch', refusingUpload('بارگذاری تصویر ناموفق بود.'));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+    render(
+      <ProductForm
+        product={{
+          ...EDIT_PRODUCT,
+          images: [{ id: 'row-1', objectKey: 'uploads/old.jpg' }],
+        }}
+        categories={[
+          { id: EDIT_PRODUCT.categoryId, title: 'گربه', label: 'گربه' },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'حذف عکس اصلی' }));
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['image'], 'cat.png', { type: 'image/png' })],
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        expect.stringContaining('عکس بارگذاری نشد'),
+      ),
+    );
+    expect(toast.warning).toHaveBeenCalledWith(
+      expect.stringContaining('ترتیب عکس‌ها ذخیره نشد'),
+    );
+  });
+
+  it('reports a failed save as an error toast and stays on the form', async () => {
+    api.putData.mockRejectedValue(new Error('server down'));
+    renderEdit();
+
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('server down'),
+    );
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('lands on the list with a warning toast when a photo fails after the save', async () => {
+    api.putData.mockResolvedValue({ id: EDIT_PRODUCT.id });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+    renderEdit();
+
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['image'], 'cat.png', { type: 'image/png' })],
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    // Counted, since a save can now carry several photos and lose only some.
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        `محصول ذخیره شد اما ${toPersianDigits(1)} عکس بارگذاری نشد. محصول را باز کن و عکس‌ها را دوباره انتخاب کن.`,
       ),
     );
     expect(router.push).toHaveBeenCalledWith(PROTECTED_PATHS.PRODUCTS);
     expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('the gallery write order', () => {
+  const GALLERY = Array.from({ length: MAX_PRODUCT_IMAGES }, (_, n) => ({
+    id: `row-${n}`,
+    objectKey: `uploads/photo-${n}.jpg`,
+  }));
+
+  it('drops the removed photos before uploading, so a swap at the cap fits', async () => {
+    api.putData.mockResolvedValue({ id: EDIT_PRODUCT.id });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: 'success',
+        data: { objectKey: 'uploads/new.jpg' },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    render(
+      <ProductForm
+        product={{ ...EDIT_PRODUCT, images: GALLERY }}
+        categories={[
+          { id: EDIT_PRODUCT.categoryId, title: 'گربه', label: 'گربه' },
+        ]}
+      />,
+    );
+
+    // Swap one photo for another — the admin gesture the single-slot field
+    // used to do in one pick. The add tile only exists once there is room.
+    fireEvent.click(screen.getByRole('button', { name: 'حذف عکس اصلی' }));
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['image'], 'cat.png', { type: 'image/png' })],
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    const imagesPath = apiAdminProductImagesPath(EDIT_PRODUCT.id);
+    await waitFor(() =>
+      expect(api.putData.mock.calls.some(([path]) => path === imagesPath)).toBe(
+        true,
+      ),
+    );
+    const order = api.putData.mock.calls.findIndex(
+      ([path]) => path === imagesPath,
+    );
+    // The pin: the four kept keys are written FIRST, so the POST that follows
+    // counts four stored photos and has room. Attach-then-order refuses the
+    // upload against the five the server still holds and loses the new photo.
+    expect(api.putData.mock.invocationCallOrder[order]).toBeLessThan(
+      fetchMock.mock.invocationCallOrder[0],
+    );
+    expect(api.putData.mock.calls[order][1]).toEqual({
+      objectKeys: GALLERY.slice(1).map((image) => image.objectKey),
+    });
+    // And the final order needs no second write: the upload appended exactly
+    // where the admin left it.
+    expect(
+      api.putData.mock.calls.filter(([path]) => path === imagesPath),
+    ).toHaveLength(1);
+    await waitFor(() =>
+      expect(router.push).toHaveBeenCalledWith(PROTECTED_PATHS.PRODUCTS),
+    );
+    expect(toast.warning).not.toHaveBeenCalled();
   });
 });
 
