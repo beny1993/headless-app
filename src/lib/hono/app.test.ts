@@ -67,6 +67,64 @@ describe('hono app', () => {
     ]);
   });
 
+  // Nothing in the six gates ever fetched this document until these two. A
+  // hand-written response schema was once registered under `ProductImage`, a
+  // name the shared component already held; zod-to-openapi keeps the FIRST
+  // schema it saw for a duplicate name and drops the second without a word, so
+  // `/api/reference` described both gallery writes without their `url` while
+  // every gate stayed green. A duplicate name is invisible in the output — the
+  // two survivors of it are a dangling `$ref` and a component whose shape is
+  // not the one its route returns, so those are what these check.
+  it('leaves no $ref in the document pointing at a component that is not there', async () => {
+    const response = await app.request(API_PATHS.DOC);
+    const doc = (await response.json()) as Record<string, unknown>;
+
+    const defined = new Set(
+      Object.keys(
+        ((doc.components as { schemas?: Record<string, unknown> })?.schemas ??
+          {}) as Record<string, unknown>,
+      ),
+    );
+
+    const refs: string[] = [];
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!node || typeof node !== 'object') return;
+      for (const [key, value] of Object.entries(node)) {
+        if (key === '$ref' && typeof value === 'string') refs.push(value);
+        else walk(value);
+      }
+    };
+    walk(doc.paths);
+
+    expect(refs.length).toBeGreaterThan(0);
+    const dangling = [
+      ...new Set(
+        refs.filter(
+          (ref) => !defined.has(ref.replace('#/components/schemas/', '')),
+        ),
+      ),
+    ];
+    expect(dangling).toEqual([]);
+  });
+
+  it('documents the stored gallery image with the url the route returns', async () => {
+    const response = await app.request(API_PATHS.DOC);
+    const doc = (await response.json()) as {
+      components: {
+        schemas: Record<string, { properties?: Record<string, unknown> }>;
+      };
+    };
+
+    const stored = doc.components.schemas.StoredProductImage;
+    const shared = doc.components.schemas.ProductImage;
+
+    // The two are deliberately different shapes under deliberately different
+    // names. Collapse them back into one and this is the assertion that says so.
+    expect(stored?.properties).toHaveProperty('url');
+    expect(shared?.properties).not.toHaveProperty('url');
+  });
+
   it('serves the Scalar reference page outside production', async () => {
     const response = await app.request(API_PATHS.REFERENCE);
 
