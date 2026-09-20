@@ -22,6 +22,7 @@
 //     refuses control characters (a NUL reaches Postgres as a 500) and bidi
 //     overrides; only `description` keeps tab and line breaks.
 import { z } from 'zod';
+import { imageKeySchema } from '@/lib/storage/image-upload';
 import { toPersianDigits } from '@/lib/format';
 import { FORBIDDEN_TEXT_CHARS, VISIBLE_CHAR } from '@/lib/validation/text';
 import {
@@ -296,23 +297,25 @@ export const productUpdateInputSchema = productInputSchema.safeExtend({
   expectedStock: z.number().int().nonnegative().max(MAX_STOCK),
 });
 
-/** Longer than any key `objectKeyFor` produces; a bound, not a format check. */
-const MAX_OBJECT_KEY_LENGTH = 200;
-
+/**
+ * Is this a stored image key? The shape lives with the uploader that mints it
+ * (`@/lib/storage/image-upload`), so this asks that one rather than answering
+ * again — a second, looser definition here accepted any short string, and the
+ * two would have drifted the moment an accepted type was added. The predicate
+ * wrapper is the file's own idiom, as `isUuid` above.
+ */
 const isObjectKey = (value: unknown): value is string =>
-  typeof value === 'string' &&
-  value.length > 0 &&
-  value.length <= MAX_OBJECT_KEY_LENGTH;
+  imageKeySchema.safeParse(value).success;
 
 /**
  * The gallery-order body: this product's own image keys, in the order the admin
  * arranged them, with the removed ones simply absent.
  *
- * Keys rather than `product_images.id`, and that is deliberate: `setImages`
- * replaces the gallery wholesale, so every row id changes on every append,
- * while the object key — generated server-side by `objectKeyFor` and never by
- * the client — survives. A form that had sent ids would be sending dead ones
- * the moment it uploaded a photo.
+ * Keys rather than `product_images.id`, and that is deliberate: a gallery-order
+ * write replaces every row, so every id changes with it, while the object key —
+ * generated server-side by `objectKeyFor` and never by the client — survives.
+ * A form that had sent ids would be sending dead ones as soon as it saved. (An
+ * *upload* leaves ids alone: it appends one row. The churn is this write's.)
  *
  * Shape only, as with `extraCategoryIds`: «every key is one of *this* product's»
  * is set membership against a row no schema can read, so the route checks it

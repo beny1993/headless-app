@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { PET_TYPES } from './product-query';
 import {
   MAX_EXTRA_CATEGORIES,
+  MAX_PRODUCT_IMAGES,
   PRODUCT_MESSAGES,
   PRODUCT_TEXT_LIMITS,
+  productImagesOrderSchema,
   productInputSchema,
   productUpdateInputSchema,
 } from './product-input';
@@ -552,5 +554,53 @@ describe('product families (variant_of / variant_label)', () => {
       variantLabel: `بی${ZWNJ}بو`,
     });
     expect(parsed.variantLabel).toBe(`بی${ZWNJ}بو`);
+  });
+});
+
+describe('the gallery-order body', () => {
+  const parse = (objectKeys: unknown) =>
+    productImagesOrderSchema.safeParse({ objectKeys });
+
+  it('takes this product\u2019s own keys, in order', () => {
+    const keys = [
+      'uploads/11111111-1111-4111-8111-111111111111.jpg',
+      'products/cat-dry-food.jpg',
+    ];
+
+    expect(parse(keys).success).toBe(true);
+  });
+
+  // The shape check is the boundary's job. It used to be a length bound, so
+  // anything short parsed clean and only the route's set-membership check
+  // stood between a crafted string and the write — a guarantee the schema is
+  // supposed to carry itself, and one the OpenAPI document published as
+  // «string» with no format at all.
+  it.each([
+    ['a traversal', '../../etc/passwd'],
+    ['a URL', 'http://example.com/x.jpg'],
+    ['someone else\u2019s namespace', 'secrets/key.jpg'],
+    [
+      'an extension we do not serve',
+      'uploads/11111111-1111-4111-8111-111111111111.svg',
+    ],
+    ['an upload key that is not a uuid', 'uploads/not-a-uuid.jpg'],
+    ['an empty key', ''],
+  ])('refuses %s', (_name, key) => {
+    expect(parse([key]).success).toBe(false);
+  });
+
+  it('refuses more than the cap, and a repeated key', () => {
+    const key = (n: number) =>
+      `uploads/1111111${n}-1111-4111-8111-111111111111.jpg`;
+
+    expect(
+      parse(Array.from({ length: MAX_PRODUCT_IMAGES + 1 }, (_, i) => key(i)))
+        .success,
+    ).toBe(false);
+    expect(parse([key(1), key(1)]).success).toBe(false);
+  });
+
+  it('accepts an empty list, which is how a gallery is cleared', () => {
+    expect(parse([]).success).toBe(true);
   });
 });

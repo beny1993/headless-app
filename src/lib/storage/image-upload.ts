@@ -12,6 +12,9 @@
 // attacker-chosen extension.
 
 /** The image content types the shop accepts, mapped to the extension we store. */
+import { z } from 'zod';
+import { toPersianDigits } from '@/lib/format';
+
 export const IMAGE_EXTENSIONS = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -95,3 +98,44 @@ export function sniffImageType(bytes: Uint8Array): AcceptedImageType | null {
 export function objectKeyFor(type: AcceptedImageType): string {
   return `${UPLOAD_KEY_PREFIX}/${crypto.randomUUID()}.${IMAGE_EXTENSIONS[type]}`;
 }
+
+/**
+ * A bundled asset committed under `public/`, the other shape a stored key can
+ * take: `site/…` or `products/…`.
+ */
+const BUNDLED_IMAGE_KEY = /^(site|products)\/[a-z0-9-]+\.(jpe?g|png|webp)$/;
+
+/** The longest key anything here can produce, with room to spare. */
+export const MAX_OBJECT_KEY_LENGTH = 200;
+
+/**
+ * What a valid stored image key looks like, for every caller that takes one
+ * from a client. Anchored to exactly the two shapes a key can have and derived
+ * from the uploader's own constants above — so adding an accepted type widens
+ * this for free, and no second answer to «is this a key» can drift from it.
+ *
+ * Client-safe, like everything else in this module.
+ */
+export const imageKeySchema = z
+  .string()
+  .max(MAX_OBJECT_KEY_LENGTH)
+  .refine(
+    (key) =>
+      BUNDLED_IMAGE_KEY.test(key) ||
+      (key.startsWith(`${UPLOAD_KEY_PREFIX}/`) &&
+        UPLOAD_FILENAME_PATTERN.test(key.slice(UPLOAD_KEY_PREFIX.length + 1))),
+    { error: 'کلید تصویر نامعتبر است.' },
+  );
+
+/** Megabytes, for the copy below — the cap is the single source of both. */
+const MAX_UPLOAD_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
+
+/**
+ * The accept-and-size hint every image field shows, and the two refusals.
+ * Derived rather than written out: three hand-typed copies of «۲ مگابایت» went
+ * on promising two megabytes after the cap moved, in the very field the admin
+ * was looking at while a larger file uploaded fine.
+ */
+export const IMAGE_FORMAT_HINT = `JPG، PNG یا WEBP، تا ${toPersianDigits(MAX_UPLOAD_MB)} مگابایت`;
+export const IMAGE_TYPE_ERROR = 'فقط تصویر JPEG، PNG یا WEBP.';
+export const IMAGE_SIZE_ERROR = `حجم تصویر باید حداکثر ${toPersianDigits(MAX_UPLOAD_MB)} مگابایت باشد.`;

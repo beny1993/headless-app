@@ -5,7 +5,10 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, GripHorizontal, Plus, X } from 'lucide-react';
 import { MAX_PRODUCT_IMAGES } from '@/lib/catalog/product-input';
 import { toPersianDigits } from '@/lib/format';
-import { ACCEPTED_IMAGE_TYPES } from '@/lib/storage/image-upload';
+import {
+  ACCEPTED_IMAGE_TYPES,
+  IMAGE_FORMAT_HINT,
+} from '@/lib/storage/image-upload';
 import { imageSrc } from '@/lib/storage/image-url';
 import { validateImageFile } from '@/features/admin-panel/shared/image-picker';
 
@@ -18,29 +21,12 @@ import { validateImageFile } from '@/features/admin-panel/shared/image-picker';
 // A sibling of `ImagePicker` rather than a `multiple` mode on it: that picker is
 // shared with the storefront content editor, and a mode flag would fork its
 // layout in two and leave the editor one regression away. What is shared is the
-// part that must not drift — `validateImageFile`, the accept list and the format
-// hint all come from that module, so the two Persian refusals are still said in
-// one place.
-//
-// Reordering is hand-rolled on Pointer Events and no library. Native HTML5 drag
-// and drop is out because it does not fire on touch, and a sortable library
-// earns its ~13 kB on virtualized lists, nested containers and auto-scroll, none
-// of which is six fixed cells in one grid. Five things make the hand-rolled
-// version correct, and each is load-bearing:
-//
-//   · `touch-none` is on the HANDLE, never the tile — a finger landing anywhere
-//     else on a tile must still scroll the admin form on a phone.
-//   · The hit test runs against a snapshot of the SLOT rects taken on
-//     `pointerdown`. The items move during a live reorder; the grid cells do
-//     not, so the snapshot stays true for the whole gesture.
-//   · `pointercancel` is handled exactly like `pointerup`. A missed cancel on
-//     touch leaves a drag that can never be let go of.
-//   · Tiles are keyed by photo identity, never by index. That is also what makes
-//     the keyboard path work without any focus bookkeeping: React moves the same
-//     DOM node, so the focused handle keeps its focus for free.
-//   · The arrow mapping is hardcoded for RTL rather than probed from computed
-//     style — the panel is `dir="rtl"` everywhere, and «right moves toward the
-//     start» is a fact about this app, not about the element.
+// part that must not drift is `validateImageFile`, so that the two Persian
+// refusals live in one place. The accept list and the format hint come
+// straight from `@/lib/storage/image-upload`, which owns the cap they
+// describe — an earlier version of this comment claimed all three were
+// shared while the hint was a retyped copy promising a ceiling the route
+// no longer enforced.
 
 /** One tile's value: a photo already stored, or a file picked but not yet sent. */
 export type ProductPhoto =
@@ -49,7 +35,6 @@ export type ProductPhoto =
 
 const FIELD_LABEL = 'تصاویر محصول';
 const FIELD_HINT = `عکس اول، عکس اصلی است و در فهرست فروشگاه و سبد خرید دیده می‌شود. حداکثر ${toPersianDigits(MAX_PRODUCT_IMAGES)} عکس.`;
-const FORMAT_HINT = 'JPG، PNG یا WEBP، تا ۲ مگابایت';
 const ADD_LABEL = 'افزودن عکس';
 const COVER_CAPTION = 'عکس اصلی';
 const EMPTY_STATE = 'هنوز عکسی اضافه نشده است.';
@@ -499,7 +484,7 @@ export function ProductImagesField({
       )}
 
       <p id={hintId} className="text-muted-foreground mt-2 text-xs">
-        {atCap ? CAP_REACHED : FIELD_HINT} {FORMAT_HINT}
+        {atCap ? CAP_REACHED : FIELD_HINT} {IMAGE_FORMAT_HINT}
       </p>
       <p id={dragHintId} className="sr-only">
         {DRAG_HINT}

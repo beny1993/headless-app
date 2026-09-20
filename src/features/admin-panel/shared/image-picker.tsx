@@ -4,6 +4,9 @@ import Image from 'next/image';
 import { AlertCircle, Camera } from 'lucide-react';
 import {
   ACCEPTED_IMAGE_TYPES,
+  IMAGE_FORMAT_HINT,
+  IMAGE_SIZE_ERROR,
+  IMAGE_TYPE_ERROR,
   MAX_UPLOAD_BYTES,
 } from '@/lib/storage/image-upload';
 
@@ -15,8 +18,9 @@ import {
 // form; validation is the shared `validateImageFile` below, so the two Persian
 // messages live in one place.
 
-const IMAGE_TYPE_ERROR = 'فقط تصویر JPEG، PNG یا WEBP.';
-const IMAGE_SIZE_ERROR = 'حجم تصویر باید حداکثر ۲ مگابایت باشد.';
+// The two refusals and the hint below now come from the module that owns the
+// cap they quote, so raising `MAX_UPLOAD_BYTES` cannot leave Persian copy
+// promising the old ceiling.
 
 /**
  * The client-side accept/size check, matching the server's trust boundary so a
@@ -106,7 +110,7 @@ export function ImagePicker({
             />
           </label>
           <p className="text-muted-foreground mt-1.5 text-xs">
-            JPG، PNG یا WEBP، تا ۲ مگابایت
+            {IMAGE_FORMAT_HINT}
           </p>
           {error && (
             <p

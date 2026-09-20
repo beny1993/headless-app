@@ -178,8 +178,10 @@ export function ProductForm({
   // The gallery as the admin is arranging it: stored photos and just-picked
   // files in one ordered list, so a reorder that mixes the two is a plain array
   // move. The stored rows keep their ids as tile keys, which is all those ids
-  // are for — the write below speaks in object keys, because `setImages`
-  // replaces the rows and their ids change on every upload.
+  // are for — the write below speaks in object keys, because a gallery-order
+  // write replaces every row and their ids change with it. (An upload appends
+  // one row and leaves the others alone, so it is that write, not the upload,
+  // that makes ids unusable on the wire.)
   const [photos, setPhotos] = useState<ProductPhoto[]>(
     () =>
       product?.images.map((image) => ({
