@@ -383,14 +383,19 @@ describe('pointer drag', () => {
     const handle = screen.getAllByRole('button', { name: /^جابه‌جایی/ })[0];
     layOutTiles();
     fireEvent.pointerDown(handle, { button: 0, pointerId: 1 });
+    // Positive first: without this the test below would also pass if the
+    // gesture machinery stopped starting altogether.
+    expect(document.querySelectorAll('[data-photo-dragging]')).toHaveLength(1);
 
     // Capture is disposable here by design, so a blur is the only thing left
     // that can end an alt-tabbed drag. Without it the gesture runs on with no
-    // finger: the tile stays dimmed and every later drag is refused.
+    // finger: the tile stays marked and every later drag is refused.
     act(() => {
       window.dispatchEvent(new Event('blur'));
     });
     pointer('pointermove', xOf(2), 1);
+
+    expect(document.querySelectorAll('[data-photo-dragging]')).toHaveLength(0);
 
     expect(previewOrder()).toEqual([
       'uploads/photo-1.jpg',
@@ -417,6 +422,29 @@ describe('pointer drag', () => {
 describe('announcements', () => {
   // A live region speaks only when its text changes, and every message here is
   // a pure function of an index — so the same sentence twice was silence.
+  it('keeps the sentence in one text node, so a repeat is a change to it', () => {
+    // The fix that makes a repeat audible at all. Two adjacent children would
+    // be two text nodes: React emits none for '', so the old spelling added
+    // and removed a *sibling* and never touched the sentence — an addition of
+    // whitespace or a removal, and the region's default `aria-relevant`
+    // excludes the latter outright. `textContent` cannot tell the two
+    // spellings apart, which is why this asserts on the nodes.
+    show(3);
+    const region = document.querySelector('[aria-live="polite"]')!;
+
+    expect(region.getAttribute('aria-atomic')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'حذف عکس ۲' }));
+    const first = region.childNodes[0];
+    expect(region.childNodes).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'حذف عکس ۲' }));
+
+    expect(region.childNodes).toHaveLength(1);
+    // Same node, new contents: a `characterData` change on the node holding
+    // the sentence, which is what an assistive technology re-reads.
+    expect(region.childNodes[0]).toBe(first);
+  });
+
   it('changes the announced text when the same thing happens twice', () => {
     show(3);
 

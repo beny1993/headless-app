@@ -136,16 +136,26 @@ async function uploadImage(productId: string, file: File): Promise<string> {
 }
 
 /**
+ * Where the admin is when they read these: the products list, because the save
+ * has already navigated. So the instruction has to be one that works from
+ * there — and «open it and save» is not, because reopening loads the server's
+ * own order and `sameOrder` then short-circuits both writes, sending nothing.
+ * Whatever went wrong has to be redone, not merely re-saved.
+ */
+const RETRY_ADVICE = 'محصول را باز کن و دوباره مرتب کن.';
+
+/** The picked files are gone once the form unmounts, so they must be re-chosen. */
+const REPICK_ADVICE = 'محصول را باز کن و عکس‌ها را دوباره انتخاب کن.';
+
+/**
  * The product was saved; some of its photos were not.
  *
- * `reason` is the server's own sentence when it gave one, and it is worth
- * carrying: a stale-key refusal says «refresh the page», which is the opposite
- * of the generic advice below, and an admin following the wrong one retries
- * from the list with the same stale keys forever.
+ * `reason` is the server's own sentence when it gave one — «حداکثر ۵ عکس…» is
+ * the case that matters, and it says more than the generic advice can.
  */
 const photosFailedMessage = (failed: number, reason?: string) =>
   `محصول ذخیره شد اما ${toPersianDigits(failed)} عکس بارگذاری نشد. ${
-    reason ?? RETRY_ADVICE
+    reason ?? REPICK_ADVICE
   }`;
 
 /**
@@ -162,29 +172,11 @@ const orderFailedMessage = () =>
   `محصول ذخیره شد اما ترتیب عکس‌ها ذخیره نشد. ${RETRY_ADVICE}`;
 
 /**
- * Where the admin actually is when they read these: the products list. So the
- * instruction is one they can follow from there — reopening the product
- * refetches the gallery the server really holds, which is the step that makes
- * a second attempt work rather than repeat.
- */
-const RETRY_ADVICE = 'محصول را دوباره باز کن و ذخیره کن.';
-
-/**
- * The server's sentence for a refusal, when it sent one worth showing an
- * admin. Two filters, both needed.
+ * The server's sentence for a refusal, when it sent one written for a person.
  *
- * **`message`, never `errors`.** `create-router.ts` splits them deliberately:
- * `errors` carries field paths and Zod's own text «for whoever is reading the
- * response in a console, and it stays English like the rest of the
- * identifiers». Preferring it put «objectKeys: …» into Persian admin copy on
- * every schema refusal — and that path is reachable, because a legacy key the
- * tightened `imageKeySchema` now rejects fails the body schema before the
- * handler's own Persian sentence runs.
- *
- * **4xx only.** A 5xx `message` is the literal `Internal server error` in
- * production and a raw driver string outside it, and a non-JSON body yields
- * `api-client`'s English default. Those keep the generic advice, which is at
- * least in the right language and tells the admin something they can act on.
+ * `message` only, and only on a 4xx. `errors` is field paths and Zod's text,
+ * English by the contract in `create-router.ts`; a 5xx `message` is the
+ * literal `Internal server error`. Neither belongs in Persian admin copy.
  */
 const reasonFrom = (error: unknown): string | undefined =>
   error instanceof ApiRequestError && error.status >= 400 && error.status < 500

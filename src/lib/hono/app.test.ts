@@ -75,10 +75,9 @@ describe('hono app', () => {
   // every gate stayed green.
   //
   // A duplicate name leaves no trace in the output — the `$ref` still resolves
-  // — so it is refused at the point of registration instead (`registerRef` in
-  // ../envelope.ts), and the test for that lives beside it. What is checked
-  // here is the document itself: that every `$ref` in it resolves, and that
-  // the two deliberately-different image shapes are still two.
+  // — so the guard is the source scan below. What these two check is the
+  // document itself: that every `$ref` in it resolves, and that the two
+  // deliberately-different image shapes are still two.
   it('leaves no $ref in the document pointing at a component that is not there', async () => {
     const response = await app.request(API_PATHS.DOC);
     const doc = (await response.json()) as Record<string, unknown>;

@@ -334,9 +334,10 @@ export function ProductImagesField({
    * every gate was green.
    *
    * Window listeners are immune, being nowhere near the node that moves.
-   * Capture is still requested, but it is dropped at the first reorder — that
-   * is the premise of this whole arrangement — so it protects nothing beyond
-   * the first cell and nothing here depends on it.
+   * Capture is still requested and nothing here depends on it: it survives a
+   * drag toward the start, where React moves the displaced tile, and is lost
+   * on the first cell of a drag toward the end, where it moves the dragged
+   * one.
    */
   const onHandlePointerDown = (event: React.PointerEvent, index: number) => {
     // Left button or a touch/pen contact only — a right-click must not start a
@@ -359,6 +360,11 @@ export function ProductImagesField({
     window.addEventListener('pointermove', onWindowPointerMove, { signal });
     window.addEventListener('pointerup', endDrag, { signal });
     window.addEventListener('pointercancel', endDrag, { signal });
+    // Non-capturing, and that is load-bearing: `blur` does not bubble, so only
+    // the window's own blur reaches this. Chrome focuses the handle on
+    // pointerdown and the first reorder moves it, dropping focus to `<body>` —
+    // a blur on every cell crossed. `focusout` or `capture: true` here would
+    // end every drag after one cell.
     window.addEventListener('blur', endDrag, { signal });
   };
 

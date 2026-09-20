@@ -192,7 +192,9 @@ describe('product save failures', () => {
 
     await waitFor(() =>
       expect(toast.warning).toHaveBeenCalledWith(
-        expect.stringContaining('محصول را دوباره باز کن و ذخیره کن.'),
+        expect.stringContaining(
+          'محصول را باز کن و عکس‌ها را دوباره انتخاب کن.',
+        ),
       ),
     );
     expect(toast.warning).not.toHaveBeenCalledWith(
@@ -253,7 +255,9 @@ describe('product save failures', () => {
 
     await waitFor(() =>
       expect(toast.warning).toHaveBeenCalledWith(
-        expect.stringContaining('محصول را دوباره باز کن و ذخیره کن.'),
+        expect.stringContaining(
+          'محصول را باز کن و عکس‌ها را دوباره انتخاب کن.',
+        ),
       ),
     );
     expect(toast.warning).not.toHaveBeenCalledWith(
@@ -330,7 +334,7 @@ describe('product save failures', () => {
     // Counted, since a save can now carry several photos and lose only some.
     await waitFor(() =>
       expect(toast.warning).toHaveBeenCalledWith(
-        `محصول ذخیره شد اما ${toPersianDigits(1)} عکس بارگذاری نشد. محصول را دوباره باز کن و ذخیره کن.`,
+        `محصول ذخیره شد اما ${toPersianDigits(1)} عکس بارگذاری نشد. محصول را باز کن و عکس‌ها را دوباره انتخاب کن.`,
       ),
     );
     expect(router.push).toHaveBeenCalledWith(PROTECTED_PATHS.PRODUCTS);

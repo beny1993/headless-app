@@ -116,12 +116,7 @@ export function ProductGallery({
     for (const slide of slideRefs.current) {
       if (slide) observer.observe(slide);
     }
-    return () => {
-      observer.disconnect();
-      // A jump in flight when the page navigates away would otherwise hold a
-      // detached track through its timer for the rest of the settle window.
-      restore.current?.();
-    };
+    return () => observer.disconnect();
     // Keyed on identity, not on `length`: swapping three photos for three
     // others changes every `<li>` key, so React destroys the observed nodes
     // and mounts new ones. Depending on the count alone would leave the
@@ -164,14 +159,13 @@ export function ProductGallery({
       restore.current = null;
       track.style.scrollSnapType = '';
       // Belt and braces for engines this was not measured on. In Chrome,
-      // restoring the property is enough on its own: parked mid-slide with
-      // snapping off, re-enabling it re-snapped in every run, LTR and RTL,
-      // smooth and instant — and this `scrollTo` changed nothing, because a
-      // zero-delta scroll fires no events at all. It stays because WebKit is
-      // untested here and iOS Safari is a target, and because the cost of
-      // being wrong is a gallery parked between two photos where no slide
-      // clears `VISIBLE_ENOUGH`, leaving the strip naming a photo that is not
-      // on screen.
+      // restoring the property re-snaps on its own — measured, LTR and RTL,
+      // smooth and instant — and this call changes nothing there. It is here
+      // for WebKit, which is untested and which iOS Safari ships. If a
+      // gallery is ever seen parked between two photos, suspect this line:
+      // a scroll operation aborts an ongoing smooth scroll before it compares
+      // targets, so on an engine that re-snaps smoothly it could cut short
+      // the very re-snap it is insuring.
       track.scrollTo({ left: track.scrollLeft });
     };
     restore.current = resume;
@@ -182,6 +176,11 @@ export function ProductGallery({
   // A finger on the track takes the gesture back, so snapping must be on for
   // it even if the jump it interrupts has not settled.
   const onTrackPointerDown = () => restore.current?.();
+
+  // Unmount only — an `[images]` teardown would fire this mid-jump on any
+  // re-render that changed the array identity, restoring snapping while the
+  // scroll is still running and parking it a slide short.
+  useEffect(() => () => restore.current?.(), []);
 
   if (images.length === 0) {
     return (

@@ -285,6 +285,10 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
     endBox.y + endBox.height / 2,
     { steps: 12 },
   );
+  // Present mid-drag, so the assertion after the release means something. A
+  // count of zero on its own passes just as well when the marker was never
+  // rendered at all.
+  await expect(page.locator('[data-photo-dragging]')).toHaveCount(1);
   await page.mouse.up();
   // It travelled the whole way, not one cell: the photo that led is now last.
   await expect

@@ -7,7 +7,7 @@
 //
 // **Nothing here may import drizzle, `pg` or `@hono/zod-openapi`** — the editor is
 // a client component, so this stays plain zod, exactly like `product-input.ts`.
-// It leans on three already-client-safe modules: `boundedText` (the trimmed,
+// It leans on already-client-safe modules: `boundedText` (the trimmed,
 // length-capped, NUL-refusing string used across every input contract), the
 // upload key shape, which `@/lib/storage/image-upload` owns — so the
 // "what is a valid image key" rule is derived from the uploader, not restated —
@@ -59,19 +59,7 @@ export const CONTENT_KEYS = [
 export const contentKeySchema = z.enum(CONTENT_KEYS);
 export type ContentKey = z.infer<typeof contentKeySchema>;
 
-/**
- * A storage object key, slash-less, rendered through `imageSrc(key)`. Exactly two
- * shapes, both anchored, so `..`, a leading `/`, an `http(s)://` URL, an unknown
- * prefix or a foreign extension all fail by construction — on write (the route's
- * 400) and on read (the DAO's fallback). A NUL cannot pass either: it matches
- * neither anchored character class.
- *   · a bundled asset:  `site/…` or `products/…` (today's defaults, served from public/)
- *   · an upload:        `uploads/<uuid>.<ext>` (the uploader's own key shape)
- */
-// The key shape moved to `@/lib/storage/image-upload`, beside the constants it
-// is derived from, so the product gallery validates against the same one
-// rather than a second, looser answer. Re-exported because this module's own
-// consumers and tests have always read it from here.
+// The key shape itself is documented where it is defined.
 export { imageKeySchema };
 
 // `t` is the trimmed, NUL-refusing, length-capped string; the ceilings are 2–4×

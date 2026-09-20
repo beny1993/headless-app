@@ -232,7 +232,7 @@ both pets, filed under a sub-category and given a second category — its
 gallery read on the product page (the strip, the numbered later slides, the
 first photo as the opening image), then dragged in both directions and
 reordered with the arrow keys — the arrow moves leaving focus on the handle
-that moved, the drags leaving no tile marked as dragging — and the shopper's
+that moved, the second drag marking its tile while it runs and leaving none marked after — and the shopper's
 opening photo checked once afterwards (three photos, not two: a drag or a
 click that travels only one cell is the single case `scroll-snap-stop: always`
 lets through, and dragging toward the *end* is the direction that moves the
