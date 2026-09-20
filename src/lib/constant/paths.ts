@@ -104,6 +104,11 @@ export const API_PATHS = {
   DOC: '/api/doc',
   REFERENCE: '/api/reference',
   HEALTH: '/api/health',
+  // Readiness, distinct from liveness: `/health` says the process is up,
+  // `/ready` says it can serve (Postgres reachable AND migrated). Coolify's
+  // container probe and Playwright's webServer poll this one, so the rate
+  // limiter exempts it — a throttled probe marks the container unhealthy.
+  READY: '/api/ready',
   CATEGORIES: '/api/categories',
   PRODUCTS: '/api/products',
   // Admin product CRUD. A dedicated `/admin/*` prefix, not `/products/*`, because

@@ -13,6 +13,7 @@ import {
 } from '@/db/schema/auth';
 import { sendOtpSms } from '@/lib/sms';
 import { getAppBaseUrl, getEnvVariable, VARS } from '@/lib/utils/env';
+import { clientIpHeaders } from './client-ip';
 import { assertOtpSendAllowed } from './otp-guard';
 import { rememberOtp, takeOtp } from './otp-echo';
 import { OTP_CODE_LENGTH } from './otp-throttle';
@@ -95,7 +96,12 @@ export const auth = betterAuth({
       // 10.99.x.x addresses `auth.integration.test.ts` uses as CLIENTS,
       // resolving them to null and putting the whole suite in one bucket. The
       // Cloudflare header removes the need to walk the chain at all.
-      ipAddressHeaders: ['cf-connecting-ip', 'x-forwarded-for'],
+      // ONE list, shared with the Hono rate limiter (src/lib/auth/client-ip.ts).
+      // Two copies would let the two limiters bucket the same caller differently,
+      // invisibly. `cf-connecting-ip` is in the list only when
+      // APP_CONFIG_TRUST_CF_HEADER says this deploy is behind Cloudflare — see that
+      // module for why trusting it unconditionally is worse than not trusting it.
+      ipAddressHeaders: clientIpHeaders(),
     },
   },
   session: {

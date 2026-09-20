@@ -28,6 +28,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/app/api/[[...route]]/` | Hono catch-all; Better Auth at `src/app/api/auth/[...all]/` |
 | `src/db/schema/`, `src/db/dao/`, `src/db/migrations/` | Drizzle schema, DAOs, generated migrations. `dao/product-sql.ts` is the product listing's SQL vocabulary — the family scalars, the orderings, the category and pet scopes — composed by `ProductDao` and imported by nothing else |
 | `src/lib/hono/` | API app, router factory, response envelope, routes |
+| `src/lib/hono/middleware/` | Cross-cutting middleware: the `requireAdmin`/`requireAuth` guards, and the `/api/*` rate limiter (the one deliberate `app.use('*')` — see its mount comment) |
 | `src/lib/auth/`, `src/lib/email/`, `src/lib/utils/env.ts` | Better Auth, mailer, env accessor |
 | `src/lib/sentry.ts` | The one `Sentry.init` options object, shared by all three runtimes (`sentry.server.config.ts`, `sentry.edge.config.ts`, `src/instrumentation-client.ts`). Owns the privacy contract: explicit `dataCollection` opt-outs and the removal of the console-breadcrumb integration, without which every OTP in the server log rides along on the next event |
 | `src/lib/content/` | Storefront editorial content: the client-safe zod schemas + key enum + area map + `isVisible` (`site-content.ts`), the saved-link contract + `resolveLink` (`link.ts`; its id → slug targets load in `src/logic/content/link-targets.ts`), the typed defaults + `resolveContent` fallback (`defaults.ts`), and the header/footer request-time read `readSiteChrome` (`chrome.ts`, `await connection()`). Values live in the `site_content` table; the page-organized admin editor is `/admin-panel/content/[area]` |
@@ -92,6 +93,16 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   idempotent (Zarinpal redirect → callback → verify; no webhooks).
 - **Cart is client-side** (localStorage) until checkout; the server re-prices and
   validates at order creation.
+- **Rate limits**: every `/api/*` route is budgeted per caller per minute by
+  `src/lib/hono/middleware/rate-limit.ts`, mounted **before the first route** —
+  Hono runs a wildcard only for routes registered after it, so a later mount
+  silently misses the public catalogue and the payment callback. `/api/health`
+  and `/api/ready` are exempt. Budgets live in `RATE_LIMITS`; per-order payment
+  attempts are capped separately by `MAX_PAYMENT_ATTEMPTS_PER_ORDER`. The caller
+  is resolved through `src/lib/auth/client-ip.ts`, the ONE header list Better
+  Auth's limiter also reads — `CF-Connecting-IP` is trusted only when
+  `APP_CONFIG_TRUST_CF_HEADER` is on, which is safe only behind a locked-down
+  origin. `/api/auth/*` is Better Auth's own and is never double-counted.
 - **Authz**: admin pages go through `requireAdmin()` (`src/lib/auth/session.ts`)
   — a session alone is never authorization, since customers get sessions too.
   Admin API routes mount `requireAdmin` from `src/lib/hono/middleware/auth.ts`

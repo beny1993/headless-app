@@ -43,6 +43,9 @@ export default defineConfig({
     // top of each upload suite's own pin; a test that genuinely needs `s3` must
     // opt in explicitly.
     env: { TZ: 'UTC', APP_CONFIG_STORAGE_PROVIDER: 'local' },
+    // Resets the rate limiter's module-level counter before each test: every
+    // suite that drives the Hono app now spends from one shared budget.
+    setupFiles: ['./src/test-setup.ts'],
     // One file at a time. Seven suites talk to the *same* dev Postgres, and
     // some of what they exercise is table-wide by design — `otp_send_log`'s
     // prune takes a cutoff and no phone number, so a send in one worker
