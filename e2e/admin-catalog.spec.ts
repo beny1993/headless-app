@@ -187,9 +187,11 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
   // contains the title — a substring match resolves to every slide.
   const photo = page.getByRole('img', { name: title, exact: true });
   await expectRendered(photo);
-  // Two photos, so the strip appears — the first thing in the suite with more
-  // than one, since `seed-catalog` re-runs `setImages` before every run and
-  // resets every seeded gallery to its single image.
+  // Three photos, so the strip appears. `seed-catalog` re-runs `setImages`
+  // before every run and resets each seeded gallery to what the seed data
+  // lists, so the only galleries in the suite are this one and the single
+  // seeded product that carries three photos of its own — which is what the
+  // storefront spec walks at phone width, where this spec never goes.
   await expect.poll(() => uploadedKeys.length).toBe(3);
   await expect(
     page.locator('[data-umami-event="product-gallery-thumb-select"]'),
@@ -286,12 +288,22 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
   // below are written against — and two dropped keys prove the deletion set is
   // «every one the admin removed», not «the one».
   await page.goto(adminEditProductPath(productId));
-  await page
-    .getByRole('button', { name: `حذف عکس ${formatNumber(3)}` })
-    .click();
-  await page
-    .getByRole('button', { name: `حذف عکس ${formatNumber(2)}` })
-    .click();
+  // The first removal is driven from the keyboard, not the mouse: focus the
+  // button and press Enter. Nothing overrides a plain `<button>`'s native
+  // activation, but «nothing overrides it» is a claim no test made — the unit
+  // harness cannot deliver a real key-to-click for any button, so a real
+  // engine is the only place it can be shown at all. Focus then has to land
+  // somewhere usable, which is the other half of the same keyboard path.
+  const removeThird = page.getByRole('button', {
+    name: `حذف عکس ${formatNumber(3)}`,
+  });
+  await removeThird.focus();
+  await page.keyboard.press('Enter');
+  const removeSecond = page.getByRole('button', {
+    name: `حذف عکس ${formatNumber(2)}`,
+  });
+  await expect(removeSecond).toBeFocused();
+  await removeSecond.click();
   await expect(handles).toHaveCount(1);
   await page.locator('[data-umami-event="admin-panel-product-save"]').click();
   await expect(page).toHaveURL(

@@ -109,15 +109,35 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
     expect(premium?.oldPrice).toBe(320_000);
   });
 
-  it('gives every seeded product exactly one image', async () => {
+  it('gives every seeded product its photos, in the order the data lists them', async () => {
     const listed = (await ProductDao.listForAdmin()).filter((row) =>
       skus.includes(row.sku),
     );
 
     expect(listed).toHaveLength(SEED_PRODUCTS.length);
     for (const product of listed) {
-      expect(product.images).toHaveLength(1);
+      const seeded = SEED_PRODUCTS.find((row) => row.sku === product.sku);
+      expect(product.images.map((image) => image.objectKey)).toEqual(
+        seeded?.imageKeys,
+      );
     }
+  });
+
+  it('seeds one product with a gallery, so the strip is reachable without building one', async () => {
+    // Every other product has a single photo and renders no strip at all. This
+    // one is what lets a spec walk the gallery — at both widths, since it needs
+    // no admin session to exist.
+    const withGallery = SEED_PRODUCTS.filter(
+      (product) => product.imageKeys.length > 1,
+    );
+
+    expect(withGallery).toHaveLength(1);
+    expect(withGallery[0].imageKeys.length).toBeGreaterThanOrEqual(3);
+    // Three distinct files: a gallery whose photos repeat cannot tell a test
+    // which one is on screen.
+    expect(new Set(withGallery[0].imageKeys).size).toBe(
+      withGallery[0].imageKeys.length,
+    );
   });
 
   it('seeds the out-of-stock and low-stock products the design needs', async () => {

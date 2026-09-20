@@ -139,6 +139,21 @@ export const LOW_STOCK_PRODUCT = {
   path: productPath(runningOut.slug),
   stock: runningOut.stock,
 };
+/**
+ * The one seeded product with more than one photo, and how many it has. The
+ * only multi-photo product a spec can reach without building one through the
+ * admin panel — which is what lets the gallery be walked at 375px, where the
+ * admin spec (desktop-only by suite policy) never goes.
+ */
+const gallery = SEED_PRODUCTS.find((product) => product.imageKeys.length > 1);
+if (!gallery) {
+  throw new Error('The catalog seed needs one product with a gallery.');
+}
+export const GALLERY_PRODUCT = {
+  path: productPath(gallery.slug),
+  photoCount: gallery.imageKeys.length,
+};
+
 /** A seeded product photo, bundled in public/, to upload as a new product's. */
 export const PRODUCT_PHOTO = `public/${mostStocked.imageKeys[0]}`;
 
