@@ -805,6 +805,44 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       }
     });
 
+    // The ordering of the two refusals, which is the only thing that shows the
+    // ceiling is checked *before* the body is read. The existing test above
+    // proves no file is left behind — which the take-back in
+    // `appendProductImage` guarantees on its own, so the pre-check could be
+    // deleted or moved after `readImageUpload` with the whole suite green.
+    // A non-image on a full gallery separates them: the ceiling answers first
+    // only if it runs first.
+    it('answers the ceiling before it looks at the bytes', async () => {
+      const category = await makeCategory();
+      const product = await makeProduct(category);
+      asAdmin();
+      for (let n = 0; n < MAX_PRODUCT_IMAGES; n += 1) {
+        expect(
+          (
+            await upload(
+              product.id,
+              new File([jpegBytes()], `p${n}.jpg`, { type: 'image/jpeg' }),
+            )
+          ).status,
+        ).toBe(201);
+      }
+
+      const notAnImage = new File(
+        [Uint8Array.from(new TextEncoder().encode('<?php echo 1; ?>'))],
+        'evil.jpg',
+        { type: 'image/jpeg' },
+      );
+      const { status, body: envelope } = await parse<unknown>(
+        await upload(product.id, notAnImage),
+      );
+
+      expect(status).toBe(400);
+      // The ceiling's sentence, not the sniffer's: the body was never read.
+      expect((envelope as { message?: string }).message).toBe(
+        PRODUCT_MESSAGES.imagesMax,
+      );
+    });
+
     it('refuses a sixth photo without reading or storing it', async () => {
       const category = await makeCategory();
       const product = await makeProduct(category);

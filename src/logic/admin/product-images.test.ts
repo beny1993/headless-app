@@ -109,6 +109,24 @@ describe('appendProductImage', () => {
     expect(stored?.objectKey).toMatch(/^uploads\/[0-9a-f-]{36}\.jpg$/);
   });
 
+  it('reports a driver that cannot take the refused file back', async () => {
+    // The sibling catch in `setProductImageOrder` is pinned; this one was not,
+    // so deleting it left the suite green while a driver failure turned an
+    // ordinary 400 into an unhandled rejection — on the one path that is
+    // already recovering from a race, with the orphan still on disk.
+    appendImage.mockResolvedValue(null);
+    remove.mockRejectedValue(new Error('disk gone'));
+
+    const stored = await appendProductImage(
+      productWith('uploads/a.jpg'),
+      new Uint8Array([0xff, 0xd8, 0xff]),
+      'image/jpeg',
+    );
+
+    expect(stored).toBeNull();
+    expect(captureException).toHaveBeenCalledTimes(1);
+  });
+
   it('takes its own file back out when the gallery filled up in flight', async () => {
     // The refusal lands after the bytes are written, and the only other
     // deleter works from `product_images` — so a file left here is one nothing

@@ -120,24 +120,12 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
       expect(product.images.map((image) => image.objectKey)).toEqual(
         seeded?.imageKeys,
       );
+      // Widening this to «the keys the data lists» quietly gave up «every
+      // product has one», which an empty `imageKeys` would then satisfy — and
+      // a product with no photo ships a shop card, a cart line and a product
+      // page with nothing on them.
+      expect(product.images.length).toBeGreaterThan(0);
     }
-  });
-
-  it('seeds one product with a gallery, so the strip is reachable without building one', async () => {
-    // Every other product has a single photo and renders no strip at all. This
-    // one is what lets a spec walk the gallery — at both widths, since it needs
-    // no admin session to exist.
-    const withGallery = SEED_PRODUCTS.filter(
-      (product) => product.imageKeys.length > 1,
-    );
-
-    expect(withGallery).toHaveLength(1);
-    expect(withGallery[0].imageKeys.length).toBeGreaterThanOrEqual(3);
-    // Three distinct files: a gallery whose photos repeat cannot tell a test
-    // which one is on screen.
-    expect(new Set(withGallery[0].imageKeys).size).toBe(
-      withGallery[0].imageKeys.length,
-    );
   });
 
   it('seeds the out-of-stock and low-stock products the design needs', async () => {

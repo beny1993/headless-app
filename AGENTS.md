@@ -167,14 +167,19 @@ than in a function**, i.e. no unit test can reach it:
   reproduce what the server sent. `useSyncExternalStore`'s server snapshot is
   the type case: `getServerCart`'s own unit test passes against the bug,
   because both candidates return an empty array and only the *choice* is wrong.
-- **State-sync mechanisms** — state derived from a prop that this component
-  itself causes to change. The window where intention and prop disagree is
-  where the bug lives, and it exists only at runtime.
+- **State-sync mechanisms** — state derived from something this component
+  itself causes to change: a prop it writes back, or a platform observer
+  watching what it renders. The window where intention and the source of truth
+  disagree is where the bug lives, and it exists only at runtime.
 - **URL-resync logic** — a control that writes the URL and reads it back.
   Debounces, in-flight navigation, Enter racing a timer.
 
 Copy the pattern from `src/features/storefront/cart/cart-drawer.test.tsx`
-(hydration) and `src/features/storefront/shop/shop-search.test.tsx` (resync).
+(hydration), `src/features/storefront/shop/shop-search.test.tsx` (resync) and
+`src/features/storefront/product/product-gallery.test.tsx` (a platform
+observer: stub the global, capture the callback it was handed, and deliver the
+batch a browser would — every target that crossed, each with its ratio, not
+one hand-picked entry).
 Four rules those two encode:
 
 - **Verify the pin by reverting the bug.** A component test that still passes
@@ -209,7 +214,10 @@ hand, run at 1280px and again at 375px. Storefront: phone-OTP sign-in for a
 customer and an admin; home → shop → product → cart drawer (quantity, removal,
 empty state) and a sold-out product; a both-pets product under either pet
 filter and under its sub-category's parent, reading «گربه و سگ» on its page —
-each of those shelves also checked for a product it must *not* list; a product
+each of those shelves also checked for a product it must *not* list; the one
+seeded product with a gallery walked at both widths, its last thumbnail — two
+slides away, the jump a one-slide test cannot make — opening the photo it
+names; a product
 in two categories listed once under that parent and once under each of its own,
 its breadcrumb naming parent then sub-category and both its categories linked
 in the spec row; a product family listed as **one** card reading «از …» with
@@ -219,12 +227,17 @@ own slug and the cart line naming that member; checkout by card to card — Jala
 on the result page, the order in `/account` — and through the mock Zarinpal
 gateway (paid, and failed → retry → paid). Admin: anonymous visitors and
 customers turned away; the dashboard figures; an order shipped, and one
-cancelled with its stock coming back; a product added with two photos — for
+cancelled with its stock coming back; a product added with three photos — for
 both pets, filed under a sub-category and given a second category — its
 gallery read on the product page (the strip, the numbered later slides, the
-first photo as the opening image), then dragged into a new order that changes
-which photo opens, then one photo removed, whose `uploads/…` file stops
-serving while the kept one goes on serving (both probed with `request.get`,
+first photo as the opening image), then dragged in both directions and
+reordered with the arrow keys, each time changing which photo opens and
+leaving focus on the handle that moved (three photos, not two: a drag or a
+click that travels only one cell is the single case `scroll-snap-stop: always`
+lets through, and dragging toward the *end* is the direction that moves the
+tile under the pointer), then two photos removed — the first of them from the
+keyboard — whose `uploads/…` files stop
+serving while the kept one goes on serving (all probed with `request.get`,
 never an `<img>`: `next/image` caches what it optimized, so a deleted file
 renders on from `.next/cache`) — repriced, found
 under both category filters and taken off the shop; a sub-category nested under
@@ -277,7 +290,7 @@ suite pins it on; the disabled option is component-tested in
   (`e2e/support.ts`). send-otp allows 3 a minute for the whole machine, so a run
   started within a minute of the last one waits about a minute.
 - **What a run leaves in the dev database:** two throwaway `0999…` accounts, a
-  few orders, one inactive `e2e-…` product (it is given two photos and has one
+  few orders, one inactive `e2e-…` product (it is given three photos and has two
   of them removed again, so one file stays under `uploads/`)
   filed under a seeded sub-category and a seeded second category — seeded, and
   never one the spec made, because the junction's restricting foreign key would
