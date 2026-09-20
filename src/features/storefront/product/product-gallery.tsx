@@ -10,57 +10,71 @@ import { imageSrc } from '@/lib/storage/image-url';
 export type GalleryImage = { id: string; objectKey: string };
 
 /**
+ * How long a smooth scroll across the track is given to settle before snapping
+ * is restored regardless.
+ *
+ * Not merely a fallback: iOS Safari below 18.2 has no `scrollend` at all, so
+ * on those engines this timer is the *only* restore. It also covers a jump
+ * that scrolls nowhere — tapping the thumbnail of the photo already showing
+ * computes a zero delta, and a scroll that never happens fires no `scrollend`
+ * either.
+ */
+const SCROLL_SETTLE_MS = 600;
+
+/**
+ * How much of a slide has to be showing before it counts as the one on screen.
+ * Two slides touch the track mid-swipe; the one mostly showing wins.
+ */
+const VISIBLE_ENOUGH = 0.6;
+
+/**
  * The product gallery: a horizontal track of full-width photos a finger can
  * swipe, and thumbnails when there is more than one to choose from.
  *
  * The track is CSS scroll-snap and nothing else — no carousel library, no
  * transform arithmetic. `snap-always` so a fast flick lands on exactly one
- * photo (otherwise the strip and the big image disagree about where you ended
- * up), and `overscroll-x-contain` so swiping past the last photo does not
+ * photo, and `overscroll-x-contain` so swiping past the last photo does not
  * trigger the browser's back gesture. It renders even for a single image: one
- * code path, and snapping a single slide is inert. Desktop looks exactly as it
- * did — the track is one slide wide there and never scrolls.
+ * code path, and snapping a single slide is inert.
+ *
+ * It is a real scroller at every width — every thumbnail click scrolls it, and
+ * a trackpad can — so it hides its scrollbar the way the home page's snap
+ * scroller does. Without that, a classic (non-overlay) scrollbar paints across
+ * the bottom of the photo on Windows and Linux, which is most of this shop's
+ * desktop traffic and which no macOS reviewer or CI run would ever see.
  *
  * **The RTL trap, avoided by never doing the arithmetic.** `scrollLeft` in RTL
  * is zero at the start and *negative* toward the end in the modern CSSOM-View
- * model, and positive-decreasing or positive-increasing in older ones. Nothing
- * here depends on that:
+ * model, and positive-decreasing or positive-increasing in older ones:
  *
  *   · Reading the active slide is an `IntersectionObserver` rooted on the
  *     track — sign-free, and the single source of truth. The thumbnails'
  *     `aria-pressed` follows the observer rather than the click, so a swipe and
- *     a click can never disagree about which photo is showing.
- *   · Writing it is a visual-rect delta handed to `scrollBy`, which is
- *     direction-agnostic and, unlike `scrollIntoView`, never yanks the page
- *     vertically when the thumb sits below the fold.
+ *     a click cannot disagree about which photo is showing.
+ *   · Writing it is a visual-rect delta handed to `scrollBy`. That is
+ *     sign-*correct*, not sign-*free*: `scrollBy` writes into the same
+ *     coordinate system, and the delta is right under the modern model and
+ *     under positive-increasing. No engine this shop targets uses
+ *     positive-decreasing, where it would scroll the wrong way. Unlike
+ *     `scrollIntoView` it never yanks the page vertically.
  *   · Neither call passes `behavior`, so CSS `scroll-smooth` governs and the
  *     global `prefers-reduced-motion` rule switches the animation off for free.
  *
  * The thumbnails are real buttons carrying `aria-pressed`, not the design
- * review's clickable `<div>`s (finding 2) — keyboard reachable, and the
- * selected one is announced rather than only outlined. They are the keyboard
- * path; the swipe is a second way to do the same thing, never the only one.
- * Nothing is direction-sensitive: no arrow control whose direction could be
- * wrong in RTL (finding 9's carousel bug), and no dots, because the 64px strip
+ * review's clickable `<div>`s — keyboard reachable, and the selected one is
+ * announced rather than only outlined. They are the keyboard path; the swipe
+ * is a second way to do the same thing, never the only one. No arrow control
+ * whose direction could be wrong in RTL, and no dots, because the 64px strip
  * is visible at 375px and already *is* the position indicator, with names.
- * The 64px thumbs clear the 40px touch-target floor (finding 6).
  *
- * A product with a single image renders no strip at all: a one-item picker is a
- * control that cannot do anything.
+ * A product with a single image renders no strip at all: a one-item picker is
+ * a control that cannot do anything.
  *
  * The call site passes `key={product.id}`. Without it React keeps this
- * component's tree position across a client-side navigation from one product to
- * another, and `active` — photo #4, say — survives onto a product whose gallery
- * is a different set of photos entirely.
+ * component's tree position across a client-side navigation from one product
+ * to another, and `active` survives onto a product whose gallery is a
+ * different set of photos entirely.
  */
-/**
- * How long a smooth scroll across the track is given to settle before snapping
- * is restored regardless. Only a fallback: `scrollend` normally gets there
- * first. Long enough for a slow full-width scroll, short enough that a visitor
- * who flicks immediately afterwards still gets the snap.
- */
-const SCROLL_SETTLE_MS = 600;
-
 export function ProductGallery({
   images,
   title,
@@ -70,6 +84,8 @@ export function ProductGallery({
 }) {
   const [active, setActive] = useState(0);
   const trackRef = useRef<HTMLUListElement>(null);
+  /** Restores snapping after a programmatic jump, or null when none is owed. */
+  const restore = useRef<(() => void) | null>(null);
   const slideRefs = useRef<(HTMLLIElement | null)[]>([]);
 
   useEffect(() => {
@@ -80,21 +96,35 @@ export function ProductGallery({
     // the one that is mostly showing is the one that counts.
     const observer = new IntersectionObserver(
       (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          const index = Number(
-            (entry.target as HTMLElement).dataset.slideIndex,
-          );
-          if (Number.isInteger(index)) setActive(index);
-        }
+        // `intersectionRatio`, not `isIntersecting`: the latter is geometric
+        // and true for *any* overlap, so a slide crossing the threshold
+        // downward passes it too. A batch delivers every target that crossed
+        // in the same pass, so on a fast flick the leaving slide could arrive
+        // last and win — leaving `active` on the photo just scrolled away
+        // from. Taking the widest-showing entry cannot pick a leaver.
+        const showing = entries
+          .filter((entry) => entry.intersectionRatio >= VISIBLE_ENOUGH)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (!showing) return;
+        const index = Number(
+          (showing.target as HTMLElement).dataset.slideIndex,
+        );
+        if (Number.isInteger(index)) setActive(index);
       },
-      { root: track, threshold: 0.6 },
+      { root: track, threshold: VISIBLE_ENOUGH },
     );
     for (const slide of slideRefs.current) {
       if (slide) observer.observe(slide);
     }
     return () => observer.disconnect();
-  }, [images.length]);
+    // Keyed on identity, not on `length`: swapping three photos for three
+    // others changes every `<li>` key, so React destroys the observed nodes
+    // and mounts new ones. Depending on the count alone would leave the
+    // observer holding five dead nodes and watching none of the live ones,
+    // with `active` frozen. `key={product.id}` at the call site makes that
+    // unreachable today — which puts this effect's correctness in another
+    // file, where the component cannot see it.
+  }, [images]);
 
   /** Scroll the track to a slide. The observer then reports where it landed. */
   const show = (index: number) => {
@@ -114,20 +144,36 @@ export function ProductGallery({
     // The rule earns its place on a flick, which is a gesture the visitor is
     // still driving; it has no business governing a jump to a named photo. Off
     // for the trip, back on when we arrive.
-    const resume = () => {
-      track.style.scrollSnapType = '';
-    };
+    // One owner for the restore, so a second tap inside the window cannot have
+    // the first tap's timer fire mid-flight.
+    restore.current?.();
     track.style.scrollSnapType = 'none';
     track.scrollBy({
       left:
         slide.getBoundingClientRect().left - track.getBoundingClientRect().left,
     });
-    // `scrollend` is the precise signal and fires in every engine the shop
-    // targets; the timer is for the ones where it does not, and running twice
-    // is harmless — the second assignment writes the same empty string.
-    track.addEventListener('scrollend', resume, { once: true });
-    window.setTimeout(resume, SCROLL_SETTLE_MS);
+
+    const resume = () => {
+      window.clearTimeout(timer);
+      track.removeEventListener('scrollend', resume);
+      restore.current = null;
+      track.style.scrollSnapType = '';
+      // Restoring the property on a track already at rest does NOT re-snap it,
+      // so a gesture that came to rest while snapping was off would stay
+      // parked between two photos — and at that split no slide clears
+      // `VISIBLE_ENOUGH`, so the strip would keep naming a photo that is not
+      // the one showing. A scroll *operation* does consult the snap points,
+      // and scrolling to where we already are is the cheapest one.
+      track.scrollTo({ left: track.scrollLeft });
+    };
+    restore.current = resume;
+    track.addEventListener('scrollend', resume);
+    const timer = window.setTimeout(resume, SCROLL_SETTLE_MS);
   };
+
+  // A finger on the track takes the gesture back, so snapping must be on for
+  // it even if the jump it interrupts has not settled.
+  const onTrackPointerDown = () => restore.current?.();
 
   if (images.length === 0) {
     return (
@@ -150,8 +196,15 @@ export function ProductGallery({
       <ul
         ref={trackRef}
         aria-label="گالری تصاویر محصول"
-        className="bg-secondary flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth rounded-3xl"
-        data-umami-event="product-gallery-swipe"
+        onPointerDown={onTrackPointerDown}
+        // `scrollbar-width` and the webkit pseudo-element, the pair the home
+        // page's snap scroller already uses: no `.scrollbar-hide` class exists
+        // in this project.
+        className="bg-secondary flex snap-x snap-mandatory [scrollbar-width:none] overflow-x-auto overscroll-x-contain scroll-smooth rounded-3xl [&::-webkit-scrollbar]:hidden"
+        // Named for what actually fires. `data-umami-event` auto-tracks
+        // clicks; it has no scroll or swipe binding, so a name promising a
+        // swipe would have reported taps under it.
+        data-umami-event="product-gallery-photo-tap"
       >
         {images.map((image, index) => (
           <li
@@ -178,10 +231,20 @@ export function ProductGallery({
                   : `تصویر ${formatNumber(index + 1)} از ${title}`
               }
               fill
-              priority={index === 0}
-              // Not lazy: a lazy image in a horizontal scroller pops in
-              // mid-swipe, and five WebPs at these sizes are small.
+              // `preload`, not `priority`: the latter is deprecated in Next 16
+              // and pairing it with `loading` is called out there as the case
+              // not to use preload for. The two together throw outright, so a
+              // half-migration later would be a runtime error on the
+              // storefront's most-visited page.
+              preload={index === 0}
+              // Not lazy: a slide clipped by the `overflow-x` container does
+              // not intersect the expanded lazy-load viewport, so `lazy` would
+              // defer it until mid-swipe and pop it in. Eager, but at low
+              // priority past the first — otherwise four photos nobody has
+              // swiped to yet compete with the LCP image for the connection,
+              // which on a 5-photo product is 300-750KB on a phone.
               loading="eager"
+              fetchPriority={index === 0 ? 'high' : 'low'}
               sizes="(min-width: 1024px) 50vw, 100vw"
               className="object-cover"
             />
