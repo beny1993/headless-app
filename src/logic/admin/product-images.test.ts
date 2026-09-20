@@ -11,12 +11,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductImage, ProductWithImages } from '@/db/schema/catalog';
 
-const { setImages, put, remove, url } = vi.hoisted(() => ({
+const { setImages, put, remove, url, captureException } = vi.hoisted(() => ({
   setImages: vi.fn(),
   put: vi.fn(),
   remove: vi.fn(),
   url: vi.fn((key: string) => `/${key}`),
+  captureException: vi.fn(),
 }));
+vi.mock('@sentry/nextjs', () => ({ captureException }));
 vi.mock('@/db/dao/ProductDao', () => ({ ProductDao: { setImages } }));
 vi.mock('@/lib/storage', () => ({
   getStorageDriver: () => ({ put, delete: remove, url }),
@@ -185,6 +187,9 @@ describe('setProductImageOrder', () => {
     // An orphaned file is housekeeping, never a reason to fail a write the
     // database already took.
     expect(stored?.map((one) => one.objectKey)).toEqual(['uploads/a.jpg']);
+    // Surviving it silently is the bug: an orphan nothing will ever collect is
+    // invisible until the bucket bill says otherwise.
+    expect(captureException).toHaveBeenCalledTimes(1);
   });
 
   describe('ownership', () => {

@@ -18,6 +18,7 @@
 // `public/`, it is not ours to delete, and the local driver refuses keys outside
 // `uploads/` anyway — the filter here is what keeps that refusal from ever
 // firing and being swallowed.
+import * as Sentry from '@sentry/nextjs';
 import { ProductDao } from '@/db/dao/ProductDao';
 import type { ProductWithImages } from '@/db/schema/catalog';
 import {
@@ -100,7 +101,8 @@ export async function appendProductImage(
  * *not* «everything previous»: reordering deletes nothing, removing one photo
  * deletes one file, and the photos that stay keep theirs. A failure to delete is
  * swallowed — an orphaned file is housekeeping, never a reason to fail a write
- * the database has already taken.
+ * the database has already taken — but it is reported to Sentry, because silent
+ * orphan accumulation is invisible until the bucket bill says otherwise.
  */
 export async function setProductImageOrder(
   product: ProductWithImages,
@@ -117,7 +119,15 @@ export async function setProductImageOrder(
     if (kept.has(previous.objectKey) || !isOurUpload(previous.objectKey)) {
       continue;
     }
-    await driver.delete(previous.objectKey).catch(() => {});
+    await driver.delete(previous.objectKey).catch((error: unknown) => {
+      // Swallowed so a housekeeping failure never fails a write the database
+      // has already taken — which is exactly why it has to be reported. An
+      // EACCES, an expired S3 credential or a driver refusal otherwise
+      // accumulates orphaned files in total silence. `otp-guard.ts` swallows
+      // its pruning failure the same way, and reports it for the same reason.
+      console.warn('[admin] deleting a removed product image failed', error);
+      Sentry.captureException(error);
+    });
   }
 
   return images.map((image) => toStoredImage(image, (key) => driver.url(key)));
