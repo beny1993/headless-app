@@ -1079,19 +1079,33 @@ export class ProductDao {
    * Replaces a product's gallery wholesale — position in `objectKeys` becomes
    * `sortOrder`. Replacing rather than appending is what keeps a re-run of the
    * seed from stacking duplicate images.
+   *
+   * Reports the keys it removed, which is the only trustworthy account of
+   * them. A caller that works out its own delete set from a list it read
+   * *before* this transaction will miss anything appended in between: the
+   * `DELETE` takes those rows too, and the caller then keeps their files with
+   * nothing left pointing at them, since the only sweep derives its work from
+   * `product_images`. The rows are gone either way — a wholesale replace is
+   * last-write-wins by construction — but the files need not be stranded.
    */
   static async setImages(
     productId: string,
     objectKeys: string[],
-  ): Promise<ProductImage[]> {
+  ): Promise<{ images: ProductImage[]; removedKeys: string[] }> {
     return db.transaction(async (tx) => {
-      await tx
+      const removed = await tx
         .delete(productImages)
-        .where(eq(productImages.productId, productId));
+        .where(eq(productImages.productId, productId))
+        .returning({ objectKey: productImages.objectKey });
 
-      if (objectKeys.length === 0) return [];
+      const kept = new Set(objectKeys);
+      const removedKeys = removed
+        .map((row) => row.objectKey)
+        .filter((objectKey) => !kept.has(objectKey));
 
-      return tx
+      if (objectKeys.length === 0) return { images: [], removedKeys };
+
+      const images = await tx
         .insert(productImages)
         .values(
           objectKeys.map((objectKey, index) => ({
@@ -1101,6 +1115,7 @@ export class ProductDao {
           })),
         )
         .returning();
+      return { images, removedKeys };
     });
   }
 
@@ -1120,7 +1135,12 @@ export class ProductDao {
    *
    * The route still checks the ceiling before it reads the body — that is the
    * fast path that keeps a refused photo from being buffered at all. This is
-   * the one that is *true* under concurrency.
+   * the one that holds when two uploads race.
+   *
+   * It does not serialize an upload against a gallery-order write: that one
+   * replaces the list wholesale, so it wins, and the photo appended here can
+   * lose its row to it. What it must never do is lose the *file* with it,
+   * which is why `setImages` reports the keys it removed.
    */
   static async appendImage(
     productId: string,

@@ -1909,6 +1909,38 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
 
       expect((await ProductDao.getBySlug(product.slug))?.images).toEqual([]);
     });
+
+    // The race the gallery PUT loses: the route reads the product, an upload
+    // appends to it, and only then does the write run. The `DELETE` takes the
+    // appended row too, so a caller diffing against its own stale snapshot
+    // would keep that file with nothing referencing it — and the only sweep
+    // works from the rows, so nothing would ever collect it.
+    it('reports a row the caller never knew about as removed', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+      await ProductDao.setImages(product.id, ['uploads/known.jpg']);
+      await ProductDao.appendImage(product.id, 'uploads/raced-in.jpg', 5);
+
+      // The caller still believes the gallery is just the one photo.
+      const { removedKeys } = await ProductDao.setImages(product.id, [
+        'uploads/known.jpg',
+      ]);
+
+      expect(removedKeys).toEqual(['uploads/raced-in.jpg']);
+    });
+
+    it('reports nothing removed when the list is unchanged', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+      await ProductDao.setImages(product.id, ['uploads/a.jpg']);
+
+      const reordered = await ProductDao.setImages(product.id, [
+        'uploads/a.jpg',
+      ]);
+
+      // A reorder deletes nothing, however many rows it rewrites.
+      expect(reordered.removedKeys).toEqual([]);
+    });
   });
 
   describe('appendImage', () => {

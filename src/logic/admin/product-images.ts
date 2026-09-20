@@ -11,8 +11,12 @@
 //     inside the transaction, so two uploads racing cannot both win and strand
 //     the loser's file with no row to find it by;
 //   · a gallery-order write REPLACES the list, and is the only place a file is
-//     ever deleted — and then only the keys the admin dropped, never the whole
-//     previous list.
+//     ever deleted — and then only the keys the write itself removed, which it
+//     reports, never the whole previous list and never a set worked out from
+//     the caller's own snapshot. An upload that lands between the route's read
+//     and this write has its row replaced like any other; taking the delete
+//     set from the snapshot would have kept its file with nothing referencing
+//     it, and this loop is the only thing that would ever have collected it.
 //
 // `ProductDao.setImages` is «replace with this ordered list» and belongs to the
 // second of those; the append has its own atomic write. The cleanup, not the
@@ -110,9 +114,12 @@ export async function appendProductImage(
  * key belongs to no image of this product, having written nothing at all; the
  * route turns that into a 400.
  *
- * The deleted set is exactly `previous − kept`, restricted to `uploads/`. It is
- * *not* «everything previous»: reordering deletes nothing, removing one photo
- * deletes one file, and the photos that stay keep theirs. A failure to delete is
+ * The deleted set is whatever the write actually removed, restricted to
+ * `uploads/`. It is *not* «everything previous», and not a diff of the
+ * caller's snapshot either: reordering deletes nothing, removing one photo
+ * deletes one file, the photos that stay keep theirs, and a photo appended
+ * between the route's read and this write loses its row — last-write-wins, as
+ * a wholesale replace always is — without stranding its file. A failure to delete is
  * swallowed — an orphaned file is housekeeping, never a reason to fail a write
  * the database has already taken — but it is reported to Sentry, because silent
  * orphan accumulation is invisible until the bucket bill says otherwise.
@@ -125,14 +132,18 @@ export async function setProductImageOrder(
   if (!objectKeys.every((key) => own.has(key))) return null;
 
   const driver = getStorageDriver();
-  const images = await ProductDao.setImages(product.id, [...objectKeys]);
+  // The delete set comes back from the write, not from the snapshot the route
+  // read: an upload that lands between that read and this transaction has its
+  // row deleted here too, and deriving the set from the snapshot would leave
+  // its file behind with nothing referencing it — invisible to this loop
+  // forever, since the loop works from the rows.
+  const { images, removedKeys } = await ProductDao.setImages(product.id, [
+    ...objectKeys,
+  ]);
 
-  const kept = new Set(objectKeys);
-  for (const previous of product.images) {
-    if (kept.has(previous.objectKey) || !isOurUpload(previous.objectKey)) {
-      continue;
-    }
-    await driver.delete(previous.objectKey).catch((error: unknown) => {
+  for (const objectKey of removedKeys) {
+    if (!isOurUpload(objectKey)) continue;
+    await driver.delete(objectKey).catch((error: unknown) => {
       // Swallowed so a housekeeping failure never fails a write the database
       // has already taken — which is exactly why it has to be reported. An
       // EACCES, an expired S3 credential or a driver refusal otherwise

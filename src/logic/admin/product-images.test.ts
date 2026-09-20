@@ -46,25 +46,38 @@ const image = (objectKey: string, sortOrder: number): ProductImage => ({
  * module reads `id` and `images` and nothing else, and a full row here would be
  * thirty fields of noise that no assertion touches.
  */
-const productWith = (...keys: string[]): ProductWithImages =>
-  ({
+const productWith = (...keys: string[]): ProductWithImages => {
+  previousKeys = keys;
+  return {
     id: PRODUCT_ID,
     images: keys.map(image),
-  }) as unknown as ProductWithImages;
+  } as unknown as ProductWithImages;
+};
 
 /** Every key handed to `driver.delete`, in call order. */
 const deletedKeys = () => remove.mock.calls.map(([key]) => key);
 
+/**
+ * What the gallery held before the write under test, so the `setImages` fake
+ * can report a delete set the way the real one does — from the rows it
+ * actually removed, not from the caller's snapshot.
+ */
+let previousKeys: string[] = [];
+
 beforeEach(() => {
   vi.clearAllMocks();
+  previousKeys = [];
   remove.mockResolvedValue(undefined);
   put.mockResolvedValue(undefined);
   // The DAO replaces the gallery wholesale and returns what it stored, so the
   // fake answers with rows in the order it was given — which is also what makes
   // the returned `sortOrder` assertable.
-  setImages.mockImplementation(async (_id: string, keys: string[]) =>
-    keys.map(image),
-  );
+  // Matches the real contract: the rows it wrote, plus the keys it removed.
+  // The fake is told the previous list per test where that matters.
+  setImages.mockImplementation(async (_id: string, keys: string[]) => ({
+    images: keys.map(image),
+    removedKeys: previousKeys.filter((key) => !keys.includes(key)),
+  }));
   // The append is its own atomic write now: one row at the end, or `null` when
   // the gallery is full. The fake answers the way the DAO does.
   appendImage.mockImplementation(async (_id: string, key: string) =>
