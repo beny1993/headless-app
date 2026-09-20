@@ -53,6 +53,14 @@ export type GalleryImage = { id: string; objectKey: string };
  * another, and `active` — photo #4, say — survives onto a product whose gallery
  * is a different set of photos entirely.
  */
+/**
+ * How long a smooth scroll across the track is given to settle before snapping
+ * is restored regardless. Only a fallback: `scrollend` normally gets there
+ * first. Long enough for a slow full-width scroll, short enough that a visitor
+ * who flicks immediately afterwards still gets the snap.
+ */
+const SCROLL_SETTLE_MS = 600;
+
 export function ProductGallery({
   images,
   title,
@@ -98,10 +106,27 @@ export function ProductGallery({
       setActive(index);
       return;
     }
+
+    // `snap-always` (`scroll-snap-stop: always`) on every slide refuses to let
+    // *any* scroll pass a snap point — a programmatic one included, animated or
+    // not. So a thumb two or more photos away used to land one slide short: the
+    // container stopped at the first snap point on the way and stayed there.
+    // The rule earns its place on a flick, which is a gesture the visitor is
+    // still driving; it has no business governing a jump to a named photo. Off
+    // for the trip, back on when we arrive.
+    const resume = () => {
+      track.style.scrollSnapType = '';
+    };
+    track.style.scrollSnapType = 'none';
     track.scrollBy({
       left:
         slide.getBoundingClientRect().left - track.getBoundingClientRect().left,
     });
+    // `scrollend` is the precise signal and fires in every engine the shop
+    // targets; the timer is for the ones where it does not, and running twice
+    // is harmless — the second assignment writes the same empty string.
+    track.addEventListener('scrollend', resume, { once: true });
+    window.setTimeout(resume, SCROLL_SETTLE_MS);
   };
 
   if (images.length === 0) {

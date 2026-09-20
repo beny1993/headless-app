@@ -143,17 +143,26 @@ export const LOW_STOCK_PRODUCT = {
 export const PRODUCT_PHOTO = `public/${mostStocked.imageKeys[0]}`;
 
 /**
- * A second, visibly different bundled photo, so a gallery spec can tell which
- * of a product's two photos is the cover. Read from the seed rather than named
- * here — the pair only has to be two different files.
+ * Two more visibly different bundled photos, so a gallery spec can tell which
+ * of a product's photos is on screen. Read from the seed rather than named
+ * here — they only have to be three different files.
+ *
+ * Three and not two: with two photos the only thumbnail a shopper can click is
+ * the adjacent one, and a jump of one slide is the single case that cannot
+ * catch `scroll-snap-stop: always` refusing to pass an intervening snap point.
+ * That is exactly how a two-photo spec went green over a gallery whose thumbs
+ * landed one photo short of wherever they were aimed.
  */
-const otherPhotoKey = SEED_PRODUCTS.map((product) => product.imageKeys[0]).find(
-  (key) => key && key !== mostStocked.imageKeys[0],
-);
-if (!otherPhotoKey) {
-  throw new Error('The catalog seed needs two products with different photos.');
+const otherPhotoKeys = [
+  ...new Set(SEED_PRODUCTS.map((product) => product.imageKeys[0])),
+].filter((key) => key && key !== mostStocked.imageKeys[0]);
+if (otherPhotoKeys.length < 2) {
+  throw new Error(
+    'The catalog seed needs three products with different photos.',
+  );
 }
-export const SECOND_PRODUCT_PHOTO = `public/${otherPhotoKey}`;
+export const SECOND_PRODUCT_PHOTO = `public/${otherPhotoKeys[0]}`;
+export const THIRD_PRODUCT_PHOTO = `public/${otherPhotoKeys[1]}`;
 
 /** Puts one of `product` in the cart and opens checkout from the drawer. */
 export async function openCheckout(page: Page, product = IN_STOCK_PRODUCT) {

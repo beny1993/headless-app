@@ -20,6 +20,7 @@ import {
   ADMIN_STATE,
   PRODUCT_PHOTO,
   SECOND_PRODUCT_PHOTO,
+  THIRD_PRODUCT_PHOTO,
   completeCheckout,
   expect,
   expectFailedRequest,
@@ -133,15 +134,19 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
       ),
     }),
   ).toHaveText([EXTRA_CATEGORY.title]);
-  // Two photos in one pick. Selected by event name, not `input[type=file]`:
+  // Three photos in one pick. Selected by event name, not `input[type=file]`:
   // the multi-photo field renders one input per add tile, so the bare tag
   // selector is ambiguous the moment a photo is on the form.
+  //
+  // Three rather than two so the thumbnail strip below has a NON-adjacent
+  // thumb to click. Two photos can only ever test a one-slide jump, which is
+  // the one case `scroll-snap-stop: always` lets through.
   await page
     .locator('[data-umami-event="admin-panel-product-image-add"]')
-    .setInputFiles([PRODUCT_PHOTO, SECOND_PRODUCT_PHOTO]);
+    .setInputFiles([PRODUCT_PHOTO, SECOND_PRODUCT_PHOTO, THIRD_PRODUCT_PHOTO]);
   await expect(
     page.locator('[data-umami-event="admin-panel-product-image-reorder"]'),
-  ).toHaveCount(2);
+  ).toHaveCount(3);
 
   // Every photo goes up in its own request after the product row saves, so the
   // stored keys arrive in gallery order — which is how the assertions below
@@ -185,10 +190,10 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
   // Two photos, so the strip appears — the first thing in the suite with more
   // than one, since `seed-catalog` re-runs `setImages` before every run and
   // resets every seeded gallery to its single image.
-  await expect.poll(() => uploadedKeys.length).toBe(2);
+  await expect.poll(() => uploadedKeys.length).toBe(3);
   await expect(
     page.locator('[data-umami-event="product-gallery-thumb-select"]'),
-  ).toHaveCount(2);
+  ).toHaveCount(3);
   // The later slides are numbered rather than repeating the title five times.
   await expect(
     page.getByAltText(`تصویر ${formatNumber(2)} از ${title}`),
@@ -205,9 +210,15 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
   const thumbs = page.locator(
     '[data-umami-event="product-gallery-thumb-select"]',
   );
-  await thumbs.nth(1).click();
-  await expect(thumbs.nth(1)).toHaveAttribute('aria-pressed', 'true');
+  // The LAST thumb, not the next one: two slides away, so the jump has to pass
+  // a snap point to arrive. `scroll-snap-stop: always` refuses to let any
+  // scroll pass one — programmatic or not, animated or not — so the gallery
+  // used to stop on the middle photo and stay there, and only a jump of two or
+  // more can see it.
+  await thumbs.nth(2).click();
+  await expect(thumbs.nth(2)).toHaveAttribute('aria-pressed', 'true');
   await expect(thumbs.nth(0)).toHaveAttribute('aria-pressed', 'false');
+  await expect(thumbs.nth(1)).toHaveAttribute('aria-pressed', 'false');
   // Both toggles were pressed, so «مناسب برای» names both animals — through
   // the one helper that wording comes from, never a literal.
   await page
@@ -232,7 +243,7 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
   const handles = page.locator(
     '[data-umami-event="admin-panel-product-image-reorder"]',
   );
-  await expect(handles).toHaveCount(2);
+  await expect(handles).toHaveCount(3);
   expect(await renderedKey(tileImage(page, 0))).toBe(uploadedKeys[0]);
   const from = await handles.nth(1).boundingBox();
   const onto = await handles.nth(0).boundingBox();
@@ -270,8 +281,14 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
     expect((await page.request.get(`/${key}`)).status()).toBe(200);
   }
 
-  // Now remove one, which is the only thing that deletes a file.
+  // Now remove, which is the only thing that deletes a file. Two of the three
+  // go, so the end state is still the single-photo product the assertions
+  // below are written against — and two dropped keys prove the deletion set is
+  // «every one the admin removed», not «the one».
   await page.goto(adminEditProductPath(productId));
+  await page
+    .getByRole('button', { name: `حذف عکس ${formatNumber(3)}` })
+    .click();
   await page
     .getByRole('button', { name: `حذف عکس ${formatNumber(2)}` })
     .click();
@@ -296,6 +313,7 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
   // Fetched rather than visited: the watch would count a 404 document as a
   // failed request, and the optimizer would serve either from its cache.
   expect((await page.request.get(`/${uploadedKeys[0]}`)).status()).toBe(404);
+  expect((await page.request.get(`/${uploadedKeys[2]}`)).status()).toBe(404);
   expect((await page.request.get(`/${uploadedKeys[1]}`)).status()).toBe(200);
 
   // Both shelves find it: the sub-category it is filed under, and the extra
