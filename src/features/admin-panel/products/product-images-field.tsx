@@ -111,6 +111,16 @@ export function ProductImagesField({
   const slotRefs = useRef<(HTMLLIElement | null)[]>([]);
   /** The cell rectangles as they were when the gesture started. */
   const slotRects = useRef<DOMRect[]>([]);
+  /** The add tile's input, the fallback when the last photo is removed. */
+  const addRef = useRef<HTMLInputElement | null>(null);
+  /**
+   * The tile index focus is owed after a removal, or null. Set by `removeAt`
+   * and spent by the effect below: the button that had focus unmounts with its
+   * tile, and a browser drops focus to `<body>` when that happens — which ends
+   * a keyboard admin's traversal at the top of the document with no
+   * announcement of what became of it.
+   */
+  const focusAfterRemoval = useRef<number | null>(null);
 
   // Revoking on unmount as well as on removal: without this the form leaks one
   // blob per pick for the life of the tab, which the single-slot picker did.
@@ -173,6 +183,23 @@ export function ProductImagesField({
     );
   };
 
+  // After the render that drops the tile: put focus on the tile that took its
+  // place, or on the new last tile when the removed one was at the end, or on
+  // the add control when nothing is left — the only thing still on screen that
+  // does anything. Runs on `photos` because that is the render it has to follow.
+  useEffect(() => {
+    const index = focusAfterRemoval.current;
+    if (index === null) return;
+    focusAfterRemoval.current = null;
+
+    const slot = slotRefs.current[index] ?? slotRefs.current[photos.length - 1];
+    const target =
+      slot?.querySelector<HTMLButtonElement>(
+        '[data-umami-event="admin-panel-product-image-remove"]',
+      ) ?? addRef.current;
+    target?.focus();
+  }, [photos]);
+
   const removeAt = (index: number) => {
     const photo = photos[index];
     if (photo.kind === 'pending') {
@@ -181,6 +208,7 @@ export function ProductImagesField({
     }
     onChange(photos.filter((_, position) => position !== index));
     setAnnouncement(removedMessage(index));
+    focusAfterRemoval.current = index;
   };
 
   /** Move a tile and say where it landed. Out-of-range targets are no-ops. */
@@ -324,6 +352,7 @@ export function ProductImagesField({
               <Plus size={18} aria-hidden="true" />
               {ADD_LABEL}
               <input
+                ref={addRef}
                 type="file"
                 multiple
                 accept={ACCEPTED_IMAGE_TYPES.join(',')}

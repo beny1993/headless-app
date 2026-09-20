@@ -156,6 +156,38 @@ describe('remove', () => {
     expect(handleLabels()).toEqual(['جابه‌جایی عکس اصلی', 'جابه‌جایی عکس ۲']);
   });
 
+  // The remove button unmounts with the tile it sits on, and a browser drops
+  // focus to `<body>` when the focused element goes — ending a keyboard
+  // admin's traversal at the top of the document, silently. QA saw exactly
+  // that; these three pin where focus goes instead.
+  it('moves focus to the tile that took the removed one’s place', () => {
+    show(3);
+
+    fireEvent.click(screen.getByRole('button', { name: 'حذف عکس ۲' }));
+
+    // The third photo has slid into the second slot and is now «عکس ۲».
+    expect(activeLabel()).toBe('حذف عکس ۲');
+  });
+
+  it('moves focus to the new last tile when the removed one was last', () => {
+    show(3);
+
+    fireEvent.click(screen.getByRole('button', { name: 'حذف عکس ۳' }));
+
+    // Nothing took its place, so focus falls back to the end of the list.
+    expect(activeLabel()).toBe('حذف عکس ۲');
+  });
+
+  it('moves focus to the add control when the last photo goes', () => {
+    show(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'حذف عکس اصلی' }));
+
+    // No tiles left: the add tile is the only thing on screen that still does
+    // anything, and its input is what carries focus.
+    expect(document.activeElement).toBe(fileInput());
+  });
+
   it('revokes a pending pick’s blob so the form does not leak one per pick', () => {
     render(<Harness initial={[]} />);
     fireEvent.change(fileInput(), { target: { files: [png('cat.png')] } });
