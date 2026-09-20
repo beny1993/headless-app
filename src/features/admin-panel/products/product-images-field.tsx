@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AlertCircle, GripHorizontal, Plus, X } from 'lucide-react';
 import { MAX_PRODUCT_IMAGES } from '@/lib/catalog/product-input';
 import { toPersianDigits } from '@/lib/format';
@@ -116,10 +116,15 @@ export function ProductImagesField({
    * they captured at `pointerdown`.
    */
   const latest = useRef({ photos, onChange });
-  // Written in an effect rather than during render: an effect commits before
-  // any pointer event can arrive, and writing a ref while rendering is exactly
-  // the thing `react-hooks/refs` refuses.
-  useEffect(() => {
+  // A layout effect, not a passive one. Passive effects are flushed in a
+  // scheduled task and Chrome dispatches input from a higher-priority queue, so
+  // a `pointermove` can land after the commit and before the write — leaving
+  // the live region naming the photo's old position, and the «already there»
+  // check comparing a fresh DOM index against a stale one. A layout effect
+  // runs synchronously inside the commit, where no input can interleave.
+  // `react-hooks/refs` is satisfied either way: the rule is about writing a
+  // ref *during render*, which this still does not do.
+  useLayoutEffect(() => {
     latest.current = { photos, onChange };
   });
   /** The add tile's input, the fallback when the last photo is removed. */
@@ -197,18 +202,22 @@ export function ProductImagesField({
     // wired through the file input's `aria-describedby`, which is read when
     // focus lands on the input — and the pick that fills the last slot takes
     // the add tile, input and all, off the page, leaving nothing to describe.
-    announce(
-      [taken.length > 0 ? addedMessage(taken.length) : '', ...refused]
-        .filter(Boolean)
-        .join(' '),
-    );
+    const said = [
+      taken.length > 0 ? addedMessage(taken.length) : '',
+      ...refused,
+    ]
+      .filter(Boolean)
+      .join(' ');
+    // An empty pick has nothing to say; announcing '' would leave the region
+    // holding a lone space on odd parity.
+    if (said) announce(said);
   };
 
   // After the render that drops the tile: put focus on the tile that took its
   // place, or on the new last tile when the removed one was at the end, or on
   // the add control when nothing is left — the only thing still on screen that
   // does anything. Runs on `photos` because that is the render it has to follow.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const index = focusAfterRemoval.current;
     if (index === null) return;
     focusAfterRemoval.current = null;
@@ -223,7 +232,7 @@ export function ProductImagesField({
   // The keyboard twin of the effect above. `insertBefore` moves the focused
   // handle, which drops focus to `<body>`, so the handle that was operated has
   // to be given focus again at its new position.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const index = focusHandleAt.current;
     if (index === null) return;
     focusHandleAt.current = null;
@@ -284,10 +293,27 @@ export function ProductImagesField({
   };
 
   /**
-   * End the gesture. Takes no event: it is called from window listeners, and
-   * whatever ended it, the drag is over.
+   * End the gesture — but only for the contact that started it. A foreign
+   * release (a resting thumb lifting, a stray tap elsewhere on the page) also
+   * reaches these window listeners, and ending on one killed a drag whose
+   * finger was still down. The multi-touch guard below refuses a second
+   * *gesture*; this is the other half, refusing a second *release*.
+   *
+   * `blur` passes no pointer and ends it unconditionally, which is the point:
+   * capture is disposable here by design, so an alt-tab mid-drag would
+   * otherwise leave the gesture running with no finger — the tile dimmed, the
+   * guard refusing every new drag, and the photo following the bare cursor on
+   * return.
    */
-  const endDrag = () => {
+  const endDrag = (event?: Event) => {
+    const drag = dragging.current;
+    if (
+      drag &&
+      event instanceof PointerEvent &&
+      event.pointerId !== drag.pointerId
+    ) {
+      return;
+    }
     dragListeners.current?.abort();
     dragListeners.current = null;
     dragging.current = null;
@@ -308,9 +334,9 @@ export function ProductImagesField({
    * every gate was green.
    *
    * Window listeners are immune, being nowhere near the node that moves.
-   * Capture is still requested: it keeps the gesture out of other elements'
-   * hover and selection behaviour while it lasts. Nothing depends on it
-   * surviving.
+   * Capture is still requested, but it is dropped at the first reorder — that
+   * is the premise of this whole arrangement — so it protects nothing beyond
+   * the first cell and nothing here depends on it.
    */
   const onHandlePointerDown = (event: React.PointerEvent, index: number) => {
     // Left button or a touch/pen contact only — a right-click must not start a
@@ -333,6 +359,7 @@ export function ProductImagesField({
     window.addEventListener('pointermove', onWindowPointerMove, { signal });
     window.addEventListener('pointerup', endDrag, { signal });
     window.addEventListener('pointercancel', endDrag, { signal });
+    window.addEventListener('blur', endDrag, { signal });
   };
 
   const onWindowPointerMove = (event: PointerEvent) => {
@@ -349,9 +376,14 @@ export function ProductImagesField({
 
     // Read per move rather than snapshotted at `pointerdown`: a snapshot is
     // viewport-relative, so a mid-drag scroll or an `sm:` breakpoint change
-    // left every stored rect describing a cell that had moved. Six cells is a
-    // trivial read. A `null` keeps its index here — compacting the array with
-    // `filter` shifted every later rect one tile along.
+    // left every stored rect describing a cell that had moved. At most
+    // `MAX_PRODUCT_IMAGES` cells, so the read is trivial.
+    //
+    // A `null` keeps its index rather than being compacted away by `filter`.
+    // That is hardening, not a fixed bug: React detaches every ref in the
+    // mutation phase before attaching any in the layout phase, so no slot in
+    // range is ever null during a move. It costs nothing and removes the
+    // question.
     const rects = slotRefs.current
       .slice(0, current.length)
       .map((slot) => slot?.getBoundingClientRect() ?? null);
@@ -395,6 +427,10 @@ export function ProductImagesField({
               className={`bg-secondary relative aspect-square overflow-hidden rounded-xl ${
                 index === 0 ? 'ring-accent-strong ring-2 ring-offset-2' : ''
               } ${photo.id === draggingId ? 'opacity-60' : ''}`}
+              // A hook the spec can assert on. `toHaveCount(0)` against the
+              // Tailwind class went green the moment the class was renamed or
+              // the opacity tuned, which is no pin at all.
+              data-photo-dragging={photo.id === draggingId ? '' : undefined}
             >
               <Image
                 src={previewOf(photo)}
@@ -503,13 +539,17 @@ export function ProductImagesField({
         </div>
       )}
 
-      <p aria-live="polite" className="sr-only">
-        {/* The trailing run makes a repeated sentence a different string, which
-            is what a live region needs in order to speak at all. Constructed
-            from an escape rather than typed, per the repo's rule on invisible
-            characters, and alternating rather than growing. */}
-        {announcement.text}
-        {'\u00A0'.repeat(announcement.seq % 2)}
+      {/* One expression, so the toggle is a `characterData` change on the node
+          holding the sentence. Two adjacent children would be two text nodes,
+          and React would then add or *remove* the second — an addition whose
+          whole content is a space, or a removal, which the region's default
+          `aria-relevant` ("additions text") excludes outright. Either way the
+          sentence itself would not be in the changed subtree, so a repeat
+          announced nothing, which is the defect the counter exists to cure.
+          The space is constructed from an escape, per the repo's rule on
+          invisible characters. */}
+      <p aria-live="polite" aria-atomic="true" className="sr-only">
+        {announcement.text + '\u00A0'.repeat(announcement.seq % 2)}
       </p>
     </div>
   );

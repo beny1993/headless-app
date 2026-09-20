@@ -290,8 +290,10 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
   await expect
     .poll(() => renderedKey(tileImage(page, 2)))
     .toBe(uploadedKeys[1]);
-  // And the gesture really ended — a tile left mid-drag keeps its drag opacity.
-  await expect(page.locator('.opacity-60')).toHaveCount(0);
+  // And the gesture really ended — a tile left mid-drag stays marked. Asserted
+  // on the attribute, not the Tailwind class: a count of zero against a
+  // styling class passes the day the class is renamed.
+  await expect(page.locator('[data-photo-dragging]')).toHaveCount(0);
 
   // The keyboard path, which had no E2E coverage at all. Moving the focused
   // handle also moves the element holding focus, and a browser drops focus to

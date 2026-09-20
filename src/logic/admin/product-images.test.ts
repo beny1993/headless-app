@@ -58,9 +58,14 @@ const productWith = (...keys: string[]): ProductWithImages => {
 const deletedKeys = () => remove.mock.calls.map(([key]) => key);
 
 /**
- * What the gallery held before the write under test, so the `setImages` fake
- * can report a delete set the way the real one does — from the rows it
- * actually removed, not from the caller's snapshot.
+ * What the gallery held in the *database* before the write under test.
+ *
+ * `productWith` seeds this from the snapshot it builds, which is the ordinary
+ * case — but a test can widen it afterwards to say «the row set had moved on
+ * since the caller read it», which is the whole point of the write reporting
+ * its own deletions. With the two kept identical in every test, the fake's
+ * delete set is a snapshot diff and a snapshot diff in the code under test
+ * would pass.
  */
 let previousKeys: string[] = [];
 
@@ -239,6 +244,21 @@ describe('setProductImageOrder', () => {
     // the local driver would refuse it anyway — the filter is what makes that
     // refusal never fire rather than fire and be swallowed.
     expect(deletedKeys()).toEqual([]);
+  });
+
+  it('deletes a photo that arrived after the caller read the product', async () => {
+    // The race this module was rewritten for. The route read `[a]`; an upload
+    // appended `raced` and committed; the admin's save then replaces the list
+    // with `[a]`, which deletes BOTH rows. A delete set diffed from the
+    // caller's snapshot would not contain `raced`, so its file would stay on
+    // disk with no row — and this loop, which works from the rows, is the only
+    // thing that would ever have collected it.
+    const product = productWith('uploads/a.jpg');
+    previousKeys = ['uploads/a.jpg', 'uploads/raced.jpg'];
+
+    await setProductImageOrder(product, ['uploads/a.jpg']);
+
+    expect(deletedKeys()).toEqual(['uploads/raced.jpg']);
   });
 
   it('survives a driver that cannot delete', async () => {

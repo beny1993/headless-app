@@ -145,25 +145,50 @@ async function uploadImage(productId: string, file: File): Promise<string> {
  */
 const photosFailedMessage = (failed: number, reason?: string) =>
   `محصول ذخیره شد اما ${toPersianDigits(failed)} عکس بارگذاری نشد. ${
-    reason ?? 'از فهرست محصولات دوباره تلاش کن.'
-  }`;
-
-/** The photos went up; the order they were meant to be in did not. */
-const orderFailedMessage = (reason?: string) =>
-  `محصول ذخیره شد اما ترتیب عکس‌ها ذخیره نشد. ${
-    reason ?? 'از فهرست محصولات دوباره تلاش کن.'
+    reason ?? RETRY_ADVICE
   }`;
 
 /**
- * The server's sentence for a refusal, when it sent one worth showing.
+ * The photos went up; the order they were meant to be in did not.
  *
- * Only an `ApiRequestError` qualifies. A dropped connection also arrives as an
- * `Error`, and its message is a technical English string that has no business
- * being pasted into Persian admin copy — those keep the generic advice.
+ * No server sentence here, deliberately. The refusal this write actually
+ * produces is «صفحه را تازه کن» — refresh the page — which is sound advice
+ * for the form and useless by the time it is read, because the save has
+ * already navigated to the list and the stale keys it refers to lived in a
+ * form that no longer exists. An upload refusal is about the file and travels
+ * fine; this one is about page state that is gone.
+ */
+const orderFailedMessage = () =>
+  `محصول ذخیره شد اما ترتیب عکس‌ها ذخیره نشد. ${RETRY_ADVICE}`;
+
+/**
+ * Where the admin actually is when they read these: the products list. So the
+ * instruction is one they can follow from there — reopening the product
+ * refetches the gallery the server really holds, which is the step that makes
+ * a second attempt work rather than repeat.
+ */
+const RETRY_ADVICE = 'محصول را دوباره باز کن و ذخیره کن.';
+
+/**
+ * The server's sentence for a refusal, when it sent one worth showing an
+ * admin. Two filters, both needed.
+ *
+ * **`message`, never `errors`.** `create-router.ts` splits them deliberately:
+ * `errors` carries field paths and Zod's own text «for whoever is reading the
+ * response in a console, and it stays English like the rest of the
+ * identifiers». Preferring it put «objectKeys: …» into Persian admin copy on
+ * every schema refusal — and that path is reachable, because a legacy key the
+ * tightened `imageKeySchema` now rejects fails the body schema before the
+ * handler's own Persian sentence runs.
+ *
+ * **4xx only.** A 5xx `message` is the literal `Internal server error` in
+ * production and a raw driver string outside it, and a non-JSON body yields
+ * `api-client`'s English default. Those keep the generic advice, which is at
+ * least in the right language and tells the admin something they can act on.
  */
 const reasonFrom = (error: unknown): string | undefined =>
-  error instanceof ApiRequestError
-    ? (error.errors?.[0] ?? error.message)
+  error instanceof ApiRequestError && error.status >= 400 && error.status < 500
+    ? error.message
     : undefined;
 
 /** Same keys, same order. */
@@ -366,16 +391,14 @@ export function ProductForm({
         .filter((photo) => photo.kind === 'saved')
         .map((photo) => photo.objectKey);
       let orderFailed = false;
-      let orderReason: string | undefined;
       if (!sameOrder(server, kept)) {
         try {
           await putData(apiAdminProductImagesPath(saved.id), {
             objectKeys: kept,
           });
           server = kept;
-        } catch (error) {
+        } catch {
           orderFailed = true;
-          orderReason = reasonFrom(error);
         }
       }
 
@@ -408,9 +431,8 @@ export function ProductForm({
       if (!sameOrder([...server, ...uploaded], objectKeys)) {
         try {
           await putData(apiAdminProductImagesPath(saved.id), { objectKeys });
-        } catch (error) {
+        } catch {
           orderFailed = true;
-          orderReason = reasonFrom(error);
         }
       }
 
@@ -420,7 +442,7 @@ export function ProductForm({
       // to do next — so each gets its own line rather than the louder one
       // hiding the other.
       if (failed > 0) toast.warning(photosFailedMessage(failed, uploadReason));
-      if (orderFailed) toast.warning(orderFailedMessage(orderReason));
+      if (orderFailed) toast.warning(orderFailedMessage());
     } catch (error) {
       setBusy(false);
       if (

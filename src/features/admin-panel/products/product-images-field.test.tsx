@@ -22,6 +22,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_PRODUCT_IMAGES } from '@/lib/catalog/product-input';
+import { IMAGE_TYPE_ERROR } from '@/lib/storage/image-upload';
 import { ProductImagesField, type ProductPhoto } from './product-images-field';
 
 afterEach(() => {
@@ -82,6 +83,13 @@ const previewOrder = () =>
 const announced = () =>
   document.querySelector('[aria-live="polite"]')?.textContent ?? '';
 
+// These pin the reorder itself — which photo moves, what is announced, and
+// that the ends refuse to move past themselves. They do NOT pin the focus
+// restoration: happy-dom does not drop focus on a keyed reorder, so the two
+// focus assertions below were green before `focusHandleAt` existed. The
+// browser behaviour they look like they cover is pinned in
+// `e2e/admin-catalog.spec.ts`, which presses the arrows in real Chrome and
+// asserts which handle holds focus afterwards.
 describe('keyboard reorder', () => {
   it('moves a photo toward the start on ArrowRight and keeps its handle focused', () => {
     show(3);
@@ -269,11 +277,17 @@ const drag = (from: number, to: number, pointerId = 1) => {
 };
 
 describe('pointer drag', () => {
-  // The direction that used to die after one cell. React reorders a keyed list
-  // with `insertBefore`, which drops pointer capture on the moved element and
-  // fires neither `pointerup` nor `pointercancel` — so a handle-bound gesture
-  // stopped receiving moves the moment it displaced the dragged tile. Only the
-  // opposite direction worked, and that is the one the E2E spec dragged.
+  // What these can and cannot see. The defect that moved this gesture onto
+  // `window` is browser behaviour — React's `insertBefore` dropping pointer
+  // capture and firing neither `pointerup` nor `pointercancel` — and happy-dom
+  // reproduces none of it, so none of these would fail against the old
+  // handle-bound version. The pin for that is `e2e/admin-catalog.spec.ts`,
+  // which drags in both directions in real Chrome.
+  //
+  // What they do pin is everything the rewrite owns in JS: which photo moves,
+  // that one gesture survives several cells, that a foreign contact cannot
+  // start or end it, and that a released drag stops listening. Those fail
+  // against their own bugs.
   it('drags a photo toward the end of the list', () => {
     show(3);
 
@@ -336,6 +350,47 @@ describe('pointer drag', () => {
     fireEvent.pointerDown(handles[2], { button: 0, pointerId: 2 });
     pointer('pointermove', xOf(0), 2);
     pointer('pointerup', xOf(0), 2);
+
+    expect(previewOrder()).toEqual([
+      'uploads/photo-1.jpg',
+      'uploads/photo-2.jpg',
+      'uploads/photo-3.jpg',
+    ]);
+  });
+
+  it('ignores a release from a finger that did not start the drag', () => {
+    show(3);
+    const handle = screen.getAllByRole('button', { name: /^جابه‌جایی/ })[0];
+    layOutTiles();
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 1 });
+
+    // A resting thumb lifting, or a stray tap elsewhere on the page. The
+    // gesture must survive it — ending here killed a drag whose finger was
+    // still down, and left the photo wherever the last committed move put it.
+    pointer('pointerup', xOf(0), 2);
+    pointer('pointermove', xOf(2), 1);
+    pointer('pointerup', xOf(2), 1);
+
+    expect(previewOrder()).toEqual([
+      'uploads/photo-2.jpg',
+      'uploads/photo-3.jpg',
+      'uploads/photo-1.jpg',
+    ]);
+  });
+
+  it('ends the drag when the window loses focus', () => {
+    show(3);
+    const handle = screen.getAllByRole('button', { name: /^جابه‌جایی/ })[0];
+    layOutTiles();
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 1 });
+
+    // Capture is disposable here by design, so a blur is the only thing left
+    // that can end an alt-tabbed drag. Without it the gesture runs on with no
+    // finger: the tile stays dimmed and every later drag is refused.
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
+    pointer('pointermove', xOf(2), 1);
 
     expect(previewOrder()).toEqual([
       'uploads/photo-1.jpg',
@@ -429,9 +484,7 @@ describe('adding', () => {
     });
 
     expect(
-      screen.getByText(
-        'فایل «cat.gif» اضافه نشد: فقط تصویر JPEG، PNG یا WEBP.',
-      ),
+      screen.getByText(`فایل «cat.gif» اضافه نشد: ${IMAGE_TYPE_ERROR}`),
     ).toBeTruthy();
     expect(handleLabels()).toEqual(['جابه‌جایی عکس اصلی']);
     expect(fileInput().getAttribute('aria-invalid')).toBe('true');

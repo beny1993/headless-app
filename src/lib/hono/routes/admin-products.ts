@@ -40,7 +40,6 @@ import {
 import { readImageUpload } from '../image-upload';
 import {
   apiError,
-  registerRef,
   apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
@@ -416,12 +415,9 @@ export const productImageUploadHandler = async (
  * zod-to-openapi resolves a duplicate ref by keeping the first: the document
  * silently described this response without its `url`.
  */
-const StoredImageSchema = registerRef(
-  ProductImageSchema.safeExtend({
-    url: z.string(),
-  }),
-  'StoredProductImage',
-);
+const StoredImageSchema = ProductImageSchema.safeExtend({
+  url: z.string(),
+}).openapi('StoredProductImage');
 
 /**
  * What a save sends back once its uploads are done: the product's photos, in the

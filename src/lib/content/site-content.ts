@@ -9,7 +9,7 @@
 // a client component, so this stays plain zod, exactly like `product-input.ts`.
 // It leans on three already-client-safe modules: `boundedText` (the trimmed,
 // length-capped, NUL-refusing string used across every input contract), the
-// upload key shape (`UPLOAD_KEY_PREFIX` / `UPLOAD_FILENAME_PATTERN`) — so the
+// upload key shape, which `@/lib/storage/image-upload` owns — so the
 // "what is a valid image key" rule is derived from the uploader, not restated —
 // and `linkSchema` (`link.ts`), the one definition of a saved destination.
 import { z } from 'zod';

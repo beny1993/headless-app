@@ -116,7 +116,12 @@ export function ProductGallery({
     for (const slide of slideRefs.current) {
       if (slide) observer.observe(slide);
     }
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      // A jump in flight when the page navigates away would otherwise hold a
+      // detached track through its timer for the rest of the settle window.
+      restore.current?.();
+    };
     // Keyed on identity, not on `length`: swapping three photos for three
     // others changes every `<li>` key, so React destroys the observed nodes
     // and mounts new ones. Depending on the count alone would leave the
@@ -158,12 +163,15 @@ export function ProductGallery({
       track.removeEventListener('scrollend', resume);
       restore.current = null;
       track.style.scrollSnapType = '';
-      // Restoring the property on a track already at rest does NOT re-snap it,
-      // so a gesture that came to rest while snapping was off would stay
-      // parked between two photos — and at that split no slide clears
-      // `VISIBLE_ENOUGH`, so the strip would keep naming a photo that is not
-      // the one showing. A scroll *operation* does consult the snap points,
-      // and scrolling to where we already are is the cheapest one.
+      // Belt and braces for engines this was not measured on. In Chrome,
+      // restoring the property is enough on its own: parked mid-slide with
+      // snapping off, re-enabling it re-snapped in every run, LTR and RTL,
+      // smooth and instant — and this `scrollTo` changed nothing, because a
+      // zero-delta scroll fires no events at all. It stays because WebKit is
+      // untested here and iOS Safari is a target, and because the cost of
+      // being wrong is a gallery parked between two photos where no slide
+      // clears `VISIBLE_ENOUGH`, leaving the strip naming a photo that is not
+      // on screen.
       track.scrollTo({ left: track.scrollLeft });
     };
     restore.current = resume;
@@ -197,9 +205,11 @@ export function ProductGallery({
         ref={trackRef}
         aria-label="گالری تصاویر محصول"
         onPointerDown={onTrackPointerDown}
-        // `scrollbar-width` and the webkit pseudo-element, the pair the home
-        // page's snap scroller already uses: no `.scrollbar-hide` class exists
-        // in this project.
+        // `scrollbar-width` plus the webkit pseudo-element; there is no
+        // `.scrollbar-hide` class in this project. The home page's snap
+        // scroller hides its own with `scrollbar-width` alone, which still
+        // paints a bar on pre-121 Chromium and on Safari — this is the fuller
+        // pair, not a copy of that one.
         className="bg-secondary flex snap-x snap-mandatory [scrollbar-width:none] overflow-x-auto overscroll-x-contain scroll-smooth rounded-3xl [&::-webkit-scrollbar]:hidden"
         // Named for what actually fires. `data-umami-event` auto-tracks
         // clicks; it has no scroll or swipe binding, so a name promising a
@@ -231,11 +241,11 @@ export function ProductGallery({
                   : `تصویر ${formatNumber(index + 1)} از ${title}`
               }
               fill
-              // `preload`, not `priority`: the latter is deprecated in Next 16
-              // and pairing it with `loading` is called out there as the case
-              // not to use preload for. The two together throw outright, so a
-              // half-migration later would be a runtime error on the
-              // storefront's most-visited page.
+              // `preload`, not `priority`: the latter is deprecated in Next 16.
+              // Nothing throws either way — the throws are `preload` or
+              // `priority` paired with `loading="lazy"`, and the two of them
+              // together — so this is a deprecation followed, not a defect
+              // escaped.
               preload={index === 0}
               // Not lazy: a slide clipped by the `overflow-x` container does
               // not intersect the expanded lazy-load viewport, so `lazy` would

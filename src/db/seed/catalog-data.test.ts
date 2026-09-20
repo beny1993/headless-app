@@ -3,6 +3,7 @@ import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MAX_PRODUCT_IMAGES } from '@/lib/catalog/product-input';
+import { imageKeySchema } from '@/lib/storage/image-upload';
 import {
   SEED_CATEGORIES,
   SEED_PRODUCTS,
@@ -136,7 +137,10 @@ describe('catalog seed data', () => {
       (product) => product.imageKeys.length > 1,
     );
 
-    expect(withGallery.length).toBeGreaterThanOrEqual(1);
+    // Exactly one, not «at least one»: `e2e/admin-catalog.spec.ts` states that
+    // the only galleries in the suite are its own product and this one, and
+    // relaxing this left that sentence with nothing holding it up.
+    expect(withGallery).toHaveLength(1);
     // Three, not two: with two photos the only clickable thumbnail is the
     // adjacent one, and a one-slide jump is the single case that cannot catch
     // `scroll-snap-stop: always` refusing to pass a snap point.
@@ -155,6 +159,14 @@ describe('catalog seed data', () => {
     for (const product of SEED_PRODUCTS) {
       expect(product.imageKeys.length).toBeLessThanOrEqual(MAX_PRODUCT_IMAGES);
       expect(new Set(product.imageKeys).size).toBe(product.imageKeys.length);
+      // Shape as well as count. The gallery PUT refuses anything outside
+      // `imageKeySchema` while the seed writes through `setImages` without
+      // passing zod — so a key like `products/cat_dry_food.jpg` would store
+      // fine and then make that product's gallery unsaveable from the admin
+      // form, which always sends the whole list.
+      for (const key of product.imageKeys) {
+        expect(imageKeySchema.safeParse(key).success, key).toBe(true);
+      }
     }
   });
 

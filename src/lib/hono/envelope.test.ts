@@ -5,7 +5,6 @@ import {
   apiError,
   apiSuccess,
   formatZodIssues,
-  registerRef,
   type ApiResponse,
   unwrap,
   unwrapOr,
@@ -56,26 +55,5 @@ describe('envelope', () => {
       const [issue] = formatZodIssues(result.error);
       expect(issue).toMatch(/^email: /);
     }
-  });
-});
-
-describe('registerRef', () => {
-  it('refuses a component name that is already taken', () => {
-    const name = `TestOnly${Math.random().toString(36).slice(2)}`;
-    registerRef(z.object({ a: z.string() }), name);
-
-    // The second registration is the one zod-to-openapi drops silently, so the
-    // document would keep the first shape and describe the second's routes
-    // with it. Nothing about the output is malformed, which is why no gate
-    // could ever have caught this downstream.
-    expect(() => registerRef(z.object({ b: z.number() }), name)).toThrow(
-      /registered twice/,
-    );
-  });
-
-  it('lets a name through once', () => {
-    const name = `TestOnly${Math.random().toString(36).slice(2)}`;
-
-    expect(() => registerRef(z.object({ a: z.string() }), name)).not.toThrow();
   });
 });

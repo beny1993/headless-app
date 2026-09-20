@@ -10,11 +10,10 @@
 // key from that sniffed type — so a `.php` renamed to `.jpg`, or a `text/html`
 // with an image extension, is rejected, and the key we persist can never carry an
 // attacker-chosen extension.
+import { z } from 'zod';
+import { formatNumber } from '@/lib/format';
 
 /** The image content types the shop accepts, mapped to the extension we store. */
-import { z } from 'zod';
-import { toPersianDigits } from '@/lib/format';
-
 export const IMAGE_EXTENSIONS = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -127,8 +126,31 @@ export const imageKeySchema = z
     { error: 'کلید تصویر نامعتبر است.' },
   );
 
-/** Megabytes, for the copy below — the cap is the single source of both. */
-const MAX_UPLOAD_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
+/**
+ * Megabytes for the copy below, to one decimal place. Rounded because the
+ * division is exact only for a power-of-two cap: a 5,000,000-byte ceiling
+ * would otherwise print «۴.۷۶۸۳۷۱۵۸۲۰۳۱۲۵ مگابایت» in the field an admin is
+ * reading. Through `formatNumber`, not `toPersianDigits`, because a fraction
+ * needs the fa-IR decimal separator — `toPersianDigits` would leave a Latin
+ * full stop on a screen where every other number uses «٫».
+ */
+const MAX_UPLOAD_MB = formatNumber(
+  Math.round((MAX_UPLOAD_BYTES / 1024 / 1024) * 10) / 10,
+);
+
+/**
+ * The accepted formats as the admin reads them, derived from the one list that
+ * decides them. Typing them out meant two copies three lines apart that
+ * already disagreed on JPG versus JPEG, and that would both go on naming three
+ * formats the day a fourth was accepted.
+ */
+const ACCEPTED_LABELS = ((labels: string[]) =>
+  labels.length > 1
+    ? // Persian lists the last item after «یا», not another comma.
+      `${labels.slice(0, -1).join('، ')} یا ${labels[labels.length - 1]}`
+    : (labels[0] ?? ''))([
+  ...new Set(Object.values(IMAGE_EXTENSIONS).map((ext) => ext.toUpperCase())),
+]);
 
 /**
  * The accept-and-size hint every image field shows, and the two refusals.
@@ -136,6 +158,6 @@ const MAX_UPLOAD_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
  * on promising two megabytes after the cap moved, in the very field the admin
  * was looking at while a larger file uploaded fine.
  */
-export const IMAGE_FORMAT_HINT = `JPG، PNG یا WEBP، تا ${toPersianDigits(MAX_UPLOAD_MB)} مگابایت`;
-export const IMAGE_TYPE_ERROR = 'فقط تصویر JPEG، PNG یا WEBP.';
-export const IMAGE_SIZE_ERROR = `حجم تصویر باید حداکثر ${toPersianDigits(MAX_UPLOAD_MB)} مگابایت باشد.`;
+export const IMAGE_FORMAT_HINT = `${ACCEPTED_LABELS}، تا ${MAX_UPLOAD_MB} مگابایت`;
+export const IMAGE_TYPE_ERROR = `فقط تصویر ${ACCEPTED_LABELS}.`;
+export const IMAGE_SIZE_ERROR = `حجم تصویر باید حداکثر ${MAX_UPLOAD_MB} مگابایت باشد.`;

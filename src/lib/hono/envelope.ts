@@ -71,39 +71,10 @@ export const apiErrorSchema = z
   .openapi('ApiErrorResponse');
 
 /** Wrap a data schema in the success envelope for OpenAPI response definitions. */
-/**
- * Every OpenAPI component name registered so far, so a second registration
- * under a name already taken fails loudly at import.
- *
- * zod-to-openapi keeps the **first** schema it saw for a duplicate name and
- * drops the second without a word: the `$ref` still resolves, so the document
- * is valid and simply describes the wrong shape. That shipped once — a
- * hand-written response registered under a name the shared component already
- * held, and the reference then documented two endpoints without a field they
- * return. No gate could see it, because nothing about the output is malformed.
- *
- * Catching it here rather than asserting shapes per component covers every
- * name, present and future, at the one place they are minted.
- */
-const registeredRefs = new Set<string>();
-
-export const registerRef = <T extends z.ZodType>(
-  schema: T,
-  refName: string,
-) => {
-  if (registeredRefs.has(refName)) {
-    throw new Error(
-      `OpenAPI component "${refName}" is registered twice. The second registration would be silently dropped and its routes documented with the first one's shape.`,
-    );
-  }
-  registeredRefs.add(refName);
-  return schema.openapi(refName);
-};
-
 export const apiSuccessSchema = <T extends z.ZodType>(
   data: T,
   refName?: string,
 ) => {
   const schema = z.object({ status: z.literal('success'), data });
-  return refName ? registerRef(schema, refName) : schema;
+  return refName ? schema.openapi(refName) : schema;
 };

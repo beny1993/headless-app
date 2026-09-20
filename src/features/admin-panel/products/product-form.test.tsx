@@ -171,6 +171,71 @@ describe('product save failures', () => {
     );
   });
 
+  it.each([
+    ['a 500 the server could not explain', 500, 'Internal server error'],
+    ['a refusal with no Persian sentence', 503, 'Service Unavailable'],
+  ])('keeps the generic advice for %s', async (_name, status, message) => {
+    // The hole the earlier test could not see: these arrive as a real
+    // `ApiRequestError`, so «it came from the server» is not enough to put a
+    // sentence in front of an admin. Only a 4xx carries one written for them.
+    api.putData.mockResolvedValue({ id: EDIT_PRODUCT.id });
+    vi.stubGlobal('fetch', refusingUpload(message, status));
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+    renderEdit();
+
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['image'], 'cat.png', { type: 'image/png' })],
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        expect.stringContaining('محصول را دوباره باز کن و ذخیره کن.'),
+      ),
+    );
+    expect(toast.warning).not.toHaveBeenCalledWith(
+      expect.stringContaining(message),
+    );
+  });
+
+  it('never puts the console-facing errors field in front of an admin', async () => {
+    // `errors` is field paths and Zod's English text by documented contract.
+    // A schema refusal sends both; only `message` is written for a person.
+    api.putData.mockResolvedValue({ id: EDIT_PRODUCT.id });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          status: 'error',
+          message: PRODUCT_MESSAGES.images,
+          errors: ['objectKeys: Invalid input'],
+        }),
+      }),
+    );
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+    renderEdit();
+
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['image'], 'cat.png', { type: 'image/png' })],
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        expect.stringContaining(PRODUCT_MESSAGES.images),
+      ),
+    );
+    expect(toast.warning).not.toHaveBeenCalledWith(
+      expect.stringContaining('objectKeys'),
+    );
+  });
+
   it('keeps the generic advice when the connection simply died', async () => {
     // A dropped fetch is an `Error` whose message is technical English. It has
     // no business in Persian admin copy.
@@ -188,7 +253,7 @@ describe('product save failures', () => {
 
     await waitFor(() =>
       expect(toast.warning).toHaveBeenCalledWith(
-        expect.stringContaining('از فهرست محصولات دوباره تلاش کن.'),
+        expect.stringContaining('محصول را دوباره باز کن و ذخیره کن.'),
       ),
     );
     expect(toast.warning).not.toHaveBeenCalledWith(
@@ -265,7 +330,7 @@ describe('product save failures', () => {
     // Counted, since a save can now carry several photos and lose only some.
     await waitFor(() =>
       expect(toast.warning).toHaveBeenCalledWith(
-        `محصول ذخیره شد اما ${toPersianDigits(1)} عکس بارگذاری نشد. از فهرست محصولات دوباره تلاش کن.`,
+        `محصول ذخیره شد اما ${toPersianDigits(1)} عکس بارگذاری نشد. محصول را دوباره باز کن و ذخیره کن.`,
       ),
     );
     expect(router.push).toHaveBeenCalledWith(PROTECTED_PATHS.PRODUCTS);

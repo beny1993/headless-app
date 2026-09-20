@@ -135,9 +135,11 @@ describe('hono app', () => {
   // The general net for the same bug class. A duplicate name leaves nothing to
   // find in the output — the `$ref` resolves, the document is valid, it simply
   // describes the wrong shape — so the only place to catch one is where names
-  // are minted. `registerRef` refuses a repeat among its own callers; this
-  // also covers the direct `.openapi('Name')` registrations, and the pair of
-  // the two is what the original defect actually was.
+  // are minted — and this is the only guard, deliberately. An import-time
+  // throw was tried and removed: it duplicated this check while adding a way
+  // for a dev-server module reload to take every `/api` route down with a
+  // message naming the wrong cause. A test that fails the build is the right
+  // blast radius for a naming mistake.
   it('mints every OpenAPI component name exactly once', async () => {
     const { readdir, readFile } = await import('node:fs/promises');
     const { join } = await import('node:path');
@@ -156,14 +158,14 @@ describe('hono app', () => {
     const seen = new Map<string, string[]>();
     for (const file of files) {
       const source = await readFile(file, 'utf8');
-      // `.openapi('X')` is a chained call and matches directly. The helper
-      // calls need the argument list walked, because their first argument can
-      // nest parens several levels deep — an earlier version of this scan
-      // regexed for it and silently matched nothing, which let the very
-      // collision it guards against pass.
+      // `.openapi('X')` is a chained call and matches directly.
+      // `apiSuccessSchema(schema, 'X')` needs its argument list walked,
+      // because the first argument can nest parens several levels deep — an
+      // earlier version of this scan regexed for it, silently matched nothing,
+      // and let the very collision it guards against pass.
       const helperNames = (src: string): string[] => {
         const found: string[] = [];
-        const call = /(?:apiSuccessSchema|registerRef)\(/g;
+        const call = /apiSuccessSchema\(/g;
         let match = call.exec(src);
         while (match) {
           let depth = 1;
