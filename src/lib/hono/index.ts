@@ -39,6 +39,8 @@ import {
   productCreateRoute,
   productDeleteHandler,
   productDeleteRoute,
+  productImagesOrderHandler,
+  productImagesOrderRoute,
   productImageUploadHandler,
   productUpdateHandler,
   productUpdateRoute,
@@ -229,6 +231,9 @@ admin.openapi(productCreateRoute, productCreateHandler);
 admin.openapi(productUpdateRoute, productUpdateHandler);
 admin.openapi(productDeleteRoute, productDeleteHandler);
 admin.post('/admin/products/:id/images', productImageUploadHandler);
+// The gallery order — a JSON body on the same path, so the `bodyLimit` above
+// covers it too (harmlessly: five keys are nowhere near the image ceiling).
+admin.openapi(productImagesOrderRoute, productImagesOrderHandler);
 // Admin order management (`Story - Admin Orders and Dashboard`): read one order
 // (the admin projection) and move it through the state machine. The `/admin/*`
 // wildcard guard mounted above already covers these — no new mount needed.

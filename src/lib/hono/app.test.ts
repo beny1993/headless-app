@@ -68,6 +68,138 @@ describe('hono app', () => {
     ]);
   });
 
+  // Nothing in the six gates ever fetched this document until these. A
+  // hand-written response schema was once registered under `ProductImage`, a
+  // name the shared component already held; zod-to-openapi keeps the FIRST
+  // schema it saw for a duplicate name and drops the second without a word, so
+  // the reference described a gallery write without the `url` it returns while
+  // every gate stayed green.
+  //
+  // A duplicate name leaves no trace in the output — the `$ref` still resolves
+  // — so the guard is the source scan below. What these two check is the
+  // document itself: that every `$ref` in it resolves, and that the two
+  // deliberately-different image shapes are still two.
+  it('leaves no $ref in the document pointing at a component that is not there', async () => {
+    const response = await app.request(API_PATHS.DOC);
+    const doc = (await response.json()) as Record<string, unknown>;
+
+    const defined = new Set(
+      Object.keys(
+        ((doc.components as { schemas?: Record<string, unknown> })?.schemas ??
+          {}) as Record<string, unknown>,
+      ),
+    );
+
+    const refs: string[] = [];
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) return node.forEach(walk);
+      if (!node || typeof node !== 'object') return;
+      for (const [key, value] of Object.entries(node)) {
+        if (key === '$ref' && typeof value === 'string') refs.push(value);
+        else walk(value);
+      }
+    };
+    // The whole document, not just `paths`: a registered schema emits its
+    // `$ref` nested inside `components.schemas`, so every image ref in this
+    // API lives there and a walk of `paths` alone never visits one.
+    walk(doc);
+
+    expect(refs.length).toBeGreaterThan(0);
+    const dangling = [
+      ...new Set(
+        refs.filter(
+          (ref) => !defined.has(ref.replace('#/components/schemas/', '')),
+        ),
+      ),
+    ];
+    expect(dangling).toEqual([]);
+  });
+
+  it('documents the stored gallery image with the url the route returns', async () => {
+    const response = await app.request(API_PATHS.DOC);
+    const doc = (await response.json()) as {
+      components: {
+        schemas: Record<string, { properties?: Record<string, unknown> }>;
+      };
+    };
+
+    const stored = doc.components.schemas.StoredProductImage;
+    const shared = doc.components.schemas.ProductImage;
+
+    // The two are deliberately different shapes under deliberately different
+    // names. Collapse them back into one and this is the assertion that says so.
+    expect(stored?.properties).toHaveProperty('url');
+    expect(shared?.properties).not.toHaveProperty('url');
+  });
+
+  // The general net for the same bug class. A duplicate name leaves nothing to
+  // find in the output — the `$ref` resolves, the document is valid, it simply
+  // describes the wrong shape — so the only place to catch one is where names
+  // are minted — and this is the only guard, deliberately. An import-time
+  // throw was tried and removed: it duplicated this check while adding a way
+  // for a dev-server module reload to take every `/api` route down with a
+  // message naming the wrong cause. A test that fails the build is the right
+  // blast radius for a naming mistake.
+  it('mints every OpenAPI component name exactly once', async () => {
+    const { readdir, readFile } = await import('node:fs/promises');
+    const { join } = await import('node:path');
+
+    const files: string[] = [];
+    const walkDir = async (dir: string): Promise<void> => {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) await walkDir(full);
+        else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts'))
+          files.push(full);
+      }
+    };
+    await walkDir(join(process.cwd(), 'src/lib/hono'));
+
+    const seen = new Map<string, string[]>();
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      // `.openapi('X')` is a chained call and matches directly.
+      // `apiSuccessSchema(schema, 'X')` needs its argument list walked,
+      // because the first argument can nest parens several levels deep — an
+      // earlier version of this scan regexed for it, silently matched nothing,
+      // and let the very collision it guards against pass.
+      const helperNames = (src: string): string[] => {
+        const found: string[] = [];
+        const call = /apiSuccessSchema\(/g;
+        let match = call.exec(src);
+        while (match) {
+          let depth = 1;
+          let index = match.index + match[0].length;
+          while (index < src.length && depth > 0) {
+            if (src[index] === '(') depth += 1;
+            if (src[index] === ')') depth -= 1;
+            index += 1;
+          }
+          const args = src.slice(match.index + match[0].length, index - 1);
+          const last = [...args.matchAll(/'([A-Za-z0-9_]+)'/g)].at(-1);
+          if (last) found.push(last[1]);
+          match = call.exec(src);
+        }
+        return found;
+      };
+
+      const names = [
+        ...[...source.matchAll(/\.openapi\('([A-Za-z0-9_]+)'\)/g)].map(
+          (m) => m[1],
+        ),
+        ...helperNames(source),
+      ];
+
+      for (const name of names) {
+        seen.set(name, [...(seen.get(name) ?? []), file]);
+      }
+    }
+
+    expect(seen.size).toBeGreaterThan(20);
+    const duplicates = [...seen.entries()].filter(([, at]) => at.length > 1);
+    expect(duplicates).toEqual([]);
+  });
+
   it('serves the Scalar reference page outside production', async () => {
     const response = await app.request(API_PATHS.REFERENCE);
 

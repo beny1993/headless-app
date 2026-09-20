@@ -26,6 +26,7 @@ import {
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { formatToman } from '@/lib/format';
 import { shopPath } from '@/lib/constant/paths';
+import { ProductGallery } from '@/features/storefront/product/product-gallery';
 
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
 const page = await importWithDb(() => import('./page'));
@@ -67,6 +68,32 @@ function collect(node: unknown, found: string[] = []): string[] {
 }
 
 const renderedText = async (slug: string) => collect(await render(slug));
+
+/**
+ * The first element of type `component` in a rendered tree, keys and all.
+ *
+ * `collect` above flattens everything to strings, which is fine for copy and
+ * useless for a `key` — and a key is exactly what the gallery needs pinned.
+ */
+function findElement(node: unknown, component: unknown): unknown {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const hit = findElement(child, component);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  if (typeof node !== 'object' || node === null) return null;
+  if ((node as { type?: unknown }).type === component) return node;
+  const props = (node as { props?: Record<string, unknown> }).props;
+  for (const value of Object.values(
+    props ?? (node as Record<string, unknown>),
+  )) {
+    const hit = findElement(value, component);
+    if (hit) return hit;
+  }
+  return null;
+}
 
 describe.skipIf(!databaseReachable)('the product page', () => {
   const createdCategoryIds: string[] = [];
@@ -135,6 +162,22 @@ describe.skipIf(!databaseReachable)('the product page', () => {
       expect(text).toContain(product.title);
       expect(text).toContain('برند آزمایشی');
       expect(text).toContain('مناسب گوارش حساس');
+    });
+
+    it('keys the gallery by product so it resets between products', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+
+      const gallery = findElement(await render(product.slug), ProductGallery);
+
+      // Without this key React keeps the gallery's tree position across a
+      // client-side move from one product page to another, and `active` — the
+      // fourth photo, say — survives onto a product with a different gallery.
+      // Pinned here rather than in E2E on purpose: `page.goto` is a full
+      // document load, which resets the state with or without the fix, so a
+      // navigation check would pass against the very bug it is meant to catch.
+      expect(gallery).not.toBeNull();
+      expect((gallery as { key?: unknown }).key).toBe(product.id);
     });
 
     it('names both pets in one phrase for a product suited to both', async () => {

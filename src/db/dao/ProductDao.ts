@@ -1079,19 +1079,33 @@ export class ProductDao {
    * Replaces a product's gallery wholesale — position in `objectKeys` becomes
    * `sortOrder`. Replacing rather than appending is what keeps a re-run of the
    * seed from stacking duplicate images.
+   *
+   * Reports the keys it removed, which is the only trustworthy account of
+   * them. A caller that works out its own delete set from a list it read
+   * *before* this transaction will miss anything appended in between: the
+   * `DELETE` takes those rows too, and the caller then keeps their files with
+   * nothing left pointing at them, since the only sweep derives its work from
+   * `product_images`. The rows are gone either way — a wholesale replace is
+   * last-write-wins by construction — but the files need not be stranded.
    */
   static async setImages(
     productId: string,
     objectKeys: string[],
-  ): Promise<ProductImage[]> {
+  ): Promise<{ images: ProductImage[]; removedKeys: string[] }> {
     return db.transaction(async (tx) => {
-      await tx
+      const removed = await tx
         .delete(productImages)
-        .where(eq(productImages.productId, productId));
+        .where(eq(productImages.productId, productId))
+        .returning({ objectKey: productImages.objectKey });
 
-      if (objectKeys.length === 0) return [];
+      const kept = new Set(objectKeys);
+      const removedKeys = removed
+        .map((row) => row.objectKey)
+        .filter((objectKey) => !kept.has(objectKey));
 
-      return tx
+      if (objectKeys.length === 0) return { images: [], removedKeys };
+
+      const images = await tx
         .insert(productImages)
         .values(
           objectKeys.map((objectKey, index) => ({
@@ -1101,6 +1115,68 @@ export class ProductDao {
           })),
         )
         .returning();
+      return { images, removedKeys };
+    });
+  }
+
+  /**
+   * Append one image to a product's gallery, refusing once it holds `max`.
+   * Returns the stored row, or `null` when the gallery is full or the product
+   * is gone — either way the caller still holds a file nothing references.
+   *
+   * Atomic where an append built on `setImages` cannot be. `setImages` replaces
+   * the list, so an append on top of it has to read the current keys first, and
+   * two uploads racing both read the same list, both write their file and the
+   * last write wins. The loser's file then sits on disk with no row and nothing
+   * that will ever collect it: the only deleter works out what to delete from
+   * `product_images`, so a file with no row there is invisible to it forever.
+   * Locking the product row makes the readers queue, so the second sees the
+   * first's image and refuses at the ceiling instead of overwriting it.
+   *
+   * The route still checks the ceiling before it reads the body — that is the
+   * fast path that keeps a refused photo from being buffered at all. This is
+   * the one that holds when two uploads race.
+   *
+   * It does not serialize an upload against a gallery-order write: that one
+   * replaces the list wholesale, so it wins, and the photo appended here can
+   * lose its row to it. What it must never do is lose the *file* with it,
+   * which is why `setImages` reports the keys it removed.
+   */
+  static async appendImage(
+    productId: string,
+    objectKey: string,
+    max: number,
+  ): Promise<ProductImage | null> {
+    return db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.id, productId))
+        .for('update');
+      if (!locked) return null;
+
+      const existing = await tx
+        .select({ sortOrder: productImages.sortOrder })
+        .from(productImages)
+        .where(eq(productImages.productId, productId));
+
+      if (existing.length >= max) return null;
+
+      const [row] = await tx
+        .insert(productImages)
+        .values({
+          productId,
+          objectKey,
+          // One past the highest, never the count: the two agree only while the
+          // orders are gapless, and nothing here may assume that of a gallery
+          // some other write has been reordering.
+          sortOrder: existing.reduce(
+            (highest, image) => Math.max(highest, image.sortOrder + 1),
+            0,
+          ),
+        })
+        .returning();
+      return row ?? null;
     });
   }
 

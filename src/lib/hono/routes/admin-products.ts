@@ -1,4 +1,5 @@
-// Admin product CRUD — create, update (full body), soft delete, and image upload.
+// Admin product CRUD — create, update (full body), soft delete, and the two
+// gallery writes (append one photo, store the whole order).
 // Mounted under `/admin/*` behind `requireAdmin` in ../index.ts; the guard runs
 // before every handler here (401 without a session, 403 without the admin role),
 // so nothing below re-checks authorization.
@@ -25,12 +26,17 @@ import {
   type ProductWithExtraCategories,
 } from '@/db/dao/ProductDao';
 import {
+  MAX_PRODUCT_IMAGES,
   PRODUCT_MESSAGES,
+  productImagesOrderSchema,
   productInputSchema,
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
 import { generateSku } from '@/lib/catalog/sku';
-import { replaceProductImage } from '@/logic/admin/product-images';
+import {
+  appendProductImage,
+  setProductImageOrder,
+} from '@/logic/admin/product-images';
 import { readImageUpload } from '../image-upload';
 import {
   apiError,
@@ -40,7 +46,7 @@ import {
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
 import { VARIANT_MESSAGES } from '@/lib/catalog/variant';
-import { ProductSchema } from '../product-schema';
+import { ProductImageSchema, ProductSchema } from '../product-schema';
 import { pgErrorOf } from '../pg-error';
 
 /** User-facing copy, so Persian. */
@@ -51,9 +57,14 @@ export const PRODUCT_SAVE_FAILED_MESSAGE =
 
 /**
  * The admin view of a product: the storefront's own payload, minus the images
- * (the panel loads those through their own endpoint) and plus the two columns
- * only an admin sees — `isActive`, which the shop expresses by simply not
- * listing the row, and `updatedAt`.
+ * and plus the two columns only an admin sees — `isActive`, which the shop
+ * expresses by simply not listing the row, and `updatedAt`.
+ *
+ * The images are left out because nothing needs them here: the edit page reads
+ * the gallery from the DAO server-side and hands it to the form, and the two
+ * image routes below answer with the gallery they just wrote. (The comment this
+ * replaces promised «the panel loads those through their own endpoint», which
+ * was never true — there is no admin gallery GET, and no caller wants one.)
  *
  * Derived, never restated. The two were written out field for field and this
  * story widened both copies by hand; the `Category` pair next door has already
@@ -344,14 +355,19 @@ export const productDeleteHandler: RouteHandler<
   }
 };
 
-// ── Image upload (multipart) ────────────────────────────────────────────────────
+// ── Gallery: append one photo (multipart) ─────────────────────────────────────
 
 /**
- * Store one uploaded image for a product. Plain handler (see the file header);
- * `bodyLimit` on this path refuses an oversize body before it is buffered, and
- * this re-checks the read length as a backstop. Type is decided by sniffing the
- * bytes, never by the client's declared content-type or filename, and the stored
- * key is generated server-side — so nothing the client controls reaches the path.
+ * Append one uploaded image to a product's gallery. Plain handler (see the file
+ * header); `bodyLimit` on this path refuses an oversize body before it is
+ * buffered, and this re-checks the read length as a backstop. Type is decided by
+ * sniffing the bytes, never by the client's declared content-type or filename,
+ * and the stored key is generated server-side — so nothing the client controls
+ * reaches the path.
+ *
+ * One file per request, deliberately: `readImageUpload` reads a single `file`
+ * field and the `bodyLimit` is mounted per *request*, so batching several files
+ * into one POST would turn the 2 MB per-file ceiling into a shared cap.
  */
 export const productImageUploadHandler = async (
   c: Context<Env & AuthedEnv>,
@@ -366,12 +382,99 @@ export const productImageUploadHandler = async (
   const product = await ProductDao.findByIdForAdmin(id.data);
   if (!product) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
 
+  // The ceiling is checked here, before the body is read, and not inside
+  // `appendProductImage`: a refused photo must not be buffered into memory, and
+  // a check after the driver `put` would leave the file on disk with no row.
+  if (product.images.length >= MAX_PRODUCT_IMAGES) {
+    return c.json(apiError(PRODUCT_MESSAGES.imagesMax), 400);
+  }
+
   // The shared trust boundary: parse the body, refuse a missing/empty/oversize
   // file, and sniff the real type from the bytes. Identical to the content
   // upload — the only difference is what happens with the bytes afterwards.
   const upload = await readImageUpload(c);
   if (!upload.ok) return upload.response;
 
-  const stored = await replaceProductImage(product, upload.bytes, upload.type);
+  const stored = await appendProductImage(product, upload.bytes, upload.type);
+  // The check above is the fast path, which keeps a refused photo from being
+  // buffered at all; this is the one that still holds when two uploads race.
+  // Same refusal either way, so an admin cannot tell which caught it.
+  if (!stored) return c.json(apiError(PRODUCT_MESSAGES.imagesMax), 400);
   return c.json(apiSuccess(stored), 201);
+};
+
+// ── Gallery: store the order (JSON) ───────────────────────────────────────────
+
+/**
+ * One stored photo as the two gallery writes answer with it: the storefront's
+ * own image row plus the URL to render it, which only the writer knows (the
+ * driver resolves the key).
+ *
+ * Derived from `ProductImageSchema`, never restated — and under a name of its
+ * own. Restating it registered a second `ProductImage` component, and
+ * zod-to-openapi resolves a duplicate ref by keeping the first: the document
+ * silently described this response without its `url`.
+ */
+const StoredImageSchema = ProductImageSchema.safeExtend({
+  url: z.string(),
+}).openapi('StoredProductImage');
+
+/**
+ * What a save sends back once its uploads are done: the product's photos, in the
+ * admin's order, with the removed ones simply absent. It is the only write that
+ * deletes a file, and it is what makes a reorder-only or a removal-only save
+ * possible at all — neither carries a new file, so neither can ride the POST.
+ *
+ * The body is JSON, so this is an `openapi()` route with a typed handler, unlike
+ * the multipart POST above.
+ */
+export const productImagesOrderRoute = createRoute({
+  method: 'put',
+  path: '/admin/products/{id}/images',
+  tags: ['admin'],
+  summary: "Replace a product's image order (admin only)",
+  request: {
+    params: IdParamSchema,
+    body: {
+      content: { 'application/json': { schema: productImagesOrderSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: {
+        'application/json': {
+          schema: apiSuccessSchema(
+            z.array(StoredImageSchema),
+            'ProductImagesOrdered',
+          ),
+        },
+      },
+      description: "The product's images, in the stored order",
+    },
+    400: errorResponse('Invalid body, or a key this product does not have'),
+    401: errorResponse('No session'),
+    403: errorResponse('Signed in, but not an admin'),
+    404: errorResponse('No such product'),
+  },
+});
+
+export const productImagesOrderHandler: RouteHandler<
+  typeof productImagesOrderRoute,
+  Env & AuthedEnv
+> = async (c) => {
+  const { id } = c.req.valid('param');
+  const { objectKeys } = c.req.valid('json');
+
+  const product = await ProductDao.findByIdForAdmin(id);
+  if (!product) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
+
+  // Ownership: every key has to be one this product already holds. The schema
+  // can only check shape, so this is the whole gate — a key from another
+  // product, a bundled `products/…` asset that is not this one's, or any other
+  // string writes nothing and deletes nothing.
+  const stored = await setProductImageOrder(product, objectKeys);
+  if (!stored) return c.json(apiError(PRODUCT_MESSAGES.images), 400);
+
+  return c.json(apiSuccess(stored), 200);
 };

@@ -7,18 +7,15 @@
 //
 // **Nothing here may import drizzle, `pg` or `@hono/zod-openapi`** — the editor is
 // a client component, so this stays plain zod, exactly like `product-input.ts`.
-// It leans on three already-client-safe modules: `boundedText` (the trimmed,
+// It leans on already-client-safe modules: `boundedText` (the trimmed,
 // length-capped, NUL-refusing string used across every input contract), the
-// upload key shape (`UPLOAD_KEY_PREFIX` / `UPLOAD_FILENAME_PATTERN`) — so the
+// upload key shape, which `@/lib/storage/image-upload` owns — so the
 // "what is a valid image key" rule is derived from the uploader, not restated —
 // and `linkSchema` (`link.ts`), the one definition of a saved destination.
 import { z } from 'zod';
 import { blankableText, boundedText } from '@/lib/validation/text';
 import { toAsciiDigits } from '@/lib/format';
-import {
-  UPLOAD_FILENAME_PATTERN,
-  UPLOAD_KEY_PREFIX,
-} from '@/lib/storage/image-upload';
+import { imageKeySchema } from '@/lib/storage/image-upload';
 import { LINK_MESSAGES, linkSchema } from './link';
 
 /** One row per editable block. Fixed set — the structure lives in code, only the
@@ -62,27 +59,8 @@ export const CONTENT_KEYS = [
 export const contentKeySchema = z.enum(CONTENT_KEYS);
 export type ContentKey = z.infer<typeof contentKeySchema>;
 
-/**
- * A storage object key, slash-less, rendered through `imageSrc(key)`. Exactly two
- * shapes, both anchored, so `..`, a leading `/`, an `http(s)://` URL, an unknown
- * prefix or a foreign extension all fail by construction — on write (the route's
- * 400) and on read (the DAO's fallback). A NUL cannot pass either: it matches
- * neither anchored character class.
- *   · a bundled asset:  `site/…` or `products/…` (today's defaults, served from public/)
- *   · an upload:        `uploads/<uuid>.<ext>` (the uploader's own key shape)
- */
-const BUNDLED_IMAGE_KEY = /^(site|products)\/[a-z0-9-]+\.(jpe?g|png|webp)$/;
-
-export const imageKeySchema = z
-  .string()
-  .max(200)
-  .refine(
-    (k) =>
-      BUNDLED_IMAGE_KEY.test(k) ||
-      (k.startsWith(`${UPLOAD_KEY_PREFIX}/`) &&
-        UPLOAD_FILENAME_PATTERN.test(k.slice(UPLOAD_KEY_PREFIX.length + 1))),
-    { error: 'کلید تصویر نامعتبر است.' },
-  );
+// The key shape itself is documented where it is defined.
+export { imageKeySchema };
 
 // `t` is the trimmed, NUL-refusing, length-capped string; the ceilings are 2–4×
 // today's longest value, generous room to edit without an unbounded field.

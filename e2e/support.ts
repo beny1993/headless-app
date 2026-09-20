@@ -139,8 +139,45 @@ export const LOW_STOCK_PRODUCT = {
   path: productPath(runningOut.slug),
   stock: runningOut.stock,
 };
+/**
+ * The one seeded product with more than one photo, and how many it has. The
+ * only multi-photo product a spec can reach without building one through the
+ * admin panel — which is what lets the gallery be walked at 375px, where the
+ * admin spec (desktop-only by suite policy) never goes.
+ */
+const gallery = SEED_PRODUCTS.find((product) => product.imageKeys.length > 1);
+if (!gallery) {
+  throw new Error('The catalog seed needs one product with a gallery.');
+}
+export const GALLERY_PRODUCT = {
+  path: productPath(gallery.slug),
+  photoCount: gallery.imageKeys.length,
+};
+
 /** A seeded product photo, bundled in public/, to upload as a new product's. */
 export const PRODUCT_PHOTO = `public/${mostStocked.imageKeys[0]}`;
+
+/**
+ * Two more visibly different bundled photos, so a gallery spec can tell which
+ * of a product's photos is on screen. Read from the seed rather than named
+ * here — they only have to be three different files.
+ *
+ * Three and not two: with two photos the only thumbnail a shopper can click is
+ * the adjacent one, and a jump of one slide is the single case that cannot
+ * catch `scroll-snap-stop: always` refusing to pass an intervening snap point.
+ * That is exactly how a two-photo spec went green over a gallery whose thumbs
+ * landed one photo short of wherever they were aimed.
+ */
+const otherPhotoKeys = [
+  ...new Set(SEED_PRODUCTS.map((product) => product.imageKeys[0])),
+].filter((key) => key && key !== mostStocked.imageKeys[0]);
+if (otherPhotoKeys.length < 2) {
+  throw new Error(
+    'The catalog seed needs three products with different photos.',
+  );
+}
+export const SECOND_PRODUCT_PHOTO = `public/${otherPhotoKeys[0]}`;
+export const THIRD_PRODUCT_PHOTO = `public/${otherPhotoKeys[1]}`;
 
 /** Puts one of `product` in the cart and opens checkout from the drawer. */
 export async function openCheckout(page: Page, product = IN_STOCK_PRODUCT) {

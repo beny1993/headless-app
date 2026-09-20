@@ -2,6 +2,8 @@
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { MAX_PRODUCT_IMAGES } from '@/lib/catalog/product-input';
+import { imageKeySchema } from '@/lib/storage/image-upload';
 import {
   SEED_CATEGORIES,
   SEED_PRODUCTS,
@@ -124,6 +126,48 @@ describe('catalog seed data', () => {
     expect(SEED_CATEGORIES.map((c) => c.title)).toContain('اسباب‌بازی');
     expect(SEED_PRODUCTS[7].title).toBe('اسباب‌بازی تعاملی پر و زنگوله');
     expect(SEED_PRODUCTS[7].title).toContain('‌');
+  });
+
+  it('seeds one product with a gallery, so the strip is reachable without building one', () => {
+    // Every other product carries a single photo and renders no strip at all.
+    // This one is what lets a spec walk the gallery at both widths, needing no
+    // admin session to exist — and `e2e/support.ts` throws at import without
+    // it, so the guard has to run where there is no database either.
+    const withGallery = SEED_PRODUCTS.filter(
+      (product) => product.imageKeys.length > 1,
+    );
+
+    // Exactly one, not «at least one»: `e2e/admin-catalog.spec.ts` states that
+    // the only galleries in the suite are its own product and this one, and
+    // relaxing this left that sentence with nothing holding it up.
+    expect(withGallery).toHaveLength(1);
+    // Three, not two: with two photos the only clickable thumbnail is the
+    // adjacent one, and a one-slide jump is the single case that cannot catch
+    // `scroll-snap-stop: always` refusing to pass a snap point.
+    expect(withGallery[0].imageKeys.length).toBeGreaterThanOrEqual(3);
+    // Distinct files, so a spec can tell which photo is on screen.
+    expect(new Set(withGallery[0].imageKeys).size).toBe(
+      withGallery[0].imageKeys.length,
+    );
+  });
+
+  it('keeps every product within the gallery ceiling', () => {
+    // `setImages` enforces no cap — the seed reaches it without passing zod —
+    // so a seeded row with six photos would make the admin form unable to save
+    // that product at all: it always sends the whole list, and the API refuses
+    // anything above the ceiling.
+    for (const product of SEED_PRODUCTS) {
+      expect(product.imageKeys.length).toBeLessThanOrEqual(MAX_PRODUCT_IMAGES);
+      expect(new Set(product.imageKeys).size).toBe(product.imageKeys.length);
+      // Shape as well as count. The gallery PUT refuses anything outside
+      // `imageKeySchema` while the seed writes through `setImages` without
+      // passing zod — so a key like `products/cat_dry_food.jpg` would store
+      // fine and then make that product's gallery unsaveable from the admin
+      // form, which always sends the whole list.
+      for (const key of product.imageKeys) {
+        expect(imageKeySchema.safeParse(key).success, key).toBe(true);
+      }
+    }
   });
 
   it('bundles every referenced image locally — no external hotlinks', async () => {

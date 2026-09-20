@@ -7,7 +7,7 @@
 // 403 to a customer, and succeeds for an admin — and the public product read is
 // still reachable unauthenticated after the admin router is mounted, the
 // regression that would catch a leaking `/admin/*` guard.
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { faker } from '@faker-js/faker';
@@ -36,7 +36,10 @@ import {
   apiAdminProductPath,
   apiProductPath,
 } from '@/lib/constant/paths';
-import { PRODUCT_MESSAGES } from '@/lib/catalog/product-input';
+import {
+  MAX_PRODUCT_IMAGES,
+  PRODUCT_MESSAGES,
+} from '@/lib/catalog/product-input';
 import { VARIANT_MESSAGES, hasMembersMessage } from '@/lib/catalog/variant';
 import { SKU_ALPHABET, SKU_SUFFIX_LENGTH } from '@/lib/catalog/sku';
 import type { ApiResponse } from '@/lib/hono/envelope';
@@ -768,6 +771,299 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
         new File([jpegBytes()], 'x.jpg', { type: 'image/jpeg' }),
       );
       expect(malformed.status).toBe(400);
+    });
+
+    it('appends rather than replacing, keeping every earlier photo', async () => {
+      const category = await makeCategory();
+      const product = await makeProduct(category);
+      asAdmin();
+
+      const keys: string[] = [];
+      for (let n = 0; n < 3; n += 1) {
+        const { status, body: envelope } = await parse<{ objectKey: string }>(
+          await upload(
+            product.id,
+            new File([jpegBytes()], `p${n}.jpg`, { type: 'image/jpeg' }),
+          ),
+        );
+        expect(status).toBe(201);
+        if (envelope.status !== 'success') throw new Error(envelope.message);
+        keys.push(envelope.data.objectKey);
+      }
+
+      // Three rows in upload order — the first photo is the cover — and all
+      // three files still readable, which the single-slot version could not do.
+      const rows = await testDb
+        .select()
+        .from(productImages)
+        .where(eq(productImages.productId, product.id))
+        .orderBy(productImages.sortOrder);
+      expect(rows.map((row) => row.objectKey)).toEqual(keys);
+      expect(rows.map((row) => row.sortOrder)).toEqual([0, 1, 2]);
+      for (const key of keys) {
+        expect(await readLocalUpload(key.split('/')[1])).not.toBeNull();
+      }
+    });
+
+    // The ordering of the two refusals, which is the only thing that shows the
+    // ceiling is checked *before* the body is read. The existing test above
+    // proves no file is left behind — which the take-back in
+    // `appendProductImage` guarantees on its own, so the pre-check could be
+    // deleted or moved after `readImageUpload` with the whole suite green.
+    // A non-image on a full gallery separates them: the ceiling answers first
+    // only if it runs first.
+    it('answers the ceiling before it looks at the bytes', async () => {
+      const category = await makeCategory();
+      const product = await makeProduct(category);
+      asAdmin();
+      for (let n = 0; n < MAX_PRODUCT_IMAGES; n += 1) {
+        expect(
+          (
+            await upload(
+              product.id,
+              new File([jpegBytes()], `p${n}.jpg`, { type: 'image/jpeg' }),
+            )
+          ).status,
+        ).toBe(201);
+      }
+
+      const notAnImage = new File(
+        [Uint8Array.from(new TextEncoder().encode('<?php echo 1; ?>'))],
+        'evil.jpg',
+        { type: 'image/jpeg' },
+      );
+      const { status, body: envelope } = await parse<unknown>(
+        await upload(product.id, notAnImage),
+      );
+
+      expect(status).toBe(400);
+      // The ceiling's sentence, not the sniffer's: the body was never read.
+      expect((envelope as { message?: string }).message).toBe(
+        PRODUCT_MESSAGES.imagesMax,
+      );
+    });
+
+    it('refuses a sixth photo without reading or storing it', async () => {
+      const category = await makeCategory();
+      const product = await makeProduct(category);
+      asAdmin();
+      for (let n = 0; n < MAX_PRODUCT_IMAGES; n += 1) {
+        expect(
+          (
+            await upload(
+              product.id,
+              new File([jpegBytes()], `p${n}.jpg`, { type: 'image/jpeg' }),
+            )
+          ).status,
+        ).toBe(201);
+      }
+      const before = await readdir(storageRoot);
+
+      const { status, body: envelope } = await parse<unknown>(
+        await upload(
+          product.id,
+          new File([jpegBytes()], 'sixth.jpg', { type: 'image/jpeg' }),
+        ),
+      );
+
+      expect(status).toBe(400);
+      if (envelope.status !== 'error') throw new Error('expected a refusal');
+      expect(envelope.message).toBe(PRODUCT_MESSAGES.imagesMax);
+      // Still five rows, and not one extra file: the ceiling is checked before
+      // the body is read, so a refused photo never reaches the disk.
+      const rows = await testDb
+        .select()
+        .from(productImages)
+        .where(eq(productImages.productId, product.id));
+      expect(rows).toHaveLength(MAX_PRODUCT_IMAGES);
+      expect((await readdir(storageRoot)).sort()).toEqual(before.sort());
+    });
+  });
+
+  // ── Gallery order ─────────────────────────────────────────────────────────
+
+  describe('PUT /admin/products/{id}/images', () => {
+    const makeProduct = async (category: Category) =>
+      ProductDao.create({
+        title: 'با گالری',
+        slug: `gal-${faker.string.alphanumeric(8).toLowerCase()}`,
+        sku: `GAL-${faker.string.alphanumeric(8).toUpperCase()}`,
+        price: 100_000,
+        stock: 3,
+        categoryId: category.id,
+        petTypes: [PET_TYPES.CAT],
+      });
+
+    /** A product carrying `count` uploaded photos, and their keys in order. */
+    const withPhotos = async (count: number) => {
+      const category = await makeCategory();
+      const product = await makeProduct(category);
+      const keys: string[] = [];
+      for (let n = 0; n < count; n += 1) {
+        const { body: envelope } = await parse<{ objectKey: string }>(
+          await app.request(apiAdminProductImagesPath(product.id), {
+            method: 'POST',
+            body: (() => {
+              const form = new FormData();
+              form.set(
+                'file',
+                new File([jpegBytes()], `p${n}.jpg`, { type: 'image/jpeg' }),
+              );
+              return form;
+            })(),
+          }),
+        );
+        if (envelope.status !== 'success') throw new Error(envelope.message);
+        keys.push(envelope.data.objectKey);
+      }
+      return { product, keys };
+    };
+
+    const storedKeys = async (productId: string) =>
+      (
+        await testDb
+          .select()
+          .from(productImages)
+          .where(eq(productImages.productId, productId))
+          .orderBy(productImages.sortOrder)
+      ).map((row) => row.objectKey);
+
+    const fileExists = async (key: string) =>
+      (await readLocalUpload(key.split('/')[1])) !== null;
+
+    beforeEach(asAdmin);
+
+    it('stores the order it is given and deletes nothing', async () => {
+      const { product, keys } = await withPhotos(3);
+      const reordered = [keys[2], keys[0], keys[1]];
+
+      const { status } = await parse<unknown>(
+        await json(apiAdminProductImagesPath(product.id), 'PUT', {
+          objectKeys: reordered,
+        }),
+      );
+
+      expect(status).toBe(200);
+      expect(await storedKeys(product.id)).toEqual(reordered);
+      for (const key of keys) expect(await fileExists(key)).toBe(true);
+    });
+
+    it('deletes the file of the photo the admin dropped, and only that one', async () => {
+      const { product, keys } = await withPhotos(3);
+
+      await json(apiAdminProductImagesPath(product.id), 'PUT', {
+        objectKeys: [keys[0], keys[2]],
+      });
+
+      expect(await storedKeys(product.id)).toEqual([keys[0], keys[2]]);
+      expect(await fileExists(keys[1])).toBe(false);
+      expect(await fileExists(keys[0])).toBe(true);
+      expect(await fileExists(keys[2])).toBe(true);
+    });
+
+    it('refuses another product’s key and leaves both galleries alone', async () => {
+      const mine = await withPhotos(2);
+      const theirs = await withPhotos(2);
+
+      const { status, body: envelope } = await parse<unknown>(
+        await json(apiAdminProductImagesPath(mine.product.id), 'PUT', {
+          objectKeys: [mine.keys[0], theirs.keys[0]],
+        }),
+      );
+
+      expect(status).toBe(400);
+      if (envelope.status !== 'error') throw new Error('expected a refusal');
+      expect(envelope.message).toBe(PRODUCT_MESSAGES.images);
+      // Nothing written and nothing deleted, on either product.
+      expect(await storedKeys(mine.product.id)).toEqual(mine.keys);
+      expect(await storedKeys(theirs.product.id)).toEqual(theirs.keys);
+      for (const key of [...mine.keys, ...theirs.keys]) {
+        expect(await fileExists(key)).toBe(true);
+      }
+    });
+
+    it.each([
+      ['a bundled seed key', ['products/cat-dry-food.jpg']],
+      ['an arbitrary string', ['../../etc/passwd']],
+      ['a repeated key', null],
+    ])('refuses %s', async (_name, keys) => {
+      const { product, keys: own } = await withPhotos(2);
+
+      const { status } = await parse<unknown>(
+        await json(apiAdminProductImagesPath(product.id), 'PUT', {
+          objectKeys: keys ?? [own[0], own[0]],
+        }),
+      );
+
+      expect(status).toBe(400);
+      expect(await storedKeys(product.id)).toEqual(own);
+    });
+
+    it('refuses more keys than the ceiling allows', async () => {
+      const { product, keys } = await withPhotos(2);
+
+      const { status, body: envelope } = await parse<unknown>(
+        await json(apiAdminProductImagesPath(product.id), 'PUT', {
+          objectKeys: Array.from(
+            { length: MAX_PRODUCT_IMAGES + 1 },
+            (_, n) => `uploads/${n}.jpg`,
+          ),
+        }),
+      );
+
+      expect(status).toBe(400);
+      if (envelope.status !== 'error') throw new Error('expected a refusal');
+      expect(JSON.stringify(envelope)).toContain(PRODUCT_MESSAGES.imagesMax);
+      expect(await storedKeys(product.id)).toEqual(keys);
+    });
+
+    it('clears the gallery when the admin removes every photo', async () => {
+      const { product, keys } = await withPhotos(2);
+
+      const { status } = await parse<unknown>(
+        await json(apiAdminProductImagesPath(product.id), 'PUT', {
+          objectKeys: [],
+        }),
+      );
+
+      expect(status).toBe(200);
+      expect(await storedKeys(product.id)).toEqual([]);
+      for (const key of keys) expect(await fileExists(key)).toBe(false);
+    });
+
+    it('404s an unknown product', async () => {
+      const { status } = await parse<unknown>(
+        await json(apiAdminProductImagesPath(faker.string.uuid()), 'PUT', {
+          objectKeys: [],
+        }),
+      );
+      expect(status).toBe(404);
+    });
+
+    it('turns away anonymous callers and customers', async () => {
+      const { product, keys } = await withPhotos(1);
+
+      anon();
+      expect(
+        (
+          await json(apiAdminProductImagesPath(product.id), 'PUT', {
+            objectKeys: [],
+          })
+        ).status,
+      ).toBe(401);
+
+      asCustomer();
+      expect(
+        (
+          await json(apiAdminProductImagesPath(product.id), 'PUT', {
+            objectKeys: [],
+          })
+        ).status,
+      ).toBe(403);
+
+      asAdmin();
+      expect(await storedKeys(product.id)).toEqual(keys);
+      expect(await fileExists(keys[0])).toBe(true);
     });
   });
 

@@ -109,14 +109,22 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
     expect(premium?.oldPrice).toBe(320_000);
   });
 
-  it('gives every seeded product exactly one image', async () => {
+  it('gives every seeded product its photos, in the order the data lists them', async () => {
     const listed = (await ProductDao.listForAdmin()).filter((row) =>
       skus.includes(row.sku),
     );
 
     expect(listed).toHaveLength(SEED_PRODUCTS.length);
     for (const product of listed) {
-      expect(product.images).toHaveLength(1);
+      const seeded = SEED_PRODUCTS.find((row) => row.sku === product.sku);
+      expect(product.images.map((image) => image.objectKey)).toEqual(
+        seeded?.imageKeys,
+      );
+      // Widening this to «the keys the data lists» quietly gave up «every
+      // product has one», which an empty `imageKeys` would then satisfy — and
+      // a product with no photo ships a shop card, a cart line and a product
+      // page with nothing on them.
+      expect(product.images.length).toBeGreaterThan(0);
     }
   });
 
