@@ -117,22 +117,54 @@ async function uploadImage(productId: string, file: File): Promise<string> {
   const body = (await response.json().catch(() => null)) as {
     status?: string;
     message?: string;
+    errors?: string[];
     data?: { objectKey?: string };
   } | null;
   const objectKey = body?.data?.objectKey;
   if (!response.ok || body?.status !== 'success' || !objectKey) {
-    throw new Error(body?.message ?? 'بارگذاری تصویر ناموفق بود.');
+    // `ApiRequestError`, so a refusal the server explained is distinguishable
+    // from a connection that simply died: only the former carries a sentence
+    // fit to show an admin, and only the former should replace the generic
+    // advice in the toast.
+    throw new ApiRequestError(
+      response.status,
+      body?.message ?? 'بارگذاری تصویر ناموفق بود.',
+      body?.errors,
+    );
   }
   return objectKey;
 }
 
-/** The product was saved; some of its photos were not. */
-const photosFailedMessage = (failed: number) =>
-  `محصول ذخیره شد اما ${toPersianDigits(failed)} عکس بارگذاری نشد. از فهرست محصولات دوباره تلاش کن.`;
+/**
+ * The product was saved; some of its photos were not.
+ *
+ * `reason` is the server's own sentence when it gave one, and it is worth
+ * carrying: a stale-key refusal says «refresh the page», which is the opposite
+ * of the generic advice below, and an admin following the wrong one retries
+ * from the list with the same stale keys forever.
+ */
+const photosFailedMessage = (failed: number, reason?: string) =>
+  `محصول ذخیره شد اما ${toPersianDigits(failed)} عکس بارگذاری نشد. ${
+    reason ?? 'از فهرست محصولات دوباره تلاش کن.'
+  }`;
 
 /** The photos went up; the order they were meant to be in did not. */
-const ORDER_FAILED_MESSAGE =
-  'محصول ذخیره شد اما ترتیب عکس‌ها ذخیره نشد. از فهرست محصولات دوباره تلاش کن.';
+const orderFailedMessage = (reason?: string) =>
+  `محصول ذخیره شد اما ترتیب عکس‌ها ذخیره نشد. ${
+    reason ?? 'از فهرست محصولات دوباره تلاش کن.'
+  }`;
+
+/**
+ * The server's sentence for a refusal, when it sent one worth showing.
+ *
+ * Only an `ApiRequestError` qualifies. A dropped connection also arrives as an
+ * `Error`, and its message is a technical English string that has no business
+ * being pasted into Persian admin copy — those keep the generic advice.
+ */
+const reasonFrom = (error: unknown): string | undefined =>
+  error instanceof ApiRequestError
+    ? (error.errors?.[0] ?? error.message)
+    : undefined;
 
 /** Same keys, same order. */
 const sameOrder = (a: readonly string[], b: readonly string[]) =>
@@ -334,20 +366,23 @@ export function ProductForm({
         .filter((photo) => photo.kind === 'saved')
         .map((photo) => photo.objectKey);
       let orderFailed = false;
+      let orderReason: string | undefined;
       if (!sameOrder(server, kept)) {
         try {
           await putData(apiAdminProductImagesPath(saved.id), {
             objectKeys: kept,
           });
           server = kept;
-        } catch {
+        } catch (error) {
           orderFailed = true;
+          orderReason = reasonFrom(error);
         }
       }
 
       const uploaded: string[] = [];
       const objectKeys: string[] = [];
       let failed = 0;
+      let uploadReason: string | undefined;
       for (const photo of photos) {
         if (photo.kind === 'saved') {
           objectKeys.push(photo.objectKey);
@@ -357,8 +392,11 @@ export function ProductForm({
           const key = await uploadImage(saved.id, photo.file);
           uploaded.push(key);
           objectKeys.push(key);
-        } catch {
+        } catch (error) {
           failed += 1;
+          // The first refusal's own words. `uploadImage` already builds the
+          // server's sentence and it used to be thrown away here.
+          uploadReason ??= reasonFrom(error);
         }
       }
 
@@ -370,15 +408,19 @@ export function ProductForm({
       if (!sameOrder([...server, ...uploaded], objectKeys)) {
         try {
           await putData(apiAdminProductImagesPath(saved.id), { objectKeys });
-        } catch {
+        } catch (error) {
           orderFailed = true;
+          orderReason = reasonFrom(error);
         }
       }
 
       router.push(PROTECTED_PATHS.PRODUCTS);
       router.refresh();
-      if (failed > 0) toast.warning(photosFailedMessage(failed));
-      else if (orderFailed) toast.warning(ORDER_FAILED_MESSAGE);
+      // Both can fail in one save, and each says something different about what
+      // to do next — so each gets its own line rather than the louder one
+      // hiding the other.
+      if (failed > 0) toast.warning(photosFailedMessage(failed, uploadReason));
+      if (orderFailed) toast.warning(orderFailedMessage(orderReason));
     } catch (error) {
       setBusy(false);
       if (
