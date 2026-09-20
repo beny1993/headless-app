@@ -263,6 +263,60 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
     .poll(() => renderedKey(tileImage(page, 0)))
     .toBe(uploadedKeys[1]);
 
+  // Drag the other way — toward the END of the list. This is the direction
+  // that used to die after a single cell: React reorders a keyed list with
+  // `insertBefore`, which drops pointer capture on the element being moved and
+  // fires neither `pointerup` nor `pointercancel`, so a handle-bound gesture
+  // stopped receiving moves. `from < to` moves the dragged tile, which is why
+  // only this direction broke, and why the drag above passed throughout.
+  // `scrollIntoViewIfNeeded` because `boundingBox()` does not scroll.
+  await handles.nth(0).scrollIntoViewIfNeeded();
+  const startBox = await handles.nth(0).boundingBox();
+  const endBox = await handles.nth(2).boundingBox();
+  if (!startBox || !endBox)
+    throw new Error('a photo handle has no box to drag');
+  await page.mouse.move(
+    startBox.x + startBox.width / 2,
+    startBox.y + startBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    endBox.x + endBox.width / 2,
+    endBox.y + endBox.height / 2,
+    { steps: 12 },
+  );
+  await page.mouse.up();
+  // It travelled the whole way, not one cell: the photo that led is now last.
+  await expect
+    .poll(() => renderedKey(tileImage(page, 2)))
+    .toBe(uploadedKeys[1]);
+  // And the gesture really ended — a tile left mid-drag keeps its drag opacity.
+  await expect(page.locator('.opacity-60')).toHaveCount(0);
+
+  // The keyboard path, which had no E2E coverage at all. Moving the focused
+  // handle also moves the element holding focus, and a browser drops focus to
+  // `<body>` when that happens, so the assertion is where focus ends up.
+  const firstHandle = handles.nth(0);
+  await firstHandle.focus();
+  // RTL: ArrowLeft moves toward the end of the list.
+  await page.keyboard.press('ArrowLeft');
+  await expect
+    .poll(() => renderedKey(tileImage(page, 1)))
+    .toBe(uploadedKeys[0]);
+  await expect(handles.nth(1)).toBeFocused();
+
+  // Back the other way, twice, which both covers ArrowRight — the direction
+  // that always kept focus, so the pair proves the two are now symmetric — and
+  // restores the cover the rest of this spec is written against.
+  await handles.nth(2).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(handles.nth(1)).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(handles.nth(0)).toBeFocused();
+  await expect
+    .poll(() => renderedKey(tileImage(page, 0)))
+    .toBe(uploadedKeys[1]);
+
   await page.getByLabel('قیمت (تومان)', { exact: true }).fill('175000');
   await page.locator('[data-umami-event="admin-panel-product-save"]').click();
   await expect(page).toHaveURL(

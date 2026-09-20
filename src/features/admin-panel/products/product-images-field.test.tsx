@@ -13,7 +13,13 @@
 // a stub `onChange` would freeze the list at its first value and there would be
 // nothing to sync.
 import { useState } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_PRODUCT_IMAGES } from '@/lib/catalog/product-input';
 import { ProductImagesField, type ProductPhoto } from './product-images-field';
@@ -64,6 +70,13 @@ const fileInput = () =>
   document.querySelector('input[type="file"]') as HTMLInputElement;
 
 const activeLabel = () => document.activeElement?.getAttribute('aria-label');
+
+/** The object key behind each tile's preview, in DOM order. */
+const previewOrder = () =>
+  tiles().map((tile) => {
+    const src = tile.querySelector('img')?.getAttribute('src') ?? '';
+    return decodeURIComponent(src).replace(/^.*?(uploads\/[^&?"]+).*$/, '$1');
+  });
 
 /** The one polite line reorder, add, remove and a refusal all speak through. */
 const announced = () =>
@@ -196,6 +209,169 @@ describe('remove', () => {
 
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:0');
     expect(screen.getByText('هنوز عکسی اضافه نشده است.')).toBeTruthy();
+  });
+});
+
+/**
+ * The photo tiles, in DOM order. A tile is an `<li>` carrying a remove button;
+ * the add tile has none.
+ */
+const tiles = () =>
+  [...document.querySelectorAll('li')].filter((li) =>
+    li.querySelector('[data-photo-remove]'),
+  );
+
+/**
+ * Lay the tiles out in a row 100px apart and stub each one's rect, because
+ * happy-dom does no layout and reports every rect as zero-sized. Only
+ * `getBoundingClientRect` needs faking — the gesture itself runs on real
+ * window events, so everything else about it is exercised for real.
+ */
+const layOutTiles = () => {
+  tiles().forEach((tile, index) => {
+    tile.getBoundingClientRect = () =>
+      ({
+        left: index * 100,
+        right: index * 100 + 90,
+        top: 0,
+        bottom: 90,
+      }) as DOMRect;
+  });
+};
+
+/** The x that lands inside the cell at `index`, per `layOutTiles`. */
+const xOf = (index: number) => index * 100 + 45;
+
+/**
+ * Dispatch a window pointer event the way the gesture receives one. Wrapped in
+ * `act` because these listeners are outside React's own event system, so the
+ * state they set is not flushed before the next assertion otherwise.
+ */
+const pointer = (type: string, clientX: number, pointerId = 1) =>
+  act(() => {
+    window.dispatchEvent(
+      new PointerEvent(type, {
+        clientX,
+        clientY: 45,
+        pointerId,
+        bubbles: true,
+      }),
+    );
+  });
+
+/** Drag the handle at `from` onto the cell at `to`, the way a finger would. */
+const drag = (from: number, to: number, pointerId = 1) => {
+  const handle = screen.getAllByRole('button', { name: /^جابه‌جایی/ })[from];
+  layOutTiles();
+  fireEvent.pointerDown(handle, { button: 0, pointerId });
+  pointer('pointermove', xOf(to), pointerId);
+  pointer('pointerup', xOf(to), pointerId);
+};
+
+describe('pointer drag', () => {
+  // The direction that used to die after one cell. React reorders a keyed list
+  // with `insertBefore`, which drops pointer capture on the moved element and
+  // fires neither `pointerup` nor `pointercancel` — so a handle-bound gesture
+  // stopped receiving moves the moment it displaced the dragged tile. Only the
+  // opposite direction worked, and that is the one the E2E spec dragged.
+  it('drags a photo toward the end of the list', () => {
+    show(3);
+
+    drag(0, 2);
+
+    expect(handleLabels()).toEqual([
+      'جابه‌جایی عکس اصلی',
+      'جابه‌جایی عکس ۲',
+      'جابه‌جایی عکس ۳',
+    ]);
+    // Positional labels cannot show a reorder, so assert on the images: the
+    // photo that was first is now last.
+    expect(previewOrder()).toEqual([
+      'uploads/photo-2.jpg',
+      'uploads/photo-3.jpg',
+      'uploads/photo-1.jpg',
+    ]);
+  });
+
+  it('drags a photo toward the start of the list', () => {
+    show(3);
+
+    drag(2, 0);
+
+    expect(previewOrder()).toEqual([
+      'uploads/photo-3.jpg',
+      'uploads/photo-1.jpg',
+      'uploads/photo-2.jpg',
+    ]);
+  });
+
+  it('keeps following the pointer across several cells in one gesture', () => {
+    show(3);
+    const handle = screen.getAllByRole('button', { name: /^جابه‌جایی/ })[0];
+    layOutTiles();
+
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 1 });
+    pointer('pointermove', xOf(1));
+    layOutTiles();
+    pointer('pointermove', xOf(2));
+    pointer('pointerup', xOf(2));
+
+    // Two hops in one gesture: the second only arrives if the first did not
+    // end the drag.
+    expect(previewOrder()).toEqual([
+      'uploads/photo-2.jpg',
+      'uploads/photo-3.jpg',
+      'uploads/photo-1.jpg',
+    ]);
+  });
+
+  it('ignores a second finger while one is already dragging', () => {
+    show(3);
+    const handles = screen.getAllByRole('button', { name: /^جابه‌جایی/ });
+    layOutTiles();
+
+    fireEvent.pointerDown(handles[0], { button: 0, pointerId: 1 });
+    // A second contact on another handle must not start a competing gesture,
+    // and its moves must not reorder anything.
+    fireEvent.pointerDown(handles[2], { button: 0, pointerId: 2 });
+    pointer('pointermove', xOf(0), 2);
+    pointer('pointerup', xOf(0), 2);
+
+    expect(previewOrder()).toEqual([
+      'uploads/photo-1.jpg',
+      'uploads/photo-2.jpg',
+      'uploads/photo-3.jpg',
+    ]);
+  });
+
+  it('stops reordering once the gesture ends', () => {
+    show(3);
+
+    drag(0, 1);
+    // A stray move after the release must not move anything.
+    pointer('pointermove', xOf(2));
+
+    expect(previewOrder()).toEqual([
+      'uploads/photo-2.jpg',
+      'uploads/photo-1.jpg',
+      'uploads/photo-3.jpg',
+    ]);
+  });
+});
+
+describe('announcements', () => {
+  // A live region speaks only when its text changes, and every message here is
+  // a pure function of an index — so the same sentence twice was silence.
+  it('changes the announced text when the same thing happens twice', () => {
+    show(3);
+
+    fireEvent.click(screen.getByRole('button', { name: 'حذف عکس ۲' }));
+    const first = announced();
+    fireEvent.click(screen.getByRole('button', { name: 'حذف عکس ۲' }));
+
+    expect(first).toContain('عکس ۲ حذف شد.');
+    expect(announced()).toContain('عکس ۲ حذف شد.');
+    expect(announced()).not.toBe(first);
   });
 });
 

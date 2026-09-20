@@ -103,14 +103,40 @@ export function ProductImagesField({
 }) {
   /** One line per file this field refused, cleared by the next pick. */
   const [rejections, setRejections] = useState<string[]>([]);
-  /** The single polite line that reorder, add and remove all speak through. */
-  const [announcement, setAnnouncement] = useState('');
+  /**
+   * The single polite line that reorder, add and remove all speak through.
+   *
+   * The counter is load-bearing, not bookkeeping: a live region announces only
+   * when its text *changes*, and every message here is a pure function of an
+   * index — removing the second photo twice produces the identical sentence,
+   * so the second removal reached nobody. The seq is rendered as a trailing
+   * run of non-breaking spaces, which screen readers swallow and which makes a
+   * repeat a different string.
+   */
+  const [announcement, setAnnouncement] = useState({ text: '', seq: 0 });
   /** The tile being dragged, or null. Only its opacity depends on this. */
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const slotRefs = useRef<(HTMLLIElement | null)[]>([]);
-  /** The cell rectangles as they were when the gesture started. */
-  const slotRects = useRef<DOMRect[]>([]);
+  /**
+   * The gesture in flight, or null. Held in a ref rather than state because the
+   * window listeners below read it, and because nothing renders from it.
+   */
+  const dragging = useRef<{ pointerId: number; photoId: string } | null>(null);
+  /** Aborts the window listeners that carry the gesture. */
+  const dragListeners = useRef<AbortController | null>(null);
+  /**
+   * `photos` and `onChange` as of the last render, for the window listeners —
+   * they are registered once per gesture and would otherwise reorder a list
+   * they captured at `pointerdown`.
+   */
+  const latest = useRef({ photos, onChange });
+  // Written in an effect rather than during render: an effect commits before
+  // any pointer event can arrive, and writing a ref while rendering is exactly
+  // the thing `react-hooks/refs` refuses.
+  useEffect(() => {
+    latest.current = { photos, onChange };
+  });
   /** The add tile's input, the fallback when the last photo is removed. */
   const addRef = useRef<HTMLInputElement | null>(null);
   /**
@@ -121,6 +147,16 @@ export function ProductImagesField({
    * announcement of what became of it.
    */
   const focusAfterRemoval = useRef<number | null>(null);
+  /**
+   * The tile index whose handle focus is owed after a keyboard move. Same
+   * hazard as `focusAfterRemoval` and the same cure: React reorders a keyed
+   * list with `insertBefore`, and moving the element that holds focus drops
+   * `document.activeElement` to `<body>`. `react-dom` does not use the
+   * `moveBefore` that would preserve it. The two directions were not even
+   * symmetric — `from < to` moves the dragged tile, `from > to` the displaced
+   * one — so arrowing one way kept focus and the other way lost it.
+   */
+  const focusHandleAt = useRef<number | null>(null);
 
   // Revoking on unmount as well as on removal: without this the form leaks one
   // blob per pick for the life of the tab, which the single-slot picker did.
@@ -176,7 +212,7 @@ export function ProductImagesField({
     // wired through the file input's `aria-describedby`, which is read when
     // focus lands on the input — and the pick that fills the last slot takes
     // the add tile, input and all, off the page, leaving nothing to describe.
-    setAnnouncement(
+    announce(
       [taken.length > 0 ? addedMessage(taken.length) : '', ...refused]
         .filter(Boolean)
         .join(' '),
@@ -194,11 +230,26 @@ export function ProductImagesField({
 
     const slot = slotRefs.current[index] ?? slotRefs.current[photos.length - 1];
     const target =
-      slot?.querySelector<HTMLButtonElement>(
-        '[data-umami-event="admin-panel-product-image-remove"]',
-      ) ?? addRef.current;
+      slot?.querySelector<HTMLButtonElement>('[data-photo-remove]') ??
+      addRef.current;
     target?.focus();
   }, [photos]);
+
+  // The keyboard twin of the effect above. `insertBefore` moves the focused
+  // handle, which drops focus to `<body>`, so the handle that was operated has
+  // to be given focus again at its new position.
+  useEffect(() => {
+    const index = focusHandleAt.current;
+    if (index === null) return;
+    focusHandleAt.current = null;
+    slotRefs.current[index]
+      ?.querySelector<HTMLButtonElement>('[data-photo-handle]')
+      ?.focus();
+  }, [photos]);
+
+  // A gesture in flight when the field unmounts would leave its window
+  // listeners behind.
+  useEffect(() => () => dragListeners.current?.abort(), []);
 
   const removeAt = (index: number) => {
     const photo = photos[index];
@@ -207,15 +258,28 @@ export function ProductImagesField({
       pendingUrls.current.delete(photo.blobUrl);
     }
     onChange(photos.filter((_, position) => position !== index));
-    setAnnouncement(removedMessage(index));
+    announce(removedMessage(index));
     focusAfterRemoval.current = index;
   };
 
-  /** Move a tile and say where it landed. Out-of-range targets are no-ops. */
-  const moveTo = (from: number, to: number) => {
-    if (to < 0 || to >= photos.length || to === from) return;
-    onChange(moved(photos, from, to));
-    setAnnouncement(movedMessage(from, to));
+  const announce = (text: string) =>
+    setAnnouncement((previous) => ({ text, seq: previous.seq + 1 }));
+
+  /**
+   * Move a tile and say where it landed. Out-of-range targets are no-ops.
+   * Returns whether anything moved, so a keyboard caller knows whether focus
+   * is owed somewhere new.
+   *
+   * Reads the list from `latest` rather than the closure: a window listener
+   * registered at `pointerdown` would otherwise reorder the list as it was
+   * when the finger went down.
+   */
+  const moveTo = (from: number, to: number): boolean => {
+    const { photos: current, onChange: notify } = latest.current;
+    if (to < 0 || to >= current.length || to === from) return false;
+    notify(moved(current, from, to));
+    announce(movedMessage(from, to));
+    return true;
   };
 
   const onHandleKeyDown = (event: React.KeyboardEvent, index: number) => {
@@ -228,42 +292,97 @@ export function ProductImagesField({
     ];
     if (delta === undefined) return;
     event.preventDefault();
-    moveTo(index, index + delta);
+    // Focus follows the photo, not the position: the button this event came
+    // from is about to be moved by `insertBefore`, which drops focus to
+    // `<body>`. Only owed when something actually moved.
+    if (moveTo(index, index + delta)) focusHandleAt.current = index + delta;
   };
 
+  /**
+   * End the gesture. Takes no event: it is called from window listeners, and
+   * whatever ended it, the drag is over.
+   */
+  const endDrag = () => {
+    dragListeners.current?.abort();
+    dragListeners.current = null;
+    dragging.current = null;
+    setDraggingId(null);
+  };
+
+  /**
+   * The gesture runs on `window`, and pointer capture is not what carries it.
+   *
+   * React reorders a keyed list with `insertBefore`. Moving the `<li>` that
+   * holds the captured element silently drops the capture and fires **neither
+   * `pointerup` nor `pointercancel`** — only `lostpointercapture`, on an
+   * element that is mid-move. A handle-bound gesture therefore died after a
+   * single cell in the one direction that moves the dragged tile
+   * (`from < to`), and `draggingId` stayed set so the tile kept its drag
+   * opacity for good. The other direction moves the *displaced* tile and
+   * happened to work — which is the direction the E2E spec dragged, and why
+   * every gate was green.
+   *
+   * Window listeners are immune, being nowhere near the node that moves.
+   * Capture is still requested: it keeps the gesture out of other elements'
+   * hover and selection behaviour while it lasts. Nothing depends on it
+   * surviving.
+   */
   const onHandlePointerDown = (event: React.PointerEvent, index: number) => {
     // Left button or a touch/pen contact only — a right-click must not start a
     // drag that then has no pointerup to end it.
     if (event.button !== 0) return;
+    // A second finger while one is already dragging would otherwise start a
+    // competing gesture that either release then ends.
+    if (dragging.current !== null) return;
+
     event.currentTarget.setPointerCapture(event.pointerId);
-    slotRects.current = slotRefs.current
-      .slice(0, photos.length)
-      .map((slot) => slot?.getBoundingClientRect())
-      .filter((rect): rect is DOMRect => rect !== undefined);
+    dragging.current = {
+      pointerId: event.pointerId,
+      photoId: photos[index].id,
+    };
     setDraggingId(photos[index].id);
+
+    const controller = new AbortController();
+    dragListeners.current = controller;
+    const { signal } = controller;
+    window.addEventListener('pointermove', onWindowPointerMove, { signal });
+    window.addEventListener('pointerup', endDrag, { signal });
+    window.addEventListener('pointercancel', endDrag, { signal });
   };
 
-  const onHandlePointerMove = (event: React.PointerEvent, index: number) => {
-    if (draggingId === null) return;
-    const target = slotRects.current.findIndex(
+  const onWindowPointerMove = (event: PointerEvent) => {
+    const drag = dragging.current;
+    // Only the contact that started it: a second finger reports its own moves
+    // to this same window listener.
+    if (!drag || event.pointerId !== drag.pointerId) return;
+
+    const current = latest.current.photos;
+    // By id, never by the index the gesture started at — the list has been
+    // reordering underneath the finger the whole time.
+    const from = current.findIndex((photo) => photo.id === drag.photoId);
+    if (from === -1) return;
+
+    // Read per move rather than snapshotted at `pointerdown`: a snapshot is
+    // viewport-relative, so a mid-drag scroll or an `sm:` breakpoint change
+    // left every stored rect describing a cell that had moved. Six cells is a
+    // trivial read. A `null` keeps its index here — compacting the array with
+    // `filter` shifted every later rect one tile along.
+    const rects = slotRefs.current
+      .slice(0, current.length)
+      .map((slot) => slot?.getBoundingClientRect() ?? null);
+    const target = rects.findIndex(
       (rect) =>
+        rect !== null &&
         event.clientX >= rect.left &&
         event.clientX <= rect.right &&
         event.clientY >= rect.top &&
         event.clientY <= rect.bottom,
     );
-    // Outside every cell, or over the add tile past the last photo: nothing to
-    // swap with, so the drag simply waits.
-    if (target === -1 || target === index) return;
-    moveTo(index, Math.min(target, photos.length - 1));
-  };
-
-  /** `pointerup` and `pointercancel` end a drag the same way — see the header. */
-  const endDrag = (event: React.PointerEvent) => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    setDraggingId(null);
+    // Outside every cell, or already there: nothing to swap with, so the drag
+    // waits. `findIndex` over this array cannot exceed the list, so the old
+    // clamp had nothing to clamp.
+    if (target === -1 || target === from) return;
+    moveTo(from, target);
   };
 
   const hintId = `${id}-hint`;
@@ -304,6 +423,7 @@ export function ProductImagesField({
                 type="button"
                 onClick={() => removeAt(index)}
                 aria-label={`حذف ${photoName(index)}`}
+                data-photo-remove=""
                 // 44px hit area around a 28px visible circle: the target clears
                 // the touch floor without the circle swallowing a 90px tile.
                 className="absolute end-0 top-0 flex size-11 items-center justify-center"
@@ -323,10 +443,11 @@ export function ProductImagesField({
               type="button"
               onKeyDown={(event) => onHandleKeyDown(event, index)}
               onPointerDown={(event) => onHandlePointerDown(event, index)}
-              onPointerMove={(event) => onHandlePointerMove(event, index)}
-              onPointerUp={endDrag}
-              onPointerCancel={endDrag}
               aria-label={`جابه‌جایی ${photoName(index)}`}
+              // Focus management finds this button by its own attribute, never
+              // by `data-umami-event`: those names are the E2E selectors, so
+              // renaming one would silently become a focus change too.
+              data-photo-handle=""
               aria-describedby={dragHintId}
               className={`mt-1 flex h-11 w-full cursor-grab touch-none items-center justify-center gap-1 rounded-lg text-xs ${
                 index === 0
@@ -398,7 +519,12 @@ export function ProductImagesField({
       )}
 
       <p aria-live="polite" className="sr-only">
-        {announcement}
+        {/* The trailing run makes a repeated sentence a different string, which
+            is what a live region needs in order to speak at all. Constructed
+            from an escape rather than typed, per the repo's rule on invisible
+            characters, and alternating rather than growing. */}
+        {announcement.text}
+        {'\u00A0'.repeat(announcement.seq % 2)}
       </p>
     </div>
   );
