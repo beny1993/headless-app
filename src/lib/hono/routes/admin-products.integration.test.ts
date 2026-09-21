@@ -140,8 +140,8 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
     };
   };
 
-  const json = (path: string, method: string, b?: unknown) =>
-    app.request(path, {
+  const json = (url: string, method: string, b?: unknown) =>
+    app.request(url, {
       method,
       ...(b === undefined
         ? {}

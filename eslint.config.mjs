@@ -60,6 +60,12 @@ const config = [
         },
       ],
       'unused-imports/no-unused-imports': 'error',
+      // A shadowed name reads as the outer one until you look twice: a `max`
+      // parameter beside drizzle's `max` aggregate, a `path` parameter beside
+      // node's `path`. The base rule is off because it cannot see TypeScript's
+      // own scopes (enums, type parameters, declaration merging).
+      'no-shadow': 'off',
+      '@typescript-eslint/no-shadow': 'error',
     },
     settings: {
       react: {

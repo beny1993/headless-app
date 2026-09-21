@@ -403,11 +403,11 @@ describe.skipIf(!databaseReachable)('POST /api/checkout', () => {
   // ── Discount preview (read-only; no order, no usage claim) ─────────────────────
 
   describe('POST /api/checkout/preview', () => {
-    const preview = (body: unknown) =>
+    const preview = (payload: unknown) =>
       app.request(API_PATHS.CHECKOUT_PREVIEW, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       });
 
     it('rejects an unauthenticated request with 401 (the exact-path guard)', async () => {

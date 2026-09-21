@@ -120,18 +120,18 @@ export type VariantRuleReason =
  */
 export class ProductVariantError extends Error {
   /** `hasMembers` cannot be thrown without saying how many are in the way. */
-  constructor(reason: 'hasMembers', count: number);
+  constructor(reason: 'hasMembers', members: number);
   constructor(reason: Exclude<VariantRuleReason, 'hasMembers'>);
   constructor(
     readonly reason: VariantRuleReason,
-    count?: number,
+    members?: number,
   ) {
     super(
       reason === 'hasMembers'
         ? // The overloads above are what make this non-null: there is no way
           // to reach it without the count, and a «some members» sentence is
           // the thing this refusal most needs not to say.
-          hasMembersMessage(count as number)
+          hasMembersMessage(members as number)
         : VARIANT_MESSAGES[reason],
     );
     this.name = 'ProductVariantError';
@@ -1145,7 +1145,7 @@ export class ProductDao {
   static async appendImage(
     productId: string,
     objectKey: string,
-    max: number,
+    limit: number,
   ): Promise<ProductImage | null> {
     return db.transaction(async (tx) => {
       const [locked] = await tx
@@ -1160,7 +1160,7 @@ export class ProductDao {
         .from(productImages)
         .where(eq(productImages.productId, productId));
 
-      if (existing.length >= max) return null;
+      if (existing.length >= limit) return null;
 
       const [row] = await tx
         .insert(productImages)

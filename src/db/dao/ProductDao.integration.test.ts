@@ -798,10 +798,10 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       const removed = await ProductDao.create(makeProduct(category));
       await ProductDao.softDelete(removed.id);
 
-      const page = (active: boolean) =>
+      const page = (isActive: boolean) =>
         ProductDao.pageForAdmin({
           categorySlug: category.slug,
-          active,
+          active: isActive,
           page: 1,
           limit: 10,
         });

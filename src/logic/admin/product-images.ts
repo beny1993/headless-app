@@ -101,7 +101,7 @@ export async function appendProductImage(
     return null;
   }
 
-  return toStoredImage(image, (key) => driver.url(key));
+  return toStoredImage(image, (stored) => driver.url(stored));
 }
 
 /**
@@ -154,5 +154,7 @@ export async function setProductImageOrder(
     });
   }
 
-  return images.map((image) => toStoredImage(image, (key) => driver.url(key)));
+  return images.map((image) =>
+    toStoredImage(image, (stored) => driver.url(stored)),
+  );
 }

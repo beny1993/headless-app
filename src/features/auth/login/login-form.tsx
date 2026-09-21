@@ -116,9 +116,9 @@ export function LoginForm({ next }: { next: string }) {
   const isComplete = !digits.includes('');
 
   /** Writes both halves, so the ref never lags the render. */
-  const putCode = (next: string[]) => {
-    entered.current = next;
-    setDigits(next);
+  const putCode = (value: string[]) => {
+    entered.current = value;
+    setDigits(value);
   };
 
   // One `setTimeout` a second, not an interval: it restarts cleanly whenever a
@@ -248,20 +248,20 @@ export function LoginForm({ next }: { next: string }) {
    * there rather than merging into it.
    */
   const fillFrom = (index: number, raw: string, base: string[]) => {
-    const digits = digitsOnly(raw).slice(0, CODE_LENGTH - index);
-    if (!digits) return;
+    const run = digitsOnly(raw).slice(0, CODE_LENGTH - index);
+    if (!run) return;
 
-    const next = [...base];
-    for (const [offset, digit] of [...digits].entries()) {
-      next[index + offset] = digit;
+    const filled = [...base];
+    for (const [offset, digit] of [...run].entries()) {
+      filled[index + offset] = digit;
     }
-    putCode(next);
+    putCode(filled);
     setError(undefined);
 
-    boxes.current[Math.min(index + digits.length, CODE_LENGTH - 1)]?.focus();
+    boxes.current[Math.min(index + run.length, CODE_LENGTH - 1)]?.focus();
     // Only when every box is filled — a shopper who clicks back to fix the
     // third digit must not trigger a verification against five digits and a gap.
-    if (!next.includes('')) void verify(next.join(''));
+    if (!filled.includes('')) void verify(filled.join(''));
   };
 
   /**
@@ -282,9 +282,9 @@ export function LoginForm({ next }: { next: string }) {
     // An empty box sends the cursor back a place and clears that one instead,
     // which is what every code input does and what the thumb expects.
     const target = entered.current[index] ? index : Math.max(0, index - 1);
-    const next = [...entered.current];
-    next[target] = '';
-    putCode(next);
+    const cleared = [...entered.current];
+    cleared[target] = '';
+    putCode(cleared);
     setError(undefined);
     boxes.current[target]?.focus();
   };
