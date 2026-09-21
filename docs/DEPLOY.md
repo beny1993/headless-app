@@ -39,6 +39,7 @@ All runtime configuration is env-only. Names come from the `VARS` enum in
 | `APP_CONFIG_ZARINPAL_PROVIDER` | yes | `mock` (default) simulates the full pay flow with no gateway account. Set to `zarinpal` at the real-gateway flip (see §6). |
 | `APP_CONFIG_ZARINPAL_MERCHANT_ID` | when `=zarinpal` | Merchant UUID from the Zarinpal panel. |
 | `APP_CONFIG_ZARINPAL_SANDBOX` | no | `true` routes the real driver at Zarinpal's sandbox host. Default `false`. |
+| `APP_CONFIG_ZARINPAL_ALLOW_MOCK` | on staging | `true` declares that this deploy is *meant* to run the simulated gateway. Every container is a production build, so `APP_CONFIG_ZARINPAL_PROVIDER=mock` without this makes `GET /api/ready` answer **503** and the container never takes traffic (§6). Anything but `true` is off. Never set it on the production app. |
 | `APP_CONFIG_STORAGE_PROVIDER` | yes | `local` (default) stores uploads on disk (needs a persistent volume, §3). `s3` uses the Liara/Arvan S3-compatible driver — built and verifiable with `pnpm verify-s3`; needs the four `LIARA_*` vars plus build-time `NEXT_PUBLIC_STORAGE_BASE_URL`. |
 | `APP_CONFIG_STORAGE_LOCAL_ROOT` | with `local` | Absolute path the `local` driver writes to. Set to **`/app/uploads`** and mount the volume there (§3). |
 | `APP_CONFIG_EMAIL_ENABLED` | no | `false` (default) logs emails to the console. `true` sends over SMTP and requires the five SMTP vars below. |
@@ -298,6 +299,18 @@ and deliberately not baked into the image:
       never `next/font/google`), images/assets are bundled or on the uploads
       volume, telemetry is disabled (`NEXT_TELEMETRY_DISABLED=1` in the image).
       Verify against the deployed site.
+
+### Staging prerequisites (a staging deploy is a production build)
+
+Staging runs the same image as production — `NODE_ENV=production` — on the mock
+gateway, which now fails closed. Set this on the staging app, or the next
+staging deploy is unusable:
+
+- [ ] **`APP_CONFIG_ZARINPAL_ALLOW_MOCK=true`** — without it the container comes
+      up dead: `GET /api/ready` answers 503 and Coolify never routes to it.
+
+It does not belong on the production app. Production sets a real provider, which
+is what makes the variable unnecessary there.
 
 ### Zarinpal real-driver flip (only when going live on the real gateway)
 

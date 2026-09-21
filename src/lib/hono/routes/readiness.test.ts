@@ -7,11 +7,18 @@ vi.mock('@/db', () => ({ db: {} }));
 vi.mock('@/db/dao/HealthDao', () => ({
   HealthDao: { ping: vi.fn() },
 }));
+// Mocked at the module edge for the same reason: the handler's own logic runs
+// for real, and the assert's own cases live in `src/lib/zarinpal/client.test.ts`.
+vi.mock('@/lib/zarinpal/client', () => ({
+  assertMockGatewayAllowed: vi.fn(),
+}));
 
 const { HealthDao } = await import('@/db/dao/HealthDao');
+const { assertMockGatewayAllowed } = await import('@/lib/zarinpal/client');
 const { readinessHandler, NOT_READY_MESSAGE } = await import('./readiness');
 
 const ping = vi.mocked(HealthDao.ping);
+const assertGateway = vi.mocked(assertMockGatewayAllowed);
 
 /** Minimal Hono-ish context: `c.json(body, status)` is all the handler uses. */
 const makeContext = () => {
@@ -72,6 +79,52 @@ describe('readinessHandler', () => {
 
     expect(res.status).toBe(503);
     expect(res.body.status).toBe('error');
+  });
+
+  // Readiness is where the mock-gateway refusal is hoisted to: Coolify's health
+  // check points at `GET /api/ready` (docs/DEPLOY.md §6), so a 503 here is what
+  // stops traffic reaching a production container that would settle orders as
+  // paid for zero Toman. It fires whatever APP_CONFIG_ZARINPAL_ENABLED says.
+  it('returns 503 when the mock gateway would serve a production build', async () => {
+    assertGateway.mockImplementationOnce(() => {
+      throw new Error('APP_CONFIG_ZARINPAL_ALLOW_MOCK is not set');
+    });
+    ping.mockResolvedValueOnce(undefined);
+
+    const res = await invoke();
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ status: 'error', message: NOT_READY_MESSAGE });
+  });
+
+  it('checks the gateway before touching the database — no I/O to fail first', async () => {
+    assertGateway.mockImplementationOnce(() => {
+      throw new Error('APP_CONFIG_ZARINPAL_ALLOW_MOCK is not set');
+    });
+
+    await invoke();
+
+    expect(ping).not.toHaveBeenCalled();
+  });
+
+  it('does not put the variable name in the client response', async () => {
+    // The endpoint is public: the operator reads the name in the server log.
+    assertGateway.mockImplementationOnce(() => {
+      throw new Error('APP_CONFIG_ZARINPAL_ALLOW_MOCK is not set');
+    });
+
+    const res = await invoke();
+
+    expect(JSON.stringify(res.body)).not.toContain('ZARINPAL');
+  });
+
+  it('checks the gateway on the happy path too, not only when it is broken', async () => {
+    ping.mockResolvedValueOnce(undefined);
+
+    const res = await invoke();
+
+    expect(assertGateway).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(200);
   });
 
   it('does not leak the driver error to the client', async () => {
