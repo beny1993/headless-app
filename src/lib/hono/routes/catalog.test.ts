@@ -14,7 +14,7 @@ import {
   PET_TYPES,
   PRODUCT_SORTS,
 } from '@/lib/catalog/product-query';
-import { API_PATHS, API_PRODUCT_DETAIL_TEMPLATE } from '@/lib/constant/paths';
+import { API_PATHS } from '@/lib/constant/paths';
 import type { ApiError } from '@/lib/hono/envelope';
 
 vi.mock('@/db', () => ({ db: {} }));
@@ -218,7 +218,8 @@ describe('GET /api/products/{slug} — generated documentation', () => {
     };
 
     expect(
-      doc.paths[API_PRODUCT_DETAIL_TEMPLATE].get.parameters,
+      // Spelled out: the point is the path the route registers (see app.test.ts).
+      doc.paths['/api/products/{slug}'].get.parameters,
     ).toContainEqual(
       expect.objectContaining({
         name: 'slug',
