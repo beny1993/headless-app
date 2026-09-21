@@ -3,10 +3,11 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
-import { AlertCircle, ChevronRight, Loader2, X } from 'lucide-react';
+import { ChevronRight, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { ApiRequestError, postData, postForm, putData } from '@/lib/api-client';
+import type { AdminProductResponse } from '@/lib/hono/routes/admin-products';
 import {
   MAX_EXTRA_CATEGORIES,
   productInputSchema,
@@ -34,11 +35,14 @@ import {
   ProductImagesField,
   type ProductPhoto,
 } from '@/features/admin-panel/products/product-images-field';
+import { Field, HintOrError } from '@/features/admin-panel/shared/field';
 
-// The form imports nothing from the route module: that would pull `pg` into the
-// browser bundle. It only reads the saved product's id back, so this narrow
-// shape is all it needs.
-type SavedProduct = { id: string };
+// Derived from the route's own response type, never restated — a hand-mirrored
+// `{ id: string }` is the shape that drifts. The import is `import type`, and
+// `isolatedModules` erases it whole, so none of the route module (and none of
+// `pg` behind it) reaches the browser bundle; only the form's one field of it
+// is named.
+type SavedProduct = Pick<AdminProductResponse, 'id'>;
 
 /** The product the edit form starts from — the fields it round-trips. */
 export type ProductFormInitial = {
@@ -924,55 +928,3 @@ const inputClass = (error?: string) =>
       ? 'border-destructive'
       : 'border-border focus-visible:border-accent-strong'
   }`;
-
-function Field({
-  id,
-  label,
-  hint,
-  error,
-  children,
-}: {
-  id: string;
-  label: string;
-  hint?: React.ReactNode;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium">
-        {label}
-      </label>
-      {children}
-      <HintOrError hint={hint} error={error} />
-    </div>
-  );
-}
-
-/** One slot under a control: its error if it has one, otherwise its hint. */
-function HintOrError({
-  id,
-  hint,
-  error,
-}: {
-  id?: string;
-  hint?: React.ReactNode;
-  error?: string;
-}) {
-  if (error) {
-    return (
-      <p
-        id={id}
-        className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
-      >
-        <AlertCircle size={12} aria-hidden="true" /> {error}
-      </p>
-    );
-  }
-  if (!hint) return null;
-  return (
-    <p id={id} className="text-muted-foreground mt-1.5 text-xs">
-      {hint}
-    </p>
-  );
-}
