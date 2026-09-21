@@ -23,6 +23,7 @@ import { ProductForm, type ProductFormInitial } from './product-form';
 const GENERIC_ERROR = 'خطای غیرمنتظره رخ داد. دوباره تلاش کن.';
 
 const api = vi.hoisted(() => ({ putData: vi.fn() }));
+const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 const { router, toast } = vi.hoisted(() => ({
   router: { push: vi.fn(), refresh: vi.fn() },
   toast: { error: vi.fn(), warning: vi.fn() },
@@ -33,6 +34,9 @@ vi.mock('@/lib/api-client', async (importOriginal) => ({
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('sonner', () => ({ toast }));
+vi.mock('@sentry/nextjs', () => ({
+  captureException: sentry.captureException,
+}));
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -325,6 +329,11 @@ describe('product save failures', () => {
       expect(toast.error).toHaveBeenCalledWith(GENERIC_ERROR),
     );
     expect(router.push).not.toHaveBeenCalled();
+    // The admin reads the generic sentence, so this is the only record of what
+    // actually happened: nothing reached the server, so nothing logged it there.
+    expect(sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'server down' }),
+    );
   });
 
   it('keeps a 5xx placeholder out of the toast', async () => {
@@ -342,6 +351,10 @@ describe('product save failures', () => {
       expect(toast.error).toHaveBeenCalledWith(GENERIC_ERROR),
     );
     expect(router.push).not.toHaveBeenCalled();
+    // Not reported from here: the request reached the server, so
+    // `create-router.ts` captured it there. A second event would be one
+    // failure filed twice.
+    expect(sentry.captureException).not.toHaveBeenCalled();
   });
 
   it('shows the refusal a 4xx explained in Persian', async () => {

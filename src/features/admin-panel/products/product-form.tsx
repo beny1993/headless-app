@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
 import { ChevronRight, Loader2, X } from 'lucide-react';
+import * as Sentry from '@sentry/nextjs';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { ApiRequestError, postData, postForm, putData } from '@/lib/api-client';
@@ -446,6 +447,17 @@ export function ProductForm({
       // an `Error` carried, which is a browser's `TypeError: Failed to fetch`
       // for a dead connection and the literal `Internal server error` for
       // every 5xx — English developer text, in Persian admin copy.
+      //
+      // Suppressing it is only half the job: the detail still has to reach
+      // GlitchTip or it is nowhere. An `ApiRequestError` means the request
+      // arrived, and `create-router.ts` captures every 5xx server-side — so
+      // reporting it here would only duplicate. What is left never reached the
+      // server at all (a dropped connection, a `TypeError` thrown before the
+      // request left, an unreadable envelope), and because this `catch` handles
+      // it, it never becomes an unhandled error — the only kind Sentry records
+      // by itself. Without this line the admin reads the generic sentence and
+      // nobody ever learns why.
+      if (!(error instanceof ApiRequestError)) Sentry.captureException(error);
       toast.error(reasonFrom(error) ?? GENERIC_ERROR);
     }
   };
