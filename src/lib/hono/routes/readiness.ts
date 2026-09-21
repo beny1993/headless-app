@@ -65,11 +65,18 @@ export const readinessHandler: RouteHandler<typeof readinessRoute> = async (
   try {
     assertMockGatewayAllowed();
     await HealthDao.ping();
-  } catch {
+  } catch (error) {
     // Deliberately not reported to Sentry: a probe runs on a fixed interval, so
     // a database outage would emit an event every tick and bury everything else.
-    // The unhealthy container is itself the signal. Neither cause names itself
-    // in the response — `/api/ready` is public; the reason is in the server log.
+    // The unhealthy container is itself the signal.
+    //
+    // It does go to the server log, though, and that is not optional: the
+    // response is the generic Persian 503 because `/api/ready` is public, so
+    // without this line a refusal is unreadable. `assertMockGatewayAllowed`
+    // logs its own refusal once, but it resolves the provider FIRST — an
+    // unrecognized APP_CONFIG_ZARINPAL_PROVIDER throws before that line is ever
+    // reached, which is exactly the deploy that would otherwise roll back blind.
+    console.error('[ready] refusing traffic:', error);
     return c.json(apiError(NOT_READY_MESSAGE), 503);
   }
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock at the module edge — the DAO — so the handler's own logic runs for real.
 // `@/db` is mocked too because importing the DAO pulls in the db module, which
@@ -36,7 +36,17 @@ const invoke = async () => {
 };
 
 describe('readinessHandler', () => {
-  beforeEach(() => vi.clearAllMocks());
+  let errorLog: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    // reset, not clear: a case whose gateway assert throws never consumes the
+    // `ping` it queued, and `mockClear` leaves that queued value behind for
+    // whichever case runs next. Reset empties the once-queues too.
+    vi.resetAllMocks();
+    errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => errorLog.mockRestore());
 
   it('returns 200 with the success envelope when the database answers', async () => {
     ping.mockResolvedValueOnce(undefined);
@@ -125,6 +135,43 @@ describe('readinessHandler', () => {
 
     expect(assertGateway).toHaveBeenCalledTimes(1);
     expect(res.status).toBe(200);
+  });
+
+  // Without this the probe is a silent 503: `getZarinpalProvider()` throws on an
+  // unrecognized provider name BEFORE the mock refusal logs itself, so a typo in
+  // APP_CONFIG_ZARINPAL_PROVIDER gave a container that 503s forever with nothing
+  // to read, and Coolify rolled the deploy back blind.
+  it('writes the reason to the server log so the operator can read it', async () => {
+    assertGateway.mockImplementationOnce(() => {
+      throw new Error(
+        'APP_CONFIG_ZARINPAL_PROVIDER="zarinpall" has no driver.',
+      );
+    });
+
+    await invoke();
+
+    expect(errorLog).toHaveBeenCalledTimes(1);
+    expect(errorLog.mock.calls[0]!.map(String).join(' ')).toContain(
+      'zarinpall',
+    );
+  });
+
+  it('names a database failure in the log too, not only a gateway one', async () => {
+    ping.mockRejectedValueOnce(new Error('getaddrinfo EAI_AGAIN db-host'));
+
+    await invoke();
+
+    expect(errorLog.mock.calls[0]!.map(String).join(' ')).toContain(
+      'EAI_AGAIN',
+    );
+  });
+
+  it('logs nothing when it is ready', async () => {
+    ping.mockResolvedValueOnce(undefined);
+
+    await invoke();
+
+    expect(errorLog).not.toHaveBeenCalled();
   });
 
   it('does not leak the driver error to the client', async () => {
