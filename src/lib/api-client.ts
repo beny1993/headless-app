@@ -79,7 +79,14 @@ async function request<T>(
   const response = await fetch(buildUrl(path, query), {
     ...rest,
     headers: {
-      'Content-Type': 'application/json',
+      // A `FormData` body writes its own `multipart/form-data; boundary=…`.
+      // Declaring `application/json` over it loses the boundary, and the
+      // server then parses no parts at all — so the upload arrives fileless
+      // rather than failing loudly. Both admin image uploads hand-rolled a
+      // bare `fetch` to dodge exactly this.
+      ...(rest.body instanceof FormData
+        ? {}
+        : { 'Content-Type': 'application/json' }),
       ...rest.headers,
     },
   });
@@ -130,6 +137,14 @@ export const postData = async <T>(
   body?: unknown,
   headers?: Headers,
 ): Promise<T> => unwrap(await post<T>(path, body, headers));
+
+/**
+ * Multipart POST — the same envelope unwrap and the same `ApiRequestError` as
+ * `postData`, for the admin image uploads. No JSON body, so no `Content-Type`
+ * (see `request`); the session cookie rides on the same-origin request.
+ */
+export const postForm = async <T>(path: string, form: FormData): Promise<T> =>
+  unwrap(await request<ApiResponse<T>>(path, { method: 'POST', body: form }));
 
 export const patchData = async <T>(path: string, body?: unknown): Promise<T> =>
   unwrap(await patch<T>(path, body));

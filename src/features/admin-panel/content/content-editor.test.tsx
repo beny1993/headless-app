@@ -19,6 +19,7 @@ import {
 } from '@/lib/constant/paths';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import { LINK_MESSAGES } from '@/lib/content/link';
+import { IMAGE_TOO_LARGE_MESSAGE } from '@/lib/hono/image-upload';
 import type { ContentKey } from '@/lib/content/site-content';
 
 const DRY = {
@@ -87,6 +88,45 @@ describe('content editor save boundary', () => {
       fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }));
     });
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the server’s own sentence when an image is too large', async () => {
+    // The 413 the `bodyLimit` mount answers with. It says which thing to fix —
+    // pick a smaller photo — where the generic fallback only says «try again»,
+    // and an admin following that one re-uploads the same oversize file.
+    // Wiring, not logic: the fetch, the envelope unwrap and the toast are three
+    // modules, and only a render reaches all three.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            status: 'error',
+            message: IMAGE_TOO_LARGE_MESSAGE,
+          }),
+          { status: 413, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+    render(
+      <ContentEditor
+        options={OPTIONS}
+        keys={['home.hero']}
+        values={{ 'home.hero': DEFAULT_CONTENT['home.hero'] }}
+      />,
+    );
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['image'], 'huge.png', { type: 'image/png' })],
+      },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }));
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(IMAGE_TOO_LARGE_MESSAGE);
+    expect(putData).not.toHaveBeenCalled();
   });
   for (const succeeds of [true, false]) {
     it(`locks edits while saving and unlocks after ${succeeds ? 'success' : 'failure'}`, async () => {

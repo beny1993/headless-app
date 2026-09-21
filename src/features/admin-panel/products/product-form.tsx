@@ -6,7 +6,7 @@ import { useId, useState } from 'react';
 import { AlertCircle, ChevronRight, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { ApiRequestError, postData, putData } from '@/lib/api-client';
+import { ApiRequestError, postData, postForm, putData } from '@/lib/api-client';
 import {
   MAX_EXTRA_CATEGORIES,
   productInputSchema,
@@ -104,34 +104,18 @@ const zodFieldErrors = (error: z.ZodError): Record<string, string> => {
 };
 
 /** Append one picked photo to the just-saved product and return its stored key.
- *  Multipart, so a raw fetch rather than the JSON api-client; same-origin, so
- *  the session cookie rides. One request per file: the 2 MB ceiling is mounted
- *  per request, so batching would turn it into a shared cap. */
+ *  One request per file: the 2 MB ceiling is mounted per request, so batching
+ *  would turn it into a shared cap. `postForm` throws `ApiRequestError`, so a
+ *  refusal the server explained stays distinguishable from a connection that
+ *  simply died — only the former carries a sentence fit to show an admin, and
+ *  only the former should replace the generic advice in the toast. */
 async function uploadImage(productId: string, file: File): Promise<string> {
   const form = new FormData();
   form.set(IMAGE_FIELD_NAME, file);
-  const response = await fetch(apiAdminProductImagesPath(productId), {
-    method: 'POST',
-    body: form,
-  });
-  const body = (await response.json().catch(() => null)) as {
-    status?: string;
-    message?: string;
-    errors?: string[];
-    data?: { objectKey?: string };
-  } | null;
-  const objectKey = body?.data?.objectKey;
-  if (!response.ok || body?.status !== 'success' || !objectKey) {
-    // `ApiRequestError`, so a refusal the server explained is distinguishable
-    // from a connection that simply died: only the former carries a sentence
-    // fit to show an admin, and only the former should replace the generic
-    // advice in the toast.
-    throw new ApiRequestError(
-      response.status,
-      body?.message ?? 'بارگذاری تصویر ناموفق بود.',
-      body?.errors,
-    );
-  }
+  const { objectKey } = await postForm<{ objectKey: string }>(
+    apiAdminProductImagesPath(productId),
+    form,
+  );
   return objectKey;
 }
 

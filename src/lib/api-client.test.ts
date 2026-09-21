@@ -4,7 +4,7 @@
 // an `Error` for the call sites that only read `.message`. Custom headers reach
 // the request. `fetch` is the only thing stubbed.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiRequestError, post, postData } from './api-client';
+import { ApiRequestError, post, postData, postForm } from './api-client';
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -78,5 +78,61 @@ describe('post headers', () => {
     expect(headers['Idempotency-Key']).toBe('key-1');
     // The default content-type is still merged in.
     expect(headers['Content-Type']).toBe('application/json');
+  });
+});
+
+describe('postForm', () => {
+  it('unwraps the success envelope to its data', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse(201, {
+        status: 'success',
+        data: { key: 'uploads/cat.jpg' },
+      }),
+    );
+
+    await expect(
+      postForm('/api/admin/content/images', new FormData()),
+    ).resolves.toEqual({ key: 'uploads/cat.jpg' });
+  });
+
+  it('sets no Content-Type, so the browser writes the multipart boundary', async () => {
+    // The whole reason both upload call sites hand-rolled a `fetch`: the JSON
+    // helpers set `Content-Type: application/json` unconditionally, and a
+    // multipart body sent under that header reaches Hono's `parseBody()` with
+    // no boundary to split on — the file is simply not there.
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse(201, { status: 'success', data: null }));
+
+    const form = new FormData();
+    await postForm('/api/admin/content/images', form);
+
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    expect(init.body).toBe(form);
+    expect(init.headers ?? {}).not.toHaveProperty('Content-Type');
+  });
+
+  it('throws ApiRequestError carrying the status and the envelope errors', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse(413, {
+        status: 'error',
+        message: 'حجم تصویر بیش از حد مجاز است.',
+        errors: ['image: File is larger than the 2 MB ceiling'],
+      }),
+    );
+
+    let caught: unknown;
+    try {
+      await postForm('/api/admin/content/images', new FormData());
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ApiRequestError);
+    const error = caught as ApiRequestError;
+    expect(error.status).toBe(413);
+    expect(error.message).toBe('حجم تصویر بیش از حد مجاز است.');
+    expect(error.errors).toEqual([
+      'image: File is larger than the 2 MB ceiling',
+    ]);
   });
 });

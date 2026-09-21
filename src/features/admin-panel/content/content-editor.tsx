@@ -4,7 +4,7 @@ import { useId, useRef, useState } from 'react';
 import { AlertCircle, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { ApiRequestError, putData } from '@/lib/api-client';
+import { ApiRequestError, postForm, putData } from '@/lib/api-client';
 import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiAdminContentPath } from '@/lib/constant/paths';
 import {
@@ -85,19 +85,11 @@ function hasVisibleToggle(key: ContentKey): boolean {
 async function uploadContentImage(file: File): Promise<string> {
   const form = new FormData();
   form.set(IMAGE_FIELD_NAME, file);
-  const response = await fetch(API_PATHS.ADMIN_CONTENT_IMAGES, {
-    method: 'POST',
-    body: form,
-  });
-  const body = (await response.json().catch(() => null)) as {
-    status?: string;
-    data?: { key?: string };
-    message?: string;
-  } | null;
-  if (!response.ok || body?.status !== 'success' || !body.data?.key) {
-    throw new Error(body?.message ?? IMAGE_UPLOAD_FAILED);
-  }
-  return body.data.key;
+  const { key } = await postForm<{ key: string }>(
+    API_PATHS.ADMIN_CONTENT_IMAGES,
+    form,
+  );
+  return key;
 }
 
 function BlockForm({
