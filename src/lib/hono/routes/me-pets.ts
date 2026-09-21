@@ -9,17 +9,19 @@
 // The `{id}` param is `z.uuid()`: a non-uuid against a uuid column is a Postgres
 // 22P02 the driver throws as a 500, rejected as a 400 here first.
 //
-// `toPetResponse` is exported so the account server page renders from the exact
-// shape a fetch returns — one type for the resource.
+// The resource's shape and its projector live in `@/lib/account/pet`, which is
+// client-safe: the account server page renders from the exact shape a fetch
+// returns without importing this file (and with it `@hono/zod-openapi`) as a
+// value. The `PetResponse` type is re-exported below for the consumers that
+// already import it from here.
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
 import { PetDao } from '@/db/dao/PetDao';
-import type { Pet } from '@/db/schema/account';
 import {
-  petGenderSchema,
   petInputSchema,
-  petKindSchema,
+  petResponseSchema,
+  toPetResponse,
 } from '@/lib/account/pet';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
 import { errorResponse } from '../route-responses';
@@ -37,37 +39,24 @@ export const PET_NOT_FOUND_MESSAGE = 'حیوان یافت نشد';
 export const MAX_PETS_PER_USER = 20;
 const TOO_MANY_PETS_MESSAGE = 'به سقف تعداد حیوانات خانگی رسیده‌ای.';
 
-const PetSchema = z
-  .object({
-    id: z.uuid(),
-    name: z.string(),
-    type: petKindSchema,
-    gender: petGenderSchema,
-    neutered: z.boolean(),
-    breed: z.string().nullable(),
-    age: z.string().nullable(),
-    weight: z.string().nullable(),
-    photoUrl: z.string().nullable(),
-    createdAt: z.iso.datetime(),
-  })
-  .openapi('Pet');
+/**
+ * The shape lives in `@/lib/account/pet`: one definition, client-safe,
+ * so the server page that renders the first paint projects rows without
+ * importing this file. Rebuilt into a local `z.object` before `.openapi()`: that method is
+ * grafted on by `@hono/zod-openapi` and zod 4 hands it to newly built schemas
+ * only, so calling it on an imported one depends on module evaluation order
+ * (the trap documented above `ProductListQuerySchema` in ./catalog.ts).
+ *
+ * The ceiling that buys: `.shape` copies the FIELDS. An object-level modifier
+ * on the source schema — `.strict()`, `.catchall()`, `.refine()`, a `.meta()`
+ * on the object itself — is silently left behind, and the document would drift
+ * with no failing test. None of the five projections has one today. Add one
+ * there and it has to be repeated here, or the two stop being one definition.
+ */
+const PetSchema = z.object(petResponseSchema.shape).openapi('Pet');
 
-/** The pet shape the account UI renders. Import, don't restate. */
-export type PetResponse = z.infer<typeof PetSchema>;
-
-/** Pet row → the wire projection: Date to ISO, internal `userId`/`updatedAt` dropped. */
-export const toPetResponse = (row: Pet): PetResponse => ({
-  id: row.id,
-  name: row.name,
-  type: row.type,
-  gender: row.gender,
-  neutered: row.neutered,
-  breed: row.breed,
-  age: row.age,
-  weight: row.weight,
-  photoUrl: row.photoUrl,
-  createdAt: row.createdAt.toISOString(),
-});
+/** Re-exported for the client components that already import the type here. */
+export type { PetResponse } from '@/lib/account/pet';
 
 const PetIdParamSchema = z.object({
   id: z.uuid().meta({ param: { name: 'id', in: 'path' } }),

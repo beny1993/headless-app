@@ -9,45 +9,39 @@
 // order's items and safe payment status are read through the owner-scoped detail
 // route (`GET /api/orders/{id}`), not here.
 //
-// The projector is exported so the account server page renders from the exact
-// same shape the fetch would return — one type for the resource, never two.
+// The projection's shape and its projector live in `@/lib/orders/order-summary`,
+// which is client-safe: the account server page renders from the exact same
+// shape the fetch would return without importing this file — and with it
+// `@hono/zod-openapi` — as a value.
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
-import { OrderDao, type OrderSummaryRow } from '@/db/dao/OrderDao';
-import {
-  orderStatusSchema,
-  paymentMethodSchema,
-} from '@/lib/orders/order-status';
+import { OrderDao } from '@/db/dao/OrderDao';
+import { orderSummarySchema, toOrderSummary } from '@/lib/orders/order-summary';
 import { apiSuccess, apiSuccessSchema } from '../envelope';
 import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
+/**
+ * The shape lives in `@/lib/orders/order-summary`: one definition, client-safe,
+ * so the server page that renders the first paint projects rows without
+ * importing this file. Rebuilt into a local `z.object` before `.openapi()`: that method is
+ * grafted on by `@hono/zod-openapi` and zod 4 hands it to newly built schemas
+ * only, so calling it on an imported one depends on module evaluation order
+ * (the trap documented above `ProductListQuerySchema` in ./catalog.ts).
+ *
+ * The ceiling that buys: `.shape` copies the FIELDS. An object-level modifier
+ * on the source schema — `.strict()`, `.catchall()`, `.refine()`, a `.meta()`
+ * on the object itself — is silently left behind, and the document would drift
+ * with no failing test. None of the five projections has one today. Add one
+ * there and it has to be repeated here, or the two stop being one definition.
+ */
 const OrderSummarySchema = z
-  .object({
-    orderId: z.uuid(),
-    orderNo: z.number().int().positive(),
-    status: orderStatusSchema,
-    paymentMethod: paymentMethodSchema,
-    total: z.number().int().nonnegative(),
-    createdAt: z.iso.datetime(),
-    itemCount: z.number().int().nonnegative(),
-  })
+  .object(orderSummarySchema.shape)
   .openapi('OrderSummary');
 
-/** One order-history row, as the account orders tab renders it. Import, don't restate. */
-export type OrderSummaryResponse = z.infer<typeof OrderSummarySchema>;
-
-/** OrderSummaryRow → the wire projection: Date to ISO, DB id renamed to orderId. */
-export const toOrderSummary = (row: OrderSummaryRow): OrderSummaryResponse => ({
-  orderId: row.id,
-  orderNo: row.orderNo,
-  status: row.status,
-  paymentMethod: row.paymentMethod,
-  total: row.total,
-  createdAt: row.createdAt.toISOString(),
-  itemCount: row.itemCount,
-});
+/** Re-exported for the client components that already import the type here. */
+export type { OrderSummaryResponse } from '@/lib/orders/order-summary';
 
 export const meOrdersRoute = createRoute({
   method: 'get',

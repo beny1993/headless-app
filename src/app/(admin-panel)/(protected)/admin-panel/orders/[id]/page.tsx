@@ -14,6 +14,10 @@ import {
 } from '@/lib/orders/order-status-display';
 import { getAdminOrder } from '@/logic/orders/get-admin-order';
 import { OrderTransition } from '@/features/admin-panel/orders/order-transition';
+import {
+  PaymentRow,
+  TotalsRow,
+} from '@/features/admin-panel/orders/order-detail-rows';
 
 export const metadata: Metadata = { title: 'جزئیات سفارش' };
 
@@ -99,13 +103,16 @@ export default async function AdminOrderDetailPage({
               ))}
             </div>
             <div className="border-border mt-1 space-y-2 border-t pt-3 text-sm">
-              <Row label="جمع اقلام" value={formatToman(order.subtotal)} />
-              <Row
+              <TotalsRow
+                label="جمع اقلام"
+                value={formatToman(order.subtotal)}
+              />
+              <TotalsRow
                 label={`هزینه ارسال (${order.provinceName})`}
                 value={formatToman(order.shippingFee)}
               />
               {order.discount > 0 && (
-                <Row
+                <TotalsRow
                   label={`تخفیف${order.discountCode ? ` (${order.discountCode})` : ''}`}
                   value={`− ${formatToman(order.discount)}`}
                 />
@@ -172,7 +179,7 @@ export default async function AdminOrderDetailPage({
                           بازگردانید.
                         </p>
                       )}
-                      <PayRow
+                      <PaymentRow
                         label="روش"
                         value={
                           payment.method === PAYMENT_METHODS.COD
@@ -188,32 +195,32 @@ export default async function AdminOrderDetailPage({
                         </span>
                         <span className="text-muted-foreground">وضعیت</span>
                       </div>
-                      <PayRow
+                      <PaymentRow
                         label="مبلغ"
                         value={formatToman(payment.amount)}
                       />
                       {/* Authority and ref id are opaque gateway keys an admin
                           copies verbatim into Zarinpal's panel to reconcile —
                           render them as-is, never Persian-digit folded. */}
-                      <PayRow
+                      <PaymentRow
                         label="شناسه پرداخت"
                         value={payment.authority ?? '—'}
                         ltr
                       />
-                      <PayRow
+                      <PaymentRow
                         label="کد پیگیری"
                         value={payment.refId ?? '—'}
                         ltr
                       />
                       {payment.cardPan && (
-                        <PayRow
+                        <PaymentRow
                           label="کارت"
                           value={toPersianDigits(payment.cardPan)}
                           ltr
                         />
                       )}
                       {payment.paidAt && (
-                        <PayRow
+                        <PaymentRow
                           label="زمان پرداخت"
                           value={formatJalali(payment.paidAt)}
                         />
@@ -226,34 +233,6 @@ export default async function AdminOrderDetailPage({
           </section>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between">
-      <span className="nums">{value}</span>
-      <span className="text-muted-foreground">{label}</span>
-    </div>
-  );
-}
-
-function PayRow({
-  label,
-  value,
-  ltr,
-}: {
-  label: string;
-  value: string;
-  ltr?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className={ltr ? 'nums' : ''} dir={ltr ? 'ltr' : undefined}>
-        {value}
-      </span>
-      <span className="text-muted-foreground">{label}</span>
     </div>
   );
 }

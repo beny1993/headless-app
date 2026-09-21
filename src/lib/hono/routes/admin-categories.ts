@@ -18,11 +18,14 @@ import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
 import { CategoryDao, CategoryParentError } from '@/db/dao/CategoryDao';
-import type { Category } from '@/db/schema/catalog';
 import {
   CATEGORY_PARENT_MESSAGES,
   categoryInputSchema,
 } from '@/lib/catalog/category-input';
+import {
+  categoryViewSchema,
+  toCategoryView,
+} from '@/lib/catalog/category-view';
 import { formatNumber } from '@/lib/format';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
 import { errorResponse, IdParamSchema } from '../route-responses';
@@ -50,32 +53,26 @@ export const categoryInUseMessage = (productCount: number, childCount = 0) => {
   return `${formatNumber(childCount)} زیردسته و ${formatNumber(productCount)} محصول (شامل محصولات غیرفعال) هنوز در این دسته‌بندی است؛ اول آن‌ها را جابه‌جا یا حذف کن.`;
 };
 
+/**
+ * The shape lives in `@/lib/catalog/category-view`: one definition, client-safe,
+ * so the server page that renders the first paint projects rows without
+ * importing this file. Rebuilt into a local `z.object` before `.openapi()`: that method is
+ * grafted on by `@hono/zod-openapi` and zod 4 hands it to newly built schemas
+ * only, so calling it on an imported one depends on module evaluation order
+ * (the trap documented above `ProductListQuerySchema` in ./catalog.ts).
+ *
+ * The ceiling that buys: `.shape` copies the FIELDS. An object-level modifier
+ * on the source schema — `.strict()`, `.catchall()`, `.refine()`, a `.meta()`
+ * on the object itself — is silently left behind, and the document would drift
+ * with no failing test. None of the five projections has one today. Add one
+ * there and it has to be repeated here, or the two stop being one definition.
+ */
 const CategorySchema = z
-  .object({
-    id: z.uuid(),
-    title: z.string(),
-    slug: z.string(),
-    sortOrder: z.number().int().nonnegative(),
-    /** The category this one sits under; `null` for a top-level one. */
-    parentId: z.uuid().nullable(),
-    createdAt: z.iso.datetime(),
-    updatedAt: z.iso.datetime(),
-  })
+  .object(categoryViewSchema.shape)
   .openapi('AdminCategory');
 
-/** The category payload — what every route returns and the admin list renders. */
-export type CategoryView = z.infer<typeof CategorySchema>;
-
-/** Project a DAO row to the admin response — ISO the dates. */
-export const toCategoryView = (c: Category): CategoryView => ({
-  id: c.id,
-  title: c.title,
-  slug: c.slug,
-  sortOrder: c.sortOrder,
-  parentId: c.parentId,
-  createdAt: c.createdAt.toISOString(),
-  updatedAt: c.updatedAt.toISOString(),
-});
+/** Re-exported for the client components that already import the type here. */
+export type { CategoryView } from '@/lib/catalog/category-view';
 
 /**
  * The field error for a refused parent or a taken slug (23505), or `null` to

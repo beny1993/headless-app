@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { API_PATHS, API_PRODUCT_DETAIL_TEMPLATE } from '@/lib/constant/paths';
+import { API_PATHS } from '@/lib/constant/paths';
 import { app } from './index';
 import { RATE_LIMITS } from './middleware/rate-limit';
 
@@ -42,7 +42,10 @@ describe('hono app', () => {
       expect.arrayContaining([
         API_PATHS.CATEGORIES,
         API_PATHS.PRODUCTS,
-        API_PRODUCT_DETAIL_TEMPLATE,
+        // Spelled out, not built from a constant: this asserts the path the
+        // route registers, and a shared template both sides derived from would
+        // agree with itself however the route was renamed.
+        '/api/products/{slug}',
       ]),
     );
   });
