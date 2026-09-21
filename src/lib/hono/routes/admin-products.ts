@@ -38,13 +38,8 @@ import {
   setProductImageOrder,
 } from '@/logic/admin/product-images';
 import { readImageUpload } from '../image-upload';
-import {
-  apiError,
-  apiSuccess,
-  apiSuccessSchema,
-  errorResponse,
-  IdParamSchema,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse, IdParamSchema } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 import { VARIANT_MESSAGES } from '@/lib/catalog/variant';
 import { ProductImageSchema, ProductSchema } from '../product-schema';

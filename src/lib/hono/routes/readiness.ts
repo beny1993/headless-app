@@ -2,12 +2,8 @@
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import { z } from 'zod';
 import { HealthDao } from '@/db/dao/HealthDao';
-import {
-  apiError,
-  apiSuccess,
-  apiSuccessSchema,
-  errorResponse,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 
 // Route pattern: always split into a `createRoute` definition and a separate
 // typed `RouteHandler` export in the same file — never inline the handler into

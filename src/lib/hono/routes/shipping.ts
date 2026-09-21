@@ -21,12 +21,8 @@ import {
   provinceIdParamSchema,
   shippingFeeSchema,
 } from '@/lib/shipping/shipping-query';
-import {
-  apiError,
-  apiSuccess,
-  apiSuccessSchema,
-  errorResponse,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 
 /**
  * A well-formed province id with no matching province. User-facing, so Persian;

@@ -24,9 +24,9 @@ import {
   apiError,
   apiSuccess,
   apiSuccessSchema,
-  errorResponse,
   formatZodIssues,
 } from '../envelope';
+import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /**

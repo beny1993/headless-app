@@ -35,12 +35,8 @@ import {
 } from '@/logic/payments/request';
 import { handleCallback } from '@/logic/payments/verify';
 import { reconcilePayments } from '@/logic/payments/reconcile';
-import {
-  apiError,
-  apiSuccess,
-  apiSuccessSchema,
-  errorResponse,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 // ── POST /payments/zarinpal/request (auth) ───────────────────────────────────

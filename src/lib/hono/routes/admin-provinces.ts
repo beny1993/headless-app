@@ -24,12 +24,8 @@ import {
   provinceToggleSchema,
 } from '@/lib/shipping/province-input';
 import { provinceIdParamSchema } from '@/lib/shipping/shipping-query';
-import {
-  apiError,
-  apiSuccess,
-  apiSuccessSchema,
-  errorResponse,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 import { AdminProvinceSchema, RateUpdateBodySchema } from './shipping';
 

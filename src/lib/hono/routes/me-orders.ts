@@ -19,7 +19,8 @@ import {
   orderStatusSchema,
   paymentMethodSchema,
 } from '@/lib/orders/order-status';
-import { apiSuccess, apiSuccessSchema, errorResponse } from '../envelope';
+import { apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 const OrderSummarySchema = z
