@@ -83,11 +83,37 @@ describe('optionalBoundedText', () => {
 });
 
 describe('FORBIDDEN_TEXT_CHARS', () => {
+  // The invisibles are CONSTRUCTED, never typed — a literal byte here would be
+  // invisible to review and to every diff (the repo's control-character rule).
+  const LRM = String.fromCharCode(0x200e);
+  const RLM = String.fromCharCode(0x200f);
+  const ALM = String.fromCharCode(0x061c);
+  const ZWNJ = String.fromCharCode(0x200c);
+
   it('flags control characters and bidi overrides/isolates, but not ZWNJ', () => {
     expect(FORBIDDEN_TEXT_CHARS.test(`a${NUL}b`)).toBe(true);
     expect(FORBIDDEN_TEXT_CHARS.test('a\u202Eb')).toBe(true);
     expect(FORBIDDEN_TEXT_CHARS.test('a\u2066b')).toBe(true);
     expect(FORBIDDEN_TEXT_CHARS.test('اسباب\u200Cبازی')).toBe(false);
+  });
+
+  // The embeddings, overrides and isolates were covered; the *marks* were not,
+  // and they reorder the neutral characters beside them the same way — a price,
+  // a phone number or a bracket next to one renders somewhere it was not typed.
+  it.each([
+    ['a left-to-right mark (U+200E)', LRM],
+    ['a right-to-left mark (U+200F)', RLM],
+    ['an Arabic letter mark (U+061C)', ALM],
+  ])('flags %s', (_, mark) => {
+    expect(FORBIDDEN_TEXT_CHARS.test(`123 ${mark}456`)).toBe(true);
+    expect(FORBIDDEN_TEXT_CHARS.test(mark)).toBe(true);
+  });
+
+  it('still allows ZWNJ, the Persian joiner one code point from U+200E', () => {
+    // Widening the class must not take U+200C along, or every Persian title
+    // spelled with a joiner becomes invalid.
+    expect(FORBIDDEN_TEXT_CHARS.test(ZWNJ)).toBe(false);
+    expect(FORBIDDEN_TEXT_CHARS.test(`a${ZWNJ}b`)).toBe(false);
   });
 });
 

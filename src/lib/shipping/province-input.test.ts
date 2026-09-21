@@ -141,8 +141,22 @@ describe('provinceCreateSchema', () => {
     expect(firstMessage({ name: `${ZWNJ}${ZWNJ}`, fee: 0 })).toBe(
       PROVINCE_MESSAGES.name,
     );
-    expect(firstMessage({ name: `${ZWSP}${RLM}\u00AD`, fee: 0 })).toBe(
+    expect(firstMessage({ name: `${ZWSP}\u00AD`, fee: 0 })).toBe(
       PROVINCE_MESSAGES.name,
+    );
+  });
+
+  // The bidi marks used to reach `normalizeProvinceName`, which stripped them —
+  // a look-alike name was refused as a duplicate (409) rather than as bad input.
+  // `FORBIDDEN_TEXT_CHARS` now catches them first, which is the earlier and more
+  // honest refusal: no Persian province name contains one.
+  it.each([
+    ['U+200E left-to-right mark', '\u200E'],
+    ['U+200F right-to-left mark', RLM],
+    ['U+061C Arabic letter mark', '\u061C'],
+  ])('refuses a name carrying %s as an invalid character', (_label, mark) => {
+    expect(firstMessage({ name: `تهران${mark}`, fee: 0 })).toBe(
+      PROVINCE_MESSAGES.nameChars,
     );
   });
 
@@ -158,7 +172,7 @@ describe('provinceCreateSchema', () => {
   });
 
   it('returns a name with an invisible character appended as the existing name', () => {
-    for (const invisible of [ZWNJ, ZWSP, RLM]) {
+    for (const invisible of [ZWNJ, ZWSP, String.fromCharCode(0xfe0f)]) {
       expect(
         provinceCreateSchema.parse({ name: `تهران${invisible}`, fee: 0 }).name,
       ).toBe('تهران');
