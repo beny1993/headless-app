@@ -16,12 +16,8 @@ import { z } from 'zod';
 import { AddressDao, type AddressWithProvince } from '@/db/dao/AddressDao';
 import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
 import { addressInputSchema } from '@/lib/account/address';
-import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
@@ -83,12 +79,6 @@ const jsonBody = {
   content: { 'application/json': { schema: addressInputSchema } },
   required: true,
 } as const;
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 const addressResponse = (description: string) =>
   ({

@@ -24,12 +24,8 @@ import {
   provinceToggleSchema,
 } from '@/lib/shipping/province-input';
 import { provinceIdParamSchema } from '@/lib/shipping/shipping-query';
-import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 import { AdminProvinceSchema, RateUpdateBodySchema } from './shipping';
 
@@ -41,18 +37,12 @@ export const PROVINCE_INACTIVE_DUPLICATE_MESSAGE =
   'این استان غیرفعال است — فعالش کن';
 export const PROVINCE_NOT_FOUND_MESSAGE = 'استان یافت نشد.';
 
-const IdParamSchema = z.object({
+const ProvinceIdParamSchema = z.object({
   id: provinceIdParamSchema.meta({
     param: { name: 'id', in: 'path' },
     example: 1,
   }),
 });
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 // ── Create ─────────────────────────────────────────────────────────────────────
 
@@ -114,7 +104,7 @@ export const provinceToggleRoute = createRoute({
   tags: ['admin'],
   summary: 'Activate or deactivate a province (admin only)',
   request: {
-    params: IdParamSchema,
+    params: ProvinceIdParamSchema,
     body: {
       content: { 'application/json': { schema: provinceToggleSchema } },
       required: true,

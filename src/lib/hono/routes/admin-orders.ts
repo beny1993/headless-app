@@ -23,12 +23,8 @@ import {
 } from '@/lib/orders/order-status';
 import { adminTransitionOrder } from '@/logic/orders/admin-transition';
 import { getAdminOrder, type AdminOrder } from '@/logic/orders/get-admin-order';
-import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. */
@@ -141,12 +137,6 @@ export const toAdminOrderResponse = (
 const OrderIdParamSchema = z.object({
   id: z.uuid().meta({ param: { name: 'id', in: 'path' } }),
 });
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 // ── Detail read ─────────────────────────────────────────────────────────────
 

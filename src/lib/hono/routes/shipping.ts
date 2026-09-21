@@ -21,12 +21,8 @@ import {
   provinceIdParamSchema,
   shippingFeeSchema,
 } from '@/lib/shipping/shipping-query';
-import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 
 /**
  * A well-formed province id with no matching province. User-facing, so Persian;
@@ -83,12 +79,6 @@ export const RateUpdateBodySchema = z
     }),
   })
   .openapi('ShippingRateUpdate');
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 export const shippingRatesRoute = createRoute({
   method: 'get',

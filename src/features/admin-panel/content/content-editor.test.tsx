@@ -19,6 +19,8 @@ import {
 } from '@/lib/constant/paths';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import { LINK_MESSAGES } from '@/lib/content/link';
+import { DEFAULT_ERROR_MESSAGE } from '@/lib/api-client';
+import { IMAGE_TOO_LARGE_MESSAGE } from '@/lib/hono/image-upload';
 import type { ContentKey } from '@/lib/content/site-content';
 
 const DRY = {
@@ -87,6 +89,89 @@ describe('content editor save boundary', () => {
       fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }));
     });
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the server’s own sentence when an image is too large', async () => {
+    // The 413 the `bodyLimit` mount answers with. It says which thing to fix —
+    // pick a smaller photo — where the generic fallback only says «try again»,
+    // and an admin following that one re-uploads the same oversize file.
+    // Wiring, not logic: the fetch, the envelope unwrap and the toast are three
+    // modules, and only a render reaches all three.
+    //
+    // This case alone does NOT pin the move to `postForm`: the hand-rolled
+    // helper it replaced also read `message`, so it passes against that too.
+    // The case below it is the one that fails when the old helper is put back.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            status: 'error',
+            message: IMAGE_TOO_LARGE_MESSAGE,
+          }),
+          { status: 413, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+    render(
+      <ContentEditor
+        options={OPTIONS}
+        keys={['home.hero']}
+        values={{ 'home.hero': DEFAULT_CONTENT['home.hero'] }}
+      />,
+    );
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['image'], 'huge.png', { type: 'image/png' })],
+      },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }));
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(IMAGE_TOO_LARGE_MESSAGE);
+    expect(putData).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Persian when the refusal is not this app’s', async () => {
+    // A CDN or ingress 413: an HTML page, no envelope, no `message`. The old
+    // hand-rolled helper answered this with its own `IMAGE_UPLOAD_FAILED`;
+    // `postForm` answers with `DEFAULT_ERROR_MESSAGE`. Both are Persian — the
+    // point is that one exists at all, since the shared client fallback used to
+    // be an English sentence that `reasonFrom` would forward as though the
+    // server had written it for the admin.
+    //
+    // This is the revert-proof for this file: restore the old helper and this
+    // assertion fails on the wrong Persian sentence.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response('<html>413 Request Entity Too Large</html>', {
+          status: 413,
+          headers: { 'content-type': 'text/html' },
+        }),
+      ),
+    );
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+    render(
+      <ContentEditor
+        options={OPTIONS}
+        keys={['home.hero']}
+        values={{ 'home.hero': DEFAULT_CONTENT['home.hero'] }}
+      />,
+    );
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File(['image'], 'huge.png', { type: 'image/png' })],
+      },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }));
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(DEFAULT_ERROR_MESSAGE);
+    expect(putData).not.toHaveBeenCalled();
   });
   for (const succeeds of [true, false]) {
     it(`locks edits while saving and unlocks after ${succeeds ? 'success' : 'failure'}`, async () => {

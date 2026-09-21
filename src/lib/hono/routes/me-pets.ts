@@ -21,12 +21,8 @@ import {
   petInputSchema,
   petKindSchema,
 } from '@/lib/account/pet';
-import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
@@ -81,12 +77,6 @@ const jsonBody = {
   content: { 'application/json': { schema: petInputSchema } },
   required: true,
 } as const;
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 const petResponse = (description: string) =>
   ({

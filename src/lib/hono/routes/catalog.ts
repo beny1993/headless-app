@@ -26,12 +26,8 @@ import {
   type ProductDetail,
   type ProductWithImages,
 } from '@/db/schema/catalog';
-import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 import { ProductImageSchema, ProductSchema } from '../product-schema';
 
 /** User-facing copy, so Persian. `errors` stays English developer detail. */
@@ -248,11 +244,6 @@ const toProductDetailResponse = (
   })),
 });
 
-const invalidQueryResponse = {
-  content: { 'application/json': { schema: apiErrorSchema } },
-  description: 'Query parameters failed validation',
-} as const;
-
 export const categoryListRoute = createRoute({
   method: 'get',
   path: '/categories',
@@ -293,7 +284,7 @@ export const productListRoute = createRoute({
       },
       description: 'One page of active products',
     },
-    400: invalidQueryResponse,
+    400: errorResponse('Query parameters failed validation'),
   },
 });
 
@@ -344,13 +335,11 @@ export const productDetailRoute = createRoute({
       },
       description: 'The product',
     },
-    400: invalidQueryResponse,
-    404: {
-      content: { 'application/json': { schema: apiErrorSchema } },
-      description:
-        'No such product — deliberately the same answer for a slug that never ' +
+    400: errorResponse('Query parameters failed validation'),
+    404: errorResponse(
+      'No such product — deliberately the same answer for a slug that never ' +
         'existed and one that was soft-deleted',
-    },
+    ),
   },
 });
 

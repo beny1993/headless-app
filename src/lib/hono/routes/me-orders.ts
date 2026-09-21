@@ -19,7 +19,8 @@ import {
   orderStatusSchema,
   paymentMethodSchema,
 } from '@/lib/orders/order-status';
-import { apiErrorSchema, apiSuccess, apiSuccessSchema } from '../envelope';
+import { apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 const OrderSummarySchema = z
@@ -66,10 +67,7 @@ export const meOrdersRoute = createRoute({
       description:
         'The caller’s orders, newest first, with per-order item counts',
     },
-    401: {
-      content: { 'application/json': { schema: apiErrorSchema } },
-      description: 'No session',
-    },
+    401: errorResponse('No session'),
   },
 });
 
