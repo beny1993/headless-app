@@ -220,7 +220,6 @@ describe.skipIf(!databaseReachable)('admin province API', () => {
 
     it.each([
       ['a zero width space', ZWSP],
-      ['a right-to-left mark', RLM],
       ['a Hangul filler', String.fromCharCode(0x3164)],
       ['a variation selector', String.fromCharCode(0xfe0f)],
       ['a braille blank', String.fromCharCode(0x2800)],
@@ -241,6 +240,22 @@ describe.skipIf(!databaseReachable)('admin province API', () => {
         );
       },
     );
+
+    // A bidi mark takes the other exit: the shared character class refuses it
+    // as bad input before the name is ever normalized, so the look-alike is
+    // stopped at 400 rather than at the unique constraint. Either way no second
+    // «تهران» is written — this pins which one it is.
+    it('400s the existing name with a right-to-left mark appended, creating no look-alike', async () => {
+      const existing = await throwaway();
+      asRole(ROLES.ADMIN);
+
+      const { status } = await createProvince({
+        name: `${existing.name}${RLM}`,
+        fee: 1,
+      });
+
+      expect(status).toBe(400);
+    });
 
     it('409s a name held by an inactive province, saying so, and leaves it inactive', async () => {
       const existing = await throwaway();

@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { addressInputSchema } from '@/lib/account/address';
 
 const NUL = String.fromCharCode(0);
+const RLO = String.fromCharCode(0x202e);
 
 const valid = () => ({
   title: 'خانه',
@@ -21,6 +22,12 @@ const valid = () => ({
 });
 
 describe('addressInputSchema', () => {
+  it('rejects a bidi override in the saved-address title', () => {
+    expect(
+      addressInputSchema.safeParse({ ...valid(), title: `خانه${RLO}` }).success,
+    ).toBe(false);
+  });
+
   it('accepts a full, well-formed address', () => {
     const parsed = addressInputSchema.parse(valid());
     expect(parsed.title).toBe('خانه');

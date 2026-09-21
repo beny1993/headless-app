@@ -34,11 +34,12 @@ All runtime configuration is env-only. Names come from the `VARS` enum in
 | `APP_CONFIG_SMS_PROVIDER` | yes | OTP SMS driver. `console` (default) logs codes to the server log — **fine for a soft launch, not for real customers**. Set to `smsir` before launch (see §6). |
 | `APP_CONFIG_SMSIR_API_KEY` | when `=smsir` | SMS.ir web-service key, sent as `x-api-key`. A **secret** — Coolify env only, never a build arg. |
 | `APP_CONFIG_SMSIR_TEMPLATE_ID` | when `=smsir` | Numeric id of the SMS.ir panel template the code is substituted into. Its body must contain `#OTP#`. |
-| `APP_CONFIG_SHOW_OTP_IN_UI` | no | `true` prints the OTP on the login page for **staging/QA only**, where `console` codes reach nothing but the server log. Anything else is off, and it is ignored unless `APP_CONFIG_SMS_PROVIDER=console`. Never set it on the production app — it is a sign-in bypass. |
+| `APP_CONFIG_SHOW_OTP_IN_UI` | on staging | `true` prints the OTP on the login page. **Required on a staging deploy:** outside development the `console` driver logs only *that* a code was sent, never the code and never the number, so `docker logs` no longer carries it. Anything else is off, and it is ignored unless `APP_CONFIG_SMS_PROVIDER=console`. Never set it on the production app — it is a sign-in bypass. |
 | `APP_CONFIG_MAINTENANCE_MODE` | no | `true` shows every storefront page as the maintenance screen to everyone but a signed-in admin, who sees the real site. `/login` and `/admin-panel` stay open. Anything else is off. Restart after changing it — no rebuild. Hides the shop, does not lock it: `/api` stays reachable. |
 | `APP_CONFIG_ZARINPAL_PROVIDER` | yes | `mock` (default) simulates the full pay flow with no gateway account. Set to `zarinpal` at the real-gateway flip (see §6). |
 | `APP_CONFIG_ZARINPAL_MERCHANT_ID` | when `=zarinpal` | Merchant UUID from the Zarinpal panel. |
 | `APP_CONFIG_ZARINPAL_SANDBOX` | no | `true` routes the real driver at Zarinpal's sandbox host. Default `false`. |
+| `APP_CONFIG_ZARINPAL_ALLOW_MOCK` | on staging | `true` declares that this deploy is *meant* to run the simulated gateway. Every container is a production build, so `APP_CONFIG_ZARINPAL_PROVIDER=mock` without this makes `GET /api/ready` answer **503** and the container never takes traffic (§6). Anything but `true` is off. Never set it on the production app. |
 | `APP_CONFIG_STORAGE_PROVIDER` | yes | `local` (default) stores uploads on disk (needs a persistent volume, §3). `s3` uses the Liara/Arvan S3-compatible driver — built and verifiable with `pnpm verify-s3`; needs the four `LIARA_*` vars plus build-time `NEXT_PUBLIC_STORAGE_BASE_URL`. |
 | `APP_CONFIG_STORAGE_LOCAL_ROOT` | with `local` | Absolute path the `local` driver writes to. Set to **`/app/uploads`** and mount the volume there (§3). |
 | `APP_CONFIG_EMAIL_ENABLED` | no | `false` (default) logs emails to the console. `true` sends over SMTP and requires the five SMTP vars below. |
@@ -277,7 +278,8 @@ and deliberately not baked into the image:
       launch day shows every customer «به‌زودی برمی‌گردیم».
 - [ ] **Real SMS driver:** set `APP_CONFIG_SMS_PROVIDER=smsir` plus
       `APP_CONFIG_SMSIR_API_KEY` and `APP_CONFIG_SMSIR_TEMPLATE_ID`. The
-      `console` default logs every OTP to the server log. The driver posts to
+      `console` default sends nothing at all (and, outside development, does not
+      even log the code). The driver posts to
       SMS.ir's **verify** service (`/v1/send/verify`), which is where OTP is
       routed — the bulk/line-number API is for marketing sends and carriers
       filter codes on it. Create the template in the SMS.ir panel first: its
@@ -298,6 +300,78 @@ and deliberately not baked into the image:
       never `next/font/google`), images/assets are bundled or on the uploads
       volume, telemetry is disabled (`NEXT_TELEMETRY_DISABLED=1` in the image).
       Verify against the deployed site.
+
+### Before deploying the forbidden-character widening (once, on production)
+
+The bidi marks (U+200E, U+200F, U+061C) and the two separators (U+2028, U+2029)
+are now refused on write, and the shared text validators behind checkout, pets,
+the address book and site content enforce the class for the first time. A row
+saved with one of those characters **before** this deploy keeps rendering, but
+every later edit of it fails with «نویسه‌های نامعتبر» — and the
+character is invisible, so there is nothing for the admin to see and delete. A
+price change on such a product is blocked until someone retypes its title.
+
+Run this first; it reads nothing but `id` and the offending value. **The target
+characters are built as `U&` escapes, never typed** (the control-character rule):
+a literal mark in a runbook is invisible to whoever copies it.
+
+```sql
+with bidi as (select U&'[\061C\200E\200F\2028\2029\202A-\202E\2066-\2069]' as p)
+select 'products.title'        as field, p.id::text as id, p.title          as value from products p, bidi b where p.title          ~ b.p
+union all select 'products.brand',          p.id::text, p.brand          from products p, bidi b where p.brand          ~ b.p
+union all select 'products.benefit',        p.id::text, p.benefit        from products p, bidi b where p.benefit        ~ b.p
+union all select 'products.description',    p.id::text, p.description    from products p, bidi b where p.description    ~ b.p
+union all select 'products.variant_label',  p.id::text, p.variant_label  from products p, bidi b where p.variant_label  ~ b.p
+union all select 'categories.title',        c.id::text, c.title          from categories c, bidi b where c.title        ~ b.p
+union all select 'site_content.value',      s.key,      s.value::text    from site_content s, bidi b where s.value::text ~ b.p
+union all select 'pets.name',               t.id::text, t.name           from pets t, bidi b where t.name               ~ b.p
+union all select 'addresses.recipient_name', a.id::text, a.recipient_name from addresses a, bidi b where a.recipient_name ~ b.p
+union all select 'addresses.address_line',  a.id::text, a.address_line   from addresses a, bidi b where a.address_line   ~ b.p;
+```
+
+ZWNJ (U+200C) is deliberately **not** in the pattern, so ordinary Persian
+titles never match it — only the reordering characters do.
+
+Empty result — nothing to do. Any rows: retype the value (an admin for the
+first three, the customer for the last two) before or just after the deploy.
+`provinces` is safe, because the old schema normalized the mark away on write.
+`orders` and `order_items` are safe too: they are snapshots, never re-validated
+and never edited, so a mark there stays as a rendering oddity on one historical
+order and blocks nothing.
+
+### Staging prerequisites (a staging deploy is a production build)
+
+Staging runs the same image as production — `NODE_ENV=production` — on the mock
+gateway and the console SMS driver, and both of those fail closed. Set both
+variables on the staging app, or the next staging deploy is unusable:
+
+- [ ] **`APP_CONFIG_ZARINPAL_ALLOW_MOCK=true`** — without it the container comes
+      up dead: `GET /api/ready` answers 503 and Coolify never routes to it.
+- [ ] **`APP_CONFIG_SHOW_OTP_IN_UI=true`** — without it nobody can sign in: the
+      console driver no longer writes the code or the number to the log.
+- [ ] **Confirm the Coolify health check is `GET /api/ready`**, not
+      `/api/health` — §6 above has been carrying that correction since
+      2026-09-19 and it may still be unfixed. Pointed at `/api/health`, the
+      mock-gateway 503 is never observed, and §5's migration-failure rollback
+      was never armed either. The money path still fails closed regardless:
+      `getZarinpalClient()` throws on the first checkout, so nothing settles
+      — the probe is what turns that into "no traffic" instead of "one broken
+      shopper".
+
+Neither variable belongs on the production app. Production sets a real provider
+and a real SMS driver, which is what makes both unnecessary there.
+
+**What `APP_CONFIG_SHOW_OTP_IN_UI=true` costs on staging.** It is now *required*
+there, because the log fallback is gone — and it makes
+`POST /api/auth/phone-number/send-otp` hand the code back in its own response to
+whoever asked. Anyone who can reach staging can send a code for a known admin
+number and read it back: one request, admin session. The 3-per-minute throttle
+does not stop a single targeted attempt, and it never did. Production is
+strictly safer after this change; staging is strictly less safe. **So staging
+must not be publicly routable** — put it behind the Cloudflare origin lockdown
+([[Story - Cloudflare Origin Lockdown]]) or behind basic auth before this ships.
+Treat every staging admin account as compromised-by-design: never reuse a
+production phone number or session there.
 
 ### Zarinpal real-driver flip (only when going live on the real gateway)
 

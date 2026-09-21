@@ -11,6 +11,9 @@ import {
 } from '@/lib/checkout/checkout-input';
 
 const NUL = String.fromCharCode(0);
+const RLO = String.fromCharCode(0x202e);
+const RLM = String.fromCharCode(0x200f);
+const LF = String.fromCharCode(10);
 const uuidA = '11111111-1111-4111-8111-111111111111';
 const uuidB = '22222222-2222-4222-8222-222222222222';
 
@@ -25,6 +28,32 @@ const validBody = () => ({
     addressLine: 'خیابان آزادی، پلاک ۱۰',
   },
   paymentMethod: 'cod' as const,
+});
+
+describe('checkoutInputSchema — bidi characters', () => {
+  // Not a hypothetical: `create-order.ts` snapshots recipientName onto
+  // `orders.recipient_name`, and the admin order list renders that snapshot. A
+  // signed-in shopper needs no admin rights to post one.
+  it.each([
+    ['a right-to-left override', RLO],
+    ['a right-to-left mark', RLM],
+  ])('rejects %s in the recipient name', (_label, char) => {
+    const body = validBody();
+    body.address.recipientName = `علی${char}۱۲۳`;
+    expect(checkoutInputSchema.safeParse(body).success).toBe(false);
+  });
+
+  it('rejects a bidi override in the address line', () => {
+    const body = validBody();
+    body.address.addressLine = `خیابان آزادی${RLO}`;
+    expect(checkoutInputSchema.safeParse(body).success).toBe(false);
+  });
+
+  it('still accepts a multi-line address line — it is a textarea', () => {
+    const body = validBody();
+    body.address.addressLine = `خیابان آزادی${LF}پلاک ۱۰`;
+    expect(checkoutInputSchema.safeParse(body).success).toBe(true);
+  });
 });
 
 describe('checkoutInputSchema', () => {
