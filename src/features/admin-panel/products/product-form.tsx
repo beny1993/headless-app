@@ -438,7 +438,11 @@ export function ProductForm({
         if (message) toast.error(message);
         return;
       }
-      toast.error(error instanceof Error ? error.message : GENERIC_ERROR);
+      // `reasonFrom`, not `error.message`: this line used to forward whatever
+      // an `Error` carried, which is a browser's `TypeError: Failed to fetch`
+      // for a dead connection and the literal `Internal server error` for
+      // every 5xx — English developer text, in Persian admin copy.
+      toast.error(reasonFrom(error) ?? GENERIC_ERROR);
     }
   };
 
