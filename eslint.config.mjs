@@ -99,6 +99,32 @@ const config = [
     },
   },
   {
+    // A route file imports `@hono/zod-openapi`, which imports the router, which
+    // imports the DAOs. A page that imports a *value* out of one — a response
+    // mapper, a message constant — pulls that whole graph into the RSC module
+    // graph for the sake of one pure function. The fix is always the same: the
+    // shared thing belongs in a client-safe domain module both sides import
+    // (`@/lib/account/pet`, `@/lib/orders/order-summary`, the pattern
+    // `@/lib/catalog/product-query` set). Type imports are erased, so they stay
+    // allowed — a page is free to name the shape the API returns.
+    files: ['src/app/**/page.tsx'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@/lib/hono/routes/*'],
+              allowTypeImports: true,
+              message:
+                'Import types only: a value import of a Hono route drags the API router (and the DAOs behind it) into this page. Move the shared value into a client-safe domain module under @/lib and import it from there.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['*.config.js', '*.config.cjs', '*.config.mjs', 'scripts/**/*.mjs'],
     languageOptions: {
       globals: {

@@ -19,6 +19,7 @@
 //     — the database owns the id and the timestamps, and only the atomic claim at
 //     checkout ever moves `usageCount`.
 import { z } from 'zod';
+import type { DiscountCode } from '@/db/schema/discounts';
 import { MAX_DISCOUNT_CODE } from '@/lib/checkout/checkout-input';
 
 export const DISCOUNT_TYPES = {
@@ -151,3 +152,45 @@ export type DiscountCodeInputBody = z.infer<typeof discountCodeInputSchema>;
 
 /** The toggle body — the only mutable field after creation (deactivate/reactivate). */
 export const discountCodeToggleSchema = z.object({ isActive: z.boolean() });
+
+/**
+ * The admin view of a discount code — the full row the panel shows, with the
+ * timestamps and expiry ISO-stringified for the client. `usageCount` is
+ * read-only here (the atomic claim owns it); it is shown so the admin sees
+ * remaining capacity.
+ *
+ * Defined here rather than in the route so the discounts server page can
+ * project rows without importing `@/lib/hono/routes/*` as a value.
+ * `src/lib/hono/routes/admin-discounts.ts` registers it under `DiscountCode`.
+ */
+export const discountCodeViewSchema = z.object({
+  id: z.uuid(),
+  code: z.string(),
+  type: discountTypeSchema,
+  value: z.number().int().positive(),
+  expiresAt: z.iso.datetime().nullable(),
+  usageLimit: z.number().int().positive().nullable(),
+  usageCount: z.number().int().nonnegative(),
+  minOrderAmount: z.number().int().nonnegative(),
+  isActive: z.boolean(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+/** The discount payload — what create/toggle return, and the admin list renders. */
+export type DiscountCodeView = z.infer<typeof discountCodeViewSchema>;
+
+/** Project a DAO row to the admin response — ISO the dates. */
+export const toDiscountView = (c: DiscountCode): DiscountCodeView => ({
+  id: c.id,
+  code: c.code,
+  type: c.type,
+  value: c.value,
+  expiresAt: c.expiresAt ? c.expiresAt.toISOString() : null,
+  usageLimit: c.usageLimit,
+  usageCount: c.usageCount,
+  minOrderAmount: c.minOrderAmount,
+  isActive: c.isActive,
+  createdAt: c.createdAt.toISOString(),
+  updatedAt: c.updatedAt.toISOString(),
+});
