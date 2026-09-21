@@ -37,17 +37,11 @@ import { handleCallback } from '@/logic/payments/verify';
 import { reconcilePayments } from '@/logic/payments/reconcile';
 import {
   apiError,
-  apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
+  errorResponse,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 // ── POST /payments/zarinpal/request (auth) ───────────────────────────────────
 

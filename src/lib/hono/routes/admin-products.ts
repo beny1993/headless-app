@@ -40,9 +40,10 @@ import {
 import { readImageUpload } from '../image-upload';
 import {
   apiError,
-  apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
+  errorResponse,
+  IdParamSchema,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
 import { VARIANT_MESSAGES } from '@/lib/catalog/variant';
@@ -103,19 +104,6 @@ const toAdminProduct = (
   createdAt: p.createdAt.toISOString(),
   updatedAt: p.updatedAt.toISOString(),
 });
-
-const IdParamSchema = z.object({
-  id: z.uuid().meta({
-    param: { name: 'id', in: 'path' },
-    example: '123e4567-e89b-12d3-a456-426614174000',
-  }),
-});
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 // ── Postgres write-error mapping ──────────────────────────────────────────────
 // A well-formed body can still be refused by the database: a duplicate slug or

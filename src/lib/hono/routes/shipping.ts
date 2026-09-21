@@ -23,9 +23,9 @@ import {
 } from '@/lib/shipping/shipping-query';
 import {
   apiError,
-  apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
+  errorResponse,
 } from '../envelope';
 
 /**
@@ -83,12 +83,6 @@ export const RateUpdateBodySchema = z
     }),
   })
   .openapi('ShippingRateUpdate');
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 export const shippingRatesRoute = createRoute({
   method: 'get',

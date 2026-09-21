@@ -26,9 +26,9 @@ import {
 import { provinceIdParamSchema } from '@/lib/shipping/shipping-query';
 import {
   apiError,
-  apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
+  errorResponse,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
 import { AdminProvinceSchema, RateUpdateBodySchema } from './shipping';
@@ -47,12 +47,6 @@ const IdParamSchema = z.object({
     example: 1,
   }),
 });
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 // ── Create ─────────────────────────────────────────────────────────────────────
 

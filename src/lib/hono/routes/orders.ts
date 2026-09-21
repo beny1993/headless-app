@@ -20,9 +20,9 @@ import {
 import { getOwnedOrder, type OwnedOrder } from '@/logic/checkout/get-order';
 import {
   apiError,
-  apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
+  errorResponse,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
 
@@ -126,21 +126,14 @@ export const orderDetailRoute = createRoute({
       },
       description: 'The order, with item snapshots and safe payment status',
     },
-    400: errorResponseFor('The id is not a valid uuid'),
-    401: errorResponseFor('No session'),
-    404: errorResponseFor(
+    400: errorResponse('The id is not a valid uuid'),
+    401: errorResponse('No session'),
+    404: errorResponse(
       'No such order for this user — deliberately the same answer for an id ' +
         'that never existed and one that belongs to someone else',
     ),
   },
 });
-
-function errorResponseFor(description: string) {
-  return {
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  } as const;
-}
 
 export const orderDetailHandler: RouteHandler<
   typeof orderDetailRoute,

@@ -4,9 +4,9 @@ import { z } from 'zod';
 import { HealthDao } from '@/db/dao/HealthDao';
 import {
   apiError,
-  apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
+  errorResponse,
 } from '../envelope';
 
 // Route pattern: always split into a `createRoute` definition and a separate
@@ -45,10 +45,9 @@ export const readinessRoute = createRoute({
       },
       description: 'Dependencies reachable — safe to route traffic here',
     },
-    503: {
-      content: { 'application/json': { schema: apiErrorSchema } },
-      description: 'A dependency is unreachable — do not route traffic here',
-    },
+    503: errorResponse(
+      'A dependency is unreachable — do not route traffic here',
+    ),
   },
 });
 

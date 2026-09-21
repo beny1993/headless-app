@@ -22,9 +22,9 @@ import { CheckoutError, createOrder } from '@/logic/checkout/create-order';
 import { previewDiscount } from '@/logic/checkout/preview-discount';
 import {
   apiError,
-  apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
+  errorResponse,
   formatZodIssues,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
@@ -57,12 +57,6 @@ const CheckoutResultSchema = z
 
 /** The checkout result the FE reads to redirect (COD) or start payment (Zarinpal). */
 export type CheckoutResultResponse = z.infer<typeof CheckoutResultSchema>;
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 export const checkoutRoute = createRoute({
   method: 'post',

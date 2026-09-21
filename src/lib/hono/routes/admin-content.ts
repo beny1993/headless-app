@@ -24,19 +24,13 @@ import { findBrokenLinks } from '@/logic/content/link-targets';
 import { INVALID_INPUT_MESSAGE } from '../create-router';
 import {
   apiError,
-  apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
+  errorResponse,
   formatZodIssues,
 } from '../envelope';
 import { readImageUpload } from '../image-upload';
 import type { AuthedEnv } from '../middleware/auth';
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 // ── Block update ────────────────────────────────────────────────────────────
 

@@ -18,9 +18,9 @@ import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
 import { addressInputSchema } from '@/lib/account/address';
 import {
   apiError,
-  apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
+  errorResponse,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
 
@@ -83,12 +83,6 @@ const jsonBody = {
   content: { 'application/json': { schema: addressInputSchema } },
   required: true,
 } as const;
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 const addressResponse = (description: string) =>
   ({

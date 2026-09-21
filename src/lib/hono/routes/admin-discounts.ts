@@ -26,9 +26,10 @@ import {
 } from '@/lib/discount/discount-code';
 import {
   apiError,
-  apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
+  errorResponse,
+  IdParamSchema,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
 import { pgErrorOf } from '../pg-error';
@@ -78,19 +79,6 @@ export const toDiscountView = (c: DiscountCode): DiscountCodeView => ({
   createdAt: c.createdAt.toISOString(),
   updatedAt: c.updatedAt.toISOString(),
 });
-
-const IdParamSchema = z.object({
-  id: z.uuid().meta({
-    param: { name: 'id', in: 'path' },
-    example: '123e4567-e89b-12d3-a456-426614174000',
-  }),
-});
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 // ── Postgres write-error mapping (as in admin-products) ───────────────────────
 /**

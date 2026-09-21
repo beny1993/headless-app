@@ -23,9 +23,9 @@ import {
 } from '@/lib/account/pet';
 import {
   apiError,
-  apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
+  errorResponse,
 } from '../envelope';
 import type { AuthedEnv } from '../middleware/auth';
 
@@ -81,12 +81,6 @@ const jsonBody = {
   content: { 'application/json': { schema: petInputSchema } },
   required: true,
 } as const;
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 const petResponse = (description: string) =>
   ({
