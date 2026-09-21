@@ -301,6 +301,44 @@ and deliberately not baked into the image:
       volume, telemetry is disabled (`NEXT_TELEMETRY_DISABLED=1` in the image).
       Verify against the deployed site.
 
+### Before deploying the forbidden-character widening (once, on production)
+
+The bidi marks (U+200E, U+200F, U+061C) and the two separators (U+2028, U+2029)
+are now refused on write, and the shared text validators behind checkout, pets,
+the address book and site content enforce the class for the first time. A row
+saved with one of those characters **before** this deploy keeps rendering, but
+every later edit of it fails with «نویسه‌های نامعتبر» — and the
+character is invisible, so there is nothing for the admin to see and delete. A
+price change on such a product is blocked until someone retypes its title.
+
+Run this first; it reads nothing but `id` and the offending value. **The target
+characters are built as `U&` escapes, never typed** (the control-character rule):
+a literal mark in a runbook is invisible to whoever copies it.
+
+```sql
+with bidi as (select U&'[\061C\200E\200F\2028\2029\202A-\202E\2066-\2069]' as p)
+select 'products.title'        as field, p.id::text as id, p.title          as value from products p, bidi b where p.title          ~ b.p
+union all select 'products.brand',          p.id::text, p.brand          from products p, bidi b where p.brand          ~ b.p
+union all select 'products.benefit',        p.id::text, p.benefit        from products p, bidi b where p.benefit        ~ b.p
+union all select 'products.description',    p.id::text, p.description    from products p, bidi b where p.description    ~ b.p
+union all select 'products.variant_label',  p.id::text, p.variant_label  from products p, bidi b where p.variant_label  ~ b.p
+union all select 'categories.title',        c.id::text, c.title          from categories c, bidi b where c.title        ~ b.p
+union all select 'site_content.value',      s.key,      s.value::text    from site_content s, bidi b where s.value::text ~ b.p
+union all select 'pets.name',               t.id::text, t.name           from pets t, bidi b where t.name               ~ b.p
+union all select 'addresses.recipient_name', a.id::text, a.recipient_name from addresses a, bidi b where a.recipient_name ~ b.p
+union all select 'addresses.address_line',  a.id::text, a.address_line   from addresses a, bidi b where a.address_line   ~ b.p;
+```
+
+ZWNJ (U+200C) is deliberately **not** in the pattern, so ordinary Persian
+titles never match it — only the reordering characters do.
+
+Empty result — nothing to do. Any rows: retype the value (an admin for the
+first three, the customer for the last two) before or just after the deploy.
+`provinces` is safe, because the old schema normalized the mark away on write.
+`orders` and `order_items` are safe too: they are snapshots, never re-validated
+and never edited, so a mark there stays as a rendering oddity on one historical
+order and blocks nothing.
+
 ### Staging prerequisites (a staging deploy is a production build)
 
 Staging runs the same image as production — `NODE_ENV=production` — on the mock
@@ -311,9 +349,29 @@ variables on the staging app, or the next staging deploy is unusable:
       up dead: `GET /api/ready` answers 503 and Coolify never routes to it.
 - [ ] **`APP_CONFIG_SHOW_OTP_IN_UI=true`** — without it nobody can sign in: the
       console driver no longer writes the code or the number to the log.
+- [ ] **Confirm the Coolify health check is `GET /api/ready`**, not
+      `/api/health` — §6 above has been carrying that correction since
+      2026-09-19 and it may still be unfixed. Pointed at `/api/health`, the
+      mock-gateway 503 is never observed, and §5's migration-failure rollback
+      was never armed either. The money path still fails closed regardless:
+      `getZarinpalClient()` throws on the first checkout, so nothing settles
+      — the probe is what turns that into "no traffic" instead of "one broken
+      shopper".
 
-Neither belongs on the production app. Production sets a real provider and a
-real SMS driver, which is what makes both variables unnecessary there.
+Neither variable belongs on the production app. Production sets a real provider
+and a real SMS driver, which is what makes both unnecessary there.
+
+**What `APP_CONFIG_SHOW_OTP_IN_UI=true` costs on staging.** It is now *required*
+there, because the log fallback is gone — and it makes
+`POST /api/auth/phone-number/send-otp` hand the code back in its own response to
+whoever asked. Anyone who can reach staging can send a code for a known admin
+number and read it back: one request, admin session. The 3-per-minute throttle
+does not stop a single targeted attempt, and it never did. Production is
+strictly safer after this change; staging is strictly less safe. **So staging
+must not be publicly routable** — put it behind the Cloudflare origin lockdown
+([[Story - Cloudflare Origin Lockdown]]) or behind basic auth before this ships.
+Treat every staging admin account as compromised-by-design: never reuse a
+production phone number or session there.
 
 ### Zarinpal real-driver flip (only when going live on the real gateway)
 
