@@ -80,8 +80,26 @@ const config = [
     // A DAO import is not restricted here: it fails loudly (node builtins in a
     // client bundle) and feature-level server components read DAOs legitimately.
     // Type imports are erased, so they stay allowed; tests never reach a bundle.
-    files: ['src/features/**/*.ts', 'src/features/**/*.tsx'],
-    ignores: ['src/features/**/*.test.ts', 'src/features/**/*.test.tsx'],
+    //
+    // The four `src/lib` domain directories are here for the same reason and a
+    // sharper one. They hold the client-safe contracts both sides of the wire
+    // import, and `account/pet.ts`, `account/address.ts` and
+    // `discount/discount-code.ts` demonstrably reach the browser (`pets-tab`,
+    // `addresses-tab`, `checkout-form`, `discount-manager`). Their wire
+    // projections take a row type from `@/db`, which is erased — but a later
+    // edit dropping one `type` keyword ships `pgTable` to the client and
+    // nothing fails: a DAO import announces itself by breaking the build on
+    // `dns`, a schema import is silent. A comment was all that stood here.
+    files: [
+      'src/features/**/*.ts',
+      'src/features/**/*.tsx',
+      'src/lib/{account,catalog,discount,orders}/**/*.ts',
+    ],
+    ignores: [
+      'src/features/**/*.test.ts',
+      'src/features/**/*.test.tsx',
+      'src/lib/{account,catalog,discount,orders}/**/*.test.ts',
+    ],
     rules: {
       '@typescript-eslint/no-restricted-imports': [
         'error',
@@ -107,17 +125,29 @@ const config = [
     // (`@/lib/account/pet`, `@/lib/orders/order-summary`, the pattern
     // `@/lib/catalog/product-query` set). Type imports are erased, so they stay
     // allowed — a page is free to name the shape the API returns.
-    files: ['src/app/**/page.tsx'],
+    //
+    // `@/lib/hono` itself is in the group, not just its routes: importing the
+    // whole router is strictly worse than importing one route, and it is the
+    // plausible accident when somebody wants a shared constant out of
+    // `index.ts`. `routes/**` rather than `routes/*` because minimatch's `*`
+    // does not cross a slash, so a future `routes/sub/x.ts` would walk straight
+    // past a single star. Layouts are covered too — a layout is a server
+    // component with the same module graph a page has.
+    //
+    // Deliberately not covered: a dynamic `import()` and a relative path out of
+    // `src/app`. Both would need a different rule for a hazard nothing in the
+    // tree is near — no file under `src/app` reaches `src/lib` relatively.
+    files: ['src/app/**/page.tsx', 'src/app/**/layout.tsx'],
     rules: {
       '@typescript-eslint/no-restricted-imports': [
         'error',
         {
           patterns: [
             {
-              group: ['@/lib/hono/routes/*'],
+              group: ['@/lib/hono', '@/lib/hono/index', '@/lib/hono/routes/**'],
               allowTypeImports: true,
               message:
-                'Import types only: a value import of a Hono route drags the API router (and the DAOs behind it) into this page. Move the shared value into a client-safe domain module under @/lib and import it from there.',
+                'Import types only: a value import of the Hono app or one of its routes drags the API router (and the DAOs behind it) into this page. Move the shared value into a client-safe domain module under @/lib and import it from there.',
             },
           ],
         },

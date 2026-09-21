@@ -47,6 +47,12 @@ export const DISCOUNT_SAVE_FAILED_MESSAGE =
  * grafted on by `@hono/zod-openapi` and zod 4 hands it to newly built schemas
  * only, so calling it on an imported one depends on module evaluation order
  * (the trap documented above `ProductListQuerySchema` in ./catalog.ts).
+ *
+ * The ceiling that buys: `.shape` copies the FIELDS. An object-level modifier
+ * on the source schema — `.strict()`, `.catchall()`, `.refine()`, a `.meta()`
+ * on the object itself — is silently left behind, and the document would drift
+ * with no failing test. None of the five projections has one today. Add one
+ * there and it has to be repeated here, or the two stop being one definition.
  */
 const DiscountCodeSchema = z
   .object(discountCodeViewSchema.shape)
