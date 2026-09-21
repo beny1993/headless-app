@@ -34,7 +34,7 @@ All runtime configuration is env-only. Names come from the `VARS` enum in
 | `APP_CONFIG_SMS_PROVIDER` | yes | OTP SMS driver. `console` (default) logs codes to the server log — **fine for a soft launch, not for real customers**. Set to `smsir` before launch (see §6). |
 | `APP_CONFIG_SMSIR_API_KEY` | when `=smsir` | SMS.ir web-service key, sent as `x-api-key`. A **secret** — Coolify env only, never a build arg. |
 | `APP_CONFIG_SMSIR_TEMPLATE_ID` | when `=smsir` | Numeric id of the SMS.ir panel template the code is substituted into. Its body must contain `#OTP#`. |
-| `APP_CONFIG_SHOW_OTP_IN_UI` | no | `true` prints the OTP on the login page for **staging/QA only**, where `console` codes reach nothing but the server log. Anything else is off, and it is ignored unless `APP_CONFIG_SMS_PROVIDER=console`. Never set it on the production app — it is a sign-in bypass. |
+| `APP_CONFIG_SHOW_OTP_IN_UI` | on staging | `true` prints the OTP on the login page. **Required on a staging deploy:** outside development the `console` driver logs only *that* a code was sent, never the code and never the number, so `docker logs` no longer carries it. Anything else is off, and it is ignored unless `APP_CONFIG_SMS_PROVIDER=console`. Never set it on the production app — it is a sign-in bypass. |
 | `APP_CONFIG_MAINTENANCE_MODE` | no | `true` shows every storefront page as the maintenance screen to everyone but a signed-in admin, who sees the real site. `/login` and `/admin-panel` stay open. Anything else is off. Restart after changing it — no rebuild. Hides the shop, does not lock it: `/api` stays reachable. |
 | `APP_CONFIG_ZARINPAL_PROVIDER` | yes | `mock` (default) simulates the full pay flow with no gateway account. Set to `zarinpal` at the real-gateway flip (see §6). |
 | `APP_CONFIG_ZARINPAL_MERCHANT_ID` | when `=zarinpal` | Merchant UUID from the Zarinpal panel. |
@@ -278,7 +278,8 @@ and deliberately not baked into the image:
       launch day shows every customer «به‌زودی برمی‌گردیم».
 - [ ] **Real SMS driver:** set `APP_CONFIG_SMS_PROVIDER=smsir` plus
       `APP_CONFIG_SMSIR_API_KEY` and `APP_CONFIG_SMSIR_TEMPLATE_ID`. The
-      `console` default logs every OTP to the server log. The driver posts to
+      `console` default sends nothing at all (and, outside development, does not
+      even log the code). The driver posts to
       SMS.ir's **verify** service (`/v1/send/verify`), which is where OTP is
       routed — the bulk/line-number API is for marketing sends and carriers
       filter codes on it. Create the template in the SMS.ir panel first: its
@@ -303,14 +304,16 @@ and deliberately not baked into the image:
 ### Staging prerequisites (a staging deploy is a production build)
 
 Staging runs the same image as production — `NODE_ENV=production` — on the mock
-gateway, which now fails closed. Set this on the staging app, or the next
-staging deploy is unusable:
+gateway and the console SMS driver, and both of those fail closed. Set both
+variables on the staging app, or the next staging deploy is unusable:
 
 - [ ] **`APP_CONFIG_ZARINPAL_ALLOW_MOCK=true`** — without it the container comes
       up dead: `GET /api/ready` answers 503 and Coolify never routes to it.
+- [ ] **`APP_CONFIG_SHOW_OTP_IN_UI=true`** — without it nobody can sign in: the
+      console driver no longer writes the code or the number to the log.
 
-It does not belong on the production app. Production sets a real provider, which
-is what makes the variable unnecessary there.
+Neither belongs on the production app. Production sets a real provider and a
+real SMS driver, which is what makes both variables unnecessary there.
 
 ### Zarinpal real-driver flip (only when going live on the real gateway)
 
