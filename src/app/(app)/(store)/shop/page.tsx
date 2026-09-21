@@ -149,8 +149,16 @@ export default async function ShopPage({
                   )}
                 />
               ) : (
-                items.map((product) => (
-                  <ProductCard key={product.id} product={product} />
+                items.map((product, index) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    // The first row at the widest grid (`xl:grid-cols-3`). One
+                    // of these is the shop's LCP element, and which one depends
+                    // on the viewport — so all three are eager and none is
+                    // preloaded.
+                    eager={index < 3}
+                  />
                 ))
               )}
             </ShopResults>

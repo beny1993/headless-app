@@ -28,7 +28,18 @@ import { imageSrc } from '@/lib/storage/image-url';
  * ancestor and renders exactly as before. The group is *named* because this
  * card already uses an unnamed `group` for its own image hover.
  */
-export function ProductCard({ product }: { product: ProductCardRow }) {
+export function ProductCard({
+  product,
+  eager = false,
+}: {
+  product: ProductCardRow;
+  /**
+   * This card is in the first row, so its photo is a candidate for the page's
+   * LCP element and must not wait for the lazy-load observer. The grid decides,
+   * not the card: only the caller knows where in the list this one sits.
+   */
+  eager?: boolean;
+}) {
   // The **family's** stock, not this row's: a sold-out head must not grey out a
   // card whose other size is on the shelf.
   const outOfStock = !product.familyInStock;
@@ -48,6 +59,14 @@ export function ProductCard({ product }: { product: ProductCardRow }) {
             src={imageSrc(imageKey)}
             alt=""
             fill
+            // `loading`, not `preload`/`priority`: a grid is exactly the case
+            // the Next 16 docs rule `preload` out for — several images could be
+            // the LCP depending on the viewport, and preloading a row of them
+            // would put four `<link>`s in the head to win one. (`priority` is
+            // deprecated there in favour of `preload` anyway.) Eager is the
+            // whole fix: the photo is fetched with the document instead of
+            // after the lazy-load observer has seen it.
+            loading={eager ? 'eager' : undefined}
             sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
             className={`object-cover transition-transform duration-500 group-hover:scale-105 ${
               outOfStock ? 'opacity-60 grayscale' : ''
