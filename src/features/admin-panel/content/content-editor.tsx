@@ -28,7 +28,6 @@ import {
 import { CategoryPicker, LinkPicker, type LinkOptions } from './link-picker';
 
 const GENERIC_ERROR = 'خطای غیرمنتظره رخ داد. دوباره تلاش کن.';
-const IMAGE_UPLOAD_FAILED = 'بارگذاری تصویر ناموفق بود. دوباره تلاش کن.';
 
 /**
  * The storefront content editor for one area: one independent form per block in
@@ -85,9 +84,10 @@ function hasVisibleToggle(key: ContentKey): boolean {
 async function uploadContentImage(file: File): Promise<string> {
   const form = new FormData();
   form.set(IMAGE_FIELD_NAME, file);
-  const { key } = await postForm<{ key: string }>(
+  const { key } = await postForm(
     API_PATHS.ADMIN_CONTENT_IMAGES,
     form,
+    z.object({ key: z.string().min(1) }),
   );
   return key;
 }
@@ -204,7 +204,7 @@ function BlockForm({
       setPreviews(remainingPreviews);
       saving.current = false;
       setBusy(false);
-      toast.error(error instanceof Error ? error.message : IMAGE_UPLOAD_FAILED);
+      toast.error(error instanceof Error ? error.message : GENERIC_ERROR);
       return;
     }
 

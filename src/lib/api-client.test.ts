@@ -4,7 +4,18 @@
 // an `Error` for the call sites that only read `.message`. Custom headers reach
 // the request. `fetch` is the only thing stubbed.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiRequestError, post, postData, postForm } from './api-client';
+import { z } from 'zod';
+import {
+  ApiRequestError,
+  DEFAULT_ERROR_MESSAGE,
+  del,
+  get,
+  post,
+  postData,
+  postForm,
+} from './api-client';
+
+const KEY = z.object({ key: z.string() });
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -91,7 +102,7 @@ describe('postForm', () => {
     );
 
     await expect(
-      postForm('/api/admin/content/images', new FormData()),
+      postForm('/api/admin/content/images', new FormData(), KEY),
     ).resolves.toEqual({ key: 'uploads/cat.jpg' });
   });
 
@@ -100,16 +111,23 @@ describe('postForm', () => {
     // helpers set `Content-Type: application/json` unconditionally, and a
     // multipart body sent under that header reaches Hono's `parseBody()` with
     // no boundary to split on — the file is simply not there.
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(jsonResponse(201, { status: 'success', data: null }));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse(201, {
+        status: 'success',
+        data: { key: 'uploads/a.jpg' },
+      }),
+    );
 
     const form = new FormData();
-    await postForm('/api/admin/content/images', form);
+    await postForm('/api/admin/content/images', form, KEY);
 
     const init = fetchSpy.mock.calls[0][1] as RequestInit;
     expect(init.body).toBe(form);
-    expect(init.headers ?? {}).not.toHaveProperty('Content-Type');
+    // Asserted positively as well: `?? {}` alone would also pass the day
+    // `request` stops sending a headers object at all, which would strip the
+    // JSON header off every other caller and leave this test green.
+    expect(init.headers).toBeDefined();
+    expect(init.headers).not.toHaveProperty('Content-Type');
   });
 
   it('throws ApiRequestError carrying the status and the envelope errors', async () => {
@@ -123,7 +141,7 @@ describe('postForm', () => {
 
     let caught: unknown;
     try {
-      await postForm('/api/admin/content/images', new FormData());
+      await postForm('/api/admin/content/images', new FormData(), KEY);
     } catch (error) {
       caught = error;
     }
@@ -134,5 +152,64 @@ describe('postForm', () => {
     expect(error.errors).toEqual([
       'image: File is larger than the 2 MB ceiling',
     ]);
+  });
+
+  it('falls back to Persian when the refusal carried no sentence of its own', async () => {
+    // A 413 or 502 from the CDN or the ingress, not from this app: an HTML
+    // page, so `handleError` parses no `message`. The status is still a 4xx, so
+    // `product-form`'s `reasonFrom` forwards whatever this says straight into
+    // Persian admin copy — an English fallback would be read there as the
+    // server's own explanation.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('<html>413 Request Entity Too Large</html>', {
+        status: 413,
+        headers: { 'content-type': 'text/html' },
+      }),
+    );
+
+    await expect(
+      postForm('/api/admin/content/images', new FormData(), KEY),
+    ).rejects.toThrow(DEFAULT_ERROR_MESSAGE);
+    expect(DEFAULT_ERROR_MESSAGE).toMatch(/[\u0600-\u06FF]/);
+  });
+
+  it('refuses a 2xx whose body is not the shape the route promises', async () => {
+    // An intermediary answering 200 with its own JSON. Before the schema, the
+    // call site destructured `key` off `undefined` and the resulting English
+    // `TypeError` went into the toast.
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse(200, { status: 'success', data: { notKey: 1 } }),
+    );
+
+    await expect(
+      postForm('/api/admin/content/images', new FormData(), KEY),
+    ).rejects.toThrow(DEFAULT_ERROR_MESSAGE);
+  });
+
+  it('keeps the server’s own sentence from a 2xx error envelope', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse(200, { status: 'error', message: 'تصویر پذیرفته نشد.' }),
+    );
+
+    await expect(
+      postForm('/api/admin/content/images', new FormData(), KEY),
+    ).rejects.toThrow('تصویر پذیرفته نشد.');
+  });
+});
+
+describe('bodyless requests', () => {
+  it.each([
+    ['GET', () => get('/api/products')],
+    ['DELETE', () => del('/api/me/pets/1')],
+  ])('sends no Content-Type on a %s with no body', async (_method, call) => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse(200, { status: 'success', data: null }));
+
+    await call();
+
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    expect(init.body).toBeUndefined();
+    expect(init.headers).not.toHaveProperty('Content-Type');
   });
 });
