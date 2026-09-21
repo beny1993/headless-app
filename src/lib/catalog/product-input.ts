@@ -270,6 +270,15 @@ export const productInputSchema = z
   // A full-body contract, not a patch: `oldPrice > price` is a cross-field rule,
   // and a partial body could not evaluate it without reading the row first (and
   // would then trip the CHECK as a 500). The update route replaces the whole row.
+  //
+  // `path` is not decoration, and this is the only place that says so: a root
+  // refine without one produces a path-LESS issue, `formatZodIssues` sends it
+  // out as a bare sentence, `parseFieldErrors` finds no field path in it and
+  // files it under `unmapped` — which the admin form shows in a toast
+  // verbatim. That channel is deliberate (the «this product has members»
+  // refusal travels it, and is Persian), so anything landing there must be
+  // Persian too. Give every root refine a `path`, or write its message as copy
+  // fit for a person to read.
   .refine((data) => data.oldPrice == null || data.oldPrice > data.price, {
     error: PRODUCT_MESSAGES.oldPrice,
     path: ['oldPrice'],
@@ -277,7 +286,8 @@ export const productInputSchema = z
   // A member with no label renders an empty chip on the product page and an
   // order line ending in a bare dash. Keyed on `variantLabel` because that is
   // the field the form renders — an issue on `variantOf` would be shown by the
-  // select, which is not where the admin has to type.
+  // select, which is not where the admin has to type. `path` again: see above
+  // for what a root refine without one puts in an admin's toast.
   .refine((data) => data.variantOf == null || data.variantLabel != null, {
     error: VARIANT_MESSAGES.label,
     path: ['variantLabel'],

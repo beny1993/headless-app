@@ -38,10 +38,10 @@ import {
 import { Field, HintOrError } from '@/features/admin-panel/shared/field';
 
 // Derived from the route's own response type, never restated — a hand-mirrored
-// `{ id: string }` is the shape that drifts. The import is `import type`, and
-// `isolatedModules` erases it whole, so none of the route module (and none of
-// `pg` behind it) reaches the browser bundle; only the form's one field of it
-// is named.
+// `{ id: string }` is the shape that drifts. `import type` is erased for being
+// what it is, not because of any compiler flag, so none of the route module
+// (and none of `pg` behind it) reaches the browser bundle; only the form's one
+// field of it is named.
 type SavedProduct = Pick<AdminProductResponse, 'id'>;
 
 /** The product the edit form starts from — the fields it round-trips. */

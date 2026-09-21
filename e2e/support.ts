@@ -28,15 +28,20 @@ export function expectFailedRequest(page: Page, pattern: RegExp) {
 /**
  * The storage key behind a rendered `src`. `next/image` wraps the real one as
  * `/_next/image?url=%2Fuploads%2F…`, so nothing string-matches the raw src:
- * the inner URL comes out of the query (already decoded by `URLSearchParams`)
- * and a plain one out of the pathname (which is not), and either way the
+ * the inner URL comes out of the query, `URLSearchParams` having decoded it
+ * already, and a plain one is the pathname as it stands. Either way the
  * leading slash goes. The ONE place that knows this shape — a Next change to
  * it breaks here and is fixed here.
+ *
+ * The pathname is NOT decoded: this runs inside the response listener below,
+ * and `decodeURIComponent` throws `URIError` on a stray `%` — which would
+ * raise inside an event handler and lose the failed request the watch exists
+ * to record, instead of reporting it.
  */
 export const unwrapImageSrc = (url: URL): string =>
   (url.pathname === '/_next/image'
     ? (url.searchParams.get('url') ?? '')
-    : decodeURIComponent(url.pathname)
+    : url.pathname
   ).replace(/^\//, '');
 
 /**
