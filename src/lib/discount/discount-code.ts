@@ -7,7 +7,10 @@
 //
 // **Nothing here may import drizzle, `pg` or `@hono/zod-openapi`** — the admin
 // form is a client component, so this stays plain zod, exactly like
-// `product-input.ts` and `checkout-input.ts` (see the notes there).
+// `product-input.ts` and `checkout-input.ts` (see the notes there). The
+// `DiscountCode` row is a TYPE import, which is erased; keeping the admin
+// projection here is what stops the discounts server page importing a value out
+// of a Hono route for one pure function.
 //
 // Money invariants the security pass will probe live here, not just in the UI:
 //   · A percent code is 1–100; a fixed code is a strictly-positive integer Toman.
