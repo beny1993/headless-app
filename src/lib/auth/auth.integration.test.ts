@@ -133,6 +133,20 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
       expect(printed).not.toContain(code);
     });
 
+    it('hands back no code when the staging echo is off — the shipped path', async () => {
+      // The suite switches the echo ON in beforeEach so it can read codes.
+      // Production runs with it OFF, and that branch — the `after` hook in
+      // ./index.ts returning early because `takeOtp` answered undefined — is
+      // covered nowhere else now that the log no longer carries the code.
+      vi.stubEnv('APP_CONFIG_SHOW_OTP_IN_UI', '');
+      const phone = freshPhone();
+
+      const response = await post(SEND, { phoneNumber: phone });
+
+      expect(response.status).toBe(200);
+      expect(await sentCode(response)).toBeNull();
+    });
+
     it('logs the send against the number for the throttle to count', async () => {
       const { phone } = await requestCode();
 
