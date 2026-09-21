@@ -26,6 +26,20 @@ export function expectFailedRequest(page: Page, pattern: RegExp) {
 }
 
 /**
+ * The storage key behind a rendered `src`. `next/image` wraps the real one as
+ * `/_next/image?url=%2Fuploads%2F…`, so nothing string-matches the raw src:
+ * the inner URL comes out of the query (already decoded by `URLSearchParams`)
+ * and a plain one out of the pathname (which is not), and either way the
+ * leading slash goes. The ONE place that knows this shape — a Next change to
+ * it breaks here and is fixed here.
+ */
+export const unwrapImageSrc = (url: URL): string =>
+  (url.pathname === '/_next/image'
+    ? (url.searchParams.get('url') ?? '')
+    : decodeURIComponent(url.pathname)
+  ).replace(/^\//, '');
+
+/**
  * An uploaded image, straight or through the image optimizer. A dev database
  * keeps the uploads it was given while `.env` pointed at object storage, and
  * this run serves `/uploads` from the local driver, which has no file for
@@ -34,9 +48,7 @@ export function expectFailedRequest(page: Page, pattern: RegExp) {
  * and checks that it renders.
  */
 const isUploadedImage = (url: URL) =>
-  url.pathname.startsWith('/uploads/') ||
-  (url.pathname === '/_next/image' &&
-    (url.searchParams.get('url') ?? '').startsWith('/uploads/'));
+  unwrapImageSrc(url).startsWith('uploads/');
 
 /**
  * Watches a page for what QA looked for on each page by hand: console errors,
