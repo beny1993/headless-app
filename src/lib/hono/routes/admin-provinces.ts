@@ -41,7 +41,7 @@ export const PROVINCE_INACTIVE_DUPLICATE_MESSAGE =
   'این استان غیرفعال است — فعالش کن';
 export const PROVINCE_NOT_FOUND_MESSAGE = 'استان یافت نشد.';
 
-const IdParamSchema = z.object({
+const ProvinceIdParamSchema = z.object({
   id: provinceIdParamSchema.meta({
     param: { name: 'id', in: 'path' },
     example: 1,
@@ -108,7 +108,7 @@ export const provinceToggleRoute = createRoute({
   tags: ['admin'],
   summary: 'Activate or deactivate a province (admin only)',
   request: {
-    params: IdParamSchema,
+    params: ProvinceIdParamSchema,
     body: {
       content: { 'application/json': { schema: provinceToggleSchema } },
       required: true,

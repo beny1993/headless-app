@@ -92,10 +92,14 @@ export const errorResponse = (description: string) =>
 
 /**
  * The `{ id }` path parameter of the uuid-keyed admin routes (products,
- * categories, discount codes). The `example` is part of the generated document,
- * so the uuid params that deliberately carry none — `/orders/{id}`, `/me/pets/{id}`,
- * `/me/addresses/{id}`, `/admin/orders/{id}` — keep their own local schemas, and
- * the int-keyed province routes keep `provinceIdParamSchema`.
+ * categories, discount codes).
+ *
+ * Four other uuid params carry no `example` — `/orders/{id}`, `/me/pets/{id}`,
+ * `/me/addresses/{id}`, `/admin/orders/{id}` — and the `example` is part of the
+ * generated document, so folding them in here would change it. They keep their
+ * own local schemas for that reason alone; nothing on record says the missing
+ * `example` was a choice rather than drift. The int-keyed province routes keep
+ * `provinceIdParamSchema`, which is a different type entirely.
  */
 export const IdParamSchema = z.object({
   id: z.uuid().meta({
