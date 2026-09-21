@@ -24,7 +24,7 @@
 import { z } from 'zod';
 import { imageKeySchema } from '@/lib/storage/image-upload';
 import { toPersianDigits } from '@/lib/format';
-import { FORBIDDEN_TEXT_CHARS, VISIBLE_CHAR } from '@/lib/validation/text';
+import { hasNoForbiddenChars, VISIBLE_CHAR } from '@/lib/validation/text';
 import {
   PET_TYPE_VALUES,
   normalizePetTypes,
@@ -116,12 +116,6 @@ const isUuid = (value: unknown): value is string =>
 
 const isPetType = (value: unknown): value is PetType =>
   (PET_TYPE_VALUES as readonly unknown[]).includes(value);
-
-/** No forbidden characters; `multiline` lets tab, line feed and carriage return through. */
-const hasNoForbiddenChars = (multiline: boolean) => (value: string) =>
-  !FORBIDDEN_TEXT_CHARS.test(
-    multiline ? value.replace(/[\t\n\r]/g, '') : value,
-  );
 
 /**
  * A required single-line text field: trimmed, `min`–`max` long, free of forbidden

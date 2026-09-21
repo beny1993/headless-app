@@ -20,6 +20,7 @@ import {
 import { DEFAULT_CONTENT } from './defaults';
 
 const NUL = String.fromCharCode(0);
+const RLO = String.fromCharCode(0x202e);
 
 describe('contentKeySchema', () => {
   it('accepts every declared key and nothing else', () => {
@@ -111,6 +112,16 @@ describe('CONTENT_SCHEMAS string fields', () => {
       CONTENT_SCHEMAS['home.hero'].safeParse({
         ...base,
         body: 'a'.repeat(10_000),
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a bidi override in a string field', () => {
+    // A content row renders to every visitor, not just to an admin.
+    expect(
+      CONTENT_SCHEMAS['home.hero'].safeParse({
+        ...base,
+        headline: `اسموکی${RLO}`,
       }).success,
     ).toBe(false);
   });

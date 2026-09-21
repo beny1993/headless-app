@@ -41,6 +41,13 @@ export enum VARS {
   // `true` offers online payment at checkout; anything else (the default) shows
   // the Zarinpal option disabled and preselects card to card. Runtime, no rebuild.
   APP_CONFIG_ZARINPAL_ENABLED = 'APP_CONFIG_ZARINPAL_ENABLED',
+  // `true` declares that this production build is MEANT to run on the simulated
+  // gateway — a staging deploy, which is a production build with no gateway
+  // account. Without it, `mock` in a production build refuses to serve at all
+  // (`assertMockGatewayAllowed`), because the alternative is a shopper clicking
+  // «پرداخت موفق» and the order settling `paid` for zero Toman. Runtime, never
+  // NEXT_PUBLIC_: nothing in the browser may decide this.
+  APP_CONFIG_ZARINPAL_ALLOW_MOCK = 'APP_CONFIG_ZARINPAL_ALLOW_MOCK',
 
   // `true` declares that this deploy sits behind Cloudflare, so `CF-Connecting-IP`
   // may be trusted as the client address. Default OFF, and deliberately so: the
@@ -153,6 +160,14 @@ export const isDevelopmentServer = () => {
   return getEnvVariable(VARS.NODE_ENV, false, '') === 'development';
 };
 
+/**
+ * Every deployed build, staging included — `Dockerfile` sets NODE_ENV=production.
+ * Not the negation of {@link isDevelopmentServer}: `test` is neither.
+ */
+export const isProductionServer = () => {
+  return getEnvVariable(VARS.NODE_ENV, false, '') === 'production';
+};
+
 export const getAppBaseUrl = () => {
   const url = getEnvVariable(VARS.NEXT_PUBLIC_APP_URL, false, '');
   if (url) return url;
@@ -162,7 +177,7 @@ export const getAppBaseUrl = () => {
   // cookie from this URL — an unset value there would ship admin sessions on a
   // non-secure cookie and reject the real origin. NEXT_PUBLIC_* is inlined at
   // build time, so this has to be set as a build arg, not at container start.
-  if (getEnvVariable(VARS.NODE_ENV, false, '') === 'production') {
+  if (isProductionServer()) {
     throw Error(
       `Environment variable ${VARS.NEXT_PUBLIC_APP_URL} is required in production`,
     );

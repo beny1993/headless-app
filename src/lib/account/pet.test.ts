@@ -5,6 +5,7 @@ import { PET_GENDERS, isHttpsUrl, petInputSchema } from '@/lib/account/pet';
 import { PET_TYPES } from '@/lib/catalog/product-query';
 
 const NUL = String.fromCharCode(0);
+const RLO = String.fromCharCode(0x202e);
 
 const valid = () => ({
   name: 'لونا',
@@ -18,6 +19,18 @@ const valid = () => ({
 });
 
 describe('petInputSchema', () => {
+  it('rejects a bidi override in the name', () => {
+    expect(
+      petInputSchema.safeParse({ ...valid(), name: `لونا${RLO}` }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a bidi override in an optional field', () => {
+    expect(
+      petInputSchema.safeParse({ ...valid(), breed: `ایرانی${RLO}` }).success,
+    ).toBe(false);
+  });
+
   it('accepts a full, well-formed pet', () => {
     const parsed = petInputSchema.parse(valid());
     expect(parsed.name).toBe('لونا');
