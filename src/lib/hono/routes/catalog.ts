@@ -26,12 +26,8 @@ import {
   type ProductDetail,
   type ProductWithImages,
 } from '@/db/schema/catalog';
-import {
-  apiError,
-  apiSuccess,
-  apiSuccessSchema,
-  errorResponse,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 import { ProductImageSchema, ProductSchema } from '../product-schema';
 
 /** User-facing copy, so Persian. `errors` stays English developer detail. */

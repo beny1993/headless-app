@@ -18,7 +18,8 @@ import type { Env } from 'hono';
 import { z } from 'zod';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { orderSummarySchema, toOrderSummary } from '@/lib/orders/order-summary';
-import { apiSuccess, apiSuccessSchema, errorResponse } from '../envelope';
+import { apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /**

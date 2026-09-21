@@ -39,17 +39,32 @@ export function otpMessage(code: string): string {
   return `کد ورود شما به اسموکی: ${code}`;
 }
 
+/** What the driver prints when it may not print the code. */
+const REDACTED_LINE =
+  '[sms:console] a sign-in code was handed to the console driver; the code ' +
+  'and the number are redacted outside development. Set ' +
+  'APP_CONFIG_SHOW_OTP_IN_UI=true to read codes on the login page.';
+
 /**
- * Writes the message to the server log instead of sending it.
+ * Writes the message to the server log instead of sending it — but only under
+ * `next dev`, where that log is the developer's own terminal and reading the
+ * code off it is how local QA signs in.
  *
- * This is what makes local development and test deployments work: the OTP is
- * retrievable from `docker logs` / the `next dev` console, so QA and a browser
- * walkthrough need no SMS account. It also means **every OTP is in the server
- * log** — fine for a mock deployment, which is what this is, and the reason
- * `warnIfMocked` shouts when it is running outside development.
+ * Anywhere else the line carries neither the code nor the number. `console` is
+ * the shipped default, so a deploy that simply forgets APP_CONFIG_SMS_PROVIDER
+ * runs this driver on the PaaS, whose log is a platform-side store: every phone
+ * number and a valid ≤120 s code would land in it, readable by anyone with log
+ * access. A deployed test build reads codes through APP_CONFIG_SHOW_OTP_IN_UI
+ * instead (`src/lib/auth/otp-echo.ts`), which is gated and deliberate.
+ *
+ * It still logs *that* a code went out: silence would read as a broken driver.
  */
 export const consoleSmsDriver: OtpSender = async (to, code) => {
-  console.log(`[sms:console] to ${to} :: ${otpMessage(code)}`);
+  console.log(
+    isDevelopmentServer()
+      ? `[sms:console] to ${to} :: ${otpMessage(code)}`
+      : REDACTED_LINE,
+  );
 };
 
 // ── The real SMS.ir driver ───────────────────────────────────────────────────

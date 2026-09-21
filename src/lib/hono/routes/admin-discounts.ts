@@ -24,13 +24,8 @@ import {
   discountCodeViewSchema,
   toDiscountView,
 } from '@/lib/discount/discount-code';
-import {
-  apiError,
-  apiSuccess,
-  apiSuccessSchema,
-  errorResponse,
-  IdParamSchema,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse, IdParamSchema } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 import { pgErrorOf } from '../pg-error';
 

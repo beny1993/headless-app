@@ -6,11 +6,19 @@
  * error branch. Use the raw `get`/`post`/`patch` only when the caller must
  * inspect the envelope itself.
  */
+import { z } from 'zod';
 import { unwrap, type ApiResponse } from '@/lib/hono/envelope';
 import { getAppBaseUrl } from '@/lib/utils/env';
 
-const DEFAULT_ERROR_MESSAGE =
-  'Sorry for the inconvenience, please try again later';
+/**
+ * What an admin or a shopper reads when the failure carried no sentence of its
+ * own — a refusal from something that is not this app (a CDN 413 page, an
+ * ingress 502) parses to no `message`, and the reply still has to be Persian.
+ * Every screen in this app is `lang="fa"`, so this string is UI copy, not a
+ * developer string; it is the wording `GENERIC_ERROR` already uses in the admin
+ * forms.
+ */
+export const DEFAULT_ERROR_MESSAGE = 'خطای غیرمنتظره رخ داد. دوباره تلاش کن.';
 
 /**
  * A non-2xx API response, thrown by the request helpers. Extends `Error` so the
@@ -79,14 +87,17 @@ async function request<T>(
   const response = await fetch(buildUrl(path, query), {
     ...rest,
     headers: {
-      // A `FormData` body writes its own `multipart/form-data; boundary=…`.
-      // Declaring `application/json` over it loses the boundary, and the
-      // server then parses no parts at all — so the upload arrives fileless
-      // rather than failing loudly. Both admin image uploads hand-rolled a
-      // bare `fetch` to dodge exactly this.
-      ...(rest.body instanceof FormData
-        ? {}
-        : { 'Content-Type': 'application/json' }),
+      // Only a JSON body gets the JSON header. A `FormData` body writes its
+      // own `multipart/form-data; boundary=…`, and declaring
+      // `application/json` over it loses the boundary — the server then parses
+      // no parts at all, so the upload arrives fileless rather than failing
+      // loudly. Both admin image uploads hand-rolled a bare `fetch` to dodge
+      // exactly that. A bodyless `GET`/`DELETE` gets no header either: it has
+      // no content to describe, and a `Content-Type` on a GET is a documented
+      // trigger for WAF rules and a reason for a CDN to skip the cache.
+      ...(rest.body !== undefined && !(rest.body instanceof FormData)
+        ? { 'Content-Type': 'application/json' }
+        : {}),
       ...rest.headers,
     },
   });
@@ -142,9 +153,32 @@ export const postData = async <T>(
  * Multipart POST — the same envelope unwrap and the same `ApiRequestError` as
  * `postData`, for the admin image uploads. No JSON body, so no `Content-Type`
  * (see `request`); the session cookie rides on the same-origin request.
+ *
+ * `schema` is not decoration: both call sites read one field straight off the
+ * result, and a 2xx that is not the shape the route promises would otherwise
+ * reach them as `undefined` and throw a destructuring `TypeError` whose English
+ * text lands in a Persian toast.
  */
-export const postForm = async <T>(path: string, form: FormData): Promise<T> =>
-  unwrap(await request<ApiResponse<T>>(path, { method: 'POST', body: form }));
+export const postForm = async <T>(
+  path: string,
+  form: FormData,
+  schema: z.ZodType<T>,
+): Promise<T> => {
+  const envelope = await request<ApiResponse<T>>(path, {
+    method: 'POST',
+    body: form,
+  });
+  try {
+    return schema.parse(unwrap(envelope));
+  } catch (error) {
+    // The server's own error envelope carries a sentence written for the
+    // admin, in Persian — keep it. What is left is developer text: `unwrap`'s
+    // malformed-envelope assertion and Zod's issue strings, both English and
+    // neither fit for a toast.
+    if (envelope?.status === 'error') throw error;
+    throw new Error(DEFAULT_ERROR_MESSAGE);
+  }
+};
 
 export const patchData = async <T>(path: string, body?: unknown): Promise<T> =>
   unwrap(await patch<T>(path, body));

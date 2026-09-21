@@ -112,9 +112,10 @@ const zodFieldErrors = (error: z.ZodError): Record<string, string> => {
 async function uploadImage(productId: string, file: File): Promise<string> {
   const form = new FormData();
   form.set(IMAGE_FIELD_NAME, file);
-  const { objectKey } = await postForm<{ objectKey: string }>(
+  const { objectKey } = await postForm(
     apiAdminProductImagesPath(productId),
     form,
+    z.object({ objectKey: z.string().min(1) }),
   );
   return objectKey;
 }

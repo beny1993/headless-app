@@ -23,12 +23,8 @@ import {
   petResponseSchema,
   toPetResponse,
 } from '@/lib/account/pet';
-import {
-  apiError,
-  apiSuccess,
-  apiSuccessSchema,
-  errorResponse,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */

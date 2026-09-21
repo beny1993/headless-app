@@ -26,9 +26,9 @@ import {
   apiError,
   apiSuccess,
   apiSuccessSchema,
-  errorResponse,
   formatZodIssues,
 } from '../envelope';
+import { errorResponse } from '../route-responses';
 import { readImageUpload } from '../image-upload';
 import type { AuthedEnv } from '../middleware/auth';
 

@@ -23,12 +23,8 @@ import {
 } from '@/lib/orders/order-status';
 import { adminTransitionOrder } from '@/logic/orders/admin-transition';
 import { getAdminOrder, type AdminOrder } from '@/logic/orders/get-admin-order';
-import {
-  apiError,
-  apiSuccess,
-  apiSuccessSchema,
-  errorResponse,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. */

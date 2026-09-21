@@ -14,6 +14,7 @@ import {
   getAppBaseUrl,
   getEnvVariable,
   isDevelopmentServer,
+  isProductionServer,
   VARS,
 } from '@/lib/utils/env';
 
@@ -285,6 +286,56 @@ const DRIVERS: Record<ZarinpalProvider, () => ZarinpalClient> = {
   zarinpal: () => createZarinpalDriver(),
 };
 
+let mockRefusalLogged = false;
+
+/**
+ * Refuses the simulated gateway in a production build.
+ *
+ * `mock` is the shipped default, so two variables left unset — the provider and
+ * nothing else — put a production container on a gateway that reports every
+ * checkout as paid while charging nothing. That is silent success, the worst
+ * shape a money bug has, so it fails closed instead: a production build on
+ * `mock` serves nothing until `APP_CONFIG_ZARINPAL_ALLOW_MOCK=true` says the
+ * simulation is deliberate (a staging deploy, which has no gateway account).
+ *
+ * Hoisted to `GET /api/ready` — Coolify's health check (docs/DEPLOY.md §6) — so
+ * a misconfigured container never takes traffic, rather than failing on the
+ * first shopper's checkout. It fires there whatever APP_CONFIG_ZARINPAL_ENABLED
+ * says: a production build carrying the mock driver is broken whether or not
+ * online payment happens to be switched off today. `getZarinpalClient` keeps it
+ * too, as the second layer for a container nobody probes.
+ *
+ * Deliberately NOT in `getZarinpalProvider`: `payments.ts` gates the mock-only
+ * endpoints on the provider and not on NODE_ENV, and that has to keep working.
+ */
+export function assertMockGatewayAllowed(): void {
+  if (getZarinpalProvider() !== 'mock') return;
+  if (!isProductionServer()) return;
+  // `=== 'true'`, so a typo, `1`, `yes` or a blank is no escape at all.
+  if (
+    getEnvVariable(VARS.APP_CONFIG_ZARINPAL_ALLOW_MOCK, false, '').trim() ===
+    'true'
+  ) {
+    return;
+  }
+
+  const message =
+    `[zarinpal] ${VARS.APP_CONFIG_ZARINPAL_PROVIDER} is "mock" in a production ` +
+    'build: every checkout would settle as paid for zero Toman. Set a real ' +
+    'provider and merchant id, or set ' +
+    `${VARS.APP_CONFIG_ZARINPAL_ALLOW_MOCK}=true if this deploy is meant to ` +
+    'run on the simulated gateway.';
+
+  // Once per process: the readiness probe runs on a fixed interval, and the
+  // operator needs the variable name in the log, not on every tick. The throw
+  // is what stops the traffic; this is what tells them why.
+  if (!mockRefusalLogged) {
+    mockRefusalLogged = true;
+    console.error(message);
+  }
+  throw new Error(message);
+}
+
 let mockWarningLogged = false;
 
 const warnIfMocked = () => {
@@ -326,9 +377,16 @@ export function getZarinpalProvider(): ZarinpalProvider {
   return configured as ZarinpalProvider;
 }
 
-/** The configured driver. Selecting `mock` outside development shouts once. */
+/**
+ * The configured driver. Selecting `mock` in a production build throws unless
+ * the escape is set (see {@link assertMockGatewayAllowed}); selecting it
+ * anywhere outside development shouts once.
+ */
 export function getZarinpalClient(): ZarinpalClient {
   const provider = getZarinpalProvider();
-  if (provider === 'mock') warnIfMocked();
+  if (provider === 'mock') {
+    assertMockGatewayAllowed();
+    warnIfMocked();
+  }
   return DRIVERS[provider]();
 }

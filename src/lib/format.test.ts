@@ -10,8 +10,9 @@ import {
 } from '@/lib/format';
 
 // fa-IR emits U+2212 MINUS SIGN preceded by U+200E LTR MARK — both invisible in
-// an editor, so every negative expectation is written with explicit escapes.
-const MINUS = '‎−';
+// an editor, so the mark is constructed with `String.fromCharCode`, never typed,
+// per the project's control-character rule.
+const MINUS = String.fromCharCode(0x200e) + '−';
 // fa-IR groups with U+066C ARABIC THOUSANDS SEPARATOR, not a Latin comma.
 const SEP = '٬';
 
@@ -109,7 +110,7 @@ describe('formatToman', () => {
     expect(formatToman(-50000n)).toBe(`${MINUS}۵۰${SEP}۰۰۰ تومان`);
   });
 
-  it('never renders a negative zero — a zero discount is not «‎−۰»', () => {
+  it(`never renders a negative zero — a zero discount is not «${MINUS}۰»`, () => {
     expect(formatToman(-0)).toBe('۰ تومان');
   });
 
