@@ -39,6 +39,12 @@ export function otpMessage(code: string): string {
   return `کد ورود شما به اسموکی: ${code}`;
 }
 
+/** What the driver prints when it may not print the code. */
+const REDACTED_LINE =
+  '[sms:console] a sign-in code was handed to the console driver; the code ' +
+  'and the number are redacted outside development. Set ' +
+  'APP_CONFIG_SHOW_OTP_IN_UI=true to read codes on the login page.';
+
 /**
  * Writes the message to the server log instead of sending it — but only under
  * `next dev`, where that log is the developer's own terminal and reading the
@@ -53,11 +59,6 @@ export function otpMessage(code: string): string {
  *
  * It still logs *that* a code went out: silence would read as a broken driver.
  */
-const REDACTED_LINE =
-  '[sms:console] a sign-in code was written to the log driver; the code and ' +
-  'the number are redacted outside development. Set ' +
-  'APP_CONFIG_SHOW_OTP_IN_UI=true to read codes on the login page.';
-
 export const consoleSmsDriver: OtpSender = async (to, code) => {
   console.log(
     isDevelopmentServer()
