@@ -9,16 +9,20 @@ vi.mock('@/db/dao/HealthDao', () => ({
 }));
 // Mocked at the module edge for the same reason: the handler's own logic runs
 // for real, and the assert's own cases live in `src/lib/zarinpal/client.test.ts`.
+// `assertReadyToServe`, not `assertMockGatewayAllowed`: the probe asks «may
+// this container take traffic», which is the question that respects
+// APP_CONFIG_ZARINPAL_ENABLED. The money path keeps the unconditional guard,
+// and both are covered in `src/lib/zarinpal/client.test.ts`.
 vi.mock('@/lib/zarinpal/client', () => ({
-  assertMockGatewayAllowed: vi.fn(),
+  assertReadyToServe: vi.fn(),
 }));
 
 const { HealthDao } = await import('@/db/dao/HealthDao');
-const { assertMockGatewayAllowed } = await import('@/lib/zarinpal/client');
+const { assertReadyToServe } = await import('@/lib/zarinpal/client');
 const { readinessHandler, NOT_READY_MESSAGE } = await import('./readiness');
 
 const ping = vi.mocked(HealthDao.ping);
-const assertGateway = vi.mocked(assertMockGatewayAllowed);
+const assertGateway = vi.mocked(assertReadyToServe);
 
 /** Minimal Hono-ish context: `c.json(body, status)` is all the handler uses. */
 const makeContext = () => {
@@ -94,7 +98,8 @@ describe('readinessHandler', () => {
   // Readiness is where the mock-gateway refusal is hoisted to: Coolify's health
   // check points at `GET /api/ready` (docs/DEPLOY.md §6), so a 503 here is what
   // stops traffic reaching a production container that would settle orders as
-  // paid for zero Toman. It fires whatever APP_CONFIG_ZARINPAL_ENABLED says.
+  // paid for zero Toman. Whether it fires at all is `assertReadyToServe`'s
+  // question, covered in `src/lib/zarinpal/client.test.ts`; here it just throws.
   it('returns 503 when the mock gateway would serve a production build', async () => {
     assertGateway.mockImplementationOnce(() => {
       throw new Error('APP_CONFIG_ZARINPAL_ALLOW_MOCK is not set');

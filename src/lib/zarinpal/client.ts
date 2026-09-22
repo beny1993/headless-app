@@ -298,12 +298,11 @@ let mockRefusalLogged = false;
  * `mock` serves nothing until `APP_CONFIG_ZARINPAL_ALLOW_MOCK=true` says the
  * simulation is deliberate (a staging deploy, which has no gateway account).
  *
- * Hoisted to `GET /api/ready` — Coolify's health check (docs/DEPLOY.md §6) — so
- * a misconfigured container never takes traffic, rather than failing on the
- * first shopper's checkout. It fires there whatever APP_CONFIG_ZARINPAL_ENABLED
- * says: a production build carrying the mock driver is broken whether or not
- * online payment happens to be switched off today. `getZarinpalClient` keeps it
- * too, as the second layer for a container nobody probes.
+ * Reached from `GET /api/ready` through {@link assertReadyToServe}, which adds
+ * the one condition this function deliberately does not have — see there.
+ * `getZarinpalClient` calls this one directly and unconditionally: whatever any
+ * switch says, a production build must not hand out a driver that reports money
+ * as taken when none was.
  *
  * Deliberately NOT in `getZarinpalProvider`: `payments.ts` gates the mock-only
  * endpoints on the provider and not on NODE_ENV, and that has to keep working.
@@ -334,6 +333,38 @@ export function assertMockGatewayAllowed(): void {
     console.error(message);
   }
   throw new Error(message);
+}
+
+/** Whether online payment is switched on for this deploy. */
+export const isZarinpalEnabled = (): boolean =>
+  getEnvVariable(VARS.APP_CONFIG_ZARINPAL_ENABLED, false, '').trim() === 'true';
+
+/**
+ * The readiness half of {@link assertMockGatewayAllowed}: may this container
+ * take traffic at all?
+ *
+ * A container that cannot take an online payment cannot settle a zero-Toman one
+ * either, so with `APP_CONFIG_ZARINPAL_ENABLED` off the mock provider says
+ * nothing about whether this instance should serve. Refusing anyway takes a
+ * card-to-card-only shop off the air over a gateway it never calls — which is
+ * not theoretical: it rolled back a production deploy on 2026-09-22, for a
+ * subsystem that was switched off.
+ *
+ * What does NOT relax is the money path. `getZarinpalClient` still calls
+ * {@link assertMockGatewayAllowed} unconditionally, so if anything reaches the
+ * gateway in a production build on `mock` it throws there — and it can be
+ * reached with the switch off, because `APP_CONFIG_ZARINPAL_ENABLED` is read by
+ * the checkout page to hide the option, not by the API to refuse it. The
+ * shopper gets a failed request and the payment row stays `pending`; no order
+ * settles. That is the fail-closed half, and it is why relaxing this one is
+ * safe.
+ *
+ * And the moment online payment is switched on, readiness refuses again —
+ * which is precisely the deploy where a refusal is worth the outage.
+ */
+export function assertReadyToServe(): void {
+  if (!isZarinpalEnabled()) return;
+  assertMockGatewayAllowed();
 }
 
 let mockWarningLogged = false;
