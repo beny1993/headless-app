@@ -147,13 +147,13 @@ describe('the mock gateway in a production build', () => {
   it('refuses to hand out the mock driver, naming the escape variable', async () => {
     // The failure this prevents is silent success: a shopper clicks «پرداخت
     // موفق» on the mock gateway and the order settles `paid` for zero Toman.
-    const { getZarinpalClient } = await load({
+    const { getZarinpalClient: getClient } = await load({
       NODE_ENV: 'production',
       APP_CONFIG_ZARINPAL_PROVIDER: 'mock',
       APP_CONFIG_ZARINPAL_ALLOW_MOCK: '',
     });
 
-    expect(() => getZarinpalClient()).toThrow(/APP_CONFIG_ZARINPAL_ALLOW_MOCK/);
+    expect(() => getClient()).toThrow(/APP_CONFIG_ZARINPAL_ALLOW_MOCK/);
   });
 
   it('names the provider variable too, so the operator knows which one to set', async () => {
@@ -189,35 +189,35 @@ describe('the mock gateway in a production build', () => {
   it('hands out the mock driver, still shouting once, when the escape is set', async () => {
     // A staging deploy is a production build on the mock gateway; the warning
     // is what keeps it from being mistaken for the real thing.
-    const { getZarinpalClient, mockDriver: driver } = await load({
+    const { getZarinpalClient: getClient, mockDriver: driver } = await load({
       NODE_ENV: 'production',
       APP_CONFIG_ZARINPAL_PROVIDER: 'mock',
       APP_CONFIG_ZARINPAL_ALLOW_MOCK: 'true',
     });
 
-    expect(getZarinpalClient()).toBe(driver);
-    expect(getZarinpalClient()).toBe(driver);
+    expect(getClient()).toBe(driver);
+    expect(getClient()).toBe(driver);
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
   it('treats anything but `true` as no escape at all', async () => {
-    const { getZarinpalClient } = await load({
+    const { getZarinpalClient: getClient } = await load({
       NODE_ENV: 'production',
       APP_CONFIG_ZARINPAL_PROVIDER: 'mock',
       APP_CONFIG_ZARINPAL_ALLOW_MOCK: 'yes',
     });
 
-    expect(() => getZarinpalClient()).toThrow(/APP_CONFIG_ZARINPAL_ALLOW_MOCK/);
+    expect(() => getClient()).toThrow(/APP_CONFIG_ZARINPAL_ALLOW_MOCK/);
   });
 
   it('leaves development alone — the mock is the point there', async () => {
-    const { getZarinpalClient, mockDriver: driver } = await load({
+    const { getZarinpalClient: getClient, mockDriver: driver } = await load({
       NODE_ENV: 'development',
       APP_CONFIG_ZARINPAL_PROVIDER: 'mock',
       APP_CONFIG_ZARINPAL_ALLOW_MOCK: '',
     });
 
-    expect(getZarinpalClient()).toBe(driver);
+    expect(getClient()).toBe(driver);
     expect(warn).not.toHaveBeenCalled();
   });
 

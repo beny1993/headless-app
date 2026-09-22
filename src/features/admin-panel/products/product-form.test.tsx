@@ -19,7 +19,11 @@ import {
 import { toPersianDigits } from '@/lib/format';
 import { ProductForm, type ProductFormInitial } from './product-form';
 
+/** The form's own fallback copy — not exported, so stated once here. */
+const GENERIC_ERROR = 'خطای غیرمنتظره رخ داد. دوباره تلاش کن.';
+
 const api = vi.hoisted(() => ({ putData: vi.fn() }));
+const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 const { router, toast } = vi.hoisted(() => ({
   router: { push: vi.fn(), refresh: vi.fn() },
   toast: { error: vi.fn(), warning: vi.fn() },
@@ -30,6 +34,9 @@ vi.mock('@/lib/api-client', async (importOriginal) => ({
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('sonner', () => ({ toast }));
+vi.mock('@sentry/nextjs', () => ({
+  captureException: sentry.captureException,
+}));
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -306,14 +313,61 @@ describe('product save failures', () => {
     );
   });
 
-  it('reports a failed save as an error toast and stays on the form', async () => {
+  // The three cases of one rule: a sentence the server wrote for a person
+  // travels, anything else is replaced by Persian advice. Developer text used
+  // to go straight into the toast — and the first of these pinned it as
+  // correct by asserting the English `'server down'`.
+  it('keeps a browser error out of the toast and stays on the form', async () => {
+    // What a dead connection throws: `TypeError: Failed to fetch`, in English,
+    // from the browser rather than from this app.
     api.putData.mockRejectedValue(new Error('server down'));
     renderEdit();
 
     fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
 
     await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith('server down'),
+      expect(toast.error).toHaveBeenCalledWith(GENERIC_ERROR),
+    );
+    expect(router.push).not.toHaveBeenCalled();
+    // The admin reads the generic sentence, so this is the only record of what
+    // actually happened: nothing reached the server, so nothing logged it there.
+    expect(sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'server down' }),
+    );
+  });
+
+  it('keeps a 5xx placeholder out of the toast', async () => {
+    // `create-router.ts` answers every 500 with this literal in production; it
+    // is a placeholder standing in for details nobody outside may see, not a
+    // sentence written for the admin reading the toast.
+    api.putData.mockRejectedValue(
+      new ApiRequestError(500, 'Internal server error'),
+    );
+    renderEdit();
+
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(GENERIC_ERROR),
+    );
+    expect(router.push).not.toHaveBeenCalled();
+    // Not reported from here: the request reached the server, so
+    // `create-router.ts` captured it there. A second event would be one
+    // failure filed twice.
+    expect(sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it('shows the refusal a 4xx explained in Persian', async () => {
+    // A 404 reaches this line rather than the field-mapping branch above (400,
+    // 409 and 422 only), and it is the case that separates the rule from a
+    // blanket generic: the server explained itself, for a person.
+    api.putData.mockRejectedValue(new ApiRequestError(404, 'محصول یافت نشد'));
+    renderEdit();
+
+    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('محصول یافت نشد'),
     );
     expect(router.push).not.toHaveBeenCalled();
   });

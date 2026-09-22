@@ -120,9 +120,9 @@ export class OrderDao {
     { items, ...order }: OrderInput,
     tx?: Tx,
   ): Promise<OrderWithItems> {
-    const run = async (tx: Tx): Promise<OrderWithItems> => {
-      const [created] = await tx.insert(orders).values(order).returning();
-      const createdItems = await tx
+    const run = async (trx: Tx): Promise<OrderWithItems> => {
+      const [created] = await trx.insert(orders).values(order).returning();
+      const createdItems = await trx
         .insert(orderItems)
         .values(items.map((item) => ({ ...item, orderId: created.id })))
         .returning();

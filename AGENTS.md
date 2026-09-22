@@ -23,7 +23,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 
 | Path | What |
 | --- | --- |
-| `src/app/(app)/` | Public storefront (own root layout + `globals.css`). Every page lives in `(store)`, whose layout is the `APP_CONFIG_MAINTENANCE_MODE` gate; only `login/` sits outside it, so admins can sign in while the shop is closed |
+| `src/app/(app)/` | Public storefront (its own chrome layout; the one root layout and `src/app/globals.css` sit at `src/app/`, shared with the admin panel). Every page lives in `(store)`, whose layout is the `APP_CONFIG_MAINTENANCE_MODE` gate; only `login/` sits outside it, so admins can sign in while the shop is closed |
 | `src/app/(admin-panel)/` | Admin panel: `(protected)` pages behind `requireAdmin()`. Sign-in is the storefront's `/login` — there is one login for the whole site |
 | `src/app/api/[[...route]]/` | Hono catch-all; Better Auth at `src/app/api/auth/[...all]/` |
 | `src/db/schema/`, `src/db/dao/`, `src/db/migrations/` | Drizzle schema, DAOs, generated migrations. `dao/product-sql.ts` is the product listing's SQL vocabulary — the family scalars, the orderings, the category and pet scopes — composed by `ProductDao` and imported by nothing else |
@@ -68,7 +68,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   `formatJalali`, `formatJalaliYear`) — never a Persian numeral literal or an
   ad-hoc `toLocaleString` in a component, or the same screen ends up with two
   different thousands separators.
-- **Styling**: Tailwind v4, CSS-first config in `src/app/(app)/globals.css`;
+- **Styling**: Tailwind v4, CSS-first config in `src/app/globals.css`;
   tokens port from `design/src/styles/theme.css`. Merge classes with `cn()`.
   Fonts are **self-hosted** (`src/lib/fonts.ts` → `src/assets/fonts/`) — never
   `next/font/google`, which fetches from Google at build time and fails on
