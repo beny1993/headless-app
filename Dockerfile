@@ -42,7 +42,14 @@ FROM node:24-alpine AS build
 WORKDIR /app
 ENV HUSKY=0
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN corepack enable
+# node_modules arrives from `deps`, so this stage needs no package manager — and
+# deliberately has none. Enabling corepack used to sit here, and the first pnpm
+# call then downloaded pnpm-11.20.0.tgz from registry.npmjs.org; `COPY . .`
+# invalidates this layer on every commit, so EVERY deploy depended on that fetch.
+# From the Coolify box it periodically fails DNS (EAI_AGAIN) and takes the deploy
+# with it. The bin shims pnpm wrote are plain POSIX sh that resolve relative to
+# themselves, so PATH is all this stage needs to run them.
+ENV PATH="/app/node_modules/.bin:$PATH"
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -74,7 +81,14 @@ ARG NEXT_PUBLIC_UMAMI_WEBSITE_ID=
 # src/lib/utils/env.ts while Next imports the auth/db modules: `new Pool()` does
 # not connect, nothing here verifies the secret, and every data route is
 # force-dynamic so no DB-backed page is rendered at build.
-RUN NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
+# Invoked as `next build` rather than through the package manager — the same
+# command today (`build` is bare `next build`, with no prebuild/postbuild), but
+# reaching it without one is the point. Mirror any pre/post script added there
+# here. --network=none makes the offline claim enforceable: the day something in
+# the build reaches for the network it fails here, by name, instead of
+# intermittently on a name lookup.
+RUN --network=none \
+    NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
     NEXT_PUBLIC_STORAGE_BASE_URL="$NEXT_PUBLIC_STORAGE_BASE_URL" \
     NEXT_PUBLIC_SENTRY_DSN="$NEXT_PUBLIC_SENTRY_DSN" \
     NEXT_PUBLIC_SENTRY_ENVIRONMENT="$NEXT_PUBLIC_SENTRY_ENVIRONMENT" \
@@ -82,7 +96,7 @@ RUN NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
     NEXT_PUBLIC_UMAMI_WEBSITE_ID="$NEXT_PUBLIC_UMAMI_WEBSITE_ID" \
     APP_CONFIG_DATABASE_URL="postgres://build:build@127.0.0.1:5432/build" \
     APP_CONFIG_AUTH_SECRET="build-time-placeholder-not-used-at-runtime" \
-    pnpm build
+    next build
 
 # Next bundles drizzle-orm into the server chunks rather than tracing it as an
 # external, so .next/standalone/node_modules does NOT contain it — and the
