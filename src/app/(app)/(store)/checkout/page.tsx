@@ -6,7 +6,7 @@ import { CheckoutForm } from '@/features/checkout/checkout-form';
 import { toLocalIranPhone } from '@/lib/auth/phone';
 import { requireSession } from '@/lib/auth/session';
 import { PATHS } from '@/lib/constant/paths';
-import { getEnvVariable, VARS } from '@/lib/utils/env';
+import { isZarinpalEnabled } from '@/lib/zarinpal/client';
 import { toAddressResponse } from '@/lib/account/address';
 
 export const metadata: Metadata = { title: 'تکمیل خرید' };
@@ -36,9 +36,7 @@ export default async function Page() {
       defaultPhone={toLocalIranPhone(session.user.phoneNumber ?? '')}
       savedAddresses={addresses.map(toAddressResponse)}
       payment={content['checkout.payment']}
-      zarinpalEnabled={
-        getEnvVariable(VARS.APP_CONFIG_ZARINPAL_ENABLED, false, '') === 'true'
-      }
+      zarinpalEnabled={isZarinpalEnabled()}
     />
   );
 }

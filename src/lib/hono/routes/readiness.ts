@@ -23,7 +23,8 @@ import { errorResponse } from '../route-responses';
  * still on `mock` answers 503 here, so Coolify never routes traffic to a
  * container that would settle every order as paid for zero Toman. That check
  * runs before the database probe — it is pure environment, so there is no point
- * spending I/O first — and it fires whatever APP_CONFIG_ZARINPAL_ENABLED says.
+ * spending I/O first — and it fires whenever online payment is switched on,
+ * which is when a mock provider could settle an order for zero Toman.
  */
 
 export const NOT_READY_MESSAGE = 'سرویس آماده نیست';
@@ -67,10 +68,13 @@ export const readinessHandler: RouteHandler<typeof readinessRoute> = async (
     //
     // It does go to the server log, though, and that is not optional: the
     // response is the generic Persian 503 because `/api/ready` is public, so
-    // without this line a refusal is unreadable. `assertReadyToServe`
-    // logs its own refusal once, but it resolves the provider FIRST — an
-    // unrecognized APP_CONFIG_ZARINPAL_PROVIDER throws before that line is ever
-    // reached, which is exactly the deploy that would otherwise roll back blind.
+    // without this line a refusal is unreadable. The gateway guard logs its own
+    // refusal once, but only after resolving the provider — an unrecognized
+    // APP_CONFIG_ZARINPAL_PROVIDER throws before that line is reached, which is
+    // exactly the deploy that would otherwise roll back blind. Note the provider
+    // is resolved only when online payment is ON: on a card-to-card-only deploy
+    // a typo'd provider now passes this probe and surfaces on the first
+    // checkout instead, which is the trade for not refusing that shop at all.
     console.error('[ready] refusing traffic:', error);
     return c.json(apiError(NOT_READY_MESSAGE), 503);
   }

@@ -98,7 +98,8 @@ describe('readinessHandler', () => {
   // Readiness is where the mock-gateway refusal is hoisted to: Coolify's health
   // check points at `GET /api/ready` (docs/DEPLOY.md §6), so a 503 here is what
   // stops traffic reaching a production container that would settle orders as
-  // paid for zero Toman. It fires whatever APP_CONFIG_ZARINPAL_ENABLED says.
+  // paid for zero Toman. Whether it fires at all is `assertReadyToServe`'s
+  // question, covered in `src/lib/zarinpal/client.test.ts`; here it just throws.
   it('returns 503 when the mock gateway would serve a production build', async () => {
     assertGateway.mockImplementationOnce(() => {
       throw new Error('APP_CONFIG_ZARINPAL_ALLOW_MOCK is not set');

@@ -10,7 +10,7 @@
 // discriminator is that BOTH concurrent calls here succeed with the SAME order,
 // where oversell has exactly one rejection.
 import { eq, inArray } from 'drizzle-orm';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { orders, payments } from '@/db/schema/orders';
 import { products as productsTable } from '@/db/schema/catalog';
 import { provinces, shippingRates } from '@/db/schema/shipping';
@@ -35,6 +35,13 @@ const token = () => crypto.randomUUID().slice(0, 12);
 const key = () => crypto.randomUUID();
 
 describe.skipIf(!databaseReachable)('createOrder idempotency', () => {
+  // Online payment is OFF by default, and `createOrder` now refuses a
+  // `zarinpal` order while it is — the API boundary the checkout page's hidden
+  // option was never a substitute for. These suites are about what a zarinpal
+  // order does once it exists, so they switch the feature on. The refusal
+  // itself is pinned in «online payment switched off» below.
+  beforeEach(() => vi.stubEnv('APP_CONFIG_ZARINPAL_ENABLED', 'true'));
+  afterEach(() => vi.unstubAllEnvs());
   const fx = new OrderFixtures();
   const provinceIds: number[] = [];
 
