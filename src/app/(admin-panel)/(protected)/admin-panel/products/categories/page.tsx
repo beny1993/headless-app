@@ -2,7 +2,7 @@ import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { CategoryManager } from '@/features/admin-panel/categories/category-manager';
-import { toCategoryView } from '@/lib/hono/routes/admin-categories';
+import { toCategoryView } from '@/lib/catalog/category-view';
 
 export const metadata: Metadata = { title: 'دسته‌بندی‌ها' };
 

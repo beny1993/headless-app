@@ -42,7 +42,7 @@ export function formatNumber(value: number | bigint): string {
     throw new RangeError(`formatNumber: not a finite number: ${value}`);
   }
   // ICU is sign-aware about zero, so a computed `-0` — `-discount` with no
-  // discount, `-(a - a)` — would render as «‎−۰». Nothing displays a negative
+  // discount, `-(a - a)` — would render as «\u200E−۰». Nothing displays a negative
   // zero on purpose; collapse it here so every caller is covered.
   return (Object.is(value, -0) ? 0 : value).toLocaleString(LOCALE);
 }
@@ -56,7 +56,7 @@ export function formatNumber(value: number | bigint): string {
  * `bigint`, which formats exactly.
  *
  * Negatives are formatted, not rejected: refunds and order adjustments display
- * as `‎−۵۰٬۰۰۰ تومان`.
+ * as `\u200E−۵۰٬۰۰۰ تومان`.
  */
 export function formatToman(amount: bigint | number): string {
   if (typeof amount === 'number' && !Number.isSafeInteger(amount)) {

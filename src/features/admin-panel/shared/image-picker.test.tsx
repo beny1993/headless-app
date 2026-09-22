@@ -13,6 +13,7 @@
 // content-editor.test.tsx next door proves; this file proves the fixes.
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it } from 'vitest';
+import { IMAGE_TYPE_ERROR } from '@/lib/storage/image-upload';
 import { ImagePicker } from './image-picker';
 
 afterEach(cleanup);
@@ -39,13 +40,16 @@ it('names the input after the field, not after the upload button', () => {
 });
 
 it('associates the error with the input and marks it invalid', () => {
-  show('فقط تصویر JPEG، PNG یا WEBP.');
+  // The picker's own refusal, not a copy of it: hand-typed, this said JPEG
+  // while the constant says JPG, so it read as a pin of a message that no
+  // longer exists.
+  show(IMAGE_TYPE_ERROR);
 
   const input = screen.getByLabelText('تصویر شاخص');
   const describedBy = input.getAttribute('aria-describedby');
   expect(describedBy).toBeTruthy();
   expect(document.getElementById(describedBy!)?.textContent).toContain(
-    'فقط تصویر JPEG، PNG یا WEBP.',
+    IMAGE_TYPE_ERROR,
   );
   expect(input.getAttribute('aria-invalid')).toBe('true');
 });

@@ -27,6 +27,7 @@ import {
   openCheckout,
   resultOrderId,
   test,
+  unwrapImageSrc,
 } from './support';
 
 test.use({ storageState: ADMIN_STATE });
@@ -47,16 +48,10 @@ if (!EXTRA_CATEGORY) {
   throw new Error('The catalog seed has no category outside the sub’s parent.');
 }
 
-/**
- * The storage key an `<img>` is actually showing. `next/image` wraps it as
- * `/_next/image?url=%2Fuploads%2F…`, so the raw `src` is never string-matched:
- * the inner URL is read out of the query and unwrapped back to a key.
- */
+/** The storage key an `<img>` is actually showing. */
 async function renderedKey(img: Locator): Promise<string> {
   const src = await img.getAttribute('src');
-  const url = new URL(src ?? '', 'http://localhost');
-  const inner = url.searchParams.get('url') ?? url.pathname;
-  return decodeURIComponent(inner).replace(/^\//, '');
+  return unwrapImageSrc(new URL(src ?? '', 'http://localhost'));
 }
 
 /**

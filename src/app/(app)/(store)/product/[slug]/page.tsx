@@ -2,22 +2,21 @@ import { cache } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { AlertCircle, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
-import {
-  AVAILABILITY,
-  availability,
-} from '@/features/storefront/product/availability';
+import { availability } from '@/features/storefront/product/availability';
 import { ProductGallery } from '@/features/storefront/product/product-gallery';
 import { ProductPurchase } from '@/features/storefront/product/product-purchase';
 import { ProductTabs } from '@/features/storefront/product/product-tabs';
+import { Spec } from '@/features/storefront/product/spec-row';
+import { StockNotice } from '@/features/storefront/product/stock-notice';
 import { VariantChips } from '@/features/storefront/product/variant-chips';
 import { formatPetTypes, productSlugSchema } from '@/lib/catalog/product-query';
 import { displayTitle } from '@/lib/catalog/variant';
 import type { ProductDetail } from '@/db/schema/catalog';
 import { PATHS, shopPath } from '@/lib/constant/paths';
-import { formatNumber, formatToman } from '@/lib/format';
+import { formatToman } from '@/lib/format';
 
 /**
  * The product detail page, ported from `design/src/app/App.tsx`.
@@ -261,73 +260,5 @@ export default async function ProductDetailPage({ params }: Params) {
         />
       </div>
     </main>
-  );
-}
-
-/**
- * The three states the design draws, and the reason `availability` exists: the
- * notice and the add button read the same stock through the same function, so
- * «ناموجود» can never appear above a live add button.
- */
-function StockNotice({
-  state,
-  stock,
-}: {
-  state: ReturnType<typeof availability>;
-  stock: number;
-}) {
-  if (state === AVAILABILITY.OUT_OF_STOCK) {
-    return (
-      <div className="bg-muted border-border flex items-start gap-2 rounded-xl border p-3">
-        <AlertCircle
-          size={16}
-          className="text-muted-foreground mt-0.5 shrink-0"
-          aria-hidden="true"
-        />
-        <div>
-          <p className="text-sm font-semibold">فعلاً ناموجود است</p>
-          <p className="text-muted-foreground mt-0.5 text-xs">
-            به‌محض شارژ موجودی دوباره اینجا قرار می‌گیرد.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (state === AVAILABILITY.LOW_STOCK) {
-    return (
-      <p className="text-warning flex items-center gap-1.5 text-sm">
-        <AlertCircle size={14} className="shrink-0" aria-hidden="true" />
-        <span>
-          تنها <span className="nums">{formatNumber(stock)}</span> عدد باقی
-          مانده
-        </span>
-      </p>
-    );
-  }
-
-  return (
-    <p className="text-success-strong flex items-center gap-1.5 text-sm">
-      <Check size={14} className="shrink-0" aria-hidden="true" />
-      موجود در انبار
-    </p>
-  );
-}
-
-/**
- * `value` is a node, not a string, for the one row that renders links — برند،
- * کد کالا and مناسب برای still pass plain strings. The `<dd>` wraps rather than
- * squeezing the `<dt>`: with six categories that is two or three lines in a
- * spec table, which is what a spec table is for. `justify-end` is logical, so
- * it stays correct in the RTL shell.
- */
-function Spec({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="border-border flex items-center justify-between gap-4 border-b py-3">
-      <dt className="text-muted-foreground font-medium">{label}</dt>
-      <dd className="flex flex-wrap justify-end gap-x-1 font-semibold">
-        {value}
-      </dd>
-    </div>
   );
 }

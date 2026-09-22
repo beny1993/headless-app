@@ -8,20 +8,22 @@
 // live `province_id`; only an ORDER snapshots the province — this is editable data,
 // so a later province rename would show here, which is correct.
 //
-// `toAddressResponse` is exported so the account server page and the checkout
-// server page (which offers saved-address prefill) render from one type.
+// The resource's shape and its projector live in `@/lib/account/address`, which
+// is client-safe: the account server page and the checkout server page (which
+// offers saved-address prefill) render from one type without importing this file
+// — and with it `@hono/zod-openapi` — as a value.
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
-import { AddressDao, type AddressWithProvince } from '@/db/dao/AddressDao';
+import { AddressDao } from '@/db/dao/AddressDao';
 import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
-import { addressInputSchema } from '@/lib/account/address';
 import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+  addressInputSchema,
+  addressResponseSchema,
+  toAddressResponse,
+} from '@/lib/account/address';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
@@ -41,39 +43,24 @@ const TOO_MANY_ADDRESSES_MESSAGE = 'به سقف تعداد آدرس‌ها رس�
  */
 const INVALID_PROVINCE_MESSAGE = 'استان انتخاب‌شده نامعتبر است.';
 
-const AddressSchema = z
-  .object({
-    id: z.uuid(),
-    title: z.string().nullable(),
-    recipientName: z.string(),
-    recipientPhone: z.string(),
-    provinceId: z.number().int().positive(),
-    provinceName: z.string(),
-    city: z.string(),
-    postalCode: z.string(),
-    addressLine: z.string(),
-    createdAt: z.iso.datetime(),
-  })
-  .openapi('Address');
+/**
+ * The shape lives in `@/lib/account/address`: one definition, client-safe,
+ * so the server page that renders the first paint projects rows without
+ * importing this file. Rebuilt into a local `z.object` before `.openapi()`: that method is
+ * grafted on by `@hono/zod-openapi` and zod 4 hands it to newly built schemas
+ * only, so calling it on an imported one depends on module evaluation order
+ * (the trap documented above `ProductListQuerySchema` in ./catalog.ts).
+ *
+ * The ceiling that buys: `.shape` copies the FIELDS. An object-level modifier
+ * on the source schema — `.strict()`, `.catchall()`, `.refine()`, a `.meta()`
+ * on the object itself — is silently left behind, and the document would drift
+ * with no failing test. None of the five projections has one today. Add one
+ * there and it has to be repeated here, or the two stop being one definition.
+ */
+const AddressSchema = z.object(addressResponseSchema.shape).openapi('Address');
 
-/** The saved-address shape the account book and the checkout picker render. */
-export type AddressResponse = z.infer<typeof AddressSchema>;
-
-/** AddressWithProvince → the wire projection: Date to ISO, internal columns dropped. */
-export const toAddressResponse = (
-  row: AddressWithProvince,
-): AddressResponse => ({
-  id: row.id,
-  title: row.title,
-  recipientName: row.recipientName,
-  recipientPhone: row.recipientPhone,
-  provinceId: row.provinceId,
-  provinceName: row.provinceName,
-  city: row.city,
-  postalCode: row.postalCode,
-  addressLine: row.addressLine,
-  createdAt: row.createdAt.toISOString(),
-});
+/** Re-exported for the client components that already import the type here. */
+export type { AddressResponse } from '@/lib/account/address';
 
 const AddressIdParamSchema = z.object({
   id: z.uuid().meta({ param: { name: 'id', in: 'path' } }),
@@ -83,12 +70,6 @@ const jsonBody = {
   content: { 'application/json': { schema: addressInputSchema } },
   required: true,
 } as const;
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 const addressResponse = (description: string) =>
   ({

@@ -3,8 +3,10 @@
 // These drive `auth.handler` with real `Request`s, which is the same entry the
 // Next route uses, so everything under test is the shipped path: the before
 // hook, the plugin's own verification, the drizzle adapter, the rate limiter's
-// database storage, and the console SMS driver. The code is read back out of
-// the driver's server log, exactly as a developer or QA does locally.
+// database storage, and the console SMS driver. The code is read back through
+// the staging echo (APP_CONFIG_SHOW_OTP_IN_UI, ./otp-echo.ts) — the sanctioned
+// way to see a code without an SMS account, and the way a deployed test build
+// does it, since the console driver redacts the code outside development.
 import { faker } from '@faker-js/faker';
 import { eq, inArray, like } from 'drizzle-orm';
 import {
@@ -51,9 +53,12 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
 
   beforeEach(() => {
     log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    // Read at request time, so stubbing it here is enough — no re-import.
+    vi.stubEnv('APP_CONFIG_SHOW_OTP_IN_UI', 'true');
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
     if (phones.length === 0) return;
     // Test teardown, not an application path.
@@ -83,17 +88,16 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
     );
 
   /**
-   * The code the console SMS driver just printed.
+   * The code just dispatched, read back off the send-otp response.
    *
-   * Read from the message half of the line only — the recipient half is itself
-   * twelve digits, so a naive six-digit match returns part of the phone number.
+   * That field is the staging echo (`devCode`, ./otp-echo.ts), switched on for
+   * this suite. It used to be scraped out of the console driver's log line;
+   * outside development that line no longer carries the code, which is exactly
+   * the property the driver's own suite pins.
    */
-  const sentCode = () => {
-    const printed = log.mock.calls
-      .map((call: unknown[]) => call.join(' '))
-      .filter((line: string) => line.includes('[sms:console]'));
-    const message = printed.at(-1)?.split(' :: ').at(-1);
-    return message?.match(/(\d{6})/)?.[1] ?? null;
+  const sentCode = async (response: Response) => {
+    const body = (await response.clone().json()) as { devCode?: string };
+    return body.devCode ?? null;
   };
 
   /** Send a code and hand back the number and the code that was dispatched. */
@@ -101,7 +105,7 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
     const phone = freshPhone();
     const response = await post(SEND, { phoneNumber: phone }, ip);
     expect(response.status).toBe(200);
-    const code = sentCode();
+    const code = await sentCode(response);
     expect(code).toMatch(/^\d{6}$/);
     return { phone, code: code!, ip };
   };
@@ -113,17 +117,34 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
       expect(code).toHaveLength(6);
     });
 
-    it('prints the code to the server log — the shipped mock driver', async () => {
+    it('says a code went out without writing it, or the number, to the log', async () => {
       // The console driver is the shipped default until a provider is chosen,
-      // and this is the property QA and local development depend on.
+      // so a deploy that forgets APP_CONFIG_SMS_PROVIDER runs it — and there
+      // the server log is the platform's log store. Under `next dev` the line
+      // still carries both; this suite is not `next dev`, and neither is a
+      // container. (The driver's own cases live in src/lib/sms/index.test.ts.)
       const { phone, code } = await requestCode();
       const printed = log.mock.calls
         .map((call: unknown[]) => call.join(' '))
         .join('\n');
 
       expect(printed).toContain('[sms:console]');
-      expect(printed).toContain(phone);
-      expect(printed).toContain(code);
+      expect(printed).not.toContain(phone);
+      expect(printed).not.toContain(code);
+    });
+
+    it('hands back no code when the staging echo is off — the shipped path', async () => {
+      // The suite switches the echo ON in beforeEach so it can read codes.
+      // Production runs with it OFF, and that branch — the `after` hook in
+      // ./index.ts returning early because `takeOtp` answered undefined — is
+      // covered nowhere else now that the log no longer carries the code.
+      vi.stubEnv('APP_CONFIG_SHOW_OTP_IN_UI', '');
+      const phone = freshPhone();
+
+      const response = await post(SEND, { phoneNumber: phone });
+
+      expect(response.status).toBe(200);
+      expect(await sentCode(response)).toBeNull();
     });
 
     it('logs the send against the number for the throttle to count', async () => {
@@ -252,8 +273,11 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
 
       // Second login, months later: a new code, the same person.
       await testDb.delete(otpSendLog).where(eq(otpSendLog.phone, phone));
-      await post(SEND, { phoneNumber: phone });
-      await post(VERIFY, { phoneNumber: phone, code: sentCode()! });
+      const second = await post(SEND, { phoneNumber: phone });
+      await post(VERIFY, {
+        phoneNumber: phone,
+        code: (await sentCode(second))!,
+      });
 
       const all = await testDb
         .select()

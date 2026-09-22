@@ -7,7 +7,7 @@ import { toLocalIranPhone } from '@/lib/auth/phone';
 import { requireSession } from '@/lib/auth/session';
 import { PATHS } from '@/lib/constant/paths';
 import { getEnvVariable, VARS } from '@/lib/utils/env';
-import { toAddressResponse } from '@/lib/hono/routes/me-addresses';
+import { toAddressResponse } from '@/lib/account/address';
 
 export const metadata: Metadata = { title: 'تکمیل خرید' };
 

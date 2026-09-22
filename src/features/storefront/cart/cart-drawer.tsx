@@ -231,6 +231,13 @@ function CartLineRow({
           alt=""
           width={96}
           height={96}
+          // Lazy, unlike a plain `<img>`'s eager default: the drawer is a
+          // `<dialog>` that sits in the DOM of every storefront page, closed
+          // and `display: none` — which hides these thumbnails without
+          // stopping the browser fetching them. Off-screen until the drawer
+          // opens is exactly what `lazy` is for, and it is the LCP element of
+          // nothing.
+          loading="lazy"
           className="bg-muted size-20 rounded-lg object-cover sm:size-24"
         />
       ) : (

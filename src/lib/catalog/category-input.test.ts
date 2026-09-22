@@ -74,12 +74,20 @@ describe('categoryInputSchema', () => {
     const ZWNJ = String.fromCharCode(0x200c);
     const RLO = String.fromCharCode(0x202e);
     const LRI = String.fromCharCode(0x2066);
+    const LRM = String.fromCharCode(0x200e);
+    const RLM = String.fromCharCode(0x200f);
+    const ALM = String.fromCharCode(0x061c);
 
     it.each([
       ['a NUL byte', `غذا${NUL}`],
       ['a newline', 'غذای\nخشک'],
       ['a right-to-left override', `${RLO}غذا`],
       ['a directional isolate', `غذا${LRI}`],
+      // The marks reorder the neutrals beside them exactly as the overrides do,
+      // and the shared class is the only place either is listed.
+      ['a left-to-right mark', `${LRM}غذا`],
+      ['a right-to-left mark', `غذا${RLM}`],
+      ['an Arabic letter mark', `غذا${ALM}خشک`],
     ])('rejects a title carrying %s', (_, title) => {
       expect(messageFor({ ...valid, title }, 'title')).toBe(
         CATEGORY_MESSAGES.titleChars,

@@ -270,6 +270,9 @@ describe('productInputSchema', () => {
     const ZWNJ = String.fromCharCode(0x200c);
     const RLO = String.fromCharCode(0x202e);
     const LRI = String.fromCharCode(0x2066);
+    const LRM = String.fromCharCode(0x200e);
+    const RLM = String.fromCharCode(0x200f);
+    const ALM = String.fromCharCode(0x061c);
 
     const TEXT_FIELDS = ['title', 'brand', 'benefit', 'description'] as const;
     type TextField = (typeof TEXT_FIELDS)[number];
@@ -323,6 +326,26 @@ describe('productInputSchema', () => {
 
     it.each(TEXT_FIELDS)('rejects a directional isolate in %s', (field) => {
       expect(messageFor(field, `abc${LRI}def`)).toBe(
+        PRODUCT_MESSAGES.textChars,
+      );
+    });
+
+    // The bidi *marks*: no embedding to pop, but a single one still flips the
+    // neutrals around it — a price or a SKU in a description renders reversed.
+    it.each(TEXT_FIELDS)('rejects a left-to-right mark in %s', (field) => {
+      expect(messageFor(field, `abc${LRM}def`)).toBe(
+        PRODUCT_MESSAGES.textChars,
+      );
+    });
+
+    it.each(TEXT_FIELDS)('rejects a right-to-left mark in %s', (field) => {
+      expect(messageFor(field, `abc${RLM}def`)).toBe(
+        PRODUCT_MESSAGES.textChars,
+      );
+    });
+
+    it.each(TEXT_FIELDS)('rejects an Arabic letter mark in %s', (field) => {
+      expect(messageFor(field, `abc${ALM}def`)).toBe(
         PRODUCT_MESSAGES.textChars,
       );
     });

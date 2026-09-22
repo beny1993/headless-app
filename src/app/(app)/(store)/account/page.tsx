@@ -7,9 +7,9 @@ import { AccountView } from '@/features/account/account-view';
 import { toLocalIranPhone } from '@/lib/auth/phone';
 import { requireSession } from '@/lib/auth/session';
 import { PATHS } from '@/lib/constant/paths';
-import { toAddressResponse } from '@/lib/hono/routes/me-addresses';
-import { toOrderSummary } from '@/lib/hono/routes/me-orders';
-import { toPetResponse } from '@/lib/hono/routes/me-pets';
+import { toAddressResponse } from '@/lib/account/address';
+import { toPetResponse } from '@/lib/account/pet';
+import { toOrderSummary } from '@/lib/orders/order-summary';
 
 export const metadata: Metadata = { title: 'حساب کاربری' };
 
@@ -19,8 +19,9 @@ export const metadata: Metadata = { title: 'حساب کاربری' };
  * A server component so `requireSession` is the auth gate — a signed-out visitor
  * is bounced to `/login?next=/account` (via `safeNextPath`) and comes back here.
  * Every tab's data is loaded owner-scoped by the SESSION id, never a URL, and
- * projected through the exact same functions the `/api/me/*` routes use, so the
- * server-rendered first paint and any later client fetch share one shape. The
+ * projected through the exact same functions the `/api/me/*` routes use — from
+ * the client-safe domain modules both sides import, never out of a route file.
+ * The server-rendered first paint and any later client fetch share one shape. The
  * interactive tabs then own their own state (see `AccountView`).
  */
 export default async function Page() {

@@ -206,15 +206,15 @@ describe('the snap suspension', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     render(<ProductGallery images={IMAGES} title="غذای گربه" />);
     vi.spyOn(Element.prototype, 'scrollBy').mockImplementation(() => {});
-    const thumbs = screen.getAllByRole('button', { name: /^نمایش تصویر/ });
+    const buttons = screen.getAllByRole('button', { name: /^نمایش تصویر/ });
 
-    fireEvent.click(thumbs[2]);
+    fireEvent.click(buttons[2]);
     act(() => {
       vi.advanceTimersByTime(500);
     });
     // A second tap before the first timer fires. If the first one survived, it
     // would re-snap the track 100ms into this jump.
-    fireEvent.click(thumbs[0]);
+    fireEvent.click(buttons[0]);
     act(() => {
       vi.advanceTimersByTime(100);
     });

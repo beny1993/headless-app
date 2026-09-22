@@ -2,7 +2,7 @@ import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import { DiscountCodeDao } from '@/db/dao/DiscountCodeDao';
 import { DiscountManager } from '@/features/admin-panel/discounts/discount-manager';
-import { toDiscountView } from '@/lib/hono/routes/admin-discounts';
+import { toDiscountView } from '@/lib/discount/discount-code';
 
 export const metadata: Metadata = { title: 'کدهای تخفیف' };
 

@@ -3,10 +3,12 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
-import { AlertCircle, ChevronRight, Loader2, X } from 'lucide-react';
+import { ChevronRight, Loader2, X } from 'lucide-react';
+import * as Sentry from '@sentry/nextjs';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { ApiRequestError, postData, putData } from '@/lib/api-client';
+import { ApiRequestError, postData, postForm, putData } from '@/lib/api-client';
+import type { AdminProductResponse } from '@/lib/hono/routes/admin-products';
 import {
   MAX_EXTRA_CATEGORIES,
   productInputSchema,
@@ -34,11 +36,14 @@ import {
   ProductImagesField,
   type ProductPhoto,
 } from '@/features/admin-panel/products/product-images-field';
+import { Field, HintOrError } from '@/features/admin-panel/shared/field';
 
-// The form imports nothing from the route module: that would pull `pg` into the
-// browser bundle. It only reads the saved product's id back, so this narrow
-// shape is all it needs.
-type SavedProduct = { id: string };
+// Derived from the route's own response type, never restated — a hand-mirrored
+// `{ id: string }` is the shape that drifts. `import type` is erased for being
+// what it is, not because of any compiler flag, so none of the route module
+// (and none of `pg` behind it) reaches the browser bundle; only the form's one
+// field of it is named.
+type SavedProduct = Pick<AdminProductResponse, 'id'>;
 
 /** The product the edit form starts from — the fields it round-trips. */
 export type ProductFormInitial = {
@@ -104,34 +109,19 @@ const zodFieldErrors = (error: z.ZodError): Record<string, string> => {
 };
 
 /** Append one picked photo to the just-saved product and return its stored key.
- *  Multipart, so a raw fetch rather than the JSON api-client; same-origin, so
- *  the session cookie rides. One request per file: the 2 MB ceiling is mounted
- *  per request, so batching would turn it into a shared cap. */
+ *  One request per file: the 2 MB ceiling is mounted per request, so batching
+ *  would turn it into a shared cap. `postForm` throws `ApiRequestError`, so a
+ *  refusal the server explained stays distinguishable from a connection that
+ *  simply died — only the former carries a sentence fit to show an admin, and
+ *  only the former should replace the generic advice in the toast. */
 async function uploadImage(productId: string, file: File): Promise<string> {
   const form = new FormData();
   form.set(IMAGE_FIELD_NAME, file);
-  const response = await fetch(apiAdminProductImagesPath(productId), {
-    method: 'POST',
-    body: form,
-  });
-  const body = (await response.json().catch(() => null)) as {
-    status?: string;
-    message?: string;
-    errors?: string[];
-    data?: { objectKey?: string };
-  } | null;
-  const objectKey = body?.data?.objectKey;
-  if (!response.ok || body?.status !== 'success' || !objectKey) {
-    // `ApiRequestError`, so a refusal the server explained is distinguishable
-    // from a connection that simply died: only the former carries a sentence
-    // fit to show an admin, and only the former should replace the generic
-    // advice in the toast.
-    throw new ApiRequestError(
-      response.status,
-      body?.message ?? 'بارگذاری تصویر ناموفق بود.',
-      body?.errors,
-    );
-  }
+  const { objectKey } = await postForm(
+    apiAdminProductImagesPath(productId),
+    form,
+    z.object({ objectKey: z.string().min(1) }),
+  );
   return objectKey;
 }
 
@@ -453,7 +443,22 @@ export function ProductForm({
         if (message) toast.error(message);
         return;
       }
-      toast.error(error instanceof Error ? error.message : GENERIC_ERROR);
+      // `reasonFrom`, not `error.message`: this line used to forward whatever
+      // an `Error` carried, which is a browser's `TypeError: Failed to fetch`
+      // for a dead connection and the literal `Internal server error` for
+      // every 5xx — English developer text, in Persian admin copy.
+      //
+      // Suppressing it is only half the job: the detail still has to reach
+      // GlitchTip or it is nowhere. An `ApiRequestError` means the request
+      // arrived, and `create-router.ts` captures every 5xx server-side — so
+      // reporting it here would only duplicate. What is left never reached the
+      // server at all (a dropped connection, a `TypeError` thrown before the
+      // request left, an unreadable envelope), and because this `catch` handles
+      // it, it never becomes an unhandled error — the only kind Sentry records
+      // by itself. Without this line the admin reads the generic sentence and
+      // nobody ever learns why.
+      if (!(error instanceof ApiRequestError)) Sentry.captureException(error);
+      toast.error(reasonFrom(error) ?? GENERIC_ERROR);
     }
   };
 
@@ -935,55 +940,3 @@ const inputClass = (error?: string) =>
       ? 'border-destructive'
       : 'border-border focus-visible:border-accent-strong'
   }`;
-
-function Field({
-  id,
-  label,
-  hint,
-  error,
-  children,
-}: {
-  id: string;
-  label: string;
-  hint?: React.ReactNode;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium">
-        {label}
-      </label>
-      {children}
-      <HintOrError hint={hint} error={error} />
-    </div>
-  );
-}
-
-/** One slot under a control: its error if it has one, otherwise its hint. */
-function HintOrError({
-  id,
-  hint,
-  error,
-}: {
-  id?: string;
-  hint?: React.ReactNode;
-  error?: string;
-}) {
-  if (error) {
-    return (
-      <p
-        id={id}
-        className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
-      >
-        <AlertCircle size={12} aria-hidden="true" /> {error}
-      </p>
-    );
-  }
-  if (!hint) return null;
-  return (
-    <p id={id} className="text-muted-foreground mt-1.5 text-xs">
-      {hint}
-    </p>
-  );
-}

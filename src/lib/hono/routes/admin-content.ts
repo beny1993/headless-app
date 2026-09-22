@@ -24,19 +24,13 @@ import { findBrokenLinks } from '@/logic/content/link-targets';
 import { INVALID_INPUT_MESSAGE } from '../create-router';
 import {
   apiError,
-  apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
   formatZodIssues,
 } from '../envelope';
+import { errorResponse } from '../route-responses';
 import { readImageUpload } from '../image-upload';
 import type { AuthedEnv } from '../middleware/auth';
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 // ── Block update ────────────────────────────────────────────────────────────
 
@@ -150,7 +144,18 @@ export const contentImageUploadHandler = async (
 
   // ponytail: no orphan sweep — an upload whose block is never saved, or a
   // replaced uploads/ key, is left on disk. Keys are uuids used by at most one
-  // slot (the form cannot copy a key), so replaceProductImage's delete loop is
-  // the pattern for a later sweep if disk ever fills.
+  // slot (the form cannot copy a key), so a sweep would be safe.
+  //
+  // The product gallery's `setProductImageOrder` is the nearest worked example,
+  // but only half of it transfers. Its shape: delete exactly what the write
+  // itself removed (`previous − kept`, as `ProductDao.setImages` reports it),
+  // restricted to `uploads/` so a bundled `products/…` asset is never handed to
+  // the driver, each failure swallowed and reported to Sentry rather than
+  // failing a write the database has already taken. What does not transfer is
+  // where that set comes from: a gallery has `product_images` rows to diff, and
+  // content images are keys inside `site_content` JSON with no row of their
+  // own. A sweep here has to collect the referenced keys by walking the saved
+  // values — every area, every block — and delete the `uploads/` objects no
+  // value names. Until disk fills, it is not worth that walk.
   return c.json(apiSuccess({ key, url: driver.url(key) }), 201);
 };

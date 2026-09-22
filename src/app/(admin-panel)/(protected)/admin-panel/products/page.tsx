@@ -1,88 +1,25 @@
 import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
-import Image from 'next/image';
 import Link from 'next/link';
-import { Edit, Eye, Plus } from 'lucide-react';
-import { z } from 'zod';
+import { Plus } from 'lucide-react';
 import { Pagination } from '@/components/ui/pagination';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { categoryOptions } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
-import type { ProductWithImages } from '@/db/schema/catalog';
 import { PET_TYPES } from '@/lib/catalog/product-query';
-import { displayTitle } from '@/lib/catalog/variant';
+import { adminNewProductPath } from '@/lib/constant/paths';
+import { ADMIN_PAGE_SIZE } from '@/lib/pagination';
+import { ProductRow } from '@/features/admin-panel/products/product-row';
 import {
-  adminEditProductPath,
-  adminNewProductPath,
-  productPath,
-  PROTECTED_PATHS,
-} from '@/lib/constant/paths';
-import { formatToman, toPersianDigits } from '@/lib/format';
-import { ADMIN_PAGE_SIZE, pageParamSchema } from '@/lib/pagination';
-import { imageSrc } from '@/lib/storage/image-url';
-import { DeleteProductButton } from '@/features/admin-panel/products/delete-product-button';
+  activeToFilter,
+  adminProductFilterSchema,
+  productsHref,
+} from '@/features/admin-panel/products/products-query';
 
 export const metadata: Metadata = { title: 'محصولات' };
 
 // Reads the live catalog per request (and depends on searchParams).
 export const dynamic = 'force-dynamic';
-
-/** Active filter as it appears in the URL; mapped to the DAO's `active` below. */
-const ACTIVE_VALUES = ['all', 'active', 'inactive'] as const;
-type ActiveValue = (typeof ACTIVE_VALUES)[number];
-
-// Page-level input degrades rather than 400s (the always-zod rule for pages): a
-// bad value falls back to "no filter" via `.catch`, never throws.
-const filterSchema = z.object({
-  q: z.string().trim().min(1).optional().catch(undefined),
-  category: z.string().trim().min(1).optional().catch(undefined),
-  pet: z.enum([PET_TYPES.CAT, PET_TYPES.DOG]).optional().catch(undefined),
-  active: z.enum(ACTIVE_VALUES).catch('all'),
-  page: pageParamSchema,
-});
-
-/** The list's URL for one page, keeping the filters; page one has no `page`. */
-const productsHref = (
-  filters: z.infer<typeof filterSchema>,
-  page: number,
-): string => {
-  const params = new URLSearchParams();
-  if (filters.q) params.set('q', filters.q);
-  if (filters.category) params.set('category', filters.category);
-  if (filters.pet) params.set('pet', filters.pet);
-  if (filters.active !== 'all') params.set('active', filters.active);
-  if (page > 1) params.set('page', String(page));
-  const search = params.toString();
-  return search
-    ? `${PROTECTED_PATHS.PRODUCTS}?${search}`
-    : PROTECTED_PATHS.PRODUCTS;
-};
-
-const activeToFilter = (value: ActiveValue): boolean | undefined =>
-  value === 'all' ? undefined : value === 'active';
-
-/** A stock cell that mirrors the design's availability badges. */
-function StockBadge({ stock }: { stock: number }) {
-  if (stock === 0) {
-    return (
-      <span className="bg-destructive-soft text-destructive rounded-full px-2.5 py-1 text-xs font-medium">
-        ناموجود
-      </span>
-    );
-  }
-  const soft = stock <= 5;
-  return (
-    <span
-      className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-        soft
-          ? 'bg-warning-soft text-warning'
-          : 'bg-success-soft text-success-strong'
-      }`}
-    >
-      {soft ? 'رو به اتمام' : 'موجود'} ({toPersianDigits(stock)})
-    </span>
-  );
-}
 
 export default async function AdminProductsPage({
   searchParams,
@@ -90,7 +27,7 @@ export default async function AdminProductsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   await requireAdmin();
-  const filters = filterSchema.parse(await searchParams);
+  const filters = adminProductFilterSchema.parse(await searchParams);
 
   const [{ items, total }, categories] = await Promise.all([
     ProductDao.pageForAdmin({
@@ -256,89 +193,5 @@ export default async function AdminProductsPage({
         event="admin-panel-products-pagination"
       />
     </div>
-  );
-}
-
-function ProductRow({
-  product,
-  categoryTitle,
-}: {
-  product: ProductWithImages;
-  categoryTitle: string;
-}) {
-  const imageKey = product.images[0]?.objectKey;
-  return (
-    <tr className="border-border hover:bg-secondary/20 border-t transition-colors">
-      <td className="px-4 py-3">
-        <div className="bg-muted relative h-10 w-10 overflow-hidden rounded-lg">
-          {imageKey && (
-            <Image
-              src={imageSrc(imageKey)}
-              alt=""
-              fill
-              sizes="40px"
-              className="object-cover"
-            />
-          )}
-        </div>
-      </td>
-      <td className="max-w-xs px-4 py-3 font-medium">
-        {/* `displayTitle`, so the 10kg bag is findable and distinguishable
-            from the 5kg one — the list shows every row, members included. */}
-        <p className="line-clamp-2">{displayTitle(product)}</p>
-      </td>
-      <td className="text-muted-foreground px-4 py-3 text-xs">
-        {product.brand ?? '—'}
-      </td>
-      <td className="px-4 py-3 text-xs">{categoryTitle}</td>
-      <td className="px-4 py-3 text-xs font-semibold">
-        {formatToman(product.price)}
-      </td>
-      <td className="px-4 py-3">
-        <StockBadge stock={product.stock} />
-      </td>
-      <td className="px-4 py-3">
-        {product.isActive ? (
-          <span className="bg-success-soft text-success-strong rounded-full px-2.5 py-1 text-xs font-medium">
-            فعال
-          </span>
-        ) : (
-          <span className="bg-secondary text-muted-foreground rounded-full px-2.5 py-1 text-xs font-medium">
-            غیرفعال
-          </span>
-        )}
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-1">
-          <Link
-            href={productPath(product.slug)}
-            // `displayTitle` on every control in the row: the members of a
-            // family share one `title`, so plain titles give three rows three
-            // identically-named buttons — indistinguishable to a screen reader
-            // and to anyone trying to edit the 10kg rather than the 5kg.
-            aria-label={`مشاهده ${displayTitle(product)} در فروشگاه`}
-            className="hover:bg-secondary flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
-          >
-            <Eye size={14} aria-hidden="true" />
-          </Link>
-          <Link
-            href={adminEditProductPath(product.id)}
-            aria-label={`ویرایش ${displayTitle(product)}`}
-            data-umami-event="admin-panel-products-edit"
-            className="hover:bg-secondary flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
-          >
-            <Edit size={14} aria-hidden="true" />
-          </Link>
-          {/* Deactivating is a soft delete: an inactive product has nothing left
-              to deactivate, and reactivating is the edit form's checkbox. */}
-          {product.isActive && (
-            <DeleteProductButton
-              id={product.id}
-              title={displayTitle(product)}
-            />
-          )}
-        </div>
-      </td>
-    </tr>
   );
 }
