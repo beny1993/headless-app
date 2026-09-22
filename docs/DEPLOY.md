@@ -23,43 +23,43 @@ build from Git.
 
 All runtime configuration is env-only. Names come from the `VARS` enum in
 `src/lib/utils/env.ts`; the annotated template is `.env.example`. **Never commit
-`.env`.** Set these in Coolify's app → *Environment Variables*.
+`.env`.** Set these in Coolify's app → _Environment Variables_.
 
 ### Runtime (set in Coolify, plain env)
 
-| Variable | Required | What it is |
-| --- | --- | --- |
-| `APP_CONFIG_DATABASE_URL` | yes | Postgres connection string. Comes from the Coolify Postgres service (see §2). Use the **internal** service URL, not a public one. |
-| `APP_CONFIG_AUTH_SECRET` | yes | Better Auth signing secret. Generate once with `openssl rand -hex 32`; rotating it invalidates all sessions. |
-| `APP_CONFIG_SMS_PROVIDER` | yes | OTP SMS driver. `console` (default) logs codes to the server log — **fine for a soft launch, not for real customers**. Set to `smsir` before launch (see §6). |
-| `APP_CONFIG_SMSIR_API_KEY` | when `=smsir` | SMS.ir web-service key, sent as `x-api-key`. A **secret** — Coolify env only, never a build arg. |
-| `APP_CONFIG_SMSIR_TEMPLATE_ID` | when `=smsir` | Numeric id of the SMS.ir panel template the code is substituted into. Its body must contain `#OTP#`. |
-| `APP_CONFIG_SHOW_OTP_IN_UI` | on staging | `true` prints the OTP on the login page. **Required on a staging deploy:** outside development the `console` driver logs only *that* a code was sent, never the code and never the number, so `docker logs` no longer carries it. Anything else is off, and it is ignored unless `APP_CONFIG_SMS_PROVIDER=console`. Never set it on the production app — it is a sign-in bypass. |
-| `APP_CONFIG_MAINTENANCE_MODE` | no | `true` shows every storefront page as the maintenance screen to everyone but a signed-in admin, who sees the real site. `/login` and `/admin-panel` stay open. Anything else is off. Restart after changing it — no rebuild. Hides the shop, does not lock it: `/api` stays reachable. |
-| `APP_CONFIG_ZARINPAL_PROVIDER` | yes | `mock` (default) simulates the full pay flow with no gateway account. Set to `zarinpal` at the real-gateway flip (see §6). |
-| `APP_CONFIG_ZARINPAL_MERCHANT_ID` | when `=zarinpal` | Merchant UUID from the Zarinpal panel. |
-| `APP_CONFIG_ZARINPAL_SANDBOX` | no | `true` routes the real driver at Zarinpal's sandbox host. Default `false`. |
-| `APP_CONFIG_ZARINPAL_ALLOW_MOCK` | on staging | `true` declares that this deploy is *meant* to run the simulated gateway. Every container is a production build, so `APP_CONFIG_ZARINPAL_PROVIDER=mock` without this makes `GET /api/ready` answer **503** and the container never takes traffic (§6). Anything but `true` is off. Never set it on the production app. |
-| `APP_CONFIG_STORAGE_PROVIDER` | yes | `local` (default) stores uploads on disk (needs a persistent volume, §3). `s3` uses the Liara/Arvan S3-compatible driver — built and verifiable with `pnpm verify-s3`; needs the four `LIARA_*` vars plus build-time `NEXT_PUBLIC_STORAGE_BASE_URL`. |
-| `APP_CONFIG_STORAGE_LOCAL_ROOT` | with `local` | Absolute path the `local` driver writes to. Set to **`/app/uploads`** and mount the volume there (§3). |
-| `APP_CONFIG_EMAIL_ENABLED` | no | `false` (default) logs emails to the console. `true` sends over SMTP and requires the five SMTP vars below. |
-| `APP_CONFIG_SMTP_SERVER` | when email on | SMTP host. |
-| `APP_CONFIG_SMTP_PORT` | when email on | `465` = implicit TLS, `587` = STARTTLS. |
-| `APP_CONFIG_SMTP_USER` | when email on | SMTP username. |
-| `APP_CONFIG_SMTP_PASSWORD` | when email on | SMTP password. |
-| `APP_CONFIG_SMTP_SENDER_EMAIL` | when email on | From address. |
+| Variable                          | Required                                      | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_CONFIG_DATABASE_URL`         | yes                                           | Postgres connection string. Comes from the Coolify Postgres service (see §2). Use the **internal** service URL, not a public one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `APP_CONFIG_AUTH_SECRET`          | yes                                           | Better Auth signing secret. Generate once with `openssl rand -hex 32`; rotating it invalidates all sessions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `APP_CONFIG_SMS_PROVIDER`         | yes                                           | OTP SMS driver. `console` (default) logs codes to the server log — **fine for a soft launch, not for real customers**. Set to `smsir` before launch (see §6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `APP_CONFIG_SMSIR_API_KEY`        | when `=smsir`                                 | SMS.ir web-service key, sent as `x-api-key`. A **secret** — Coolify env only, never a build arg.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `APP_CONFIG_SMSIR_TEMPLATE_ID`    | when `=smsir`                                 | Numeric id of the SMS.ir panel template the code is substituted into. Its body must contain `#OTP#`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `APP_CONFIG_SHOW_OTP_IN_UI`       | on staging                                    | `true` prints the OTP on the login page. **Required on a staging deploy:** outside development the `console` driver logs only _that_ a code was sent, never the code and never the number, so `docker logs` no longer carries it. Anything else is off, and it is ignored unless `APP_CONFIG_SMS_PROVIDER=console`. Never set it on the production app — it is a sign-in bypass.                                                                                                                                                                                                                                                                                 |
+| `APP_CONFIG_MAINTENANCE_MODE`     | no                                            | `true` shows every storefront page as the maintenance screen to everyone but a signed-in admin, who sees the real site. `/login` and `/admin-panel` stay open. Anything else is off. Restart after changing it — no rebuild. Hides the shop, does not lock it: `/api` stays reachable.                                                                                                                                                                                                                                                                                                                                                                           |
+| `APP_CONFIG_ZARINPAL_PROVIDER`    | yes                                           | `mock` (default) simulates the full pay flow with no gateway account. Set to `zarinpal` at the real-gateway flip (see §6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `APP_CONFIG_ZARINPAL_MERCHANT_ID` | when `=zarinpal`                              | Merchant UUID from the Zarinpal panel.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `APP_CONFIG_ZARINPAL_SANDBOX`     | no                                            | `true` routes the real driver at Zarinpal's sandbox host. Default `false`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `APP_CONFIG_ZARINPAL_ALLOW_MOCK`  | on staging, **if online payment is on there** | `true` declares that this deploy is _meant_ to run the simulated gateway. Every container is a production build, so `APP_CONFIG_ZARINPAL_PROVIDER=mock` **with `APP_CONFIG_ZARINPAL_ENABLED=true`** makes `GET /api/ready` answer **503** and the container never takes traffic (§6). With online payment switched **off**, readiness does not refuse — a shop that cannot take an online payment cannot settle a zero-Toman one — so a card-to-card-only deploy needs nothing here. The money path refuses either way. Anything but `true` is off. **Never set it on the production app**: it would disarm the guard for the day online payment is switched on. |
+| `APP_CONFIG_STORAGE_PROVIDER`     | yes                                           | `local` (default) stores uploads on disk (needs a persistent volume, §3). `s3` uses the Liara/Arvan S3-compatible driver — built and verifiable with `pnpm verify-s3`; needs the four `LIARA_*` vars plus build-time `NEXT_PUBLIC_STORAGE_BASE_URL`.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `APP_CONFIG_STORAGE_LOCAL_ROOT`   | with `local`                                  | Absolute path the `local` driver writes to. Set to **`/app/uploads`** and mount the volume there (§3).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `APP_CONFIG_EMAIL_ENABLED`        | no                                            | `false` (default) logs emails to the console. `true` sends over SMTP and requires the five SMTP vars below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `APP_CONFIG_SMTP_SERVER`          | when email on                                 | SMTP host.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `APP_CONFIG_SMTP_PORT`            | when email on                                 | `465` = implicit TLS, `587` = STARTTLS.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `APP_CONFIG_SMTP_USER`            | when email on                                 | SMTP username.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `APP_CONFIG_SMTP_PASSWORD`        | when email on                                 | SMTP password.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `APP_CONFIG_SMTP_SENDER_EMAIL`    | when email on                                 | From address.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 `NODE_ENV=production` is baked into the runtime image — do not override it.
 
 ### Build-time (Coolify: enable the "Build Variable" / build-time toggle)
 
-| Variable | Required | What it is |
-| --- | --- | --- |
-| `NEXT_PUBLIC_APP_URL` | yes | The real `https://` origin, no trailing slash (e.g. `https://shop.example.com`). **Inlined into the client bundle at build time** — it is a Docker build ARG, so it must be marked *available at build time* in Coolify, not just a runtime var. It drives the `Secure` session-cookie flag and Better Auth's CSRF trusted-origins list; `getAppBaseUrl()` throws in production if unset. A change here requires a **rebuild**, not just a restart. |
-| `NEXT_PUBLIC_SENTRY_DSN` | no | GlitchTip DSN. **Production app only** — leave it unset on staging, which then reports nothing (decision 2026-09-15). **Build-time only** — it is inlined into both the client *and* the server bundles, so setting it as a plain runtime variable does nothing at all. Empty ⇒ Sentry is off everywhere. A change needs a **rebuild**. See §9. |
-| `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | no | `production`. Tags each event with the deployment it came from. Set on the production app alone — staging has no DSN, so it has nothing to tag. Build-time, like the DSN. |
-| `NEXT_PUBLIC_UMAMI_SCRIPT_URL` | no | Tracker URL on our self-hosted Umami, `https://analytics.bendev.ir/script.js`. **Production app only** — leave it unset on staging. **Build-time only** — inlined into the client bundle, so a runtime-only variable does nothing. |
-| `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | no | Website id from the Umami dashboard. **Production app only** — staging leaves both Umami vars unset, so it ships no tracker and its traffic never lands in the real numbers. Either this or the script URL empty ⇒ no tracker at all. Build-time; a change needs a **rebuild**. |
+| Variable                         | Required | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_APP_URL`            | yes      | The real `https://` origin, no trailing slash (e.g. `https://shop.example.com`). **Inlined into the client bundle at build time** — it is a Docker build ARG, so it must be marked _available at build time_ in Coolify, not just a runtime var. It drives the `Secure` session-cookie flag and Better Auth's CSRF trusted-origins list; `getAppBaseUrl()` throws in production if unset. A change here requires a **rebuild**, not just a restart. |
+| `NEXT_PUBLIC_SENTRY_DSN`         | no       | GlitchTip DSN. **Production app only** — leave it unset on staging, which then reports nothing (decision 2026-09-15). **Build-time only** — it is inlined into both the client _and_ the server bundles, so setting it as a plain runtime variable does nothing at all. Empty ⇒ Sentry is off everywhere. A change needs a **rebuild**. See §9.                                                                                                     |
+| `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | no       | `production`. Tags each event with the deployment it came from. Set on the production app alone — staging has no DSN, so it has nothing to tag. Build-time, like the DSN.                                                                                                                                                                                                                                                                           |
+| `NEXT_PUBLIC_UMAMI_SCRIPT_URL`   | no       | Tracker URL on our self-hosted Umami, `https://analytics.bendev.ir/script.js`. **Production app only** — leave it unset on staging. **Build-time only** — inlined into the client bundle, so a runtime-only variable does nothing.                                                                                                                                                                                                                  |
+| `NEXT_PUBLIC_UMAMI_WEBSITE_ID`   | no       | Website id from the Umami dashboard. **Production app only** — staging leaves both Umami vars unset, so it ships no tracker and its traffic never lands in the real numbers. Either this or the script URL empty ⇒ no tracker at all. Build-time; a change needs a **rebuild**.                                                                                                                                                                     |
 
 **Not needed in Coolify** — these are consumed only by `docker-compose-dev.yaml`
 for the local dev database and have no role in production:
@@ -88,14 +88,14 @@ for the local dev database and have no role in production:
 **Launch option — `local` driver on a persistent volume (no extra service):**
 
 - Set `APP_CONFIG_STORAGE_PROVIDER=local` and `APP_CONFIG_STORAGE_LOCAL_ROOT=/app/uploads`.
-- In Coolify → app → *Storages*, add a **persistent volume mounted at `/app/uploads`**.
+- In Coolify → app → _Storages_, add a **persistent volume mounted at `/app/uploads`**.
   The image pre-creates that directory owned by the non-root `node` user (uid
   1000), so the app can write to it. Without the volume, uploads live in the
   container's writable layer and are **lost on every redeploy**.
 - The image's `chown` only takes effect for a Docker **named volume** on first
   mount. If Coolify is configured to back the storage with a **host-directory
   bind mount**, that directory is root-owned and uploads fail silently — `chown
-  1000:1000` the host directory on the VPS once before first deploy.
+1000:1000` the host directory on the VPS once before first deploy.
 
 **Production option — `s3` driver (Liara/Arvan):** the S3-compatible driver is
 built. Set the four `LIARA_*` vars as runtime secrets, set
@@ -121,7 +121,7 @@ redeploy with no persistent volume. The storage seam means nothing else changes.
    (There is deliberately no Dockerfile `HEALTHCHECK`; Coolify owns it.)
 
    > **Corrected 2026-09-19.** This step used to say `/api/health`, on the
-   > reasoning that liveness is what a health check wants. That is wrong *here*,
+   > reasoning that liveness is what a health check wants. That is wrong _here_,
    > and it silently disables the rollback §5 promises: `/api/health` touches no
    > database, so a container whose migration failed still answers it and still
    > turns healthy — Coolify would then retire the old container and serve the
@@ -146,7 +146,7 @@ is a plain-Node applier (drizzle-orm's `migrate()`; the slim runtime image has n
 `drizzle-kit`) that reads `src/db/migrations/meta/_journal.json` and applies only
 what is outstanding, so a restart with nothing pending is a no-op.
 
-Nothing is configured in Coolify for this. One deploy ships a migration *and*
+Nothing is configured in Coolify for this. One deploy ships a migration _and_
 applies it, in the container that is about to serve:
 
 - **A migration fails** (or the database is unreachable): the script exits
@@ -156,16 +156,16 @@ applies it, in the container that is about to serve:
   run leaves the schema as it was.
 - **A slow migration**: the new container has to answer `/api/ready` inside the
   healthcheck window (start period + interval × retries, ~35 s as configured).
-  For a migration that needs longer, raise the *start period* for that deploy,
+  For a migration that needs longer, raise the _start period_ for that deploy,
   or the deploy fails although nothing is wrong.
 - **One replica.** Two containers starting at once would both try to migrate;
   take a `pg_advisory_lock` in `scripts/migrate.mjs` before scaling out.
 
 > **Remove Coolify's pre-deployment command** (`node scripts/migrate.mjs`) if it
 > is still set. Coolify runs it with `docker exec` in the container that is
-> *already running*, before the new commit is cloned — so it applied the
+> _already running_, before the new commit is cloned — so it applied the
 > **previous** image's migrations, and a new migration only landed on the deploy
-> *after* the one that shipped it. Left in place it is a harmless no-op.
+> _after_ the one that shipped it. Left in place it is a harmless no-op.
 
 Migrations up to `0011` are additive. The old container keeps serving while the
 new one migrates, so a **destructive** migration still needs the compatible
@@ -260,7 +260,7 @@ and deliberately not baked into the image:
       `src/lib/auth/index.ts` resolves the client IP from `CF-Connecting-IP`
       (`advanced.ipAddress.ipAddressHeaders`) — without it Better Auth's IP rate
       limiter buckets every visitor together. Cloudflare overwrites that header,
-      so it cannot be forged *through* Cloudflare — but a request that reaches
+      so it cannot be forged _through_ Cloudflare — but a request that reaches
       the VPS **directly** carries whatever header it likes, and a fresh forged
       value per request mints a fresh rate-limit bucket each time. So the origin
       must refuse non-Cloudflare traffic: allow 443 only from
@@ -345,8 +345,18 @@ Staging runs the same image as production — `NODE_ENV=production` — on the m
 gateway and the console SMS driver, and both of those fail closed. Set both
 variables on the staging app, or the next staging deploy is unusable:
 
-- [ ] **`APP_CONFIG_ZARINPAL_ALLOW_MOCK=true`** — without it the container comes
-      up dead: `GET /api/ready` answers 503 and Coolify never routes to it.
+- [ ] **`APP_CONFIG_ZARINPAL_ALLOW_MOCK=true`** — needed only if staging has
+      `APP_CONFIG_ZARINPAL_ENABLED=true`. With online payment switched on and
+      the provider left on `mock`, the container comes up dead: `GET /api/ready`
+      answers 503 and Coolify never routes to it. With it switched off,
+      readiness does not refuse and this variable is unnecessary — a shop that
+      cannot take an online payment cannot settle a zero-Toman one.
+      **Never set it on production.** It would disarm the guard for the one
+      deploy that matters: the day online payment is switched on and the
+      provider is still `mock`. Set `APP_CONFIG_ZARINPAL_PROVIDER=zarinpal`
+      with a merchant id there instead. Production's own deploy on 2026-09-22
+      rolled back on this refusal while card-to-card only — the reason the
+      guard now reads the switch.
 - [ ] **`APP_CONFIG_SHOW_OTP_IN_UI=true`** — without it nobody can sign in: the
       console driver no longer writes the code or the number to the log.
 - [ ] **Confirm the Coolify health check is `GET /api/ready`**, not
@@ -361,7 +371,7 @@ variables on the staging app, or the next staging deploy is unusable:
 Neither variable belongs on the production app. Production sets a real provider
 and a real SMS driver, which is what makes both unnecessary there.
 
-**What `APP_CONFIG_SHOW_OTP_IN_UI=true` costs on staging.** It is now *required*
+**What `APP_CONFIG_SHOW_OTP_IN_UI=true` costs on staging.** It is now _required_
 there, because the log fallback is gone — and it makes
 `POST /api/auth/phone-number/send-otp` hand the code back in its own response to
 whoever asked. Anyone who can reach staging can send a code for a known admin
@@ -392,7 +402,7 @@ abuse; the fixes belong to the payments / reconcile stories, not here.
 
 1. **Zero-total order + real Zarinpal → 500 + stuck order (LOW–MEDIUM).** A
    100%/subtotal-covering discount + a zero-fee province + `paymentMethod:
-   zarinpal` makes `total == 0` reachable; the real driver throws on the
+zarinpal` makes `total == 0` reachable; the real driver throws on the
    sub-minimum amount, stranding the order in `pending_payment` holding stock and
    a consumed discount. **Decision at flip:** auto-settle a zero-total order as
    paid without calling the gateway, **or** forbid `zarinpal` when `total == 0`
@@ -426,18 +436,18 @@ blocked. GlitchTip has none of that problem.
 
 ### Reachability from this box (measured 2026-09-08)
 
-| Host | | |
-| --- | --- | --- |
-| `app.glitchtip.com/api/<id>/envelope/` | **405** | ingest alive (405 = "POST me") — **what we use** |
-| `us.i.posthog.com/i/v0/e/`, `us-assets.i.posthog.com` | 400 / 200 | reachable; EU region is not |
-| `cloud.umami.is` | 200 | |
-| `notify.bugsnag.com`, `api.honeybadger.io`, `api.axiom.co` | 405 / 301 / 404 | reachable alternatives |
-| `downloads.sentry-cdn.com` | 200 | sentry-cli binary — not blocked |
-| `registry.npmjs.org` | 200 | |
-| `ghcr.io`, `registry-1.docker.io` | 401 | normal unauth reply — a prebuilt image can be pulled |
-| **`sentry.io`** | **403** | blocked |
-| **`eu.posthog.com`, `api.rollbar.com`, `otlp.eu01.nr-data.net`** | **403** | blocked |
-| **`in.logs.betterstack.com`, `api.telegram.org`** | **timeout** | blocked |
+| Host                                                             |                 |                                                      |
+| ---------------------------------------------------------------- | --------------- | ---------------------------------------------------- |
+| `app.glitchtip.com/api/<id>/envelope/`                           | **405**         | ingest alive (405 = "POST me") — **what we use**     |
+| `us.i.posthog.com/i/v0/e/`, `us-assets.i.posthog.com`            | 400 / 200       | reachable; EU region is not                          |
+| `cloud.umami.is`                                                 | 200             |                                                      |
+| `notify.bugsnag.com`, `api.honeybadger.io`, `api.axiom.co`       | 405 / 301 / 404 | reachable alternatives                               |
+| `downloads.sentry-cdn.com`                                       | 200             | sentry-cli binary — not blocked                      |
+| `registry.npmjs.org`                                             | 200             |                                                      |
+| `ghcr.io`, `registry-1.docker.io`                                | 401             | normal unauth reply — a prebuilt image can be pulled |
+| **`sentry.io`**                                                  | **403**         | blocked                                              |
+| **`eu.posthog.com`, `api.rollbar.com`, `otlp.eu01.nr-data.net`** | **403**         | blocked                                              |
+| **`in.logs.betterstack.com`, `api.telegram.org`**                | **timeout**     | blocked                                              |
 
 Note the egress IP is **not stable** — `api.ipify.org`, `ipinfo.io` and
 `icanhazip.com` each reported a different address (Liara NATs through a pool).
@@ -447,7 +457,7 @@ Anything that needs an IP allow-list is therefore not an option here.
 
 `NEXT_PUBLIC_SENTRY_DSN` holds the **GlitchTip** DSN; the variable keeps its name
 because the SDK reads it. Both it and `NEXT_PUBLIC_SENTRY_ENVIRONMENT` are
-**build-time** (§1) — they are inlined into the client *and* server bundles, so a
+**build-time** (§1) — they are inlined into the client _and_ server bundles, so a
 runtime-only value does nothing. Both are set on the **production** app only;
 staging leaves them empty and reports nothing (decision 2026-09-15), so the
 project only ever shows customer-facing errors.

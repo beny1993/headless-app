@@ -233,3 +233,113 @@ describe('the mock gateway in a production build', () => {
     expect(provider()).toBe('zarinpal');
   });
 });
+
+describe('readiness vs the money path, with online payment switched off', () => {
+  // Same harness as above: NODE_ENV is snapshotted at import, so each case
+  // stubs first and re-imports. Every Zarinpal variable is stubbed explicitly —
+  // an inherited `.env` value would decide the case instead of the case.
+  const load = async (env: Record<string, string>) => {
+    Object.entries(env).forEach(([key, value]) => vi.stubEnv(key, value));
+    vi.resetModules();
+    return import('@/lib/zarinpal/client');
+  };
+
+  const PROD_ON_MOCK = {
+    NODE_ENV: 'production',
+    APP_CONFIG_ZARINPAL_PROVIDER: 'mock',
+    APP_CONFIG_ZARINPAL_ALLOW_MOCK: '',
+  };
+
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    vi.restoreAllMocks();
+  });
+
+  it('serves traffic: a shop that cannot take an online payment cannot settle a zero-Toman one', async () => {
+    // The case that rolled back a real production deploy on 2026-09-22: a
+    // card-to-card-only shop, refused readiness over a gateway it never calls.
+    const { assertReadyToServe } = await load({
+      ...PROD_ON_MOCK,
+      APP_CONFIG_ZARINPAL_ENABLED: 'false',
+    });
+
+    expect(() => assertReadyToServe()).not.toThrow();
+  });
+
+  it('treats the switch as off when it is unset, as every other reader does', async () => {
+    const { assertReadyToServe } = await load({
+      ...PROD_ON_MOCK,
+      APP_CONFIG_ZARINPAL_ENABLED: '',
+    });
+
+    expect(() => assertReadyToServe()).not.toThrow();
+  });
+
+  it('refuses again the moment online payment is switched on', async () => {
+    // The deploy where the refusal is worth the outage.
+    const { assertReadyToServe } = await load({
+      ...PROD_ON_MOCK,
+      APP_CONFIG_ZARINPAL_ENABLED: 'true',
+    });
+
+    expect(() => assertReadyToServe()).toThrow(
+      /APP_CONFIG_ZARINPAL_ALLOW_MOCK/,
+    );
+  });
+
+  it('still lets the deliberate escape through with the switch on', async () => {
+    const { assertReadyToServe } = await load({
+      NODE_ENV: 'production',
+      APP_CONFIG_ZARINPAL_PROVIDER: 'mock',
+      APP_CONFIG_ZARINPAL_ALLOW_MOCK: 'true',
+      APP_CONFIG_ZARINPAL_ENABLED: 'true',
+    });
+
+    expect(() => assertReadyToServe()).not.toThrow();
+  });
+
+  it('is irrelevant on a real provider, switch on or off', async () => {
+    for (const enabled of ['true', 'false']) {
+      const { assertReadyToServe } = await load({
+        NODE_ENV: 'production',
+        APP_CONFIG_ZARINPAL_PROVIDER: 'zarinpal',
+        APP_CONFIG_ZARINPAL_ALLOW_MOCK: '',
+        APP_CONFIG_ZARINPAL_ENABLED: enabled,
+      });
+
+      expect(() => assertReadyToServe()).not.toThrow();
+    }
+  });
+
+  it('does not relax outside production either — development never refused', async () => {
+    const { assertReadyToServe } = await load({
+      NODE_ENV: 'development',
+      APP_CONFIG_ZARINPAL_PROVIDER: 'mock',
+      APP_CONFIG_ZARINPAL_ALLOW_MOCK: '',
+      APP_CONFIG_ZARINPAL_ENABLED: 'true',
+    });
+
+    expect(() => assertReadyToServe()).not.toThrow();
+  });
+
+  it('THE MONEY PATH DOES NOT RELAX: the driver still refuses with the switch off', async () => {
+    // The whole safety argument for the line above. `APP_CONFIG_ZARINPAL_ENABLED`
+    // is read by the checkout page to hide the option, not by the API to refuse
+    // it — so the gateway is still reachable with the switch off, and it must
+    // still fail closed there. If this ever passes, the relaxation has leaked
+    // from "may this container serve" into "may this settle money".
+    const { getZarinpalClient, assertMockGatewayAllowed } = await load({
+      ...PROD_ON_MOCK,
+      APP_CONFIG_ZARINPAL_ENABLED: 'false',
+    });
+
+    expect(() => getZarinpalClient()).toThrow(/APP_CONFIG_ZARINPAL_ALLOW_MOCK/);
+    expect(() => assertMockGatewayAllowed()).toThrow();
+  });
+});

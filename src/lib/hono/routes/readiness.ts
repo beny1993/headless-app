@@ -2,7 +2,7 @@
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import { z } from 'zod';
 import { HealthDao } from '@/db/dao/HealthDao';
-import { assertMockGatewayAllowed } from '@/lib/zarinpal/client';
+import { assertReadyToServe } from '@/lib/zarinpal/client';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
 import { errorResponse } from '../route-responses';
 
@@ -58,7 +58,7 @@ export const readinessHandler: RouteHandler<typeof readinessRoute> = async (
   c,
 ) => {
   try {
-    assertMockGatewayAllowed();
+    assertReadyToServe();
     await HealthDao.ping();
   } catch (error) {
     // Deliberately not reported to Sentry: a probe runs on a fixed interval, so
@@ -67,7 +67,7 @@ export const readinessHandler: RouteHandler<typeof readinessRoute> = async (
     //
     // It does go to the server log, though, and that is not optional: the
     // response is the generic Persian 503 because `/api/ready` is public, so
-    // without this line a refusal is unreadable. `assertMockGatewayAllowed`
+    // without this line a refusal is unreadable. `assertReadyToServe`
     // logs its own refusal once, but it resolves the provider FIRST — an
     // unrecognized APP_CONFIG_ZARINPAL_PROVIDER throws before that line is ever
     // reached, which is exactly the deploy that would otherwise roll back blind.
