@@ -8,7 +8,7 @@
 // code limited to M must yield exactly M orders and `usage_count == M`, never
 // more — the same rigor as the oversell and idempotency suites next door.
 import { eq, inArray } from 'drizzle-orm';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { discountCodes } from '@/db/schema/discounts';
 import { orders } from '@/db/schema/orders';
 import { products as productsTable } from '@/db/schema/catalog';
@@ -34,6 +34,13 @@ const codeToken = () => crypto.randomUUID().slice(0, 8).toUpperCase();
 const key = () => crypto.randomUUID();
 
 describe.skipIf(!databaseReachable)('createOrder — discount codes', () => {
+  // Online payment is OFF by default, and `createOrder` now refuses a
+  // `zarinpal` order while it is — the API boundary the checkout page's hidden
+  // option was never a substitute for. These suites are about what a zarinpal
+  // order does once it exists, so they switch the feature on. The refusal
+  // itself is pinned in «online payment switched off» below.
+  beforeEach(() => vi.stubEnv('APP_CONFIG_ZARINPAL_ENABLED', 'true'));
+  afterEach(() => vi.unstubAllEnvs());
   const fx = new OrderFixtures();
   const provinceIds: number[] = [];
   const codeIds: string[] = [];

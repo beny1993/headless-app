@@ -20,6 +20,7 @@ import type { OrderWithItems } from '@/db/schema/orders';
 import { displayTitle } from '@/lib/catalog/variant';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 import { computeDiscount } from '@/lib/discount/discount-code';
+import { isZarinpalEnabled } from '@/lib/zarinpal/client';
 import {
   ORDER_STATUSES,
   PAYMENT_METHODS,
@@ -42,6 +43,8 @@ export { CheckoutError };
 // `${field}: ${message}`, per the design note.
 const PRODUCT_UNAVAILABLE = 'محصول انتخابی دیگر در دسترس نیست.';
 const INVALID_PROVINCE = 'استان انتخاب‌شده نامعتبر است.';
+const ONLINE_PAYMENT_UNAVAILABLE =
+  'پرداخت آنلاین در حال حاضر در دسترس نیست. پرداخت کارت به کارت را انتخاب کن.';
 const TOO_MANY_OPEN_ORDERS =
   'تعداد سفارش‌های در انتظار پرداختِ شما به حد مجاز رسیده است؛ لطفاً یکی را کامل یا لغو کنید.';
 const insufficientStock = (title: string) =>
@@ -150,6 +153,23 @@ export const createOrder = async (
   // one user can land a few over N; a sequential loop is hard-capped, which is
   // what the anti-abuse guard needs. A hard invariant is the expiry/reconcile
   // story's job (build order 15), which supersedes this cap.
+  // 1b. Online payment switched off. The checkout page hides the option
+  // (`APP_CONFIG_ZARINPAL_ENABLED`, read there to build the form), but a page is
+  // not a boundary: the API took `paymentMethod` from the body and never asked.
+  // A `zarinpal` order on a card-to-card-only shop lands `pending_payment` and
+  // holds its stock, and nothing releases it — `POST /payments/zarinpal/request`
+  // cannot mint an authority (the gateway guard throws), and the reconcile sweep
+  // that would expire and restock it throws before pass 2 as well. So the stock
+  // is held until an admin cancels the order by hand, one at a time. Fifty lines
+  // per order and five open orders per user is a lot of catalogue for one
+  // throwaway account to freeze.
+  if (
+    input.paymentMethod === PAYMENT_METHODS.ZARINPAL &&
+    !isZarinpalEnabled()
+  ) {
+    throw new CheckoutError('paymentMethod', ONLINE_PAYMENT_UNAVAILABLE);
+  }
+
   if (
     initialStatusFor(input.paymentMethod) === ORDER_STATUSES.PENDING_PAYMENT
   ) {
