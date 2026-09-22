@@ -67,21 +67,21 @@ export function LifeMomentsSection({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => scrollByCards(1)}
-              className="border-border hover:bg-secondary flex size-10 items-center justify-center rounded-full border transition-colors"
-              aria-label="اسلاید بعدی"
-              data-umami-event="home-moments-next"
-            >
-              <ChevronLeft size={16} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
               onClick={() => scrollByCards(-1)}
               className="border-border hover:bg-secondary flex size-10 items-center justify-center rounded-full border transition-colors"
               aria-label="اسلاید قبلی"
               data-umami-event="home-moments-prev"
             >
               <ChevronRight size={16} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollByCards(1)}
+              className="border-border hover:bg-secondary flex size-10 items-center justify-center rounded-full border transition-colors"
+              aria-label="اسلاید بعدی"
+              data-umami-event="home-moments-next"
+            >
+              <ChevronLeft size={16} aria-hidden="true" />
             </button>
             <ContentLink
               {...resolveLink(content.ctaLink, shopPath(), targets)}
