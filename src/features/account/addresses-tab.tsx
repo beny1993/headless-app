@@ -9,14 +9,14 @@
 // contract drives both. The postal code is normalized to ASCII on save, as
 // checkout does, so a code typed on a Persian keyboard stores canonically.
 import { useState, type Dispatch, type SetStateAction } from 'react';
-import { AlertCircle, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
+import { MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
 import { delData, patchData, postData } from '@/lib/api-client';
 import {
   normalizePostalCode,
   validateAddress,
   type AddressInput,
 } from '@/lib/account/address';
-import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
+import { requestFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiMeAddressPath } from '@/lib/constant/paths';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
 import { toPersianDigits } from '@/lib/format';
@@ -27,9 +27,14 @@ import {
   FieldShell,
   TextField,
 } from '@/components/ui/field';
-import { EmptyState } from './account-ui';
-
-const GENERIC_ERROR = 'انجام نشد. لطفاً دوباره تلاش کن.';
+import {
+  DeleteConfirm,
+  EmptyState,
+  FormActions,
+  FormAlert,
+  GENERIC_ERROR,
+  useFormState,
+} from './account-ui';
 
 /** The province options the select renders — the same rows checkout uses. */
 export type ProvinceOption = { provinceId: number; name: string };
@@ -165,6 +170,9 @@ export function AddressesTab({
 
             {pendingDelete === address.id && (
               <DeleteConfirm
+                question="این آدرس حذف شود؟"
+                umami="account-addresses-delete-confirm"
+                className="mt-4"
                 onCancel={() => setPendingDelete(null)}
                 onConfirm={async () => {
                   await delData(apiMeAddressPath(address.id));
@@ -211,55 +219,6 @@ export function AddressesTab({
   );
 }
 
-function DeleteConfirm({
-  onCancel,
-  onConfirm,
-}: {
-  onCancel: () => void;
-  onConfirm: () => Promise<void>;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-  return (
-    <div className="bg-destructive-soft/40 mt-4 rounded-lg p-3">
-      <p className="mb-2 text-sm font-medium">این آدرس حذف شود؟</p>
-      {error && (
-        <p role="alert" className="text-destructive mb-2 text-xs">
-          {error}
-        </p>
-      )}
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            setError(undefined);
-            try {
-              await onConfirm();
-            } catch (caught) {
-              setError(reasonFrom(caught) ?? GENERIC_ERROR);
-              setBusy(false);
-            }
-          }}
-          className="bg-destructive rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-60"
-          data-umami-event="account-addresses-delete-confirm"
-        >
-          {busy ? 'در حال حذف…' : 'حذف'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="border-border hover:bg-secondary rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60"
-        >
-          انصراف
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function AddressForm({
   provinces,
   initial,
@@ -273,10 +232,16 @@ function AddressForm({
   onSaved: (address: AddressResponse) => void;
   submit: (body: AddressInput) => Promise<AddressResponse>;
 }) {
-  const [form, setForm] = useState(initial);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [topError, setTopError] = useState<string | undefined>();
-  const [busy, setBusy] = useState(false);
+  const {
+    form,
+    set,
+    fieldErrors,
+    setFieldErrors,
+    topError,
+    setTopError,
+    busy,
+    setBusy,
+  } = useFormState(initial);
 
   // An address saved against a province the admin has since deactivated: its id
   // is not among the (active) options, so React would display the first enabled
@@ -289,16 +254,6 @@ function AddressForm({
   const provinceError =
     fieldErrors.provinceId ??
     (staleProvince ? STALE_PROVINCE_MESSAGE : undefined);
-
-  const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-    setFieldErrors((prev) => {
-      if (!(key in prev)) return prev;
-      const next = { ...prev };
-      delete next[key as string];
-      return next;
-    });
-  };
 
   const save = async () => {
     if (busy) return;
@@ -329,15 +284,7 @@ function AddressForm({
         {initial.recipientName ? 'ویرایش آدرس' : 'افزودن آدرس جدید'}
       </h3>
 
-      {topError && (
-        <p
-          role="alert"
-          className="text-destructive border-destructive/30 bg-destructive-soft/40 mb-4 flex items-center gap-2 rounded-xl border p-3 text-sm"
-        >
-          <AlertCircle size={16} className="shrink-0" aria-hidden="true" />
-          {topError}
-        </p>
-      )}
+      <FormAlert message={topError} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <TextField
@@ -426,26 +373,13 @@ function AddressForm({
         </FieldShell>
       </div>
 
-      <div className="mt-5 flex gap-3">
-        <button
-          type="button"
-          onClick={save}
-          disabled={busy}
-          className="bg-brand hover:bg-brand-hover text-brand-foreground flex-1 rounded-xl py-3 font-bold transition-colors disabled:opacity-60"
-          data-umami-event="account-addresses-save"
-        >
-          {busy ? 'در حال ذخیره…' : 'ذخیره'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="border-border hover:bg-secondary rounded-xl border-2 px-5 py-3 font-medium transition-colors disabled:opacity-60"
-          data-umami-event="account-addresses-cancel"
-        >
-          انصراف
-        </button>
-      </div>
+      <FormActions
+        busy={busy}
+        onSave={save}
+        onCancel={onCancel}
+        saveUmami="account-addresses-save"
+        cancelUmami="account-addresses-cancel"
+      />
     </div>
   );
 }

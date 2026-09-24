@@ -7,7 +7,7 @@
 // delete echoes its id). Every write is the owner-scoped `/api/me/pets` route;
 // the session is the only authority on whose pets these are.
 import { useState, type Dispatch, type SetStateAction } from 'react';
-import { AlertCircle, Camera, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Camera, Pencil, Plus, Trash2 } from 'lucide-react';
 import { delData, patchData, postData } from '@/lib/api-client';
 import { PET_GENDERS, isHttpsUrl, type PetInput } from '@/lib/account/pet';
 import {
@@ -16,15 +16,20 @@ import {
   PET_TYPES,
   PET_TYPE_VALUES,
 } from '@/lib/catalog/product-query';
-import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
+import { requestFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiMePetPath } from '@/lib/constant/paths';
 import type { PetResponse } from '@/lib/hono/routes/me-pets';
 import { toPersianDigits } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { FieldShell, TextField } from '@/components/ui/field';
-import { EmptyState } from './account-ui';
-
-const GENERIC_ERROR = 'انجام نشد. لطفاً دوباره تلاش کن.';
+import {
+  DeleteConfirm,
+  EmptyState,
+  FormActions,
+  FormAlert,
+  GENERIC_ERROR,
+  useFormState,
+} from './account-ui';
 
 type FormValues = {
   name: string;
@@ -167,6 +172,8 @@ export function PetsTab({
 
             {pendingDelete === pet.id ? (
               <DeleteConfirm
+                question="این حیوان حذف شود؟"
+                umami="account-pets-delete-confirm"
                 onCancel={() => setPendingDelete(null)}
                 onConfirm={async () => {
                   await delData(apiMePetPath(pet.id));
@@ -226,55 +233,6 @@ export function PetsTab({
   );
 }
 
-function DeleteConfirm({
-  onCancel,
-  onConfirm,
-}: {
-  onCancel: () => void;
-  onConfirm: () => Promise<void>;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-  return (
-    <div className="bg-destructive-soft/40 rounded-lg p-3">
-      <p className="mb-2 text-sm font-medium">این حیوان حذف شود؟</p>
-      {error && (
-        <p role="alert" className="text-destructive mb-2 text-xs">
-          {error}
-        </p>
-      )}
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            setError(undefined);
-            try {
-              await onConfirm();
-            } catch (caught) {
-              setError(reasonFrom(caught) ?? GENERIC_ERROR);
-              setBusy(false);
-            }
-          }}
-          className="bg-destructive rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-60"
-          data-umami-event="account-pets-delete-confirm"
-        >
-          {busy ? 'در حال حذف…' : 'حذف'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="border-border hover:bg-secondary rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60"
-        >
-          انصراف
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function PetForm({
   initial,
   onCancel,
@@ -286,20 +244,16 @@ function PetForm({
   onSaved: (pet: PetResponse) => void;
   submit: (body: PetInput) => Promise<PetResponse>;
 }) {
-  const [form, setForm] = useState(initial);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [topError, setTopError] = useState<string | undefined>();
-  const [busy, setBusy] = useState(false);
-
-  const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-    setFieldErrors((prev) => {
-      if (!(key in prev)) return prev;
-      const next = { ...prev };
-      delete next[key as string];
-      return next;
-    });
-  };
+  const {
+    form,
+    set,
+    fieldErrors,
+    setFieldErrors,
+    topError,
+    setTopError,
+    busy,
+    setBusy,
+  } = useFormState(initial);
 
   const save = async () => {
     if (busy) return;
@@ -327,15 +281,7 @@ function PetForm({
         {initial.name ? 'ویرایش حیوان' : 'افزودن حیوان جدید'}
       </h3>
 
-      {topError && (
-        <p
-          role="alert"
-          className="text-destructive border-destructive/30 bg-destructive-soft/40 mb-4 flex items-center gap-2 rounded-xl border p-3 text-sm"
-        >
-          <AlertCircle size={16} className="shrink-0" aria-hidden="true" />
-          {topError}
-        </p>
-      )}
+      <FormAlert message={topError} />
 
       <div className="mb-5 flex items-center gap-4">
         <div className="bg-secondary flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full text-2xl">
@@ -465,29 +411,14 @@ function PetForm({
         عقیم‌شده
       </label>
 
-      <div className="mt-5 flex gap-3">
-        <button
-          type="button"
-          onClick={save}
-          disabled={busy}
-          className="bg-brand hover:bg-brand-hover text-brand-foreground flex-1 rounded-xl py-3 font-bold transition-colors disabled:opacity-60"
-          data-umami-event="account-pets-save"
-        >
-          <span className="flex items-center justify-center gap-2">
-            <Camera size={16} aria-hidden="true" />
-            {busy ? 'در حال ذخیره…' : 'ذخیره'}
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="border-border hover:bg-secondary rounded-xl border-2 px-5 py-3 font-medium transition-colors disabled:opacity-60"
-          data-umami-event="account-pets-cancel"
-        >
-          انصراف
-        </button>
-      </div>
+      <FormActions
+        busy={busy}
+        onSave={save}
+        onCancel={onCancel}
+        saveUmami="account-pets-save"
+        cancelUmami="account-pets-cancel"
+        saveIcon={<Camera size={16} aria-hidden="true" />}
+      />
     </div>
   );
 }
