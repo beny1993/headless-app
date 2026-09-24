@@ -6,7 +6,11 @@ import { Pagination } from '@/components/ui/pagination';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { categoryOptions } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
-import { PET_TYPES } from '@/lib/catalog/product-query';
+import {
+  PET_EMOJI,
+  PET_LABELS,
+  PET_TYPE_VALUES,
+} from '@/lib/catalog/product-query';
 import { adminNewProductPath } from '@/lib/constant/paths';
 import { ADMIN_PAGE_SIZE } from '@/lib/pagination';
 import { AdminTable } from '@/features/admin-panel/shared/admin-table';
@@ -106,8 +110,11 @@ export default async function AdminProductsPage({
             className="border-border focus-visible:border-accent-strong h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none"
           >
             <option value="">همه حیوانات</option>
-            <option value={PET_TYPES.CAT}>🐱 گربه</option>
-            <option value={PET_TYPES.DOG}>🐶 سگ</option>
+            {PET_TYPE_VALUES.map((pet) => (
+              <option key={pet} value={pet}>
+                {PET_EMOJI[pet]} {PET_LABELS[pet]}
+              </option>
+            ))}
           </select>
         </div>
         <div className="flex gap-2">
