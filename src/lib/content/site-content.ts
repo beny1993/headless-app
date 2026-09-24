@@ -14,7 +14,7 @@
 // and `linkSchema` (`link.ts`), the one definition of a saved destination.
 import { z } from 'zod';
 import { blankableText, boundedText } from '@/lib/validation/text';
-import { toAsciiDigits } from '@/lib/format';
+import { toAsciiDigits, toPersianDigits } from '@/lib/format';
 import { imageKeySchema } from '@/lib/storage/image-upload';
 import { LINK_MESSAGES, linkSchema } from './link';
 
@@ -94,10 +94,10 @@ const card = z.object({
 });
 // A «روتین روزانه» tab's two labels. Its emoji + category slugs are the same-index
 // entry in `ROUTINE_TARGETS`; a saved `categoryIds` (1–4 distinct ids) replaces the
-// slugs. The message is digit-free, like every Persian message here.
-const ROUTINE_CATEGORIES_MESSAGE = 'یک تا چهار دسته‌بندی متفاوت انتخاب کن.';
+// slugs. The message spells its bound in Persian digits, never an ASCII numeral.
 /** A routine tab's category tiles at most; the editor's picker stops there too. */
 export const MAX_ROUTINE_CATEGORIES = 4;
+const ROUTINE_CATEGORIES_MESSAGE = `یک تا ${toPersianDigits(MAX_ROUTINE_CATEGORIES)} دسته‌بندی متفاوت انتخاب کن.`;
 const routineSlot = z.object({
   label: t(30),
   sub: t(30),
