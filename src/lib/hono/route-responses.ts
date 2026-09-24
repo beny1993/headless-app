@@ -4,6 +4,8 @@
  * These live here rather than in `envelope.ts` because only the route files
  * use them, while `envelope.ts` reaches the browser (`api-client.ts` imports
  * `unwrap` from it): route-definition machinery there ships to every admin page.
+ * `envelope.ts` still side-effect-imports `@hono/zod-openapi`, so the package
+ * travels anyway; splitting its client half out is issue #66.
  */
 import { z } from 'zod';
 import { apiErrorSchema } from './envelope';
