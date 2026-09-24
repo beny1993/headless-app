@@ -34,29 +34,18 @@ export type AddressInput = z.infer<typeof addressInputSchema>;
 export const normalizePostalCode = (value: string): string =>
   toAsciiDigits(value).replace(/\D/g, '');
 
-/** The address fields as a form holds them — text, the province id included. */
-type AddressFormValues = {
-  recipientName: string;
-  recipientPhone: string;
-  provinceId: string;
-  city: string;
-  postalCode: string;
-  addressLine: string;
-};
+/** The address fields as a form holds them: all text, the province id included. */
+type AddressFormValues = Record<keyof z.infer<typeof addressSchema>, string>;
 
 /**
- * The client-side gate shared by checkout's address step and the address book:
- * field → Persian message, `{}` when the address may be sent. Stricter than
- * `addressSchema` on purpose (a 10-digit postal code, a 10-character address
- * line) — it is a courtesy that catches typos before a round trip, and the
- * server stays authoritative. `staleProvince` is the caller's "this id is not
- * among the active provinces I was given".
+ * The client gate shared by checkout and the address book: field → message.
+ * Stricter than `addressSchema` on purpose; the server stays authoritative.
  */
 export const validateAddress = (
   values: AddressFormValues,
   staleProvince: boolean,
-): Partial<Record<keyof AddressFormValues, string>> => {
-  const errors: Partial<Record<keyof AddressFormValues, string>> = {};
+) => {
+  const errors: Partial<AddressFormValues> = {};
   if (!values.recipientName.trim())
     errors.recipientName = 'نام گیرنده را وارد کن.';
   if (!values.recipientPhone.trim())

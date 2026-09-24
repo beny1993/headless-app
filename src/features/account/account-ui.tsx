@@ -1,37 +1,43 @@
 'use client';
 
-// The pieces the account tabs share: the empty-list card, and the add / edit /
-// delete shell the pets and addresses tabs are both built from.
+// The add / edit / delete shell the account tabs share.
 import { useState, type ReactNode } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, type LucideIcon } from 'lucide-react';
 import { reasonFrom } from '@/lib/checkout/field-errors';
 import { cn } from '@/lib/utils';
 
 export const GENERIC_ERROR = 'انجام نشد. لطفاً دوباره تلاش کن.';
 
-/** The «nothing here yet» card of an account list. */
+/** The «nothing here yet» card; `icon` is a lucide icon or an emoji. */
 export function EmptyState({
-  icon,
+  icon: Icon,
   title,
   description,
 }: {
-  icon: ReactNode;
+  icon: LucideIcon | string;
   title: string;
   description: string;
 }) {
   return (
     <div className="bg-secondary/40 rounded-2xl py-16 text-center">
-      {icon}
+      {typeof Icon === 'string' ? (
+        <p className="mb-1 text-2xl" aria-hidden="true">
+          {Icon}
+        </p>
+      ) : (
+        <Icon
+          size={40}
+          className="text-muted-foreground mx-auto mb-3"
+          aria-hidden="true"
+        />
+      )}
       <p className="mb-1 font-semibold">{title}</p>
       <p className="text-muted-foreground text-sm">{description}</p>
     </div>
   );
 }
 
-/**
- * The inline «… حذف شود؟» strip under a list item. `onConfirm` does the delete
- * and throws on failure; the refusal is shown here and the buttons come back.
- */
+/** The inline «… حذف شود؟» strip; a throwing `onConfirm` shows its refusal. */
 export function DeleteConfirm({
   question,
   umami,
@@ -40,7 +46,6 @@ export function DeleteConfirm({
   onConfirm,
 }: {
   question: string;
-  /** The confirm button's `data-umami-event` — the e2e selector. */
   umami: string;
   className?: string;
   onCancel: () => void;

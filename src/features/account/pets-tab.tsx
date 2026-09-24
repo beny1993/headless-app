@@ -117,11 +117,7 @@ export function PetsTab({
 
       {pets.length === 0 && !editing && (
         <EmptyState
-          icon={
-            <p className="mb-1 text-2xl" aria-hidden="true">
-              🐾
-            </p>
-          }
+          icon="🐾"
           title="هنوز حیوانی اضافه نکرده‌ای"
           description="پروفایل حیوان خانگی‌ات را اینجا بساز."
         />

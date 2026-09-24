@@ -127,13 +127,7 @@ function OrdersTab({ orders }: { orders: OrderSummaryResponse[] }) {
       <h2 className="mb-5 text-xl font-bold">سفارش‌های من</h2>
       {orders.length === 0 ? (
         <EmptyState
-          icon={
-            <Package
-              size={40}
-              className="text-muted-foreground mx-auto mb-3"
-              aria-hidden="true"
-            />
-          }
+          icon={Package}
           title="هنوز سفارشی ثبت نکرده‌ای"
           description="اولین سفارشت اینجا نمایش داده می‌شود."
         />

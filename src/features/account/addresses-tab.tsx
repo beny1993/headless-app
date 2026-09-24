@@ -109,13 +109,7 @@ export function AddressesTab({
 
       {addresses.length === 0 && !editing && (
         <EmptyState
-          icon={
-            <MapPin
-              size={40}
-              className="text-muted-foreground mx-auto mb-3"
-              aria-hidden="true"
-            />
-          }
+          icon={MapPin}
           title="هنوز آدرسی ذخیره نکرده‌ای"
           description="یک آدرس ذخیره کن تا در تکمیل خرید سریع‌تر باشی."
         />
