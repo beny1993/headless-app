@@ -44,6 +44,12 @@ export const PAYMENT_METHODS = {
 export type PaymentMethod =
   (typeof PAYMENT_METHODS)[keyof typeof PAYMENT_METHODS];
 
+/** How each method reads to a person — storefront and admin panel alike. */
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  [PAYMENT_METHODS.ZARINPAL]: 'زرین‌پال',
+  [PAYMENT_METHODS.COD]: 'کارت به کارت',
+};
+
 /** The `payments.status` domain — a single payment attempt's lifecycle. */
 export const PAYMENT_STATUSES = {
   PENDING: 'pending',
