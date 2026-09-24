@@ -1,7 +1,7 @@
 // All Drizzle DB access goes through DAOs like this one. `markCodPaid` is the
 // only write the state machine composes; the rest serve checkout (story 14) and
 // the Zarinpal verify callback (story 15).
-import { and, asc, count, eq, isNotNull, lt, ne } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, lt, ne } from 'drizzle-orm';
 import { db, type Executor, type Tx } from '@/db';
 
 import { payments, type NewPayment, type Payment } from '@/db/schema/orders';
@@ -70,11 +70,7 @@ export class PaymentDao {
     orderId: string,
     executor: Executor = db,
   ): Promise<number> {
-    const [row] = await executor
-      .select({ value: count() })
-      .from(payments)
-      .where(eq(payments.orderId, orderId));
-    return row.value;
+    return executor.$count(payments, eq(payments.orderId, orderId));
   }
 
   /**

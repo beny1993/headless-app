@@ -4,7 +4,7 @@
 //
 // Every timestamp is `timestamptz` (`{ withTimezone: true }`) — the repo stores
 // instants in UTC and renders Jalali at the edge. A bare `timestamp()` column
-// drops the offset and is a bug; copy the form below into new tables.
+// drops the offset and is a bug; audit columns come from `./columns`.
 import {
   bigint,
   boolean,
@@ -14,6 +14,7 @@ import {
   text,
   timestamp,
 } from 'drizzle-orm/pg-core';
+import { createdAt, updatedAt } from '@/db/schema/columns';
 
 /** The `role` column's domain. Never compare against bare strings. */
 export const ROLES = {
@@ -43,13 +44,8 @@ export const users = pgTable('user', {
   // never by default. With `signUpOnVerification` this default is now on a
   // public endpoint: anyone who can receive an SMS reaches this line.
   role: text('role').default(ROLES.CUSTOMER).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .defaultNow()
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull(),
+  createdAt,
+  updatedAt,
 });
 
 export const sessions = pgTable('session', {
@@ -61,13 +57,8 @@ export const sessions = pgTable('session', {
   userId: text('user_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .defaultNow()
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull(),
+  createdAt,
+  updatedAt,
 });
 
 export const accounts = pgTable('account', {
@@ -88,13 +79,8 @@ export const accounts = pgTable('account', {
   }),
   scope: text('scope'),
   password: text('password'),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .defaultNow()
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull(),
+  createdAt,
+  updatedAt,
 });
 
 export const verificationTokens = pgTable('verification', {
@@ -102,13 +88,8 @@ export const verificationTokens = pgTable('verification', {
   identifier: text('identifier').notNull(),
   value: text('value').notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .defaultNow()
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull(),
+  createdAt,
+  updatedAt,
 });
 
 /**
@@ -158,5 +139,3 @@ export const rateLimits = pgTable('rate_limit', {
 });
 
 export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
-export type OtpSendLogRow = typeof otpSendLog.$inferSelect;

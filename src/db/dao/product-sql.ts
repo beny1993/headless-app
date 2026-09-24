@@ -3,12 +3,6 @@
 // card reads, the orderings, and the two scopes behind the category and pet
 // filters. No methods and no transactions — `ProductDao` composes all of it.
 //
-// Split out of that file because it was the one part of it with nothing in it
-// that runs: 1161 lines carrying eight unrelated concerns, and the cost was
-// visible in review — the guard that refuses to hide a family head sat ~500
-// lines from the other door onto the same rule, which is how one of them came
-// to exist without the other.
-//
 // Still «never raw SQL outside the DAO layer»: this module is part of that
 // layer, and nothing but `ProductDao` and its own tests may import it.
 import {

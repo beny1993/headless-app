@@ -8,7 +8,6 @@
 import {
   and,
   asc,
-  count,
   desc,
   eq,
   gte,
@@ -26,7 +25,6 @@ import {
 import { db, type Executor } from '@/db';
 import {
   DEFAULT_PRODUCT_PAGE_SIZE,
-  MAX_PRODUCT_PAGE_SIZE,
   PRODUCT_SORTS,
   type ProductSort,
 } from '@/lib/catalog/product-query';
@@ -145,25 +143,6 @@ export class StockConflictError extends Error {
   }
 }
 
-// The orderings and the page-size numbers are defined in
-// `@/lib/catalog/product-query` together with the query schema that enforces
-// them, because the storefront's URL parser is a client module and importing
-// this file would put `pg` in the browser bundle. Re-exported so the API route
-// and the seed keep importing them from here — one definition, one alias.
-export {
-  PRODUCT_SORTS,
-  DEFAULT_PRODUCT_PAGE_SIZE,
-  MAX_PRODUCT_PAGE_SIZE,
-  type ProductSort,
-};
-
-/**
- * The searchable-text derivation lives in `./product-sql` with the rest of the
- * listing's vocabulary, and is re-exported here because the seed and this
- * DAO's own tests have always read it from this module.
- */
-export { buildProductSearchText };
-
 export type ProductFilters = {
   categorySlug?: string;
   /** One pet; a product suits it when its selection contains it. */
@@ -279,14 +258,13 @@ export class ProductDao {
         .limit(limit)
         .offset((page - 1) * limit);
 
-    const countQuery = (on: Executor) =>
-      on.select({ value: count() }).from(products).where(where);
+    const countQuery = (on: Executor) => on.$count(products, where);
 
     // A search needs its similarity threshold, and that threshold only lives
     // for a transaction — so the two queries run on one connection, in order,
     // instead of in parallel. Every other listing keeps the parallel pair: the
     // shop's own catalogue browsing must not pay for the search box.
-    const [rows, [counted]] = search
+    const [rows, total] = search
       ? await db.transaction(async (tx) => {
           await tx.execute(applySearchThreshold);
           return [await pageQuery(tx), await countQuery(tx)] as const;
@@ -303,7 +281,7 @@ export class ProductDao {
         ...row,
         familyMinPrice: Number(row.familyMinPrice),
       })),
-      total: counted.value,
+      total,
     };
   }
 
@@ -352,8 +330,8 @@ export class ProductDao {
       // the 10kg bag, and the card the shopper must be shown is the family's.
       // The member side reads the same trigram index as the head side.
       //
-      // // ponytail: an `or` with an `exists`. If the planner ever stops using
-      // // the index for the inner arm, move the members' text onto the head.
+      // ponytail: an `or` with an `exists`. If the planner ever stops using
+      // the index for the inner arm, move the members' text onto the head.
       where.push(
         sql`(${products.searchText} %> ${filters.search} or exists (select 1 ${MEMBER_SCOPE} and fam.search_text %> ${filters.search}))`,
       );
@@ -389,16 +367,16 @@ export class ProductDao {
     limit?: number;
   } = {}): Promise<AdminProductPage> {
     const where = ProductDao.adminWhere(filters);
-    const [rows, [counted]] = await Promise.all([
+    const [rows, total] = await Promise.all([
       ProductDao.adminRows(where)
         .limit(limit)
         .offset((page - 1) * limit),
-      db.select({ value: count() }).from(products).where(where),
+      db.$count(products, where),
     ]);
 
     return {
       items: await ProductDao.withRelations(rows),
-      total: counted.value,
+      total,
     };
   }
 
@@ -601,11 +579,10 @@ export class ProductDao {
     id: string,
     executor: Executor = db,
   ): Promise<number> {
-    const [counted] = await executor
-      .select({ value: count() })
-      .from(products)
-      .where(and(eq(products.variantOf, id), eq(products.isActive, true)));
-    return counted.value;
+    return executor.$count(
+      products,
+      and(eq(products.variantOf, id), eq(products.isActive, true)),
+    );
   }
 
   /**
@@ -1245,27 +1222,14 @@ export class ProductDao {
         .orderBy(asc(productCategories.sortOrder)),
     ]);
 
-    const imagesOf = groupByProduct(images, (image) => image);
-    const extrasOf = groupByProduct(extras, (row) => row.categoryId);
+    // `Map.groupBy` keeps each bucket in input order, i.e. by `sortOrder`.
+    const imagesOf = Map.groupBy(images, (image) => image.productId);
+    const extrasOf = Map.groupBy(extras, (row) => row.productId);
 
     return rows.map((row) => ({
       ...row,
       images: imagesOf.get(row.id) ?? [],
-      extraCategoryIds: extrasOf.get(row.id) ?? [],
+      extraCategoryIds: (extrasOf.get(row.id) ?? []).map((e) => e.categoryId),
     }));
   }
 }
-
-/** Bucket rows already ordered by `sortOrder` under their product id. */
-const groupByProduct = <T extends { productId: string }, V>(
-  rows: T[],
-  pick: (row: T) => V,
-): Map<string, V[]> => {
-  const byProduct = new Map<string, V[]>();
-  for (const row of rows) {
-    const existing = byProduct.get(row.productId);
-    if (existing) existing.push(pick(row));
-    else byProduct.set(row.productId, [pick(row)]);
-  }
-  return byProduct;
-};
