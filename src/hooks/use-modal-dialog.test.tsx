@@ -99,4 +99,15 @@ describe('useModalDialog', () => {
     fireEvent(dialog(), new Event('close'));
     expect(trigger().getAttribute('aria-expanded')).toBe('false');
   });
+
+  it('shows an already-open dialog without a second showModal()', () => {
+    // Reachable in the cart drawer: adding to the cart while it is open, and a
+    // second showModal() on an open dialog throws InvalidStateError.
+    const showModal = vi.spyOn(HTMLDialogElement.prototype, 'showModal');
+    render(<Host />);
+    openIt();
+    fireEvent.click(trigger());
+    expect(showModal).toHaveBeenCalledTimes(1);
+    expect(trigger().getAttribute('aria-expanded')).toBe('true');
+  });
 });
