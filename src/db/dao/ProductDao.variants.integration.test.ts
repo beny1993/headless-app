@@ -19,7 +19,7 @@ import {
 } from '@/db/schema/catalog';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { VARIANT_MESSAGES, hasMembersMessage } from '@/lib/catalog/variant';
-import { pgErrorOf } from '@/lib/hono/pg-error';
+import { pgErrorOf } from '@/db/pg-error';
 
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
 
