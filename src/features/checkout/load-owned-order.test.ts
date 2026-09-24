@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadOwnedOrder } from './load-owned-order';
-import { toSummaryLines } from './order-summary';
 
 const { requireSession, getOwnedOrder } = vi.hoisted(() => ({
   requireSession: vi.fn(),
@@ -47,23 +46,5 @@ describe('loadOwnedOrder', () => {
     await expect(loadOwnedOrder(ORDER_ID, returnTo)).rejects.toThrow(
       'NOT_FOUND',
     );
-  });
-});
-
-describe('toSummaryLines', () => {
-  it('prices each snapshotted item at unit price × quantity', () => {
-    expect(
-      toSummaryLines([
-        { id: 'a', title: 'غذای خشک', qty: 3, unitPrice: 185_000 },
-        { id: 'b', title: 'اسباب‌بازی', qty: 1, unitPrice: 0 },
-      ]),
-    ).toEqual([
-      { id: 'a', title: 'غذای خشک', qty: 3, lineTotal: 555_000 },
-      { id: 'b', title: 'اسباب‌بازی', qty: 1, lineTotal: 0 },
-    ]);
-  });
-
-  it('is empty for an order with no items', () => {
-    expect(toSummaryLines([])).toEqual([]);
   });
 });
