@@ -774,7 +774,7 @@ export function ProductForm({
           <FieldShell
             id={fid('price')}
             label="قیمت (تومان)"
-            hint={money(form.price) ?? 'عدد صحیح، بدون جداکننده'}
+            hint={money(form.price) ?? 'عدد صحیح، با جداکننده یا بدون آن'}
             error={fieldErrors.price}
           >
             <input
