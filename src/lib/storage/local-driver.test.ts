@@ -49,10 +49,6 @@ describe('localDriver', () => {
     expect(served && new Uint8Array(served)).toEqual(bytes);
   });
 
-  it('resolves url(key) to the root-relative /uploads path', () => {
-    expect(localDriver.url('uploads/abc.png')).toBe('/uploads/abc.png');
-  });
-
   it('deletes a stored key, and treats a missing key as already gone', async () => {
     const key = 'uploads/123e4567-e89b-12d3-a456-426614174000.png';
     await localDriver.put(key, bytes, 'image/png');

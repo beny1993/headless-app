@@ -20,6 +20,7 @@ import {
 } from '@/lib/content/site-content';
 import { getStorageDriver } from '@/lib/storage';
 import { objectKeyFor } from '@/lib/storage/image-upload';
+import { imageSrc } from '@/lib/storage/image-url';
 import { findBrokenLinks } from '@/logic/content/link-targets';
 import { INVALID_INPUT_MESSAGE } from '../create-router';
 import {
@@ -156,5 +157,5 @@ export const contentImageUploadHandler = async (
   // own. A sweep here has to collect the referenced keys by walking the saved
   // values — every area, every block — and delete the `uploads/` objects no
   // value names. Until disk fills, it is not worth that walk.
-  return c.json(apiSuccess({ key, url: driver.url(key) }), 201);
+  return c.json(apiSuccess({ key, url: imageSrc(key) }), 201);
 };

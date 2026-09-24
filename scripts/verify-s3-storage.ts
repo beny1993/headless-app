@@ -15,6 +15,7 @@
  * (= endpoint/bucket). Safe to re-run: the object it creates, it deletes.
  */
 import './load-env';
+import { imageSrc } from '@/lib/storage/image-url';
 import { s3Driver } from '@/lib/storage/s3-driver';
 
 // A 1x1 transparent PNG, so a real image byte stream round-trips.
@@ -29,11 +30,11 @@ const main = async () => {
   console.log(`→ put   ${key}`);
   await s3Driver.put(key, PNG_1X1, 'image/png');
 
-  const url = s3Driver.url(key);
+  const url = imageSrc(key);
   console.log(`→ url   ${url}`);
   if (!url.startsWith('http')) {
     throw new Error(
-      'url() is not absolute — is NEXT_PUBLIC_STORAGE_BASE_URL set to the bucket base?',
+      'imageSrc() is not absolute — is NEXT_PUBLIC_STORAGE_BASE_URL set to the bucket base?',
     );
   }
 

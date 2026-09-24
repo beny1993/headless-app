@@ -113,12 +113,4 @@ describe('s3Driver', () => {
     );
     expect(sendMock).not.toHaveBeenCalled();
   });
-
-  it('resolves a bundled key root-relative through the shared resolver', () => {
-    // url() delegates to imageSrc; bundled keys are root-relative in every mode
-    // (the uploads-with-base case is covered in image-url.test.ts).
-    expect(s3Driver.url('products/cat-dry-food.jpg')).toBe(
-      '/products/cat-dry-food.jpg',
-    );
-  });
 });

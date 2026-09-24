@@ -12,21 +12,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductImage, ProductWithImages } from '@/db/schema/catalog';
 import { MAX_PRODUCT_IMAGES } from '@/lib/catalog/product-input';
 
-const { setImages, appendImage, put, remove, url, captureException } =
-  vi.hoisted(() => ({
+const { setImages, appendImage, put, remove, captureException } = vi.hoisted(
+  () => ({
     setImages: vi.fn(),
     appendImage: vi.fn(),
     put: vi.fn(),
     remove: vi.fn(),
-    url: vi.fn((key: string) => `/${key}`),
     captureException: vi.fn(),
-  }));
+  }),
+);
 vi.mock('@sentry/nextjs', () => ({ captureException }));
 vi.mock('@/db/dao/ProductDao', () => ({
   ProductDao: { setImages, appendImage },
 }));
 vi.mock('@/lib/storage', () => ({
-  getStorageDriver: () => ({ put, delete: remove, url }),
+  getStorageDriver: () => ({ put, delete: remove }),
 }));
 
 import { appendProductImage, setProductImageOrder } from './product-images';

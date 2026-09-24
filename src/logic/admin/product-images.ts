@@ -34,7 +34,8 @@ import {
   UPLOAD_KEY_PREFIX,
   type AcceptedImageType,
 } from '@/lib/storage/image-upload';
-import { getStorageDriver } from '@/lib/storage';
+import { getStorageDriver, type StorageDriver } from '@/lib/storage';
+import { imageSrc } from '@/lib/storage/image-url';
 
 /** What the upload route hands back — the stored key and a URL to render it. */
 export type StoredImage = {
@@ -47,15 +48,28 @@ export type StoredImage = {
 const isOurUpload = (objectKey: string): boolean =>
   objectKey.startsWith(`${UPLOAD_KEY_PREFIX}/`);
 
-const toStoredImage = (
-  image: { id: string; objectKey: string; sortOrder: number },
-  url: (key: string) => string,
-): StoredImage => ({
+const toStoredImage = (image: {
+  id: string;
+  objectKey: string;
+  sortOrder: number;
+}): StoredImage => ({
   id: image.id,
   objectKey: image.objectKey,
-  url: url(image.objectKey),
+  url: imageSrc(image.objectKey),
   sortOrder: image.sortOrder,
 });
+
+/**
+ * Deletes a file nothing references any more. A failure is swallowed — an
+ * orphaned file is housekeeping, never a reason to fail a write the database has
+ * already taken — which is exactly why it is reported: an EACCES, an expired S3
+ * credential or a driver refusal otherwise piles up orphans in total silence.
+ */
+const deleteQuietly = (driver: StorageDriver, key: string): Promise<void> =>
+  driver.delete(key).catch((error: unknown) => {
+    console.warn('[admin] deleting a product image failed', error);
+    Sentry.captureException(error);
+  });
 
 /**
  * Add `bytes` to the end of the product's gallery and return the stored image.
@@ -94,14 +108,11 @@ export async function appendProductImage(
     // The file has no row and never will, so take it back out — the only other
     // deleter works out what to delete from `product_images` and would never
     // see it.
-    await driver.delete(key).catch((error: unknown) => {
-      console.warn('[admin] deleting a refused product image failed', error);
-      Sentry.captureException(error);
-    });
+    await deleteQuietly(driver, key);
     return null;
   }
 
-  return toStoredImage(image, (stored) => driver.url(stored));
+  return toStoredImage(image);
 }
 
 /**
@@ -143,18 +154,8 @@ export async function setProductImageOrder(
 
   for (const objectKey of removedKeys) {
     if (!isOurUpload(objectKey)) continue;
-    await driver.delete(objectKey).catch((error: unknown) => {
-      // Swallowed so a housekeeping failure never fails a write the database
-      // has already taken — which is exactly why it has to be reported. An
-      // EACCES, an expired S3 credential or a driver refusal otherwise
-      // accumulates orphaned files in total silence. `otp-guard.ts` swallows
-      // its pruning failure the same way, and reports it for the same reason.
-      console.warn('[admin] deleting a removed product image failed', error);
-      Sentry.captureException(error);
-    });
+    await deleteQuietly(driver, objectKey);
   }
 
-  return images.map((image) =>
-    toStoredImage(image, (stored) => driver.url(stored)),
-  );
+  return images.map(toStoredImage);
 }
