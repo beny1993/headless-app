@@ -22,7 +22,7 @@ import {
 import { orderAsTree } from '@/lib/catalog/category-tree';
 import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiAdminCategoryPath } from '@/lib/constant/paths';
-import { formatNumber, toAsciiDigits } from '@/lib/format';
+import { formatNumber, parseDigits } from '@/lib/format';
 import type { CategoryView } from '@/lib/hono/routes/admin-categories';
 import { cn } from '@/lib/utils';
 
@@ -71,11 +71,10 @@ async function saveCategory(
   draft: Draft,
   send: (body: CategoryInputBody) => Promise<CategoryView>,
 ): Promise<SaveResult> {
-  const sortOrder = toAsciiDigits(draft.sortOrder).trim();
   const parsed = categoryInputSchema.safeParse({
     title: draft.title,
     slug: draft.slug,
-    sortOrder: sortOrder === '' ? Number.NaN : Number(sortOrder),
+    sortOrder: parseDigits(draft.sortOrder) ?? Number.NaN,
     // `z.uuid()` refuses `''`; the empty option means top-level.
     parentId: draft.parentId === '' ? null : draft.parentId,
   });

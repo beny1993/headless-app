@@ -30,7 +30,7 @@ import {
   apiAdminProductPath,
   PROTECTED_PATHS,
 } from '@/lib/constant/paths';
-import { formatToman, toAsciiDigits, toPersianDigits } from '@/lib/format';
+import { formatToman, parseDigits, toPersianDigits } from '@/lib/format';
 import { IMAGE_FIELD_NAME } from '@/lib/storage/image-upload';
 import {
   ProductImagesField,
@@ -91,12 +91,9 @@ export type VariantHeadOption = {
 
 const GENERIC_ERROR = 'خطای غیرمنتظره رخ داد. دوباره تلاش کن.';
 
-/** Numeric-input string → number: Persian digits folded, empty/blank → NaN so
- *  the schema rejects it with the field's own message. */
-const numeric = (value: string): number => {
-  const ascii = toAsciiDigits(value).trim();
-  return ascii === '' ? Number.NaN : Number(ascii);
-};
+/** A required number field: blank is NaN, so the schema refuses it with the
+ *  field's own message rather than a missing-key one. */
+const numeric = (value: string): number => parseDigits(value) ?? Number.NaN;
 
 /** Map a ZodError to `{ field: message }`, first issue per field winning. */
 const zodFieldErrors = (error: z.ZodError): Record<string, string> => {
@@ -318,7 +315,7 @@ export function ProductForm({
     description: form.description,
     benefit: form.benefit,
     price: numeric(form.price),
-    oldPrice: form.oldPrice.trim() === '' ? null : numeric(form.oldPrice),
+    oldPrice: parseDigits(form.oldPrice) ?? null,
     stock: numeric(form.stock),
     categoryId: form.categoryId,
     extraCategoryIds: form.extraCategoryIds,

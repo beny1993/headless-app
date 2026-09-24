@@ -17,7 +17,7 @@ import {
   apiAdminProvincePath,
   apiShippingRatePath,
 } from '@/lib/constant/paths';
-import { formatNumber, formatToman, toAsciiDigits } from '@/lib/format';
+import { formatNumber, formatToman, parseDigits } from '@/lib/format';
 import {
   PROVINCE_MESSAGES,
   provinceCreateSchema,
@@ -32,13 +32,11 @@ const APPLY_ALL_LABEL = 'اعمال روی همه استان\u200Cها';
 
 /**
  * A fee as typed — Persian or ASCII digits — to integer Toman, or `null` when it
- * is not one. At least one digit first (rejects empty, negative, decimal), then
- * the shared `shippingFeeSchema`, which allows 0 (free shipping).
+ * is not one: blank, negative and fractional all fail the shared
+ * `shippingFeeSchema`, which allows 0 (free shipping).
  */
 const parseFee = (raw: string): number | null => {
-  const ascii = toAsciiDigits(raw.trim());
-  if (!/^\d+$/.test(ascii)) return null;
-  const parsed = shippingFeeSchema.safeParse(Number(ascii));
+  const parsed = shippingFeeSchema.safeParse(parseDigits(raw));
   return parsed.success ? parsed.data : null;
 };
 

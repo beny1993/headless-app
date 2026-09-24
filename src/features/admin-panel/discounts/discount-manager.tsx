@@ -14,7 +14,7 @@ import {
 import {
   formatJalali,
   formatToman,
-  toAsciiDigits,
+  parseDigits,
   toPersianDigits,
 } from '@/lib/format';
 import type { DiscountCodeView } from '@/lib/hono/routes/admin-discounts';
@@ -79,11 +79,6 @@ function CreateForm({
     setExpiresAt('');
   };
 
-  const asNumber = (raw: string): number | undefined => {
-    const ascii = toAsciiDigits(raw.trim());
-    return ascii === '' ? undefined : Number(ascii);
-  };
-
   const submit = async () => {
     if (busy) return;
     setErrors({});
@@ -94,9 +89,9 @@ function CreateForm({
     const candidate = {
       code: code.trim(),
       type,
-      value: asNumber(value),
-      minOrderAmount: asNumber(minOrderAmount) ?? 0,
-      usageLimit: asNumber(usageLimit) ?? null,
+      value: parseDigits(value),
+      minOrderAmount: parseDigits(minOrderAmount) ?? 0,
+      usageLimit: parseDigits(usageLimit) ?? null,
       expiresAt: expiresAt.trim() === '' ? null : expiresAt.trim(),
       isActive: true,
     };
