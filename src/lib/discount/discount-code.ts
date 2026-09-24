@@ -150,9 +150,6 @@ export const discountCodeInputSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
-/** The validated create body — assignable to `DiscountCodeDao`'s input. */
-export type DiscountCodeInputBody = z.infer<typeof discountCodeInputSchema>;
-
 /** The toggle body — the only mutable field after creation (deactivate/reactivate). */
 export const discountCodeToggleSchema = z.object({ isActive: z.boolean() });
 
