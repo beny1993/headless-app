@@ -1,10 +1,14 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { AlertCircle, Check, Loader2, Plus, Tag } from 'lucide-react';
+import { Check, Loader2, Plus, Tag } from 'lucide-react';
 import { toast } from 'sonner';
-import { ApiRequestError, patchData, postData } from '@/lib/api-client';
-import { parseFieldErrors } from '@/lib/checkout/field-errors';
+import { patchData, postData } from '@/lib/api-client';
+import {
+  reasonFrom,
+  requestFieldErrors,
+  zodFieldErrors,
+} from '@/lib/checkout/field-errors';
 import { API_PATHS, apiAdminDiscountPath } from '@/lib/constant/paths';
 import {
   DISCOUNT_TYPES,
@@ -19,6 +23,12 @@ import {
 } from '@/lib/format';
 import type { DiscountCodeView } from '@/lib/hono/routes/admin-discounts';
 import { cn } from '@/lib/utils';
+import {
+  controlClass,
+  fieldAria,
+  FieldShell,
+  TextField,
+} from '@/components/ui/field';
 
 /**
  * The admin discount-code manager: a create form over a live list, each row
@@ -98,12 +108,7 @@ function CreateForm({
 
     const parsed = discountCodeInputSchema.safeParse(candidate);
     if (!parsed.success) {
-      const next: Record<string, string> = {};
-      for (const issue of parsed.error.issues) {
-        const key = String(issue.path[0] ?? '');
-        if (key && !(key in next)) next[key] = issue.message;
-      }
-      setErrors(next);
+      setErrors(zodFieldErrors(parsed.error));
       return;
     }
 
@@ -117,18 +122,12 @@ function CreateForm({
       setJustCreated(created.code);
       reset();
     } catch (error) {
-      if (error instanceof ApiRequestError && error.status === 400) {
-        const { fields, unmapped } = parseFieldErrors(error.errors);
-        setErrors(fields);
-        if (Object.keys(fields).length === 0) toast.error(error.message);
-        else if (unmapped.length > 0) toast.error(unmapped.join(' '));
-      } else {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'ساخت کد تخفیف ناموفق بود. دوباره تلاش کن.',
-        );
-      }
+      const { fields, message } = requestFieldErrors(
+        error,
+        'ساخت کد تخفیف ناموفق بود. دوباره تلاش کن.',
+      );
+      setErrors(fields);
+      if (message) toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -148,7 +147,7 @@ function CreateForm({
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field
+        <TextField
           id={`${fieldId}-code`}
           label="کد"
           value={code}
@@ -159,26 +158,20 @@ function CreateForm({
           umami="admin-panel-discount-code"
         />
 
-        <div>
-          <label
-            htmlFor={`${fieldId}-type`}
-            className="mb-1.5 block text-sm font-medium"
-          >
-            نوع تخفیف
-          </label>
+        <FieldShell id={`${fieldId}-type`} label="نوع تخفیف">
           <select
             id={`${fieldId}-type`}
             value={type}
             onChange={(event) => setType(event.target.value as DiscountType)}
-            className="bg-secondary focus-visible:border-accent-strong border-border h-12 w-full rounded-xl border px-4 transition-colors outline-none focus-visible:ring-2"
+            className={controlClass(false)}
             data-umami-event="admin-panel-discount-type"
           >
             <option value={DISCOUNT_TYPES.PERCENT}>درصدی</option>
             <option value={DISCOUNT_TYPES.FIXED}>مبلغی (تومان)</option>
           </select>
-        </div>
+        </FieldShell>
 
-        <Field
+        <TextField
           id={`${fieldId}-value`}
           label={
             type === DISCOUNT_TYPES.PERCENT ? 'درصد (۱ تا ۱۰۰)' : 'مبلغ (تومان)'
@@ -191,7 +184,7 @@ function CreateForm({
           umami="admin-panel-discount-value"
         />
 
-        <Field
+        <TextField
           id={`${fieldId}-min`}
           label="حداقل مبلغ سفارش (تومان)"
           value={minOrderAmount}
@@ -203,7 +196,7 @@ function CreateForm({
           umami="admin-panel-discount-min"
         />
 
-        <Field
+        <TextField
           id={`${fieldId}-limit`}
           label="سقف استفاده"
           value={usageLimit}
@@ -215,29 +208,27 @@ function CreateForm({
           umami="admin-panel-discount-limit"
         />
 
-        <div>
-          <label
-            htmlFor={`${fieldId}-expires`}
-            className="mb-1.5 block text-sm font-medium"
-          >
-            تاریخ انقضا
-          </label>
+        <FieldShell
+          id={`${fieldId}-expires`}
+          label="تاریخ انقضا"
+          error={errors.expiresAt}
+          hint="خالی یعنی بدون انقضا"
+        >
           <input
             id={`${fieldId}-expires`}
             type="date"
             value={expiresAt}
             onChange={(event) => setExpiresAt(event.target.value)}
             dir="ltr"
-            className={cn(
-              'bg-secondary focus-visible:border-accent-strong h-12 w-full rounded-xl border px-4 text-start transition-colors outline-none focus-visible:ring-2',
-              errors.expiresAt ? 'border-destructive' : 'border-border',
+            {...fieldAria(
+              `${fieldId}-expires`,
+              errors.expiresAt,
+              'خالی یعنی بدون انقضا',
             )}
+            className={controlClass(Boolean(errors.expiresAt))}
             data-umami-event="admin-panel-discount-expires"
           />
-          <p className="text-muted-foreground mt-1.5 text-xs">
-            خالی یعنی بدون انقضا
-          </p>
-        </div>
+        </FieldShell>
       </div>
 
       <div className="flex items-center gap-3">
@@ -343,11 +334,7 @@ function CodeRow({
       );
       onToggled(updated);
     } catch (requestError) {
-      toast.error(
-        requestError instanceof Error
-          ? requestError.message
-          : 'تغییر وضعیت ناموفق بود.',
-      );
+      toast.error(reasonFrom(requestError) ?? 'تغییر وضعیت ناموفق بود.');
     } finally {
       setBusy(false);
     }
@@ -396,68 +383,5 @@ function CodeRow({
         </div>
       </td>
     </tr>
-  );
-}
-
-/** One labelled text input with an inline error, matching the shipping editor. */
-function Field({
-  id,
-  label,
-  value,
-  onChange,
-  error,
-  hint,
-  dir,
-  inputMode,
-  placeholder,
-  umami,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  error?: string;
-  hint?: string;
-  dir?: 'ltr' | 'rtl';
-  inputMode?: 'text' | 'numeric';
-  placeholder?: string;
-  umami: string;
-}) {
-  const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium">
-        {label}
-      </label>
-      <input
-        id={id}
-        type="text"
-        dir={dir}
-        inputMode={inputMode}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        aria-invalid={Boolean(error)}
-        aria-describedby={describedBy}
-        className={cn(
-          'bg-secondary focus-visible:border-accent-strong h-12 w-full rounded-xl border px-4 text-start transition-colors outline-none focus-visible:ring-2',
-          error ? 'border-destructive bg-destructive-soft/40' : 'border-border',
-        )}
-        data-umami-event={umami}
-      />
-      {error ? (
-        <p
-          id={`${id}-error`}
-          className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
-        >
-          <AlertCircle size={12} className="shrink-0" aria-hidden="true" />{' '}
-          {error}
-        </p>
-      ) : hint ? (
-        <p id={`${id}-hint`} className="text-muted-foreground mt-1.5 text-xs">
-          {hint}
-        </p>
-      ) : null}
-    </div>
   );
 }
