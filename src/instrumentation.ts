@@ -1,17 +1,15 @@
 import * as Sentry from '@sentry/nextjs';
+import { sentryOptions } from '@/lib/sentry';
 
 /**
- * Runs once per server instance, before the first request is handled. Each
- * runtime gets its own bundle, so the import is conditional rather than static.
+ * Runs once per server instance — Node and edge alike — before the first
+ * request is handled. Both runtimes take the same options, including the
+ * privacy ones in `src/lib/sentry.ts`. Nothing here runs on the edge today, but
+ * Next compiles that bundle regardless, and an unconfigured runtime is how
+ * errors go missing after someone adds a route to it.
  */
-export async function register() {
-  if (process.env.NEXT_RUNTIME === 'nodejs') {
-    await import('../sentry.server.config');
-  }
-
-  if (process.env.NEXT_RUNTIME === 'edge') {
-    await import('../sentry.edge.config');
-  }
+export function register() {
+  Sentry.init(sentryOptions());
 }
 
 /**
