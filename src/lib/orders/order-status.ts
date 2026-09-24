@@ -173,9 +173,10 @@ export const paymentStatusSchema = z.enum(PAYMENT_STATUS_VALUES);
 export const adminTransitionTargetSchema = orderStatusSchema;
 
 /**
- * Ascending productId by code point: the one product-row lock order. Checkout's
- * reservation and the state machine's restock both sort by it, so two
- * transactions touching the same products lock them in the same order and
+ * Ascending productId by UTF-16 code unit (plain `<`, never `localeCompare`,
+ * whose order varies with the ICU build): the one product-row lock order.
+ * Checkout's reservation and the state machine's restock both sort by it, so
+ * two transactions touching the same products lock them in the same order and
  * cannot deadlock.
  */
 export const byProductId = (

@@ -153,7 +153,7 @@ describe('initialStatusFor', () => {
 });
 
 describe('byProductId', () => {
-  it('orders by code point, not by locale or number', () => {
+  it('orders by code unit, not by locale or number', () => {
     const ids = ['a', 'Z', '9', '10', 'b'].map((productId) => ({ productId }));
     expect(ids.sort(byProductId).map((line) => line.productId)).toEqual([
       '10',
