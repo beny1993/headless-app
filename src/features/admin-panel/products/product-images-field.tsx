@@ -170,7 +170,7 @@ export function ProductImagesField({
 
   const addFiles = (chosen: File[]) => {
     const refused: string[] = [];
-    const accepted: ProductPhoto[] = [];
+    const accepted: Extract<ProductPhoto, { kind: 'pending' }>[] = [];
     for (const file of chosen) {
       const invalid = validateImageFile(file);
       if (invalid) {
@@ -190,7 +190,7 @@ export function ProductImagesField({
     const room = MAX_PRODUCT_IMAGES - photos.length;
     const taken = accepted.slice(0, Math.max(room, 0));
     for (const dropped of accepted.slice(taken.length)) {
-      if (dropped.kind === 'pending') URL.revokeObjectURL(dropped.blobUrl);
+      URL.revokeObjectURL(dropped.blobUrl);
     }
     if (taken.length < accepted.length) {
       refused.push(overPickMessage(taken.length));

@@ -1,5 +1,3 @@
-import { toPersianDigits } from '@/lib/format';
-
 /** One month's bar. `value` is already the aggregate (Toman or a count). */
 export type ChartPoint = { label: string; value: number };
 
@@ -62,6 +60,3 @@ export function MonthlyBarChart({
     </div>
   );
 }
-
-/** A compact count label in Persian digits — the order-count chart's tooltip. */
-export const countLabel = (value: number) => toPersianDigits(value);

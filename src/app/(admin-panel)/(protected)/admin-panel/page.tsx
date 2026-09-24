@@ -1,11 +1,8 @@
 import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
-import { formatToman } from '@/lib/format';
+import { formatToman, toPersianDigits } from '@/lib/format';
 import { buildDashboardReport } from '@/logic/orders/dashboard-report';
-import {
-  countLabel,
-  MonthlyBarChart,
-} from '@/features/admin-panel/dashboard/monthly-bar-chart';
+import { MonthlyBarChart } from '@/features/admin-panel/dashboard/monthly-bar-chart';
 import { StatCards } from '@/features/admin-panel/dashboard/stat-cards';
 
 export const metadata: Metadata = { title: 'داشبورد' };
@@ -38,7 +35,7 @@ export default async function AdminPanelPage() {
             label: month.label,
             value: month.orders,
           }))}
-          formatValue={countLabel}
+          formatValue={toPersianDigits}
         />
       </div>
     </div>

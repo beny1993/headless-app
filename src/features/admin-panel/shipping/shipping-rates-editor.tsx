@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { Check, Loader2, Plus } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AdminProvinceRow } from '@/db/dao/ShippingRateDao';
 import { controlClass, TextField } from '@/components/ui/field';
@@ -23,11 +23,15 @@ import {
 } from '@/lib/shipping/province-input';
 import { shippingFeeSchema } from '@/lib/shipping/shipping-query';
 import { cn } from '@/lib/utils';
+import { AdminTable } from '@/features/admin-panel/shared/admin-table';
+import { CreateCard } from '@/features/admin-panel/shared/create-card';
+import { Pill } from '@/features/admin-panel/shared/pill';
 
 const DEACTIVATE_LABEL = 'غیرفعال\u200Cسازی';
 const ACTIVATE_LABEL = 'فعال\u200Cسازی';
 const BULK_FEE_LABEL = 'هزینه ارسال همه استان\u200Cها (تومان)';
 const APPLY_ALL_LABEL = 'اعمال روی همه استان\u200Cها';
+const PREVIEW_LABEL = 'پیش\u200Cنمایش';
 
 /**
  * A fee as typed — Persian or ASCII digits — to integer Toman, or `null` when it
@@ -91,40 +95,18 @@ export function ShippingRatesEditor({ rates }: { rates: AdminProvinceRow[] }) {
           هنوز استانی ثبت نشده است. اولین استان را با فرم بالا اضافه کن.
         </div>
       ) : (
-        <div className="border-border overflow-hidden rounded-2xl border bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-secondary/50">
-                <tr>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    استان
-                  </th>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    وضعیت
-                  </th>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    هزینه ارسال (تومان)
-                  </th>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    {'پیش\u200Cنمایش'}
-                  </th>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    <span className="sr-only">ذخیره و تغییر وضعیت</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((rate) => (
-                  <RateRow
-                    key={`${rate.provinceId}:${generation}`}
-                    rate={rate}
-                    onToggled={onToggled}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <AdminTable
+          headings={['استان', 'وضعیت', 'هزینه ارسال (تومان)', PREVIEW_LABEL]}
+          actions="ذخیره و تغییر وضعیت"
+        >
+          {rows.map((rate) => (
+            <RateRow
+              key={`${rate.provinceId}:${generation}`}
+              rate={rate}
+              onToggled={onToggled}
+            />
+          ))}
+        </AdminTable>
       )}
     </div>
   );
@@ -187,53 +169,32 @@ function BulkFeeForm({
   };
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-      className="border-border bg-card flex flex-col gap-4 rounded-2xl border p-6"
+    <CreateCard
+      title={'یک هزینه برای همه استان\u200Cها'}
+      onSubmit={submit}
+      busy={busy}
+      done={justApplied && 'روی همه اعمال شد'}
+      submitLabel={APPLY_ALL_LABEL}
+      submitIcon={null}
+      umami="admin-panel-shipping-bulk-apply"
     >
-      <h2 className="font-bold">{'یک هزینه برای همه استان\u200Cها'}</h2>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <TextField
-          id={`${fieldId}-bulk-fee`}
-          label={BULK_FEE_LABEL}
-          value={fee}
-          onChange={(next) => {
-            setFee(next);
-            setJustApplied(false);
-          }}
-          error={error}
-          hint={
-            'بعد از اعمال، استان\u200Cهای متفاوت را در جدول تک\u200Cتک تنظیم کن'
-          }
-          dir="ltr"
-          inputMode="numeric"
-          umami="admin-panel-shipping-bulk-fee"
-        />
-      </div>
-
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={busy}
-          data-umami-event="admin-panel-shipping-bulk-apply"
-          className="bg-accent-strong hover:bg-accent-hover inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy && (
-            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-          )}
-          {APPLY_ALL_LABEL}
-        </button>
-        {justApplied && (
-          <span className="text-success-strong flex items-center gap-1 text-sm">
-            <Check size={16} aria-hidden="true" /> روی همه اعمال شد
-          </span>
-        )}
-      </div>
-    </form>
+      <TextField
+        id={`${fieldId}-bulk-fee`}
+        label={BULK_FEE_LABEL}
+        value={fee}
+        onChange={(next) => {
+          setFee(next);
+          setJustApplied(false);
+        }}
+        error={error}
+        hint={
+          'بعد از اعمال، استان\u200Cهای متفاوت را در جدول تک\u200Cتک تنظیم کن'
+        }
+        dir="ltr"
+        inputMode="numeric"
+        umami="admin-panel-shipping-bulk-fee"
+      />
+    </CreateCard>
   );
 }
 
@@ -287,60 +248,35 @@ function CreateProvinceForm({
   };
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-      className="border-border bg-card flex flex-col gap-4 rounded-2xl border p-6"
+    <CreateCard
+      title="استان جدید"
+      onSubmit={submit}
+      busy={busy}
+      done={justCreated && <>استان «{justCreated}» اضافه شد</>}
+      submitLabel="افزودن استان"
+      umami="admin-panel-shipping-province-create"
     >
-      <h2 className="font-bold">استان جدید</h2>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <TextField
-          id={`${fieldId}-name`}
-          label="نام استان"
-          value={name}
-          onChange={setName}
-          error={errors.name}
-          dir="rtl"
-          umami="admin-panel-shipping-province-name"
-        />
-        <TextField
-          id={`${fieldId}-fee`}
-          label="هزینه ارسال (تومان)"
-          value={fee}
-          onChange={setFee}
-          error={errors.fee}
-          hint="صفر یعنی ارسال رایگان"
-          dir="ltr"
-          inputMode="numeric"
-          umami="admin-panel-shipping-province-fee"
-        />
-      </div>
-
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={busy}
-          data-umami-event="admin-panel-shipping-province-create"
-          className="bg-accent-strong hover:bg-accent-hover inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? (
-            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-          ) : (
-            <Plus size={14} aria-hidden="true" />
-          )}
-          افزودن استان
-        </button>
-        {justCreated && (
-          <span className="text-success-strong flex items-center gap-1 text-sm">
-            <Check size={16} aria-hidden="true" /> استان «{justCreated}» اضافه
-            شد
-          </span>
-        )}
-      </div>
-    </form>
+      <TextField
+        id={`${fieldId}-name`}
+        label="نام استان"
+        value={name}
+        onChange={setName}
+        error={errors.name}
+        dir="rtl"
+        umami="admin-panel-shipping-province-name"
+      />
+      <TextField
+        id={`${fieldId}-fee`}
+        label="هزینه ارسال (تومان)"
+        value={fee}
+        onChange={setFee}
+        error={errors.fee}
+        hint="صفر یعنی ارسال رایگان"
+        dir="ltr"
+        inputMode="numeric"
+        umami="admin-panel-shipping-province-fee"
+      />
+    </CreateCard>
   );
 }
 
@@ -408,15 +344,9 @@ function RateRow({
     >
       <td className="px-4 py-2.5 font-medium">{rate.name}</td>
       <td className="px-4 py-2.5">
-        {rate.isActive ? (
-          <span className="text-success-strong bg-success-soft inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
-            فعال
-          </span>
-        ) : (
-          <span className="text-muted-foreground bg-muted inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
-            غیرفعال
-          </span>
-        )}
+        <Pill tone={rate.isActive ? 'success' : 'muted'}>
+          {rate.isActive ? 'فعال' : 'غیرفعال'}
+        </Pill>
       </td>
       <td className="px-4 py-2.5">
         <label htmlFor={inputId} className="sr-only">

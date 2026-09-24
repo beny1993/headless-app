@@ -6,7 +6,7 @@
 // Page-level input degrades rather than 400s (the always-zod rule for pages): a
 // bad value falls back to "no filter" via `.catch`, never throws.
 import { z } from 'zod';
-import { PET_TYPES } from '@/lib/catalog/product-query';
+import { PET_TYPE_VALUES } from '@/lib/catalog/product-query';
 import { PROTECTED_PATHS } from '@/lib/constant/paths';
 import { pageParamSchema } from '@/lib/pagination';
 
@@ -17,7 +17,7 @@ export type ActiveValue = (typeof ACTIVE_VALUES)[number];
 export const adminProductFilterSchema = z.object({
   q: z.string().trim().min(1).optional().catch(undefined),
   category: z.string().trim().min(1).optional().catch(undefined),
-  pet: z.enum([PET_TYPES.CAT, PET_TYPES.DOG]).optional().catch(undefined),
+  pet: z.enum(PET_TYPE_VALUES).optional().catch(undefined),
   active: z.enum(ACTIVE_VALUES).catch('all'),
   page: pageParamSchema,
 });

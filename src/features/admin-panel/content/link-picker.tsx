@@ -15,6 +15,7 @@ import {
   type LinkType,
 } from '@/lib/content/link';
 import { MAX_ROUTINE_CATEGORIES } from '@/lib/content/site-content';
+import { toPersianDigits } from '@/lib/format';
 import { controlClass, FieldMessage } from '@/components/ui/field';
 
 /** A category or active product a destination can point at. */
@@ -329,7 +330,8 @@ export function CategoryPicker({
           `به این ترتیب نمایش داده می‌شوند: ${selected.map(titleOf).join('، ')}`
         ) : (
           <>
-            تا چهار دسته‌بندی، به ترتیب انتخاب. پیش‌فرض:{' '}
+            تا {toPersianDigits(MAX_ROUTINE_CATEGORIES)} دسته‌بندی، به ترتیب
+            انتخاب. پیش‌فرض:{' '}
             <span dir="ltr" className="inline-block align-middle">
               {fallback}
             </span>
