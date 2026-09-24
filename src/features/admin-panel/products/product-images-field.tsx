@@ -18,15 +18,11 @@ import { validateImageFile } from '@/features/admin-panel/shared/image-picker';
 // opening image — so the order is the only thing that decides it and there is no
 // `is_primary` anywhere.
 //
-// A sibling of `ImagePicker` rather than a `multiple` mode on it: that picker is
-// shared with the storefront content editor, and a mode flag would fork its
-// layout in two and leave the editor one regression away. What is shared is the
-// part that must not drift is `validateImageFile`, so that the two Persian
-// refusals live in one place. The accept list and the format hint come
-// straight from `@/lib/storage/image-upload`, which owns the cap they
-// describe — an earlier version of this comment claimed all three were
-// shared while the hint was a retyped copy promising a ceiling the route
-// no longer enforced.
+// A sibling of `ImagePicker` rather than a `multiple` mode on it: a mode flag
+// would fork that picker's layout and leave the content editor one regression
+// away. What they share is `validateImageFile`, so the Persian refusals live in
+// one place; the accept list and format hint come from
+// `@/lib/storage/image-upload`, which owns the cap they describe.
 
 /** One tile's value: a photo already stored, or a file picked but not yet sent. */
 export type ProductPhoto =

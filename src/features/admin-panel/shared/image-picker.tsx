@@ -10,17 +10,12 @@ import {
   MAX_UPLOAD_BYTES,
 } from '@/lib/storage/image-upload';
 
-// The admin image slot, extracted from the product form so the product form and
-// the content editor share one picker rather than two. Presentational: it shows
+// The admin image slot the content editor renders. Presentational: it shows
 // the current preview (a bundled/upload URL, or a `blob:` URL for a just-picked
 // file), a file input, the accept/size hint, and an error — and calls `onPick`
-// with the chosen file. The when/where of the actual upload stays with each
-// form; validation is the shared `validateImageFile` below, so the two Persian
-// messages live in one place.
-
-// The two refusals and the hint below now come from the module that owns the
-// cap they quote, so raising `MAX_UPLOAD_BYTES` cannot leave Persian copy
-// promising the old ceiling.
+// with the chosen file. The upload itself stays with the form. `validateImageFile`
+// below is shared with the product gallery field, so the Persian refusals — which
+// come from the module that owns the cap they quote — live in one place.
 
 /**
  * The client-side accept/size check, matching the server's trust boundary so a

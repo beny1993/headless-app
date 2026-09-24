@@ -39,9 +39,8 @@ import { activeHref, type NavMatch } from './nav-match';
 //     by the backdrop or the drawer's close button, and auto-closed on navigation.
 //     Defaults closed, so the first paint is hydration-safe (no `window` read).
 //
-// One entry per admin page that exists (dashboard, orders, products, shipping).
-// `NAV_ITEMS` is data-driven, so a future admin page adds its entry here. The
-// content editor is four area sub-links under one «محتوای سایت» group heading —
+// One `NAV_ITEMS` entry per admin page; a new page adds its entry here. The
+// content editor's areas are sub-links under one «محتوای سایت» group heading —
 // `group` labels them; a heading is emitted when an item's group first appears.
 type NavItem = NavMatch & {
   label: string;
@@ -86,8 +85,8 @@ const NAV_ITEMS: NavItem[] = [
     icon: Settings,
     match: 'prefix',
   },
-  // «محتوای سایت» — five area editors. `exact`, because no area has sub-routes;
-  // each links to `/admin-panel/content/[area]`.
+  // «محتوای سایت» — one editor per area. `exact`, because no area has
+  // sub-routes; each links to `/admin-panel/content/[area]`.
   {
     href: adminContentAreaPath('home'),
     label: 'صفحه اصلی',
