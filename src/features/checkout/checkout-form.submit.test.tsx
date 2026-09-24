@@ -459,15 +459,21 @@ describe('the checkout submit state machine', () => {
     expect(getCart()).toHaveLength(1);
   });
 
-  it('surfaces a server error with no field mapping in the top-level alert', async () => {
-    postData.mockRejectedValue(new ApiRequestError(500, 'خطای سرور'));
+  it('surfaces a server error in Persian in the top-level alert', async () => {
+    // A 5xx `message` is the literal `Internal server error` — English
+    // developer text the shopper must never read.
+    postData.mockRejectedValue(
+      new ApiRequestError(500, 'Internal server error'),
+    );
     advanceToPayment();
 
     await act(async () => {
       fireEvent.click(submitButton());
     });
 
-    expect(screen.getByRole('alert').textContent).toContain('خطای سرور');
+    expect(screen.getByRole('alert').textContent).toBe(
+      'ثبت سفارش انجام نشد. لطفاً دوباره تلاش کن.',
+    );
     expect(submitButton().disabled).toBe(false);
     expect(getCart()).toHaveLength(1); // nothing created, cart kept
   });
