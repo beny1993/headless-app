@@ -28,6 +28,3 @@ export const siteContent = pgTable('site_content', {
    */
   updatedAt,
 });
-
-export type SiteContentRow = typeof siteContent.$inferSelect;
-export type NewSiteContentRow = typeof siteContent.$inferInsert;

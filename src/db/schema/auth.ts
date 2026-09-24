@@ -139,5 +139,3 @@ export const rateLimits = pgTable('rate_limit', {
 });
 
 export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
-export type OtpSendLogRow = typeof otpSendLog.$inferSelect;

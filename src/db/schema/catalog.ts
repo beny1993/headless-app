@@ -243,11 +243,9 @@ export const productImages = pgTable(
 );
 
 export type Category = typeof categories.$inferSelect;
-export type NewCategory = typeof categories.$inferInsert;
 export type Product = typeof products.$inferSelect;
 export type NewProduct = typeof products.$inferInsert;
 export type ProductImage = typeof productImages.$inferSelect;
-export type NewProductImage = typeof productImages.$inferInsert;
 
 /**
  * A product with its images and its additional categories attached, as the

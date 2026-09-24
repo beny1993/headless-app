@@ -70,6 +70,4 @@ export const shippingRates = pgTable(
 );
 
 export type Province = typeof provinces.$inferSelect;
-export type NewProvince = typeof provinces.$inferInsert;
 export type ShippingRate = typeof shippingRates.$inferSelect;
-export type NewShippingRate = typeof shippingRates.$inferInsert;

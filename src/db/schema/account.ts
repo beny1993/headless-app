@@ -103,6 +103,4 @@ export const addresses = pgTable(
 );
 
 export type Pet = typeof pets.$inferSelect;
-export type NewPet = typeof pets.$inferInsert;
 export type Address = typeof addresses.$inferSelect;
-export type NewAddress = typeof addresses.$inferInsert;
