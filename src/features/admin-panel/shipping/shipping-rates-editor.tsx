@@ -4,7 +4,7 @@ import { useId, useState } from 'react';
 import { Check, Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AdminProvinceRow } from '@/db/dao/ShippingRateDao';
-import { TextField } from '@/features/account/account-fields';
+import { TextField } from '@/components/ui/field';
 import {
   ApiRequestError,
   patchData,

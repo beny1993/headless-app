@@ -23,7 +23,11 @@ import {
 } from '@/lib/catalog/product-query';
 import { SKU_SUFFIX_LENGTH, skuPreview } from '@/lib/catalog/sku';
 import { VARIANT_LABEL_LIMIT } from '@/lib/catalog/variant';
-import { parseFieldErrors } from '@/lib/checkout/field-errors';
+import {
+  reasonFrom,
+  requestFieldErrors,
+  zodFieldErrors,
+} from '@/lib/checkout/field-errors';
 import {
   API_PATHS,
   apiAdminProductImagesPath,
@@ -36,7 +40,8 @@ import {
   ProductImagesField,
   type ProductPhoto,
 } from '@/features/admin-panel/products/product-images-field';
-import { Field, HintOrError } from '@/features/admin-panel/shared/field';
+import { controlClass, FieldMessage, FieldShell } from '@/components/ui/field';
+import { cn } from '@/lib/utils';
 
 // Derived from the route's own response type, never restated — a hand-mirrored
 // `{ id: string }` is the shape that drifts. `import type` is erased for being
@@ -95,16 +100,6 @@ const GENERIC_ERROR = 'خطای غیرمنتظره رخ داد. دوباره ت�
  *  field's own message rather than a missing-key one. */
 const numeric = (value: string): number => parseDigits(value) ?? Number.NaN;
 
-/** Map a ZodError to `{ field: message }`, first issue per field winning. */
-const zodFieldErrors = (error: z.ZodError): Record<string, string> => {
-  const fields: Record<string, string> = {};
-  for (const issue of error.issues) {
-    const key = String(issue.path[0] ?? '');
-    if (key && !(key in fields)) fields[key] = issue.message;
-  }
-  return fields;
-};
-
 /** Append one picked photo to the just-saved product and return its stored key.
  *  One request per file: the 2 MB ceiling is mounted per request, so batching
  *  would turn it into a shared cap. `postForm` throws `ApiRequestError`, so a
@@ -157,18 +152,6 @@ const photosFailedMessage = (failed: number, reason?: string) =>
  */
 const orderFailedMessage = () =>
   `محصول ذخیره شد اما ترتیب عکس‌ها ذخیره نشد. ${RETRY_ADVICE}`;
-
-/**
- * The server's sentence for a refusal, when it sent one written for a person.
- *
- * `message` only, and only on a 4xx. `errors` is field paths and Zod's text,
- * English by the contract in `create-router.ts`; a 5xx `message` is the
- * literal `Internal server error`. Neither belongs in Persian admin copy.
- */
-const reasonFrom = (error: unknown): string | undefined =>
-  error instanceof ApiRequestError && error.status >= 400 && error.status < 500
-    ? error.message
-    : undefined;
 
 /** Same keys, same order. */
 const sameOrder = (a: readonly string[], b: readonly string[]) =>
@@ -424,28 +407,13 @@ export function ProductForm({
       if (orderFailed) toast.warning(orderFailedMessage());
     } catch (error) {
       setBusy(false);
-      if (
-        error instanceof ApiRequestError &&
-        (error.status === 400 || error.status === 409 || error.status === 422)
-      ) {
-        const { fields, unmapped } = parseFieldErrors(error.errors);
-        setFieldErrors(fields);
-        // A refusal no field can show is the request's own failure: a toast.
-        const message =
-          unmapped.length > 0
-            ? unmapped.join(' ')
-            : Object.keys(fields).length === 0
-              ? error.message
-              : undefined;
-        if (message) toast.error(message);
-        return;
-      }
-      // `reasonFrom`, not `error.message`: this line used to forward whatever
-      // an `Error` carried, which is a browser's `TypeError: Failed to fetch`
-      // for a dead connection and the literal `Internal server error` for
-      // every 5xx — English developer text, in Persian admin copy.
-      //
-      // Suppressing it is only half the job: the detail still has to reach
+      // A refusal no field can show is the request's own failure: a toast.
+      // `requestFieldErrors` keeps a dead connection's `TypeError` and a 5xx's
+      // `Internal server error` — English developer text — out of it.
+      const { fields, message } = requestFieldErrors(error, GENERIC_ERROR);
+      setFieldErrors(fields);
+      if (message) toast.error(message);
+      // Suppressing that text is only half the job: the detail still has to reach
       // GlitchTip or it is nowhere. An `ApiRequestError` means the request
       // arrived, and `create-router.ts` captures every 5xx server-side — so
       // reporting it here would only duplicate. What is left never reached the
@@ -455,7 +423,6 @@ export function ProductForm({
       // by itself. Without this line the admin reads the generic sentence and
       // nobody ever learns why.
       if (!(error instanceof ApiRequestError)) Sentry.captureException(error);
-      toast.error(reasonFrom(error) ?? GENERIC_ERROR);
     }
   };
 
@@ -493,17 +460,21 @@ export function ProductForm({
           onChange={setPhotos}
         />
 
-        <Field id={fid('title')} label="عنوان محصول" error={fieldErrors.title}>
+        <FieldShell
+          id={fid('title')}
+          label="عنوان محصول"
+          error={fieldErrors.title}
+        >
           <input
             id={fid('title')}
             value={form.title}
             onChange={(e) => update('title', e.target.value)}
-            className={inputClass(fieldErrors.title)}
+            className={controlClass(Boolean(fieldErrors.title))}
           />
-        </Field>
+        </FieldShell>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field
+          <FieldShell
             id={fid('slug')}
             label="نشانی یکتا (slug)"
             hint={
@@ -526,10 +497,10 @@ export function ProductForm({
               value={form.slug}
               onChange={(e) => update('slug', e.target.value)}
               placeholder="royal-canin-cat-sensible-2kg"
-              className={`${inputClass(fieldErrors.slug)} text-start`}
+              className={controlClass(Boolean(fieldErrors.slug))}
             />
-          </Field>
-          <Field
+          </FieldShell>
+          <FieldShell
             id={fid('sku')}
             label="کد کالا (SKU)"
             hint={
@@ -546,22 +517,25 @@ export function ProductForm({
               dir="ltr"
               readOnly
               value={product ? product.sku : skuPreview(form.slug)}
-              className={`${inputClass(fieldErrors.sku)} text-muted-foreground text-start`}
+              className={cn(
+                controlClass(Boolean(fieldErrors.sku)),
+                'text-muted-foreground',
+              )}
             />
-          </Field>
+          </FieldShell>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field id={fid('brand')} label="برند" error={fieldErrors.brand}>
+          <FieldShell id={fid('brand')} label="برند" error={fieldErrors.brand}>
             <input
               id={fid('brand')}
               value={form.brand}
               onChange={(e) => update('brand', e.target.value)}
-              className={inputClass(fieldErrors.brand)}
+              className={controlClass(Boolean(fieldErrors.brand))}
             />
-          </Field>
+          </FieldShell>
           {!isMember && (
-            <Field
+            <FieldShell
               id={fid('categoryId')}
               label="دسته‌بندی"
               error={fieldErrors.categoryId}
@@ -570,7 +544,7 @@ export function ProductForm({
                 id={fid('categoryId')}
                 value={form.categoryId}
                 onChange={(e) => chooseCategory(e.target.value)}
-                className={inputClass(fieldErrors.categoryId)}
+                className={controlClass(Boolean(fieldErrors.categoryId))}
               >
                 <option value="">انتخاب دسته‌بندی</option>
                 {categories.map((category) => (
@@ -593,7 +567,7 @@ export function ProductForm({
                   </Link>
                 </p>
               )}
-            </Field>
+            </FieldShell>
           )}
           {isMember && (
             <div className="border-border bg-secondary/40 rounded-xl border border-dashed p-3 sm:col-span-2">
@@ -611,7 +585,7 @@ export function ProductForm({
             the product page. Both fields are optional and a product that uses
             neither behaves exactly as before. */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field
+          <FieldShell
             id={fid('variantLabel')}
             label="نوع (اختیاری)"
             error={fieldErrors.variantLabel}
@@ -620,7 +594,7 @@ export function ProductForm({
               id={fid('variantLabel')}
               value={form.variantLabel}
               onChange={(e) => update('variantLabel', e.target.value)}
-              className={inputClass(fieldErrors.variantLabel)}
+              className={controlClass(Boolean(fieldErrors.variantLabel))}
               placeholder="مثلاً ۱۰ کیلوگرم یا قرمز"
               maxLength={VARIANT_LABEL_LIMIT}
             />
@@ -628,8 +602,8 @@ export function ProductForm({
               اگر این محصول در چند اندازه، رنگ یا رایحه است، این‌جا نوعِ همین
               مورد را بنویس.
             </p>
-          </Field>
-          <Field
+          </FieldShell>
+          <FieldShell
             id={fid('variantOf')}
             label="زیرمجموعه‌ی (اختیاری)"
             error={fieldErrors.variantOf}
@@ -638,7 +612,7 @@ export function ProductForm({
               id={fid('variantOf')}
               value={form.variantOf}
               onChange={(e) => chooseHead(e.target.value)}
-              className={inputClass(fieldErrors.variantOf)}
+              className={controlClass(Boolean(fieldErrors.variantOf))}
               // A product that already has members cannot itself become one:
               // only one level is allowed, and moving it would orphan them.
               disabled={hasMembers}
@@ -670,7 +644,7 @@ export function ProductForm({
                 دسته‌بندی و نوع حیوان از همین محصول اصلی گرفته می‌شود.
               </p>
             )}
-          </Field>
+          </FieldShell>
         </div>
 
         {/* Its own full-width block under the main category, so the two read
@@ -680,7 +654,13 @@ export function ProductForm({
             catalogue reaches dozens of categories with sub-categories, and the
             admin is choosing at most five. */}
         {!isMember && (
-          <fieldset aria-describedby={fid('extraCategoryIds-note')}>
+          <fieldset
+            aria-describedby={fid(
+              fieldErrors.extraCategoryIds
+                ? 'extraCategoryIds-error'
+                : 'extraCategoryIds-hint',
+            )}
+          >
             <legend className="mb-1.5 block text-sm font-medium">
               دسته‌بندی‌های دیگر (اختیاری)
             </legend>
@@ -730,7 +710,10 @@ export function ProductForm({
                 setExtras([...form.extraCategoryIds, e.target.value])
               }
               data-umami-event="admin-panel-product-category-extra-add"
-              className={`${inputClass(fieldErrors.extraCategoryIds)} mt-2 disabled:opacity-60`}
+              className={cn(
+                controlClass(Boolean(fieldErrors.extraCategoryIds)),
+                'mt-2 disabled:opacity-60',
+              )}
             >
               <option value="">افزودن دسته‌بندی…</option>
               {categories
@@ -745,8 +728,8 @@ export function ProductForm({
                   </option>
                 ))}
             </select>
-            <HintOrError
-              id={fid('extraCategoryIds-note')}
+            <FieldMessage
+              id={fid('extraCategoryIds')}
               hint={
                 promotedTitle
                   ? `«${promotedTitle}» از دسته‌بندی‌های دیگر برداشته شد؛ حالا دسته‌بندی اصلی است.`
@@ -759,7 +742,7 @@ export function ProductForm({
           </fieldset>
         )}
 
-        <Field
+        <FieldShell
           id={fid('benefit')}
           label="جمله مزیت"
           hint="یک خط کوتاه که روی کارت محصول دیده می‌شود"
@@ -770,11 +753,11 @@ export function ProductForm({
             value={form.benefit}
             onChange={(e) => update('benefit', e.target.value)}
             placeholder="مناسب گوارش حساس"
-            className={inputClass(fieldErrors.benefit)}
+            className={controlClass(Boolean(fieldErrors.benefit))}
           />
-        </Field>
+        </FieldShell>
 
-        <Field
+        <FieldShell
           id={fid('description')}
           label="توضیحات"
           error={fieldErrors.description}
@@ -784,12 +767,12 @@ export function ProductForm({
             rows={4}
             value={form.description}
             onChange={(e) => update('description', e.target.value)}
-            className={inputClass(fieldErrors.description)}
+            className={controlClass(Boolean(fieldErrors.description))}
           />
-        </Field>
+        </FieldShell>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Field
+          <FieldShell
             id={fid('price')}
             label="قیمت (تومان)"
             hint={money(form.price) ?? 'عدد صحیح، بدون جداکننده'}
@@ -801,10 +784,10 @@ export function ProductForm({
               dir="ltr"
               value={form.price}
               onChange={(e) => update('price', e.target.value)}
-              className={`${inputClass(fieldErrors.price)} text-start`}
+              className={controlClass(Boolean(fieldErrors.price))}
             />
-          </Field>
-          <Field
+          </FieldShell>
+          <FieldShell
             id={fid('oldPrice')}
             label="قیمت قبلی (اختیاری)"
             hint={money(form.oldPrice) ?? 'برای نمایش برچسب تخفیف'}
@@ -816,10 +799,10 @@ export function ProductForm({
               dir="ltr"
               value={form.oldPrice}
               onChange={(e) => update('oldPrice', e.target.value)}
-              className={`${inputClass(fieldErrors.oldPrice)} text-start`}
+              className={controlClass(Boolean(fieldErrors.oldPrice))}
             />
-          </Field>
-          <Field
+          </FieldShell>
+          <FieldShell
             id={fid('stock')}
             label="موجودی"
             hint="صفر یعنی ناموجود"
@@ -831,9 +814,9 @@ export function ProductForm({
               dir="ltr"
               value={form.stock}
               onChange={(e) => update('stock', e.target.value)}
-              className={`${inputClass(fieldErrors.stock)} text-start`}
+              className={controlClass(Boolean(fieldErrors.stock))}
             />
-          </Field>
+          </FieldShell>
         </div>
 
         {/* Two independent `aria-pressed` toggles already are multi-select
@@ -841,7 +824,11 @@ export function ProductForm({
             needs the handler to toggle rather than replace, and nothing else.
             The fieldset's legend is the group's label. */}
         {!isMember && (
-          <fieldset aria-describedby={fid('petTypes-note')}>
+          <fieldset
+            aria-describedby={fid(
+              fieldErrors.petTypes ? 'petTypes-error' : 'petTypes-hint',
+            )}
+          >
             <legend className="mb-1.5 block text-sm font-medium">
               نوع حیوان
             </legend>
@@ -868,8 +855,8 @@ export function ProductForm({
             </div>
             {/* Deselecting the last pet is allowed and refused on submit with
                 every other field: silently ignoring the click says nothing. */}
-            <HintOrError
-              id={fid('petTypes-note')}
+            <FieldMessage
+              id={fid('petTypes')}
               hint="یکی یا هر دو را انتخاب کن"
               error={fieldErrors.petTypes}
             />
@@ -930,10 +917,3 @@ export function ProductForm({
     </div>
   );
 }
-
-const inputClass = (error?: string) =>
-  `bg-secondary h-12 w-full rounded-xl px-4 text-sm outline-none border ${
-    error
-      ? 'border-destructive'
-      : 'border-border focus-visible:border-accent-strong'
-  }`;
