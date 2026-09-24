@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { Check, Loader2, Plus } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AdminProvinceRow } from '@/db/dao/ShippingRateDao';
 import { controlClass, TextField } from '@/components/ui/field';
@@ -24,6 +24,7 @@ import {
 import { shippingFeeSchema } from '@/lib/shipping/shipping-query';
 import { cn } from '@/lib/utils';
 import { AdminTable } from '@/features/admin-panel/shared/admin-table';
+import { CreateCard } from '@/features/admin-panel/shared/create-card';
 
 const DEACTIVATE_LABEL = 'غیرفعال\u200Cسازی';
 const ACTIVATE_LABEL = 'فعال\u200Cسازی';
@@ -167,53 +168,32 @@ function BulkFeeForm({
   };
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-      className="border-border bg-card flex flex-col gap-4 rounded-2xl border p-6"
+    <CreateCard
+      title={'یک هزینه برای همه استان\u200Cها'}
+      onSubmit={submit}
+      busy={busy}
+      done={justApplied && 'روی همه اعمال شد'}
+      submitLabel={APPLY_ALL_LABEL}
+      submitIcon={null}
+      umami="admin-panel-shipping-bulk-apply"
     >
-      <h2 className="font-bold">{'یک هزینه برای همه استان\u200Cها'}</h2>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <TextField
-          id={`${fieldId}-bulk-fee`}
-          label={BULK_FEE_LABEL}
-          value={fee}
-          onChange={(next) => {
-            setFee(next);
-            setJustApplied(false);
-          }}
-          error={error}
-          hint={
-            'بعد از اعمال، استان\u200Cهای متفاوت را در جدول تک\u200Cتک تنظیم کن'
-          }
-          dir="ltr"
-          inputMode="numeric"
-          umami="admin-panel-shipping-bulk-fee"
-        />
-      </div>
-
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={busy}
-          data-umami-event="admin-panel-shipping-bulk-apply"
-          className="bg-accent-strong hover:bg-accent-hover inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy && (
-            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-          )}
-          {APPLY_ALL_LABEL}
-        </button>
-        {justApplied && (
-          <span className="text-success-strong flex items-center gap-1 text-sm">
-            <Check size={16} aria-hidden="true" /> روی همه اعمال شد
-          </span>
-        )}
-      </div>
-    </form>
+      <TextField
+        id={`${fieldId}-bulk-fee`}
+        label={BULK_FEE_LABEL}
+        value={fee}
+        onChange={(next) => {
+          setFee(next);
+          setJustApplied(false);
+        }}
+        error={error}
+        hint={
+          'بعد از اعمال، استان\u200Cهای متفاوت را در جدول تک\u200Cتک تنظیم کن'
+        }
+        dir="ltr"
+        inputMode="numeric"
+        umami="admin-panel-shipping-bulk-fee"
+      />
+    </CreateCard>
   );
 }
 
@@ -267,60 +247,35 @@ function CreateProvinceForm({
   };
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-      className="border-border bg-card flex flex-col gap-4 rounded-2xl border p-6"
+    <CreateCard
+      title="استان جدید"
+      onSubmit={submit}
+      busy={busy}
+      done={justCreated && <>استان «{justCreated}» اضافه شد</>}
+      submitLabel="افزودن استان"
+      umami="admin-panel-shipping-province-create"
     >
-      <h2 className="font-bold">استان جدید</h2>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <TextField
-          id={`${fieldId}-name`}
-          label="نام استان"
-          value={name}
-          onChange={setName}
-          error={errors.name}
-          dir="rtl"
-          umami="admin-panel-shipping-province-name"
-        />
-        <TextField
-          id={`${fieldId}-fee`}
-          label="هزینه ارسال (تومان)"
-          value={fee}
-          onChange={setFee}
-          error={errors.fee}
-          hint="صفر یعنی ارسال رایگان"
-          dir="ltr"
-          inputMode="numeric"
-          umami="admin-panel-shipping-province-fee"
-        />
-      </div>
-
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={busy}
-          data-umami-event="admin-panel-shipping-province-create"
-          className="bg-accent-strong hover:bg-accent-hover inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? (
-            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-          ) : (
-            <Plus size={14} aria-hidden="true" />
-          )}
-          افزودن استان
-        </button>
-        {justCreated && (
-          <span className="text-success-strong flex items-center gap-1 text-sm">
-            <Check size={16} aria-hidden="true" /> استان «{justCreated}» اضافه
-            شد
-          </span>
-        )}
-      </div>
-    </form>
+      <TextField
+        id={`${fieldId}-name`}
+        label="نام استان"
+        value={name}
+        onChange={setName}
+        error={errors.name}
+        dir="rtl"
+        umami="admin-panel-shipping-province-name"
+      />
+      <TextField
+        id={`${fieldId}-fee`}
+        label="هزینه ارسال (تومان)"
+        value={fee}
+        onChange={setFee}
+        error={errors.fee}
+        hint="صفر یعنی ارسال رایگان"
+        dir="ltr"
+        inputMode="numeric"
+        umami="admin-panel-shipping-province-fee"
+      />
+    </CreateCard>
   );
 }
 

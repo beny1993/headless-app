@@ -7,7 +7,6 @@ import {
   Layers,
   Loader2,
   Pencil,
-  Plus,
   Trash2,
   X,
 } from 'lucide-react';
@@ -29,6 +28,7 @@ import { formatNumber, parseDigits } from '@/lib/format';
 import type { CategoryView } from '@/lib/hono/routes/admin-categories';
 import { cn } from '@/lib/utils';
 import { AdminTable } from '@/features/admin-panel/shared/admin-table';
+import { CreateCard } from '@/features/admin-panel/shared/create-card';
 import {
   COMPACT_CONTROL,
   controlClass,
@@ -166,85 +166,56 @@ function CreateForm({
   };
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-      className="border-border bg-card flex flex-col gap-4 rounded-2xl border p-6"
-    >
-      <div className="flex items-center gap-2">
+    <CreateCard
+      title="ساخت دسته‌بندی"
+      icon={
         <Layers size={18} className="text-accent-strong" aria-hidden="true" />
-        <h2 className="font-bold">ساخت دسته‌بندی</h2>
-      </div>
-
-      {/* Two columns, not three: four fields in `sm:grid-cols-3` leave one
-          orphan on a half-width row. */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <TextField
-          id={`${id}-title`}
-          label="عنوان"
-          value={draft.title}
-          onChange={(title) => setDraft((d) => ({ ...d, title }))}
-          error={errors.title}
-          placeholder="مثل غذای خشک"
-          umami="admin-panel-categories-title"
-        />
-        <TextField
-          id={`${id}-slug`}
-          label="نشانی (slug)"
-          value={draft.slug}
-          onChange={(slug) => setDraft((d) => ({ ...d, slug }))}
-          error={errors.slug}
-          hint="در آدرس فروشگاه، مثل dry-food"
-          dir="ltr"
-          umami="admin-panel-categories-slug"
-        />
-        <TextField
-          id={`${id}-sort`}
-          label="ترتیب نمایش"
-          value={draft.sortOrder}
-          onChange={(sortOrder) => setDraft((d) => ({ ...d, sortOrder }))}
-          error={errors.sortOrder}
-          hint="عدد کمتر، اول نمایش داده می‌شود"
-          dir="ltr"
-          inputMode="numeric"
-          umami="admin-panel-categories-sort"
-        />
-        <ParentField
-          id={`${id}-parent`}
-          value={draft.parentId}
-          onChange={(parentId) => setDraft((d) => ({ ...d, parentId }))}
-          parents={parents}
-          error={errors.parentId}
-          umami="admin-panel-categories-parent"
-        />
-      </div>
-
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={busy}
-          data-umami-event="admin-panel-categories-create"
-          className="bg-accent-strong hover:bg-accent-hover inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? (
-            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-          ) : (
-            <Plus size={14} aria-hidden="true" />
-          )}
-          ساخت دسته‌بندی
-        </button>
-        {justCreated && (
-          <span
-            role="status"
-            className="text-success-strong flex items-center gap-1 text-sm"
-          >
-            <Check size={16} aria-hidden="true" /> «{justCreated}» ساخته شد
-          </span>
-        )}
-      </div>
-    </form>
+      }
+      onSubmit={submit}
+      busy={busy}
+      done={justCreated && <>«{justCreated}» ساخته شد</>}
+      submitLabel="ساخت دسته‌بندی"
+      umami="admin-panel-categories-create"
+    >
+      <TextField
+        id={`${id}-title`}
+        label="عنوان"
+        value={draft.title}
+        onChange={(title) => setDraft((d) => ({ ...d, title }))}
+        error={errors.title}
+        placeholder="مثل غذای خشک"
+        umami="admin-panel-categories-title"
+      />
+      <TextField
+        id={`${id}-slug`}
+        label="نشانی (slug)"
+        value={draft.slug}
+        onChange={(slug) => setDraft((d) => ({ ...d, slug }))}
+        error={errors.slug}
+        hint="در آدرس فروشگاه، مثل dry-food"
+        dir="ltr"
+        umami="admin-panel-categories-slug"
+      />
+      <TextField
+        id={`${id}-sort`}
+        label="ترتیب نمایش"
+        value={draft.sortOrder}
+        onChange={(sortOrder) => setDraft((d) => ({ ...d, sortOrder }))}
+        error={errors.sortOrder}
+        hint="عدد کمتر، اول نمایش داده می‌شود"
+        dir="ltr"
+        inputMode="numeric"
+        umami="admin-panel-categories-sort"
+      />
+      <ParentField
+        id={`${id}-parent`}
+        value={draft.parentId}
+        onChange={(parentId) => setDraft((d) => ({ ...d, parentId }))}
+        parents={parents}
+        error={errors.parentId}
+        umami="admin-panel-categories-parent"
+      />
+    </CreateCard>
   );
 }
 

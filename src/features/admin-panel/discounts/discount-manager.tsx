@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { Check, Loader2, Plus, Tag } from 'lucide-react';
+import { Loader2, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 import { patchData, postData } from '@/lib/api-client';
 import {
@@ -24,6 +24,7 @@ import {
 import type { DiscountCodeView } from '@/lib/hono/routes/admin-discounts';
 import { cn } from '@/lib/utils';
 import { AdminTable } from '@/features/admin-panel/shared/admin-table';
+import { CreateCard } from '@/features/admin-panel/shared/create-card';
 import {
   controlClass,
   fieldAria,
@@ -135,124 +136,98 @@ function CreateForm({
   };
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-      className="border-border bg-card flex flex-col gap-4 rounded-2xl border p-6"
+    <CreateCard
+      title="ساخت کد تخفیف"
+      icon={<Tag size={18} className="text-accent-strong" aria-hidden="true" />}
+      onSubmit={submit}
+      busy={busy}
+      done={justCreated && <>کد «{justCreated}» ساخته شد</>}
+      submitLabel="ساخت کد"
+      umami="admin-panel-discount-create"
     >
-      <div className="flex items-center gap-2">
-        <Tag size={18} className="text-accent-strong" aria-hidden="true" />
-        <h2 className="font-bold">ساخت کد تخفیف</h2>
-      </div>
+      <TextField
+        id={`${fieldId}-code`}
+        label="کد"
+        value={code}
+        onChange={setCode}
+        error={errors.code}
+        dir="ltr"
+        placeholder="مثل NOWRUZ1405"
+        umami="admin-panel-discount-code"
+      />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <TextField
-          id={`${fieldId}-code`}
-          label="کد"
-          value={code}
-          onChange={setCode}
-          error={errors.code}
-          dir="ltr"
-          placeholder="مثل NOWRUZ1405"
-          umami="admin-panel-discount-code"
-        />
+      <FieldShell id={`${fieldId}-type`} label="نوع تخفیف">
+        <select
+          id={`${fieldId}-type`}
+          value={type}
+          onChange={(event) => setType(event.target.value as DiscountType)}
+          className={controlClass(false)}
+          data-umami-event="admin-panel-discount-type"
+        >
+          <option value={DISCOUNT_TYPES.PERCENT}>درصدی</option>
+          <option value={DISCOUNT_TYPES.FIXED}>مبلغی (تومان)</option>
+        </select>
+      </FieldShell>
 
-        <FieldShell id={`${fieldId}-type`} label="نوع تخفیف">
-          <select
-            id={`${fieldId}-type`}
-            value={type}
-            onChange={(event) => setType(event.target.value as DiscountType)}
-            className={controlClass(false)}
-            data-umami-event="admin-panel-discount-type"
-          >
-            <option value={DISCOUNT_TYPES.PERCENT}>درصدی</option>
-            <option value={DISCOUNT_TYPES.FIXED}>مبلغی (تومان)</option>
-          </select>
-        </FieldShell>
+      <TextField
+        id={`${fieldId}-value`}
+        label={
+          type === DISCOUNT_TYPES.PERCENT ? 'درصد (۱ تا ۱۰۰)' : 'مبلغ (تومان)'
+        }
+        value={value}
+        onChange={setValue}
+        error={errors.value}
+        dir="ltr"
+        inputMode="numeric"
+        umami="admin-panel-discount-value"
+      />
 
-        <TextField
-          id={`${fieldId}-value`}
-          label={
-            type === DISCOUNT_TYPES.PERCENT ? 'درصد (۱ تا ۱۰۰)' : 'مبلغ (تومان)'
-          }
-          value={value}
-          onChange={setValue}
-          error={errors.value}
-          dir="ltr"
-          inputMode="numeric"
-          umami="admin-panel-discount-value"
-        />
+      <TextField
+        id={`${fieldId}-min`}
+        label="حداقل مبلغ سفارش (تومان)"
+        value={minOrderAmount}
+        onChange={setMinOrderAmount}
+        error={errors.minOrderAmount}
+        dir="ltr"
+        inputMode="numeric"
+        hint="خالی یعنی بدون حداقل"
+        umami="admin-panel-discount-min"
+      />
 
-        <TextField
-          id={`${fieldId}-min`}
-          label="حداقل مبلغ سفارش (تومان)"
-          value={minOrderAmount}
-          onChange={setMinOrderAmount}
-          error={errors.minOrderAmount}
-          dir="ltr"
-          inputMode="numeric"
-          hint="خالی یعنی بدون حداقل"
-          umami="admin-panel-discount-min"
-        />
+      <TextField
+        id={`${fieldId}-limit`}
+        label="سقف استفاده"
+        value={usageLimit}
+        onChange={setUsageLimit}
+        error={errors.usageLimit}
+        dir="ltr"
+        inputMode="numeric"
+        hint="خالی یعنی نامحدود"
+        umami="admin-panel-discount-limit"
+      />
 
-        <TextField
-          id={`${fieldId}-limit`}
-          label="سقف استفاده"
-          value={usageLimit}
-          onChange={setUsageLimit}
-          error={errors.usageLimit}
-          dir="ltr"
-          inputMode="numeric"
-          hint="خالی یعنی نامحدود"
-          umami="admin-panel-discount-limit"
-        />
-
-        <FieldShell
+      <FieldShell
+        id={`${fieldId}-expires`}
+        label="تاریخ انقضا"
+        error={errors.expiresAt}
+        hint="خالی یعنی بدون انقضا"
+      >
+        <input
           id={`${fieldId}-expires`}
-          label="تاریخ انقضا"
-          error={errors.expiresAt}
-          hint="خالی یعنی بدون انقضا"
-        >
-          <input
-            id={`${fieldId}-expires`}
-            type="date"
-            value={expiresAt}
-            onChange={(event) => setExpiresAt(event.target.value)}
-            dir="ltr"
-            {...fieldAria(
-              `${fieldId}-expires`,
-              errors.expiresAt,
-              'خالی یعنی بدون انقضا',
-            )}
-            className={controlClass(Boolean(errors.expiresAt))}
-            data-umami-event="admin-panel-discount-expires"
-          />
-        </FieldShell>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={busy}
-          data-umami-event="admin-panel-discount-create"
-          className="bg-accent-strong hover:bg-accent-hover inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? (
-            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-          ) : (
-            <Plus size={14} aria-hidden="true" />
+          type="date"
+          value={expiresAt}
+          onChange={(event) => setExpiresAt(event.target.value)}
+          dir="ltr"
+          {...fieldAria(
+            `${fieldId}-expires`,
+            errors.expiresAt,
+            'خالی یعنی بدون انقضا',
           )}
-          ساخت کد
-        </button>
-        {justCreated && (
-          <span className="text-success-strong flex items-center gap-1 text-sm">
-            <Check size={16} aria-hidden="true" /> کد «{justCreated}» ساخته شد
-          </span>
-        )}
-      </div>
-    </form>
+          className={controlClass(Boolean(errors.expiresAt))}
+          data-umami-event="admin-panel-discount-expires"
+        />
+      </FieldShell>
+    </CreateCard>
   );
 }
 
