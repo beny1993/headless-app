@@ -210,16 +210,13 @@ export class OrderDao {
    * enters at `processing` (a releasable state) and is deliberately excluded.
    */
   static async countOpenForUser(userId: string): Promise<number> {
-    const [row] = await db
-      .select({ value: count() })
-      .from(orders)
-      .where(
-        and(
-          eq(orders.userId, userId),
-          eq(orders.status, ORDER_STATUSES.PENDING_PAYMENT),
-        ),
-      );
-    return row.value;
+    return db.$count(
+      orders,
+      and(
+        eq(orders.userId, userId),
+        eq(orders.status, ORDER_STATUSES.PENDING_PAYMENT),
+      ),
+    );
   }
 
   /**
@@ -345,11 +342,11 @@ export class OrderDao {
       .limit(limit)
       .offset((page - 1) * limit);
 
-    const [items, [counted]] = await Promise.all([
+    const [items, total] = await Promise.all([
       pageQuery,
-      db.select({ value: count() }).from(orders).where(where),
+      db.$count(orders, where),
     ]);
-    return { items, total: counted.value };
+    return { items, total };
   }
 
   /**
@@ -391,10 +388,6 @@ export class OrderDao {
 
   /** How many orders are in one status — the dashboard's «awaiting action» tile. */
   static async countByStatus(status: OrderStatus): Promise<number> {
-    const [row] = await db
-      .select({ value: count() })
-      .from(orders)
-      .where(eq(orders.status, status));
-    return row.value;
+    return db.$count(orders, eq(orders.status, status));
   }
 }

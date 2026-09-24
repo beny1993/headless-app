@@ -8,7 +8,6 @@
 import {
   and,
   asc,
-  count,
   desc,
   eq,
   gte,
@@ -279,14 +278,13 @@ export class ProductDao {
         .limit(limit)
         .offset((page - 1) * limit);
 
-    const countQuery = (on: Executor) =>
-      on.select({ value: count() }).from(products).where(where);
+    const countQuery = (on: Executor) => on.$count(products, where);
 
     // A search needs its similarity threshold, and that threshold only lives
     // for a transaction — so the two queries run on one connection, in order,
     // instead of in parallel. Every other listing keeps the parallel pair: the
     // shop's own catalogue browsing must not pay for the search box.
-    const [rows, [counted]] = search
+    const [rows, total] = search
       ? await db.transaction(async (tx) => {
           await tx.execute(applySearchThreshold);
           return [await pageQuery(tx), await countQuery(tx)] as const;
@@ -303,7 +301,7 @@ export class ProductDao {
         ...row,
         familyMinPrice: Number(row.familyMinPrice),
       })),
-      total: counted.value,
+      total,
     };
   }
 
@@ -389,16 +387,16 @@ export class ProductDao {
     limit?: number;
   } = {}): Promise<AdminProductPage> {
     const where = ProductDao.adminWhere(filters);
-    const [rows, [counted]] = await Promise.all([
+    const [rows, total] = await Promise.all([
       ProductDao.adminRows(where)
         .limit(limit)
         .offset((page - 1) * limit),
-      db.select({ value: count() }).from(products).where(where),
+      db.$count(products, where),
     ]);
 
     return {
       items: await ProductDao.withRelations(rows),
-      total: counted.value,
+      total,
     };
   }
 
@@ -601,11 +599,10 @@ export class ProductDao {
     id: string,
     executor: Executor = db,
   ): Promise<number> {
-    const [counted] = await executor
-      .select({ value: count() })
-      .from(products)
-      .where(and(eq(products.variantOf, id), eq(products.isActive, true)));
-    return counted.value;
+    return executor.$count(
+      products,
+      and(eq(products.variantOf, id), eq(products.isActive, true)),
+    );
   }
 
   /**

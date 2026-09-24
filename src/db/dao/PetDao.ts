@@ -89,10 +89,6 @@ export class PetDao {
 
   /** How many pets `userId` holds — the input to the per-user cap in the route. */
   static async countForUser(userId: string): Promise<number> {
-    const rows = await db
-      .select({ id: pets.id })
-      .from(pets)
-      .where(eq(pets.userId, userId));
-    return rows.length;
+    return db.$count(pets, eq(pets.userId, userId));
   }
 }

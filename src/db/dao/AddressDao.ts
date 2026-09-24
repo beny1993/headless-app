@@ -115,10 +115,6 @@ export class AddressDao {
 
   /** How many addresses `userId` holds — the input to the per-user cap. */
   static async countForUser(userId: string): Promise<number> {
-    const rows = await db
-      .select({ id: addresses.id })
-      .from(addresses)
-      .where(eq(addresses.userId, userId));
-    return rows.length;
+    return db.$count(addresses, eq(addresses.userId, userId));
   }
 }

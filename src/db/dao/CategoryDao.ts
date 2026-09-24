@@ -1,6 +1,6 @@
 // All Drizzle DB access goes through DAOs like this one. Multi-DAO operations
 // belong in src/logic/, not in route handlers or components. Never write raw SQL.
-import { asc, count, eq, inArray, or } from 'drizzle-orm';
+import { asc, eq, inArray, or } from 'drizzle-orm';
 import { db, type Executor } from '@/db';
 import {
   categories,
@@ -170,22 +170,19 @@ export class CategoryDao {
    * so a product that is filed there twice over is one product, not two.
    */
   static async countProducts(id: string): Promise<number> {
-    const [row] = await db
-      .select({ value: count() })
-      .from(products)
-      .where(
-        or(
-          eq(products.categoryId, id),
-          inArray(
-            products.id,
-            db
-              .select({ id: productCategories.productId })
-              .from(productCategories)
-              .where(eq(productCategories.categoryId, id)),
-          ),
+    return db.$count(
+      products,
+      or(
+        eq(products.categoryId, id),
+        inArray(
+          products.id,
+          db
+            .select({ id: productCategories.productId })
+            .from(productCategories)
+            .where(eq(productCategories.categoryId, id)),
         ),
-      );
-    return row?.value ?? 0;
+      ),
+    );
   }
 
   /**
@@ -194,10 +191,6 @@ export class CategoryDao {
    * {@link assertParent} can ask inside its own transaction.
    */
   static async countChildren(id: string, on: Executor = db): Promise<number> {
-    const [row] = await on
-      .select({ value: count() })
-      .from(categories)
-      .where(eq(categories.parentId, id));
-    return row?.value ?? 0;
+    return on.$count(categories, eq(categories.parentId, id));
   }
 }
