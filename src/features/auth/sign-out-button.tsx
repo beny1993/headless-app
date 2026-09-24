@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { authClient } from '@/lib/auth/client';
 import { PATHS } from '@/lib/constant/paths';
-import { Button } from '@/components/ui/button';
 
 /**
  * `page` names where this is mounted, for the analytics event.
@@ -30,14 +29,15 @@ export function SignOutButton({ page }: { page: 'account' | 'admin-panel' }) {
   };
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
+    // Hover is `secondary`, not shadcn's stock `accent`: here --accent is the
+    // brand terracotta, and white on it fails AA (design review, finding 24).
+    <button
+      className="bg-background hover:bg-secondary hover:text-secondary-foreground focus-visible:border-ring focus-visible:ring-ring/50 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50"
       onClick={signOut}
       disabled={isLoading}
       data-umami-event={`${page}-sign-out`}
     >
       {isLoading ? 'در حال خروج…' : 'خروج از حساب'}
-    </Button>
+    </button>
   );
 }
