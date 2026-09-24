@@ -25,19 +25,16 @@ import {
   ORDER_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
+  byProductId,
   initialStatusFor,
 } from '@/lib/orders/order-status';
+import { pgErrorOf } from '@/db/pg-error';
 import { CheckoutError } from '@/logic/checkout/checkout-error';
 import {
   DISCOUNT_EXHAUSTED,
   DISCOUNT_FIELD,
   assertDiscountApplicable,
 } from '@/logic/checkout/discount';
-
-// Re-exported so the many importers of `CheckoutError` keep their path
-// (`@/logic/checkout/create-order`); the class itself lives in ./checkout-error
-// so the discount policy can throw it without an import cycle.
-export { CheckoutError };
 
 // Persian, customer-facing. The `errors[]` detail the route builds is
 // `${field}: ${message}`, per the design note.
@@ -66,10 +63,6 @@ const insufficientStock = (title: string) =>
  */
 export const MAX_OPEN_ORDERS = 5;
 
-/** Ascending productId — the deterministic lock order the design mandates. */
-const byProductId = (a: { productId: string }, b: { productId: string }) =>
-  a.productId < b.productId ? -1 : a.productId > b.productId ? 1 : 0;
-
 /**
  * The partial unique index that anchors idempotent order creation
  * (`src/db/schema/orders.ts`). A 23505 naming exactly this constraint means a
@@ -81,19 +74,14 @@ const IDEMPOTENCY_CONSTRAINT = 'orders_user_idempotency_key_unique';
 
 /**
  * Whether `error` is a Postgres unique-violation (23505) on `constraint`.
- *
- * node-postgres raises a `DatabaseError` carrying `code`/`constraint`; drizzle
- * may re-wrap it, so the original is checked at `.cause` too. Matching the
- * constraint name (not just the 23505 code) keeps this from mistaking an
+ * Matching the constraint name (not just the code) keeps this from mistaking an
  * unrelated unique conflict — a future one added to `orders` — for an
  * idempotency hit.
  */
-const isUniqueViolation = (error: unknown, constraint: string): boolean =>
-  [error, (error as { cause?: unknown })?.cause].some((candidate) => {
-    const pgError = candidate as
-      { code?: string; constraint?: string } | null | undefined;
-    return pgError?.code === '23505' && pgError?.constraint === constraint;
-  });
+const isUniqueViolation = (error: unknown, constraint: string): boolean => {
+  const pg = pgErrorOf(error);
+  return pg?.code === '23505' && pg.constraint === constraint;
+};
 
 /**
  * Creates an order for `userId` from a validated checkout body.

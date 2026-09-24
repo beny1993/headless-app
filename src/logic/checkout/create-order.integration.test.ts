@@ -24,11 +24,12 @@ import {
   PAYMENT_STATUSES,
   type OrderStatus,
 } from '@/lib/orders/order-status';
+import { CheckoutError } from '@/logic/checkout/checkout-error';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 
-const { createOrder, CheckoutError, MAX_OPEN_ORDERS } = await importWithDb(
+const { createOrder, MAX_OPEN_ORDERS } = await importWithDb(
   () => import('@/logic/checkout/create-order'),
 );
 const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));

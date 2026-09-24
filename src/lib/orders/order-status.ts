@@ -171,3 +171,14 @@ export const paymentStatusSchema = z.enum(PAYMENT_STATUS_VALUES);
  * server-side, since legality depends on the current state, not the value alone.
  */
 export const adminTransitionTargetSchema = orderStatusSchema;
+
+/**
+ * Ascending productId by code point: the one product-row lock order. Checkout's
+ * reservation and the state machine's restock both sort by it, so two
+ * transactions touching the same products lock them in the same order and
+ * cannot deadlock.
+ */
+export const byProductId = (
+  a: { productId: string },
+  b: { productId: string },
+) => (a.productId < b.productId ? -1 : a.productId > b.productId ? 1 : 0);
