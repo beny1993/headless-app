@@ -35,6 +35,7 @@ import {
 import { postData } from '@/lib/api-client';
 import { normalizePostalCode, validateAddress } from '@/lib/account/address';
 import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
+import { startZarinpalPayment } from '@/lib/checkout/start-zarinpal-payment';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 import { API_PATHS, PATHS, checkoutResultPath } from '@/lib/constant/paths';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
@@ -403,11 +404,7 @@ export function CheckoutForm({
 
       if (paymentMethod === PAYMENT_METHODS.ZARINPAL) {
         try {
-          const { redirectUrl } = await postData<{ redirectUrl: string }>(
-            API_PATHS.PAYMENT_REQUEST,
-            { orderId: order.orderId },
-          );
-          window.location.assign(redirectUrl);
+          await startZarinpalPayment(order.orderId);
         } catch {
           // The order is created (pending_payment); starting the gateway failed.
           // Land on the result page — it shows "pending" and a retry button.
