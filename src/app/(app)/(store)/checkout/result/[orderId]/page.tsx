@@ -11,6 +11,7 @@ import {
   toSummaryLines,
 } from '@/features/checkout/order-summary';
 import { RetryPaymentButton } from '@/features/checkout/retry-payment-button';
+import { SupportLine } from '@/features/checkout/support-line';
 import { resultView } from '@/lib/checkout/result-view';
 import { PATHS, checkoutResultPath, shopPath } from '@/lib/constant/paths';
 import { formatJalali, toPersianDigits } from '@/lib/format';
@@ -133,15 +134,7 @@ export default async function Page({
           </div>
         </div>
 
-        {view.kind !== 'success' && (
-          <p className="text-muted-foreground mt-6 text-center text-xs">
-            شماره پشتیبانی:{' '}
-            <span dir="ltr" className="nums">
-              {toPersianDigits('021-1234567')}
-            </span>{' '}
-            — هر روز ۹ تا ۱۸
-          </p>
-        )}
+        {view.kind !== 'success' && <SupportLine className="text-center" />}
       </div>
     </main>
   );
