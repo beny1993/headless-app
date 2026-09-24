@@ -245,7 +245,7 @@ function CategoryTable({
       actions="عملیات"
     >
       {/* Sub-rows sit directly under their parent — the nesting *is* the
-                count, so no badge. */}
+          count, so no badge. */}
       {orderAsTree(categories).map(({ depth, ...category }) => (
         <CategoryRow
           key={category.id}

@@ -160,7 +160,7 @@ export default async function AdminProductsPage({
               className="text-muted-foreground px-4 py-10 text-center"
             >
               {/* Past the last page is not the same as nothing matching:
-                        the pager below still links back. */}
+                 the pager below still links back. */}
               {total > 0
                 ? 'این صفحه محصولی ندارد.'
                 : 'محصولی با این فیلترها پیدا نشد.'}
