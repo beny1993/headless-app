@@ -8,8 +8,7 @@
 // config, mapped exhaustively so a status added later fails the compile here
 // (the `Record<…, …>` type forces every member) rather than rendering blank.
 //
-// Badge classes are the design's tokens (`Design Review - Figma Export`,
-// finding 14), all defined in `src/app/globals.css`.
+// Badge classes are the design's tokens, all defined in `src/app/globals.css`.
 import {
   type OrderStatus,
   ORDER_STATUSES,

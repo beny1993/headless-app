@@ -9,8 +9,8 @@
 // which is fine for a personal dashboard and keeps the component clear of the
 // URL-resync class the project's component-test rule flags. The order DETAIL is a
 // real route (`/account/orders/[orderId]`, server-rendered and owner-scoped), so
-// the security-carrying read is never client state. The wishlist tab from the
-// prototype is omitted (backlog, per the design review's "Omitted in v1").
+// the security-carrying read is never client state. The prototype's wishlist
+// tab is backlog.
 import { useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, MapPin, Package, User } from 'lucide-react';

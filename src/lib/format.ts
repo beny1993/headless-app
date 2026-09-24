@@ -1,6 +1,6 @@
 // Persian display formatting. Every number and date the storefront renders goes
 // through this module — never a Persian literal in a component, or the site ends
-// up with two thousands separators on the same screen (design review, finding 7).
+// up with two thousands separators on the same screen.
 //
 // No date dependency anywhere: Jalali comes from `Intl` (`Smokey Shop Info`).
 

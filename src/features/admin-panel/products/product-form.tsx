@@ -379,8 +379,7 @@ export function ProductForm({
           objectKeys.push(key);
         } catch (error) {
           failed += 1;
-          // The first refusal's own words. `uploadImage` already builds the
-          // server's sentence and it used to be thrown away here.
+          // The first refusal's own words, as `uploadImage` built them.
           uploadReason ??= reasonFrom(error);
         }
       }

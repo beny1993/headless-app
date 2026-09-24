@@ -2,15 +2,8 @@
  * Shared pieces of a `createRoute` definition — the OpenAPI half.
  *
  * These live here rather than in `envelope.ts` because only the route files
- * ever use them, while `envelope.ts` reaches the browser: `api-client.ts`
- * value-imports `unwrap` from it, and both admin forms are `'use client'`.
- * Adding route-definition machinery there would have shipped more of it to
- * every admin page.
- *
- * This does NOT fix that bundle — `envelope.ts` still side-effect-imports
- * `@hono/zod-openapi` for `apiErrorSchema`/`apiSuccessSchema`, so the package
- * still travels. Splitting the client half out of `envelope.ts` is issue #66's
- * item and stays there; this only stops the pile growing.
+ * use them, while `envelope.ts` reaches the browser (`api-client.ts` imports
+ * `unwrap` from it): route-definition machinery there ships to every admin page.
  */
 import { z } from 'zod';
 import { apiErrorSchema } from './envelope';

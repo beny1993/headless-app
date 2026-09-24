@@ -99,9 +99,7 @@ export function ShopResults({
                 ),
               )
             }
-            // Native `<select>`, per the design review's ruling on finding 3:
-            // correct on mobile, nothing gained from a portal here — with the
-            // shared focus treatment rather than a bare `outline-none`.
+            // Native `<select>`: correct on mobile, nothing gained from a portal.
             className="border-border bg-background focus-visible:border-accent-strong rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors"
             aria-busy={pending}
             data-umami-event="shop-sort-change"
