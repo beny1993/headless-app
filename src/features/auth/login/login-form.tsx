@@ -28,9 +28,6 @@ import { PATHS } from '@/lib/constant/paths';
 import { formatNumber, toPersianDigits } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-/** Digits in a code — the same constant the server generates against. */
-const CODE_LENGTH = OTP_CODE_LENGTH;
-
 /**
  * How long before «ارسال دوباره کد» comes back.
  *
@@ -77,7 +74,7 @@ const messageForStatus = (status: number | undefined, fallback: string) => {
 type Step = 'phone' | 'code';
 
 /** Six empty boxes. A fresh array each time — this is mutated in place below. */
-const emptyCode = () => Array.from({ length: CODE_LENGTH }, () => '');
+const emptyCode = () => Array.from({ length: OTP_CODE_LENGTH }, () => '');
 
 /**
  * The storefront's only sign-in: a phone number, then the six digits texted to
@@ -209,7 +206,7 @@ export function LoginForm({ next }: { next: string }) {
   };
 
   const verify = async (value: string) => {
-    if (value.length !== CODE_LENGTH || isBusy) return;
+    if (value.length !== OTP_CODE_LENGTH || isBusy) return;
     setIsBusy(true);
     setError(undefined);
     try {
@@ -248,7 +245,7 @@ export function LoginForm({ next }: { next: string }) {
    * there rather than merging into it.
    */
   const fillFrom = (index: number, raw: string, base: string[]) => {
-    const run = digitsOnly(raw).slice(0, CODE_LENGTH - index);
+    const run = digitsOnly(raw).slice(0, OTP_CODE_LENGTH - index);
     if (!run) return;
 
     const filled = [...base];
@@ -258,7 +255,7 @@ export function LoginForm({ next }: { next: string }) {
     putCode(filled);
     setError(undefined);
 
-    boxes.current[Math.min(index + run.length, CODE_LENGTH - 1)]?.focus();
+    boxes.current[Math.min(index + run.length, OTP_CODE_LENGTH - 1)]?.focus();
     // Only when every box is filled — a shopper who clicks back to fix the
     // third digit must not trigger a verification against five digits and a gap.
     if (!filled.includes('')) void verify(filled.join(''));
@@ -449,7 +446,7 @@ export function LoginForm({ next }: { next: string }) {
               {/* The code reads left to right even on an RTL page: it is a
                   number, and the first digit typed must be the leftmost box. */}
               <div dir="ltr" className="mb-2 flex justify-center gap-2">
-                {Array.from({ length: CODE_LENGTH }, (_, index) => (
+                {Array.from({ length: OTP_CODE_LENGTH }, (_, index) => (
                   <input
                     key={index}
                     ref={(element) => {

@@ -17,6 +17,7 @@
 // checked against `PetType` by the `satisfies` on `LIFE_MOMENT_TARGETS`, so a
 // renamed enum value still breaks `pnpm type-check`.
 import type { PetType } from '@/db/schema/catalog';
+import { PET_EMOJI } from '@/lib/catalog/product-query';
 import { LINK_TYPES, type Link } from '@/lib/content/link';
 
 /**
@@ -76,8 +77,6 @@ export const ROUTINE_TARGETS = [
   { emoji: '🌤️', categories: ['supplements', 'hygiene'] },
   { emoji: '🌙', categories: ['treats', 'wet-food'] },
 ] as const satisfies readonly RoutineTarget[];
-
-const PET_EMOJI: Record<PetType, string> = { cat: '🐱', dog: '🐶' };
 
 /**
  * The emoji on moment card `index`: the code one (`LIFE_MOMENT_TARGETS`) until a
