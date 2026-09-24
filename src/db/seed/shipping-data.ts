@@ -14,7 +14,7 @@
 // Postgres Persian collation is unreliable, so the app never sorts by name.
 
 /** Integer Toman. */
-export type SeedProvince = { name: string; fee: number };
+type SeedProvince = { name: string; fee: number };
 
 export const SEED_PROVINCES: SeedProvince[] = [
   { name: 'تهران', fee: 25_000 },

@@ -11,7 +11,7 @@ import { rateLimitState, type Bucket } from './rate-limit-store';
  * the method, and a method-agnostic rule is the same shape the `requireAdmin`
  * mounts already use.
  */
-export type RateLimitGroup =
+type RateLimitGroup =
   'catalog' | 'paymentCallback' | 'checkoutPreview' | 'admin' | 'default';
 
 /** One window for every group; only the budget differs. */

@@ -38,7 +38,7 @@ export const CATEGORY_IMAGES: Record<string, string> = {
   hygiene: '/site/cat-hygiene.jpg',
 };
 
-export type LifeMomentTarget = {
+type LifeMomentTarget = {
   /** Rendered as decoration next to the card title, not as a functional icon. */
   emoji: string;
   filters: { category: string; pet: PetType };
@@ -58,7 +58,7 @@ export const LIFE_MOMENT_TARGETS = [
   { emoji: '🐶', filters: { category: 'dry-food', pet: 'dog' } },
 ] as const satisfies readonly LifeMomentTarget[];
 
-export type RoutineTarget = {
+type RoutineTarget = {
   emoji: string;
   /** Category slugs; the tiles take their titles from the database. */
   categories: readonly string[];

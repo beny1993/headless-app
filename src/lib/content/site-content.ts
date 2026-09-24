@@ -59,9 +59,6 @@ export const CONTENT_KEYS = [
 export const contentKeySchema = z.enum(CONTENT_KEYS);
 export type ContentKey = z.infer<typeof contentKeySchema>;
 
-// The key shape itself is documented where it is defined.
-export { imageKeySchema };
-
 // `t` is the trimmed, NUL-refusing, length-capped string; the ceilings are 2–4×
 // today's longest value, generous room to edit without an unbounded field.
 const t = boundedText;

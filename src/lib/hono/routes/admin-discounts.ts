@@ -33,10 +33,9 @@ import type { AuthedEnv } from '../middleware/auth';
 import { pgErrorOf } from '../pg-error';
 
 /** User-facing copy, so Persian. */
-export const DISCOUNT_NOT_FOUND_MESSAGE = 'کد تخفیف یافت نشد.';
+const DISCOUNT_NOT_FOUND_MESSAGE = 'کد تخفیف یافت نشد.';
 /** A save refused by the database (a duplicate code, or a CHECK). */
-export const DISCOUNT_SAVE_FAILED_MESSAGE =
-  'کد تخفیف ذخیره نشد؛ ورودی را بررسی کن.';
+const DISCOUNT_SAVE_FAILED_MESSAGE = 'کد تخفیف ذخیره نشد؛ ورودی را بررسی کن.';
 
 /** The shape lives in `@/lib/discount/discount-code` — see `openapiObject`. */
 const DiscountCodeSchema = openapiObject(
@@ -54,7 +53,7 @@ export type { DiscountCodeView } from '@/lib/discount/discount-code';
  * bounds the input schema already blocks, but psql could still surface — is a
  * generic 400 rather than a 500. Unknown errors rethrow as the 500 they are.
  */
-export const discountWriteErrors = (error: unknown): string[] | null => {
+const discountWriteErrors = (error: unknown): string[] | null => {
   const pg = pgErrorOf(error);
   if (!pg) return null;
   if (pg.code === '23505' && pg.constraint === 'discount_codes_code_unique') {

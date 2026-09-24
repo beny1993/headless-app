@@ -11,12 +11,12 @@ import {
   HANDLE_MESSAGES,
   contentAreaSchema,
   contentKeySchema,
-  imageKeySchema,
   instagramUrl,
   isVisible,
   telegramUrl,
   type ContentKey,
 } from './site-content';
+import { imageKeySchema } from '@/lib/storage/image-upload';
 import { DEFAULT_CONTENT } from './defaults';
 
 const NUL = String.fromCharCode(0);

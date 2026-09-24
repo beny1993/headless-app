@@ -8,7 +8,7 @@ import '@hono/zod-openapi';
 import { z, type ZodError } from 'zod';
 
 /** Standard success envelope. `status` is the discriminant clients branch on. */
-export type ApiSuccess<T> = { status: 'success'; data: T };
+type ApiSuccess<T> = { status: 'success'; data: T };
 
 /** Standard error envelope. `errors` is optional, human-readable detail. */
 export type ApiError = { status: 'error'; message: string; errors?: string[] };

@@ -8,7 +8,7 @@ import { payments, type NewPayment, type Payment } from '@/db/schema/orders';
 import { PAYMENT_METHODS, PAYMENT_STATUSES } from '@/lib/orders/order-status';
 
 /** What a caller supplies; the database owns `id` and both timestamps. */
-export type PaymentInput = Omit<NewPayment, 'id' | 'createdAt' | 'updatedAt'>;
+type PaymentInput = Omit<NewPayment, 'id' | 'createdAt' | 'updatedAt'>;
 
 export class PaymentDao {
   /**

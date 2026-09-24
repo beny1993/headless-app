@@ -23,7 +23,7 @@ import { IdParamSchema, errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
-export const ORDER_NOT_FOUND_MESSAGE = 'سفارش یافت نشد';
+const ORDER_NOT_FOUND_MESSAGE = 'سفارش یافت نشد';
 
 const OrderItemSchema = z
   .object({
@@ -68,7 +68,7 @@ const OrderDetailSchema = z
   .openapi('OrderDetail');
 
 /** The order shape the result pages and account history render. Import, don't restate. */
-export type OrderDetailResponse = z.infer<typeof OrderDetailSchema>;
+type OrderDetailResponse = z.infer<typeof OrderDetailSchema>;
 
 /** OwnedOrder → the wire projection: internal columns dropped, Dates to ISO. */
 const toOrderDetail = (order: OwnedOrder): OrderDetailResponse => ({

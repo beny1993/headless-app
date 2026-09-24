@@ -32,7 +32,7 @@ import {
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
-export const PET_NOT_FOUND_MESSAGE = 'حیوان یافت نشد';
+const PET_NOT_FOUND_MESSAGE = 'حیوان یافت نشد';
 
 /**
  * A soft per-user ceiling. A real account holds a handful of pets; a request past

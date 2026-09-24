@@ -17,7 +17,7 @@ import {
   PAYMENT_STATUSES,
 } from '@/lib/orders/order-status';
 
-export type StatusBadge = { label: string; badge: string };
+type StatusBadge = { label: string; badge: string };
 
 const ORDER_STATUS_DISPLAY: Record<OrderStatus, StatusBadge> = {
   [ORDER_STATUSES.PENDING_PAYMENT]: {

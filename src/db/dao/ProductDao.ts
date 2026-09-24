@@ -89,7 +89,7 @@ type FamilyFiling = {
 };
 
 /** One candidate head for the «زیرمجموعه‌ی» select, and what it is filed as. */
-export type VariantHeadRow = {
+type VariantHeadRow = {
   id: string;
   title: string;
   variantLabel: string | null;
@@ -143,7 +143,7 @@ export class StockConflictError extends Error {
   }
 }
 
-export type ProductFilters = {
+type ProductFilters = {
   categorySlug?: string;
   /** One pet; a product suits it when its selection contains it. */
   petType?: PetType;
@@ -161,7 +161,7 @@ export type ProductFilters = {
   search?: string;
 };
 
-export type ProductListOptions = ProductFilters & {
+type ProductListOptions = ProductFilters & {
   sort?: ProductSort;
   /** One-based. */
   page?: number;
@@ -172,7 +172,7 @@ export type ProductListOptions = ProductFilters & {
  * One page of the **storefront** listing plus the size of the whole filtered
  * result — cards, so each row carries what its family costs.
  */
-export type ProductPage = { items: ProductCard[]; total: number };
+type ProductPage = { items: ProductCard[]; total: number };
 
 /**
  * One page of the **admin** listing. Plain rows: the panel shows every product,
@@ -180,7 +180,7 @@ export type ProductPage = { items: ProductCard[]; total: number };
  * family costs, and computing three subqueries per row to throw them away would
  * be work done for nobody.
  */
-export type AdminProductPage = { items: ProductWithImages[]; total: number };
+type AdminProductPage = { items: ProductWithImages[]; total: number };
 
 /**
  * A listing row before the relations are attached: the columns plus the three

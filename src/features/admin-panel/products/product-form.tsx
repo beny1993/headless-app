@@ -81,10 +81,10 @@ export type ProductFormInitial = {
  * that stands in for an indent inside a flat option list, `title` is the plain
  * one a chip shows. Both come from `categoryOptions`.
  */
-export type CategoryOption = { id: string; title: string; label: string };
+type CategoryOption = { id: string; title: string; label: string };
 
 /** One candidate head for the «زیرمجموعه‌ی» select. */
-export type VariantHeadOption = {
+type VariantHeadOption = {
   id: string;
   title: string;
   /** Null when the candidate has no «نوع» of its own yet — offered, disabled. */

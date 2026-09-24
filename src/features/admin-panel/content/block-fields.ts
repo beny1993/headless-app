@@ -25,7 +25,7 @@ import {
   NAV_TARGETS,
 } from '@/features/storefront/layout/nav-links';
 
-export type FieldKind = 'input' | 'textarea' | 'image' | 'link' | 'categories';
+type FieldKind = 'input' | 'textarea' | 'image' | 'link' | 'categories';
 
 export type FieldDescriptor = {
   /** Dotted path into the block value, e.g. `image.key`, `slots.0.quote`, `navLinks.0`. */
@@ -40,7 +40,7 @@ export type FieldDescriptor = {
   fallback?: string;
 };
 
-export type BlockDescriptor = { title: string; fields: FieldDescriptor[] };
+type BlockDescriptor = { title: string; fields: FieldDescriptor[] };
 
 const fa = toPersianDigits;
 

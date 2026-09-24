@@ -40,7 +40,7 @@ export const DISCOUNT_TYPE_VALUES = [
   DISCOUNT_TYPES.FIXED,
 ] as const;
 
-export const discountTypeSchema = z.enum(DISCOUNT_TYPE_VALUES);
+const discountTypeSchema = z.enum(DISCOUNT_TYPE_VALUES);
 
 /**
  * The canonical storage/lookup form of a code: trimmed and upper-cased, so

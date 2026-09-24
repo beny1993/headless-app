@@ -38,7 +38,7 @@ import { PATHS } from '@/lib/constant/paths';
 
 /** Borrowed from the catalog API's query schema, never restated. */
 export type ShopSort = ProductListQuery['sort'];
-export type ShopPet = NonNullable<ProductListQuery['pet']>;
+type ShopPet = NonNullable<ProductListQuery['pet']>;
 
 /** The parsed, always-valid shape the page and its controls both work in. */
 export type ShopQuery = {
@@ -64,7 +64,7 @@ export type ShopQuery = {
 };
 
 /** Next hands a page's `searchParams` in this shape; `URLSearchParams` also works. */
-export type ShopSearchParams =
+type ShopSearchParams =
   URLSearchParams | Record<string, string | string[] | undefined>;
 
 /**
