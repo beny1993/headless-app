@@ -17,9 +17,9 @@ import {
   pgTable,
   primaryKey,
   text,
-  timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { createdAt, updatedAt } from '@/db/schema/columns';
 import {
   PET_TYPES,
   PET_TYPE_VALUES,
@@ -39,15 +39,6 @@ export { PET_TYPES, PET_TYPE_VALUES, type PetType };
 // `normalizePetTypes` while drizzle generated no `ALTER TYPE … ADD VALUE`, and
 // each write of it would fail at the driver.
 export const petTypeEnum = pgEnum('pet_type', PET_TYPE_VALUES);
-
-const createdAt = timestamp('created_at', { withTimezone: true })
-  .defaultNow()
-  .notNull();
-
-const updatedAt = timestamp('updated_at', { withTimezone: true })
-  .defaultNow()
-  .$onUpdate(() => /* @__PURE__ */ new Date())
-  .notNull();
 
 export const categories = pgTable(
   'categories',

@@ -29,6 +29,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { createdAt, updatedAt } from '@/db/schema/columns';
 import {
   ORDER_STATUS_VALUES,
   PAYMENT_METHOD_VALUES,
@@ -47,15 +48,6 @@ export const paymentStatusEnum = pgEnum(
   'payment_status',
   PAYMENT_STATUS_VALUES,
 );
-
-const createdAt = timestamp('created_at', { withTimezone: true })
-  .defaultNow()
-  .notNull();
-
-const updatedAt = timestamp('updated_at', { withTimezone: true })
-  .defaultNow()
-  .$onUpdate(() => /* @__PURE__ */ new Date())
-  .notNull();
 
 export const orders = pgTable(
   'orders',

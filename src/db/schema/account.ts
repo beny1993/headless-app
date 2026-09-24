@@ -22,24 +22,15 @@ import {
   pgEnum,
   pgTable,
   text,
-  timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { createdAt, updatedAt } from '@/db/schema/columns';
 import { PET_GENDER_VALUES } from '@/lib/account/pet';
 import { users } from '@/db/schema/auth';
 import { petTypeEnum } from '@/db/schema/catalog';
 import { provinces } from '@/db/schema/shipping';
 
 export const petGenderEnum = pgEnum('pet_gender', PET_GENDER_VALUES);
-
-const createdAt = timestamp('created_at', { withTimezone: true })
-  .defaultNow()
-  .notNull();
-
-const updatedAt = timestamp('updated_at', { withTimezone: true })
-  .defaultNow()
-  .$onUpdate(() => /* @__PURE__ */ new Date())
-  .notNull();
 
 export const pets = pgTable(
   'pets',

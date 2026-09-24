@@ -13,7 +13,8 @@
 // row with an unknown key is simply never read (the pages ask for known keys).
 //
 // House rule, as everywhere: every timestamp is `timestamptz`.
-import { jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { jsonb, pgTable, text } from 'drizzle-orm/pg-core';
+import { updatedAt } from '@/db/schema/columns';
 
 export const siteContent = pgTable('site_content', {
   /** The block key, e.g. `home.hero` — the PK, one row per block. */
@@ -25,10 +26,7 @@ export const siteContent = pgTable('site_content', {
    * (drizzle's `buildUpdateSet` includes `$onUpdate` columns), so the DAO's
    * upsert bumps this without naming it in the `set`.
    */
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .defaultNow()
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull(),
+  updatedAt,
 });
 
 export type SiteContentRow = typeof siteContent.$inferSelect;
