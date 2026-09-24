@@ -4,14 +4,13 @@ import { useId, useState } from 'react';
 import { Check, Loader2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AdminProvinceRow } from '@/db/dao/ShippingRateDao';
-import { TextField } from '@/components/ui/field';
+import { controlClass, TextField } from '@/components/ui/field';
+import { patchData, postData, putData } from '@/lib/api-client';
 import {
-  ApiRequestError,
-  patchData,
-  postData,
-  putData,
-} from '@/lib/api-client';
-import { parseFieldErrors } from '@/lib/checkout/field-errors';
+  reasonFrom,
+  requestFieldErrors,
+  zodFieldErrors,
+} from '@/lib/checkout/field-errors';
 import {
   API_PATHS,
   apiAdminProvincePath,
@@ -180,9 +179,7 @@ function BulkFeeForm({
       setJustApplied(true);
     } catch (requestError) {
       toast.error(
-        requestError instanceof Error
-          ? requestError.message
-          : 'اعمال هزینه ناموفق بود. دوباره تلاش کن.',
+        reasonFrom(requestError) ?? 'اعمال هزینه ناموفق بود. دوباره تلاش کن.',
       );
     } finally {
       setBusy(false);
@@ -260,11 +257,7 @@ function CreateProvinceForm({
     const feeValue = parseFee(fee);
     const parsed = provinceCreateSchema.safeParse({ name, fee: feeValue });
     if (!parsed.success) {
-      const next: Record<string, string> = {};
-      for (const issue of parsed.error.issues) {
-        next[String(issue.path[0])] ??= issue.message;
-      }
-      setErrors(next);
+      setErrors(zodFieldErrors(parsed.error));
       return;
     }
 
@@ -279,21 +272,15 @@ function CreateProvinceForm({
       setName('');
       setFee('');
     } catch (error) {
-      // A 400 carries `field: message` errors, shown by their fields; any other
-      // failure (a 409 duplicate, 401/403, the network) is a request failure and
-      // goes to a toast, like the rest of the admin panel.
-      if (error instanceof ApiRequestError && error.status === 400) {
-        const { fields, unmapped } = parseFieldErrors(error.errors);
-        setErrors(fields);
-        if (Object.keys(fields).length === 0) toast.error(error.message);
-        else if (unmapped.length > 0) toast.error(unmapped.join(' '));
-      } else {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'افزودن استان ناموفق بود. دوباره تلاش کن.',
-        );
-      }
+      // `field: message` errors are shown by their fields; a refusal no field
+      // can show (a 409 duplicate, 401/403, the network) goes to a toast, like
+      // the rest of the admin panel.
+      const { fields, message } = requestFieldErrors(
+        error,
+        'افزودن استان ناموفق بود. دوباره تلاش کن.',
+      );
+      setErrors(fields);
+      if (message) toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -388,9 +375,7 @@ function RateRow({
       setJustSaved(true);
     } catch (requestError) {
       toast.error(
-        requestError instanceof Error
-          ? requestError.message
-          : 'ذخیره نرخ ناموفق بود. دوباره تلاش کن.',
+        reasonFrom(requestError) ?? 'ذخیره نرخ ناموفق بود. دوباره تلاش کن.',
       );
     } finally {
       setBusy(false);
@@ -410,11 +395,7 @@ function RateRow({
         ),
       );
     } catch (requestError) {
-      toast.error(
-        requestError instanceof Error
-          ? requestError.message
-          : 'تغییر وضعیت ناموفق بود.',
-      );
+      toast.error(reasonFrom(requestError) ?? 'تغییر وضعیت ناموفق بود.');
     } finally {
       setToggling(false);
     }
@@ -452,10 +433,8 @@ function RateRow({
             setJustSaved(false);
           }}
           className={cn(
-            'nums bg-secondary w-36 rounded-lg border px-3 py-2 text-start transition-colors outline-none focus-visible:ring-2',
-            invalid
-              ? 'border-destructive bg-destructive-soft/40'
-              : 'border-border focus-visible:border-accent-strong',
+            controlClass(invalid),
+            'nums w-36 rounded-lg px-3 py-2',
           )}
         />
       </td>

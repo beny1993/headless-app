@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { postData } from '@/lib/api-client';
+import { reasonFrom } from '@/lib/checkout/field-errors';
 import { API_PATHS } from '@/lib/constant/paths';
 
 /**
@@ -28,9 +29,7 @@ export function RetryPaymentButton({ orderId }: { orderId: string }) {
       );
       window.location.assign(redirectUrl);
     } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : 'شروع پرداخت ناموفق بود.',
-      );
+      setError(reasonFrom(caught) ?? 'شروع پرداخت ناموفق بود.');
       setBusy(false);
     }
   };
