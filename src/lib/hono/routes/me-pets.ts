@@ -24,7 +24,7 @@ import {
   toPetResponse,
 } from '@/lib/account/pet';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
-import { errorResponse } from '../route-responses';
+import { errorResponse, openapiObject } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
@@ -39,21 +39,8 @@ export const PET_NOT_FOUND_MESSAGE = 'حیوان یافت نشد';
 export const MAX_PETS_PER_USER = 20;
 const TOO_MANY_PETS_MESSAGE = 'به سقف تعداد حیوانات خانگی رسیده‌ای.';
 
-/**
- * The shape lives in `@/lib/account/pet`: one definition, client-safe,
- * so the server page that renders the first paint projects rows without
- * importing this file. Rebuilt into a local `z.object` before `.openapi()`: that method is
- * grafted on by `@hono/zod-openapi` and zod 4 hands it to newly built schemas
- * only, so calling it on an imported one depends on module evaluation order
- * (the trap documented above `ProductListQuerySchema` in ./catalog.ts).
- *
- * The ceiling that buys: `.shape` copies the FIELDS. An object-level modifier
- * on the source schema — `.strict()`, `.catchall()`, `.refine()`, a `.meta()`
- * on the object itself — is silently left behind, and the document would drift
- * with no failing test. None of the five projections has one today. Add one
- * there and it has to be repeated here, or the two stop being one definition.
- */
-const PetSchema = z.object(petResponseSchema.shape).openapi('Pet');
+/** The shape lives in `@/lib/account/pet` — see `openapiObject`. */
+const PetSchema = openapiObject(petResponseSchema, 'Pet');
 
 /** Re-exported for the client components that already import the type here. */
 export type { PetResponse } from '@/lib/account/pet';

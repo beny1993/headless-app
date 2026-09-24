@@ -27,15 +27,27 @@ export const errorResponse = (description: string) =>
   }) as const;
 
 /**
- * The `{ id }` path parameter of the uuid-keyed admin routes (products,
- * categories, discount codes).
+ * A client-safe projection (one definition, imported by the server page that
+ * renders the first paint too) rebuilt into a local `z.object` and registered
+ * as the OpenAPI component `name`. Rebuilt because `.openapi()` is grafted on by
+ * `@hono/zod-openapi` and zod 4 hands it to newly built schemas only, so calling
+ * it on an imported one depends on module evaluation order (the trap documented
+ * above `ProductListQuerySchema` in ./routes/catalog.ts).
  *
- * Four other uuid params carry no `example` — `/orders/{id}`, `/me/pets/{id}`,
- * `/me/addresses/{id}`, `/admin/orders/{id}` — and the `example` is part of the
- * generated document, so folding them in here would change it. They keep their
- * own local schemas for that reason alone; nothing on record says the missing
- * `example` was a choice rather than drift. The int-keyed province routes keep
- * `provinceIdParamSchema`, which is a different type entirely.
+ * The ceiling that buys: `.shape` copies the FIELDS. An object-level modifier
+ * on the source schema — `.strict()`, `.catchall()`, `.refine()`, a `.meta()`
+ * on the object itself — is silently left behind, and the document would drift
+ * with no failing test. None of the projections has one today. Add one there
+ * and it has to be repeated here, or the two stop being one definition.
+ */
+export const openapiObject = <T extends z.ZodRawShape>(
+  schema: z.ZodObject<T>,
+  name: string,
+) => z.object(schema.shape).openapi(name);
+
+/**
+ * The `{ id }` path parameter of every uuid-keyed route. The int-keyed province
+ * routes keep `provinceIdParamSchema`, which is a different type entirely.
  */
 export const IdParamSchema = z.object({
   id: z.uuid().meta({
