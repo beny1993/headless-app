@@ -78,7 +78,6 @@ export default defineConfig({
       // run collapses into one bucket, and the spec would throttle the rest of
       // the suite instead of itself.
       APP_CONFIG_TRUST_CF_HEADER: 'true',
-      APP_CONFIG_EMAIL_ENABLED: 'false',
       // Off whatever .env says, or every storefront spec meets the maintenance
       // screen instead of the shop.
       APP_CONFIG_MAINTENANCE_MODE: '',
