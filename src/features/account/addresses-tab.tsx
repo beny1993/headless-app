@@ -16,7 +16,6 @@ import {
   validateAddress,
   type AddressInput,
 } from '@/lib/account/address';
-import { requestFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiMeAddressPath } from '@/lib/constant/paths';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
 import { toPersianDigits } from '@/lib/format';
@@ -32,7 +31,6 @@ import {
   EmptyState,
   FormActions,
   FormAlert,
-  GENERIC_ERROR,
   useFormState,
 } from './account-ui';
 
@@ -226,16 +224,10 @@ function AddressForm({
   onSaved: (address: AddressResponse) => void;
   submit: (body: AddressInput) => Promise<AddressResponse>;
 }) {
-  const {
-    form,
-    set,
-    fieldErrors,
-    setFieldErrors,
-    topError,
-    setTopError,
-    busy,
-    setBusy,
-  } = useFormState(initial);
+  const { form, set, fieldErrors, topError, busy, save } = useFormState(
+    initial,
+    async (values) => onSaved(await submit(toBody(values))),
+  );
 
   // An address saved against a province the admin has since deactivated: its id
   // is not among the (active) options, so React would display the first enabled
@@ -248,29 +240,6 @@ function AddressForm({
   const provinceError =
     fieldErrors.provinceId ??
     (staleProvince ? STALE_PROVINCE_MESSAGE : undefined);
-
-  const save = async () => {
-    if (busy) return;
-    setBusy(true);
-    setTopError(undefined);
-
-    // Client-side gate; the server stays authoritative.
-    const errors = validateAddress(form, staleProvince);
-    if (Object.keys(errors).length > 0) {
-      setFieldErrors(errors);
-      setBusy(false);
-      return;
-    }
-
-    try {
-      onSaved(await submit(toBody(form)));
-    } catch (error) {
-      setBusy(false);
-      const { fields, message } = requestFieldErrors(error, GENERIC_ERROR);
-      setFieldErrors(fields);
-      setTopError(message);
-    }
-  };
 
   return (
     <div className="bg-card border-accent/30 rounded-2xl border-2 p-6">
@@ -369,7 +338,8 @@ function AddressForm({
 
       <FormActions
         busy={busy}
-        onSave={save}
+        // Client-side gate; the server stays authoritative.
+        onSave={() => save(validateAddress(form, staleProvince))}
         onCancel={onCancel}
         saveUmami="account-addresses-save"
         cancelUmami="account-addresses-cancel"

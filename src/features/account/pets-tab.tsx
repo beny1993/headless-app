@@ -22,7 +22,6 @@ import {
   PET_TYPE_VALUES,
   type PetType,
 } from '@/lib/catalog/product-query';
-import { requestFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiMePetPath } from '@/lib/constant/paths';
 import type { PetResponse } from '@/lib/hono/routes/me-pets';
 import { toPersianDigits } from '@/lib/format';
@@ -33,7 +32,6 @@ import {
   EmptyState,
   FormActions,
   FormAlert,
-  GENERIC_ERROR,
   useFormState,
 } from './account-ui';
 
@@ -242,36 +240,10 @@ function PetForm({
   onSaved: (pet: PetResponse) => void;
   submit: (body: PetInput) => Promise<PetResponse>;
 }) {
-  const {
-    form,
-    set,
-    fieldErrors,
-    setFieldErrors,
-    topError,
-    setTopError,
-    busy,
-    setBusy,
-  } = useFormState(initial);
-
-  const save = async () => {
-    if (busy) return;
-    setBusy(true);
-    setTopError(undefined);
-    // Client-side gate for the one required field; the server stays authoritative.
-    if (!form.name.trim()) {
-      setFieldErrors({ name: 'نام حیوان را وارد کن.' });
-      setBusy(false);
-      return;
-    }
-    try {
-      onSaved(await submit(toBody(form)));
-    } catch (error) {
-      setBusy(false);
-      const { fields, message } = requestFieldErrors(error, GENERIC_ERROR);
-      setFieldErrors(fields);
-      setTopError(message);
-    }
-  };
+  const { form, set, fieldErrors, topError, busy, save } = useFormState(
+    initial,
+    async (values) => onSaved(await submit(toBody(values))),
+  );
 
   return (
     <div className="bg-card border-accent/30 rounded-2xl border-2 p-6">
@@ -375,7 +347,10 @@ function PetForm({
 
       <FormActions
         busy={busy}
-        onSave={save}
+        // Client-side gate for the one required field; the server stays authoritative.
+        onSave={() =>
+          save(form.name.trim() ? {} : { name: 'نام حیوان را وارد کن.' })
+        }
         onCancel={onCancel}
         saveUmami="account-pets-save"
         cancelUmami="account-pets-cancel"

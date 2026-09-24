@@ -3,10 +3,10 @@
 // The add / edit / delete shell the account tabs share.
 import { useState, type ReactNode } from 'react';
 import { AlertCircle, type LucideIcon } from 'lucide-react';
-import { reasonFrom } from '@/lib/checkout/field-errors';
+import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
 import { cn } from '@/lib/utils';
 
-export const GENERIC_ERROR = 'انجام نشد. لطفاً دوباره تلاش کن.';
+const GENERIC_ERROR = 'انجام نشد. لطفاً دوباره تلاش کن.';
 
 /** The «nothing here yet» card; `icon` is a lucide icon or an emoji. */
 export function EmptyState({
@@ -151,10 +151,13 @@ export function FormActions({
 }
 
 /**
- * An edit form's state: the values, their field errors, the whole-request error
- * and the in-flight flag. `set` writes one field and clears that field's error.
+ * An edit form's state. `set` writes one field and clears its error; `save`
+ * takes the client gate's errors and only sends when there are none.
  */
-export function useFormState<V extends object>(initial: V) {
+export function useFormState<V extends object>(
+  initial: V,
+  send: (values: V) => Promise<void>,
+) {
   const [form, setForm] = useState(initial);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [topError, setTopError] = useState<string | undefined>();
@@ -170,14 +173,24 @@ export function useFormState<V extends object>(initial: V) {
     });
   };
 
-  return {
-    form,
-    set,
-    fieldErrors,
-    setFieldErrors,
-    topError,
-    setTopError,
-    busy,
-    setBusy,
+  const save = async (errors: Record<string, string>) => {
+    if (busy) return;
+    setBusy(true);
+    setTopError(undefined);
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setBusy(false);
+      return;
+    }
+    try {
+      await send(form);
+    } catch (error) {
+      setBusy(false);
+      const { fields, message } = requestFieldErrors(error, GENERIC_ERROR);
+      setFieldErrors(fields);
+      setTopError(message);
+    }
   };
+
+  return { form, set, fieldErrors, topError, busy, save };
 }
