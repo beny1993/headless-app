@@ -33,7 +33,7 @@ import {
   TextField,
 } from '@/components/ui/field';
 import { postData } from '@/lib/api-client';
-import { requestFieldErrors } from '@/lib/checkout/field-errors';
+import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 import { API_PATHS, PATHS, checkoutResultPath } from '@/lib/constant/paths';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
@@ -264,11 +264,10 @@ export function CheckoutForm({
     } catch (error) {
       setApplied(null);
       const { fields, message } = requestFieldErrors(error, GENERIC_ERROR);
+      // Another field's entry is a 400's English zod text; the envelope's own
+      // `message` is the Persian sentence for it.
       setDiscountError(
-        fields.discountCode ??
-          message ??
-          Object.values(fields)[0] ??
-          GENERIC_ERROR,
+        fields.discountCode ?? message ?? reasonFrom(error) ?? GENERIC_ERROR,
       );
     } finally {
       setApplying(false);

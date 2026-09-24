@@ -438,6 +438,25 @@ describe('the checkout submit state machine', () => {
     expect(screen.queryByText('کد تخفیف اعمال شد.')).toBeNull();
   });
 
+  it('shows a preview 400 for another field in Persian, never its zod text', async () => {
+    // A zod 400 names `items.0.quantity` in English; the code input has no such
+    // field, so it reads the envelope's own Persian sentence instead.
+    postData.mockRejectedValue(
+      new ApiRequestError(400, 'ورودی نامعتبر است', [
+        'items.0.quantity: Too small: expected number to be >0',
+      ]),
+    );
+    fireEvent.change(screen.getByLabelText('کد تخفیف'), {
+      target: { value: 'save10' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'اعمال' }));
+    });
+
+    expect(screen.getByText('ورودی نامعتبر است')).toBeTruthy();
+    expect(screen.queryByText(/Too small/)).toBeNull();
+  });
+
   it('renders a discountCode 422 inline on the code input', async () => {
     postData.mockRejectedValue(
       new ApiRequestError(422, 'کد تخفیف واردشده معتبر نیست.', [
