@@ -2,7 +2,7 @@
 // migrate/seed commands and the dev server below all need the database. A
 // worktree has no .env of its own — point this at the main checkout's with
 // `DOTENV_CONFIG_PATH=<checkout>/.env pnpm test:e2e`.
-import 'dotenv/config';
+import './scripts/load-env';
 import { defineConfig } from '@playwright/test';
 
 import { API_PATHS } from './src/lib/constant/paths';
@@ -78,7 +78,6 @@ export default defineConfig({
       // run collapses into one bucket, and the spec would throttle the rest of
       // the suite instead of itself.
       APP_CONFIG_TRUST_CF_HEADER: 'true',
-      APP_CONFIG_EMAIL_ENABLED: 'false',
       // Off whatever .env says, or every storefront spec meets the maintenance
       // screen instead of the shop.
       APP_CONFIG_MAINTENANCE_MODE: '',
