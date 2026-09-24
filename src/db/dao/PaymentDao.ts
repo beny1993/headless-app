@@ -118,7 +118,13 @@ export class PaymentDao {
   ): Promise<Payment | null> {
     const [row] = await tx
       .update(payments)
-      .set({ ...fields, status: PAYMENT_STATUSES.PAID })
+      .set({
+        status: PAYMENT_STATUSES.PAID,
+        refId: fields.refId,
+        cardPan: fields.cardPan,
+        gatewayResponse: fields.gatewayResponse,
+        paidAt: fields.paidAt,
+      })
       .where(
         and(eq(payments.id, id), ne(payments.status, PAYMENT_STATUSES.PAID)),
       )
@@ -139,7 +145,11 @@ export class PaymentDao {
   ): Promise<Payment | null> {
     const [row] = await executor
       .update(payments)
-      .set({ ...fields, status: PAYMENT_STATUSES.FAILED })
+      .set({
+        status: PAYMENT_STATUSES.FAILED,
+        failureReason: fields.failureReason,
+        gatewayResponse: fields.gatewayResponse,
+      })
       .where(
         and(eq(payments.id, id), eq(payments.status, PAYMENT_STATUSES.PENDING)),
       )
