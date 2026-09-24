@@ -12,8 +12,14 @@ import { useModalDialog } from './use-modal-dialog';
 // happy-dom's `close()` dispatches a `close` event, which would let `onClose`
 // quietly do `close()`'s second half and hide a missing one. Chromium was
 // measured not to fire it here, so the stub closes the way that browser does:
-// the attribute goes, no event follows.
+// the attribute goes, no event follows. `showModal()` is stubbed to just set
+// the attribute too, so no test rests on happy-dom's partial `<dialog>`.
 beforeEach(() => {
+  vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(
+    function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    },
+  );
   vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function (
     this: HTMLDialogElement,
   ) {
@@ -103,11 +109,10 @@ describe('useModalDialog', () => {
   it('shows an already-open dialog without a second showModal()', () => {
     // Reachable in the cart drawer: adding to the cart while it is open, and a
     // second showModal() on an open dialog throws InvalidStateError.
-    const showModal = vi.spyOn(HTMLDialogElement.prototype, 'showModal');
     render(<Host />);
     openIt();
     fireEvent.click(trigger());
-    expect(showModal).toHaveBeenCalledTimes(1);
+    expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledTimes(1);
     expect(trigger().getAttribute('aria-expanded')).toBe('true');
   });
 });
