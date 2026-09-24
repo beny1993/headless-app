@@ -15,6 +15,7 @@
  * If the SMS.ir panel's IP restriction is on, this machine's IP must be listed.
  */
 import 'dotenv/config';
+import { randomInt } from 'node:crypto';
 import { normalizeIranPhone } from '@/lib/auth/phone';
 import { sendOtpSms } from '@/lib/sms';
 import { getEnvVariable, VARS } from '@/lib/utils/env';
@@ -50,7 +51,7 @@ const main = async () => {
   );
   console.log(`→ to        ${phone}`);
 
-  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const code = String(randomInt(100000, 1000000));
   await sendOtpSms(phone, code);
 
   console.log(`\n✓ SMS.ir accepted the send (code ${code}).`);

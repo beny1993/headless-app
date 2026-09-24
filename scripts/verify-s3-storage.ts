@@ -18,11 +18,9 @@ import 'dotenv/config';
 import { s3Driver } from '@/lib/storage/s3-driver';
 
 // A 1x1 transparent PNG, so a real image byte stream round-trips.
-const PNG_1X1 = Uint8Array.from(
-  atob(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-  ),
-  (c) => c.charCodeAt(0),
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
 );
 
 const key = `uploads/${crypto.randomUUID()}.png`;
