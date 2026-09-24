@@ -311,7 +311,7 @@ let mockRefusalLogged = false;
 export function assertMockGatewayAllowed(): void {
   if (getZarinpalProvider() !== 'mock') return;
   if (!isProductionServer()) return;
-  // Exactly `true`, so a typo, `1`, `yes` or a blank is no escape at all.
+  // Only `true` (padding aside), so a typo, `1`, `yes` or a blank is no escape.
   if (getEnvFlag(VARS.APP_CONFIG_ZARINPAL_ALLOW_MOCK)) return;
 
   const message =
