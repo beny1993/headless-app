@@ -438,13 +438,12 @@ export function ProductForm({
 
   return (
     <div className="max-w-3xl">
-      <button
-        type="button"
-        onClick={() => router.push(PROTECTED_PATHS.PRODUCTS)}
+      <Link
+        href={PROTECTED_PATHS.PRODUCTS}
         className="text-muted-foreground hover:text-foreground mb-5 flex items-center gap-2 text-sm"
       >
         <ChevronRight size={14} aria-hidden="true" /> بازگشت به فهرست محصولات
-      </button>
+      </Link>
       <h1 className="mb-6 text-2xl font-black">
         {isEdit ? 'ویرایش محصول' : 'محصول جدید'}
       </h1>
@@ -833,23 +832,20 @@ export function ProductForm({
               نوع حیوان
             </legend>
             <div className="flex max-w-xs gap-2">
-              {PET_TYPE_VALUES.map((value) => ({
-                value,
-                label: `${PET_EMOJI[value]} ${PET_LABELS[value]}`,
-              })).map((option) => (
+              {PET_TYPE_VALUES.map((value) => (
                 <button
-                  key={option.value}
+                  key={value}
                   type="button"
-                  onClick={() => togglePet(option.value)}
-                  aria-pressed={form.petTypes.includes(option.value)}
-                  data-umami-event={`admin-panel-product-pet-${option.value}`}
+                  onClick={() => togglePet(value)}
+                  aria-pressed={form.petTypes.includes(value)}
+                  data-umami-event={`admin-panel-product-pet-${value}`}
                   className={`flex-1 rounded-xl border-2 py-2.5 text-sm font-medium transition-colors ${
-                    form.petTypes.includes(option.value)
+                    form.petTypes.includes(value)
                       ? 'border-accent-strong bg-accent/10 text-accent-strong'
                       : 'border-border hover:border-accent-strong'
                   }`}
                 >
-                  {option.label}
+                  {PET_EMOJI[value]} {PET_LABELS[value]}
                 </button>
               ))}
             </div>
@@ -905,13 +901,12 @@ export function ProductForm({
               ? 'در حال بارگذاری عکس‌ها…'
               : 'ذخیره محصول'}
           </button>
-          <button
-            type="button"
-            onClick={() => router.push(PROTECTED_PATHS.PRODUCTS)}
+          <Link
+            href={PROTECTED_PATHS.PRODUCTS}
             className="border-border hover:bg-secondary rounded-xl border-2 px-5 py-3 font-medium transition-colors"
           >
             انصراف
-          </button>
+          </Link>
         </div>
       </form>
     </div>
