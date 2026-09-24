@@ -11,11 +11,15 @@
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import { AlertCircle, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
 import { delData, patchData, postData } from '@/lib/api-client';
-import type { AddressInput } from '@/lib/account/address';
+import {
+  normalizePostalCode,
+  validateAddress,
+  type AddressInput,
+} from '@/lib/account/address';
 import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiMeAddressPath } from '@/lib/constant/paths';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
-import { toAsciiDigits, toPersianDigits } from '@/lib/format';
+import { toPersianDigits } from '@/lib/format';
 import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
 import {
   controlClass,
@@ -65,7 +69,7 @@ const toBody = (form: FormValues): AddressInput => ({
   recipientPhone: form.recipientPhone.trim(),
   provinceId: Number(form.provinceId),
   city: form.city.trim(),
-  postalCode: toAsciiDigits(form.postalCode).replace(/\D/g, ''),
+  postalCode: normalizePostalCode(form.postalCode),
   addressLine: form.addressLine.trim(),
 });
 
@@ -301,18 +305,7 @@ function AddressForm({
     setTopError(undefined);
 
     // Client-side gate; the server stays authoritative.
-    const errors: Record<string, string> = {};
-    if (!form.recipientName.trim())
-      errors.recipientName = 'نام گیرنده را وارد کن.';
-    if (!form.recipientPhone.trim())
-      errors.recipientPhone = 'شماره تماس گیرنده را وارد کن.';
-    if (!form.provinceId) errors.provinceId = 'استان را انتخاب کن.';
-    else if (staleProvince) errors.provinceId = STALE_PROVINCE_MESSAGE;
-    if (!form.city.trim()) errors.city = 'شهر را وارد کن.';
-    if (form.addressLine.trim().length < 10)
-      errors.addressLine = 'آدرس کامل را وارد کن (حداقل ۱۰ حرف).';
-    if (toAsciiDigits(form.postalCode).replace(/\D/g, '').length !== 10)
-      errors.postalCode = 'کد پستی باید ۱۰ رقم باشد.';
+    const errors = validateAddress(form, staleProvince);
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       setBusy(false);

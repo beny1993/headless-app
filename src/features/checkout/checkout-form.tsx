@@ -33,6 +33,7 @@ import {
   TextField,
 } from '@/components/ui/field';
 import { postData } from '@/lib/api-client';
+import { normalizePostalCode, validateAddress } from '@/lib/account/address';
 import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 import { API_PATHS, PATHS, checkoutResultPath } from '@/lib/constant/paths';
@@ -43,7 +44,7 @@ import type {
 } from '@/lib/hono/routes/checkout';
 import type { ShippingRateResponse } from '@/lib/hono/routes/shipping';
 import { PAYMENT_METHODS, type PaymentMethod } from '@/lib/orders/order-status';
-import { toAsciiDigits, toPersianDigits } from '@/lib/format';
+import { toPersianDigits } from '@/lib/format';
 import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
 import { cn } from '@/lib/utils';
 
@@ -320,21 +321,20 @@ export function CheckoutForm({
   /** Client-side gate for advancing a step — the server stays authoritative. */
   const validateStep = (which: number): boolean => {
     const errors: Record<string, string> = {};
-    if (which === 1) {
-      if (!recipientName.trim())
-        errors['address.recipientName'] = 'نام گیرنده را وارد کن.';
-      if (!recipientPhone.trim())
-        errors['address.recipientPhone'] = 'شماره تماس گیرنده را وارد کن.';
-    }
-    if (which === 2) {
-      if (!provinceId) errors['address.provinceId'] = 'استان را انتخاب کن.';
-      else if (staleProvince)
-        errors['address.provinceId'] = STALE_PROVINCE_MESSAGE;
-      if (!city.trim()) errors['address.city'] = 'شهر را وارد کن.';
-      if (addressLine.trim().length < 10)
-        errors['address.addressLine'] = 'آدرس کامل را وارد کن (حداقل ۱۰ حرف).';
-      if (toAsciiDigits(postalCode).replace(/\D/g, '').length !== 10)
-        errors['address.postalCode'] = 'کد پستی باید ۱۰ رقم باشد.';
+    const address = {
+      recipientName,
+      recipientPhone,
+      provinceId,
+      city,
+      postalCode,
+      addressLine,
+    };
+    // One rule set for the whole address; each step reports only its own fields.
+    for (const [field, message] of Object.entries(
+      validateAddress(address, staleProvince),
+    )) {
+      const path = `address.${field}`;
+      if (stepOfField(path) === which) errors[path] = message;
     }
     setFieldErrors((prev) => ({ ...prev, ...errors }));
     return Object.keys(errors).length === 0;
@@ -367,7 +367,7 @@ export function CheckoutForm({
         recipientPhone: recipientPhone.trim(),
         provinceId: Number(provinceId),
         city: city.trim(),
-        postalCode: toAsciiDigits(postalCode).replace(/\D/g, ''),
+        postalCode: normalizePostalCode(postalCode),
         addressLine: addressLine.trim(),
       },
       paymentMethod,
