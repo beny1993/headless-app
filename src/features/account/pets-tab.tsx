@@ -9,12 +9,18 @@
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import { Camera, Pencil, Plus, Trash2 } from 'lucide-react';
 import { delData, patchData, postData } from '@/lib/api-client';
-import { PET_GENDERS, isHttpsUrl, type PetInput } from '@/lib/account/pet';
+import {
+  PET_GENDERS,
+  isHttpsUrl,
+  type PetGender,
+  type PetInput,
+} from '@/lib/account/pet';
 import {
   PET_EMOJI,
   PET_LABELS,
   PET_TYPES,
   PET_TYPE_VALUES,
+  type PetType,
 } from '@/lib/catalog/product-query';
 import { requestFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiMePetPath } from '@/lib/constant/paths';
@@ -30,6 +36,11 @@ import {
   GENERIC_ERROR,
   useFormState,
 } from './account-ui';
+
+const GENDER_LABELS: Record<PetGender, string> = {
+  [PET_GENDERS.FEMALE]: 'ماده',
+  [PET_GENDERS.MALE]: 'نر',
+};
 
 type FormValues = {
   name: string;
@@ -124,20 +135,11 @@ export function PetsTab({
           >
             <div className="mb-4 flex items-center justify-between gap-2">
               <div className="flex items-center gap-3">
-                <div className="bg-secondary flex size-12 items-center justify-center overflow-hidden rounded-full text-2xl">
-                  {isHttpsUrl(pet.photoUrl) ? (
-                    <img
-                      src={pet.photoUrl}
-                      alt=""
-                      referrerPolicy="no-referrer"
-                      className="size-full object-cover"
-                    />
-                  ) : (
-                    <span aria-hidden="true">
-                      {pet.type === PET_TYPES.CAT ? '🐱' : '🐶'}
-                    </span>
-                  )}
-                </div>
+                <PetAvatar
+                  type={pet.type}
+                  photoUrl={pet.photoUrl}
+                  className="size-12"
+                />
                 <div>
                   <p className="font-bold">{pet.name}</p>
                   {pet.breed && (
@@ -190,7 +192,7 @@ export function PetsTab({
                   [
                     ['سن', pet.age ? toPersianDigits(pet.age) : '—'],
                     ['وزن', pet.weight ? toPersianDigits(pet.weight) : '—'],
-                    ['جنس', pet.gender === PET_GENDERS.FEMALE ? 'ماده' : 'نر'],
+                    ['جنس', GENDER_LABELS[pet.gender]],
                     ['عقیم‌شده', pet.neutered ? 'بله' : 'خیر'],
                   ] as const
                 ).map(([label, value]) => (
@@ -284,20 +286,11 @@ function PetForm({
       <FormAlert message={topError} />
 
       <div className="mb-5 flex items-center gap-4">
-        <div className="bg-secondary flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full text-2xl">
-          {isHttpsUrl(form.photoUrl) ? (
-            <img
-              src={form.photoUrl}
-              alt=""
-              referrerPolicy="no-referrer"
-              className="size-full object-cover"
-            />
-          ) : (
-            <span aria-hidden="true">
-              {form.type === PET_TYPES.CAT ? '🐱' : '🐶'}
-            </span>
-          )}
-        </div>
+        <PetAvatar
+          type={form.type}
+          photoUrl={form.photoUrl}
+          className="size-16 shrink-0"
+        />
         <div className="flex-1">
           <TextField
             id="pet-photo-url"
@@ -348,55 +341,28 @@ function PetForm({
         />
 
         <FieldShell id="pet-type" label="نوع">
-          <div className="flex gap-2">
-            {PET_TYPE_VALUES.map((v) => ({
-              v,
-              l: `${PET_EMOJI[v]} ${PET_LABELS[v]}`,
-            })).map((option) => (
-              <button
-                key={option.v}
-                type="button"
-                aria-pressed={form.type === option.v}
-                onClick={() => set('type', option.v)}
-                className={cn(
-                  'flex-1 rounded-xl border-2 py-2.5 text-sm font-medium transition-colors',
-                  form.type === option.v
-                    ? 'border-accent-strong bg-accent/10 text-accent-strong'
-                    : 'border-border',
-                )}
-                data-umami-event="account-pets-type"
-              >
-                {option.l}
-              </button>
-            ))}
-          </div>
+          <ToggleGroup
+            options={PET_TYPE_VALUES.map((value) => ({
+              value,
+              label: `${PET_EMOJI[value]} ${PET_LABELS[value]}`,
+            }))}
+            value={form.type}
+            onChange={(v) => set('type', v)}
+            umami="account-pets-type"
+          />
         </FieldShell>
 
         <FieldShell id="pet-gender" label="جنس">
-          <div className="flex gap-2">
-            {(
-              [
-                { v: PET_GENDERS.FEMALE, l: 'ماده' },
-                { v: PET_GENDERS.MALE, l: 'نر' },
-              ] as const
-            ).map((option) => (
-              <button
-                key={option.v}
-                type="button"
-                aria-pressed={form.gender === option.v}
-                onClick={() => set('gender', option.v)}
-                className={cn(
-                  'flex-1 rounded-xl border-2 py-2.5 text-sm font-medium transition-colors',
-                  form.gender === option.v
-                    ? 'border-accent-strong bg-accent/10 text-accent-strong'
-                    : 'border-border',
-                )}
-                data-umami-event="account-pets-gender"
-              >
-                {option.l}
-              </button>
-            ))}
-          </div>
+          <ToggleGroup
+            // Female first, as the form has always read — not the enum's order.
+            options={[PET_GENDERS.FEMALE, PET_GENDERS.MALE].map((value) => ({
+              value,
+              label: GENDER_LABELS[value],
+            }))}
+            value={form.gender}
+            onChange={(v) => set('gender', v)}
+            umami="account-pets-gender"
+          />
         </FieldShell>
       </div>
 
@@ -419,6 +385,72 @@ function PetForm({
         cancelUmami="account-pets-cancel"
         saveIcon={<Camera size={16} aria-hidden="true" />}
       />
+    </div>
+  );
+}
+
+/** The pet's photo when it has a usable one, otherwise its kind's emoji. */
+function PetAvatar({
+  type,
+  photoUrl,
+  className,
+}: {
+  type: PetType;
+  photoUrl: string | null;
+  className: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'bg-secondary flex items-center justify-center overflow-hidden rounded-full text-2xl',
+        className,
+      )}
+    >
+      {isHttpsUrl(photoUrl) ? (
+        <img
+          src={photoUrl}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="size-full object-cover"
+        />
+      ) : (
+        <span aria-hidden="true">{PET_EMOJI[type]}</span>
+      )}
+    </div>
+  );
+}
+
+/** A row of mutually exclusive buttons; the picked one is `aria-pressed`. */
+function ToggleGroup<T extends string>({
+  options,
+  value,
+  onChange,
+  umami,
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  umami: string;
+}) {
+  return (
+    <div className="flex gap-2">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={value === option.value}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            'flex-1 rounded-xl border-2 py-2.5 text-sm font-medium transition-colors',
+            value === option.value
+              ? 'border-accent-strong bg-accent/10 text-accent-strong'
+              : 'border-border',
+          )}
+          data-umami-event={umami}
+        >
+          {option.label}
+        </button>
+      ))}
     </div>
   );
 }
