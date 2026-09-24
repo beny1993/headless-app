@@ -34,7 +34,6 @@ import {
   API_PATHS,
   apiAdminProductImagesPath,
   apiAdminProductPath,
-  apiProductPath,
 } from '@/lib/constant/paths';
 import {
   MAX_PRODUCT_IMAGES,
@@ -243,7 +242,9 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       if (created.body.status !== 'success') throw new Error('setup failed');
 
       anon();
-      const res = await app.request(apiProductPath(created.body.data.slug));
+      const res = await app.request(
+        `${API_PATHS.PRODUCTS}/${created.body.data.slug}`,
+      );
       expect(res.status).toBe(200);
     });
   });

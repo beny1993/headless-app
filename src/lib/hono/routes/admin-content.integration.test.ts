@@ -22,11 +22,7 @@ import {
 } from 'vitest';
 import { siteContent } from '@/db/schema/site-content';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
-import {
-  API_PATHS,
-  apiAdminContentPath,
-  apiProductPath,
-} from '@/lib/constant/paths';
+import { API_PATHS, apiAdminContentPath } from '@/lib/constant/paths';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import { LINK_MESSAGES } from '@/lib/content/link';
 import type { ApiResponse } from '@/lib/hono/envelope';
@@ -181,7 +177,9 @@ describe.skipIf(!databaseReachable)('admin content API', () => {
       anon();
       // A slug that does not exist still proves the route is not behind the admin
       // guard: it answers 404 (a public not-found), never 401/403.
-      const res = await app.request(apiProductPath('no-such-slug-at-all'));
+      const res = await app.request(
+        `${API_PATHS.PRODUCTS}/no-such-slug-at-all`,
+      );
       expect(res.status).toBe(404);
     });
   });
