@@ -10,6 +10,7 @@
 // size cap from there). The user-facing messages moved here with it — they belong
 // to the boundary, and both routes answer with them.
 import type { Context } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import {
   IMAGE_FIELD_NAME,
   IMAGE_TYPE_ERROR,
@@ -17,7 +18,6 @@ import {
   sniffImageType,
   type AcceptedImageType,
 } from '@/lib/storage/image-upload';
-import { apiError } from './envelope';
 
 /** No usable image file on an upload request. */
 export const NO_IMAGE_FILE_MESSAGE = 'فایلی برای بارگذاری ارسال نشده است.';
@@ -27,50 +27,35 @@ export const INVALID_IMAGE_MESSAGE = `${IMAGE_TYPE_ERROR.replace(/\.$/, '')} پ�
 export const IMAGE_TOO_LARGE_MESSAGE = 'حجم تصویر بیش از حد مجاز است.';
 
 /**
- * The validated bytes and sniffed type of an uploaded image, or a ready-to-return
- * error `Response`. The caller returns `response` unchanged on `ok: false`, and
- * on `ok: true` stores `bytes` under a server-generated key for `type`.
+ * The validated bytes and sniffed type of an uploaded image. A refusal throws an
+ * `HTTPException` (400, or 413 past the ceiling), which `apiErrorHandler`
+ * answers as the error envelope with its message and status. The caller stores
+ * `bytes` under a server-generated key for `type`.
  *
  * The size backstop re-checks the read length even though the route mounts a
  * `bodyLimit` at the same ceiling: the guard refuses an oversize body before it
  * is buffered, and this keeps the ceiling enforced if a caller ever reaches the
  * handler off that guarded path.
  */
-export type ImageUploadResult =
-  | { ok: true; bytes: Uint8Array; type: AcceptedImageType }
-  | { ok: false; response: Response };
-
-export async function readImageUpload(c: Context): Promise<ImageUploadResult> {
+export async function readImageUpload(
+  c: Context,
+): Promise<{ bytes: Uint8Array; type: AcceptedImageType }> {
   const form = await c.req.parseBody();
   const file = form[IMAGE_FIELD_NAME];
   if (!(file instanceof File)) {
-    return {
-      ok: false,
-      response: c.json(apiError(NO_IMAGE_FILE_MESSAGE), 400),
-    };
+    throw new HTTPException(400, { message: NO_IMAGE_FILE_MESSAGE });
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (bytes.byteLength === 0) {
-    return {
-      ok: false,
-      response: c.json(apiError(NO_IMAGE_FILE_MESSAGE), 400),
-    };
+    throw new HTTPException(400, { message: NO_IMAGE_FILE_MESSAGE });
   }
   if (bytes.byteLength > MAX_UPLOAD_BYTES) {
-    return {
-      ok: false,
-      response: c.json(apiError(IMAGE_TOO_LARGE_MESSAGE), 413),
-    };
+    throw new HTTPException(413, { message: IMAGE_TOO_LARGE_MESSAGE });
   }
 
   const type = sniffImageType(bytes);
-  if (!type) {
-    return {
-      ok: false,
-      response: c.json(apiError(INVALID_IMAGE_MESSAGE), 400),
-    };
-  }
+  if (!type) throw new HTTPException(400, { message: INVALID_IMAGE_MESSAGE });
 
-  return { ok: true, bytes, type };
+  return { bytes, type };
 }

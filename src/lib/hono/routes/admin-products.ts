@@ -375,10 +375,9 @@ export const productImageUploadHandler = async (
   // The shared trust boundary: parse the body, refuse a missing/empty/oversize
   // file, and sniff the real type from the bytes. Identical to the content
   // upload — the only difference is what happens with the bytes afterwards.
-  const upload = await readImageUpload(c);
-  if (!upload.ok) return upload.response;
+  const { bytes, type } = await readImageUpload(c);
 
-  const stored = await appendProductImage(product, upload.bytes, upload.type);
+  const stored = await appendProductImage(product, bytes, type);
   // The check above is the fast path, which keeps a refused photo from being
   // buffered at all; this is the one that still holds when two uploads race.
   // Same refusal either way, so an admin cannot tell which caught it.
