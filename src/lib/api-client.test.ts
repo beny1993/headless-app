@@ -8,9 +8,7 @@ import { z } from 'zod';
 import {
   ApiRequestError,
   DEFAULT_ERROR_MESSAGE,
-  del,
-  get,
-  post,
+  delData,
   postData,
   postForm,
 } from './api-client';
@@ -76,13 +74,17 @@ describe('postData', () => {
   });
 });
 
-describe('post headers', () => {
+describe('postData headers', () => {
   it('sends the supplied headers on the request', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(jsonResponse(200, { status: 'success', data: null }));
 
-    await post('/api/checkout', { items: [] }, { 'Idempotency-Key': 'key-1' });
+    await postData(
+      '/api/checkout',
+      { items: [] },
+      { 'Idempotency-Key': 'key-1' },
+    );
 
     const init = fetchSpy.mock.calls[0][1] as RequestInit;
     const headers = init.headers as Record<string, string>;
@@ -198,15 +200,12 @@ describe('postForm', () => {
 });
 
 describe('bodyless requests', () => {
-  it.each([
-    ['GET', () => get('/api/products')],
-    ['DELETE', () => del('/api/me/pets/1')],
-  ])('sends no Content-Type on a %s with no body', async (_method, call) => {
+  it('sends no Content-Type on a DELETE with no body', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(jsonResponse(200, { status: 'success', data: null }));
 
-    await call();
+    await delData('/api/me/pets/1');
 
     const init = fetchSpy.mock.calls[0][1] as RequestInit;
     expect(init.body).toBeUndefined();

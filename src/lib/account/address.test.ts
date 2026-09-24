@@ -7,7 +7,13 @@
 // inherited rules did not get lost in `.extend`.
 import { describe, expect, it } from 'vitest';
 import type { AddressWithProvince } from '@/db/dao/AddressDao';
-import { addressInputSchema, toAddressResponse } from '@/lib/account/address';
+import {
+  addressInputSchema,
+  normalizePostalCode,
+  toAddressResponse,
+  validateAddress,
+} from '@/lib/account/address';
+import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
 
 const NUL = String.fromCharCode(0);
 const RLO = String.fromCharCode(0x202e);
@@ -112,5 +118,91 @@ describe('toAddressResponse', () => {
     const projected = toAddressResponse(row) as Record<string, unknown>;
     expect(projected).not.toHaveProperty('userId');
     expect(projected).not.toHaveProperty('updatedAt');
+  });
+});
+
+describe('normalizePostalCode', () => {
+  it('folds Persian digits to ASCII', () => {
+    expect(normalizePostalCode('۱۲۳۴۵۶۷۸۹۰')).toBe('1234567890');
+  });
+
+  it('strips separators and spaces', () => {
+    expect(normalizePostalCode(' 12345-67890 ')).toBe('1234567890');
+  });
+
+  it('returns an empty string for no digits', () => {
+    expect(normalizePostalCode('')).toBe('');
+    expect(normalizePostalCode('کد')).toBe('');
+  });
+});
+
+describe('validateAddress', () => {
+  const form = () => ({
+    recipientName: 'سارا محمدی',
+    recipientPhone: '09120000000',
+    provinceId: '1',
+    city: 'تهران',
+    postalCode: '۱۲۳۴۵۶۷۸۹۰',
+    addressLine: 'خیابان ولیعصر، پلاک ۱۲',
+  });
+
+  it('accepts a complete address', () => {
+    expect(validateAddress(form(), false)).toEqual({});
+  });
+
+  it('names every missing field in Persian', () => {
+    expect(
+      validateAddress(
+        {
+          recipientName: ' ',
+          recipientPhone: '',
+          provinceId: '',
+          city: '  ',
+          postalCode: '',
+          addressLine: '',
+        },
+        false,
+      ),
+    ).toEqual({
+      recipientName: 'نام گیرنده را وارد کن.',
+      recipientPhone: 'شماره تماس گیرنده را وارد کن.',
+      provinceId: 'استان را انتخاب کن.',
+      city: 'شهر را وارد کن.',
+      postalCode: 'کد پستی باید ۱۰ رقم باشد.',
+      addressLine: 'آدرس کامل را وارد کن (حداقل ۱۰ حرف).',
+    });
+  });
+
+  it('wants at least ten characters of address, after trimming', () => {
+    expect(
+      validateAddress({ ...form(), addressLine: ' ۱۲۳۴۵۶۷۸۹ ' }, false),
+    ).toHaveProperty('addressLine');
+    expect(
+      validateAddress({ ...form(), addressLine: '۱۲۳۴۵۶۷۸۹۰' }, false),
+    ).toEqual({});
+  });
+
+  it('wants exactly ten postal-code digits, separators ignored', () => {
+    expect(
+      validateAddress({ ...form(), postalCode: '12345-67890' }, false),
+    ).toEqual({});
+    expect(
+      validateAddress({ ...form(), postalCode: '123456789' }, false),
+    ).toHaveProperty('postalCode');
+    expect(
+      validateAddress({ ...form(), postalCode: '12345678901' }, false),
+    ).toHaveProperty('postalCode');
+  });
+
+  it('refuses a deactivated province', () => {
+    expect(validateAddress(form(), true)).toEqual({
+      provinceId: STALE_PROVINCE_MESSAGE,
+    });
+  });
+
+  it('asks for a province before calling an empty one stale', () => {
+    expect(
+      validateAddress({ ...form(), provinceId: '' }, true).provinceId,
+    ).toBe('استان را انتخاب کن.');
   });
 });

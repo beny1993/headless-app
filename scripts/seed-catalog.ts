@@ -7,7 +7,7 @@
  * Requires the database to be up (`docker compose --file docker-compose-dev.yaml up -d`)
  * and migrations applied (`pnpm migration:migrate`). Safe to re-run: it upserts.
  */
-import 'dotenv/config';
+import './load-env';
 import { seedCatalog } from '@/db/seed/catalog';
 
 const { categories, products } = await seedCatalog();

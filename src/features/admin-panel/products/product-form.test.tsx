@@ -645,7 +645,7 @@ describe('the additional categories', () => {
     // The route keys this on the bare field name so the fieldset can show it;
     // nothing else on the form would, and a toast is not raised while some
     // field owns the error. The wiring is `fieldErrors.extraCategoryIds` →
-    // the `HintOrError` the fieldset's `aria-describedby` points at, which no
+    // the `FieldMessage` the fieldset's `aria-describedby` points at, which no
     // unit test can reach.
     api.putData.mockRejectedValue(
       new ApiRequestError(400, 'محصول ذخیره نشد؛ ورودی را بررسی کن.', [

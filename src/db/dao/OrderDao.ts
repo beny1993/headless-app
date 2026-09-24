@@ -2,7 +2,18 @@
 // orchestration (a transition's CAS plus its restock / COD-payment side effects)
 // lives in src/logic/orders/state-machine.ts, which composes these methods.
 // Never write raw SQL — the CAS below is the query builder, not a string.
-import { and, asc, count, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  lt,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import { db, type Executor, type Tx } from '@/db';
 import {
   orderItems,
@@ -132,15 +143,16 @@ export class OrderDao {
     return tx ? run(tx) : db.transaction(run);
   }
 
+  /** The one order matching `where`, with its snapshotted line items, or `null`. */
+  private static async findOne(where: SQL): Promise<OrderWithItems | null> {
+    const [order] = await db.select().from(orders).where(where).limit(1);
+    if (!order) return null;
+    return { ...order, items: await OrderDao.getItems(db, order.id) };
+  }
+
   /** Order display / admin read: the order with its snapshotted line items. */
   static async getById(id: string): Promise<OrderWithItems | null> {
-    const [order] = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.id, id))
-      .limit(1);
-    if (!order) return null;
-    return { ...order, items: await OrderDao.getItems(db, id) };
+    return OrderDao.findOne(eq(orders.id, id));
   }
 
   /**
@@ -153,29 +165,13 @@ export class OrderDao {
     userId: string,
     idempotencyKey: string,
   ): Promise<OrderWithItems | null> {
-    const [order] = await db
-      .select()
-      .from(orders)
-      .where(
-        and(
-          eq(orders.userId, userId),
-          eq(orders.idempotencyKey, idempotencyKey),
-        ),
-      )
-      .limit(1);
-    if (!order) return null;
-    return { ...order, items: await OrderDao.getItems(db, order.id) };
-  }
-
-  /** Lookup by the human-readable order number — the id support is handed. */
-  static async getByOrderNo(orderNo: number): Promise<OrderWithItems | null> {
-    const [order] = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.orderNo, orderNo))
-      .limit(1);
-    if (!order) return null;
-    return { ...order, items: await OrderDao.getItems(db, order.id) };
+    // `and` of two defined conditions is never undefined.
+    return OrderDao.findOne(
+      and(
+        eq(orders.userId, userId),
+        eq(orders.idempotencyKey, idempotencyKey),
+      )!,
+    );
   }
 
   /**
@@ -210,16 +206,13 @@ export class OrderDao {
    * enters at `processing` (a releasable state) and is deliberately excluded.
    */
   static async countOpenForUser(userId: string): Promise<number> {
-    const [row] = await db
-      .select({ value: count() })
-      .from(orders)
-      .where(
-        and(
-          eq(orders.userId, userId),
-          eq(orders.status, ORDER_STATUSES.PENDING_PAYMENT),
-        ),
-      );
-    return row.value;
+    return db.$count(
+      orders,
+      and(
+        eq(orders.userId, userId),
+        eq(orders.status, ORDER_STATUSES.PENDING_PAYMENT),
+      ),
+    );
   }
 
   /**
@@ -345,11 +338,11 @@ export class OrderDao {
       .limit(limit)
       .offset((page - 1) * limit);
 
-    const [items, [counted]] = await Promise.all([
+    const [items, total] = await Promise.all([
       pageQuery,
-      db.select({ value: count() }).from(orders).where(where),
+      db.$count(orders, where),
     ]);
-    return { items, total: counted.value };
+    return { items, total };
   }
 
   /**
@@ -391,10 +384,6 @@ export class OrderDao {
 
   /** How many orders are in one status — the dashboard's «awaiting action» tile. */
   static async countByStatus(status: OrderStatus): Promise<number> {
-    const [row] = await db
-      .select({ value: count() })
-      .from(orders)
-      .where(eq(orders.status, status));
-    return row.value;
+    return db.$count(orders, eq(orders.status, status));
   }
 }

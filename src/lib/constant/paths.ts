@@ -160,14 +160,6 @@ export const API_PATHS = {
   PAYMENT_MOCK_COMPLETE: '/api/payments/zarinpal/mock-complete',
 } as const;
 
-/** The owner-scoped order-detail path for one order. */
-export const apiOrderPath = (id: string) =>
-  `${API_PATHS.ORDERS}/${encodeURIComponent(id)}`;
-
-/** The admin order-read path for one order, by id. */
-export const apiAdminOrderPath = (id: string) =>
-  `${API_PATHS.ADMIN_ORDERS}/${encodeURIComponent(id)}`;
-
 /** The admin status-transition path for one order, by id. */
 export const apiAdminOrderTransitionsPath = (id: string) =>
   `${API_PATHS.ADMIN_ORDERS}/${encodeURIComponent(id)}/transitions`;
@@ -199,10 +191,6 @@ export const apiAdminCategoryPath = (id: string) =>
 /** The image-upload path for one product, by id. */
 export const apiAdminProductImagesPath = (id: string) =>
   `${API_PATHS.ADMIN_PRODUCTS}/${encodeURIComponent(id)}/images`;
-
-/** The storefront's product detail path for one product. */
-export const apiProductPath = (slug: string) =>
-  `${API_PATHS.PRODUCTS}/${encodeURIComponent(slug)}`;
 
 /** One of the caller's pets, by id (owner-scoped server-side). */
 export const apiMePetPath = (id: string) =>

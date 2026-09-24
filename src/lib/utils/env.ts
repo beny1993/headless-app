@@ -87,13 +87,6 @@ export enum VARS {
   // `${LIARA_ENDPOINT}/${LIARA_BUCKET_NAME}`. Empty ⇒ local-relative `/uploads`.
   NEXT_PUBLIC_STORAGE_BASE_URL = 'NEXT_PUBLIC_STORAGE_BASE_URL',
 
-  APP_CONFIG_EMAIL_ENABLED = 'APP_CONFIG_EMAIL_ENABLED',
-  APP_CONFIG_SMTP_SERVER = 'APP_CONFIG_SMTP_SERVER',
-  APP_CONFIG_SMTP_PORT = 'APP_CONFIG_SMTP_PORT',
-  APP_CONFIG_SMTP_USER = 'APP_CONFIG_SMTP_USER',
-  APP_CONFIG_SMTP_PASSWORD = 'APP_CONFIG_SMTP_PASSWORD',
-  APP_CONFIG_SMTP_SENDER_EMAIL = 'APP_CONFIG_SMTP_SENDER_EMAIL',
-
   // ── Error monitoring (Sentry) ───────────────────────────────────────────────
   // Sentry DSN. Empty (the default) disables the SDK entirely, which is what a
   // fresh clone and every `pnpm test` run should get. A DSN is public by design

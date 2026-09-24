@@ -12,9 +12,9 @@ one branch. Read the story note before touching code.
 
 Next 16 App Router (React 19, TypeScript strict) · Hono `@hono/zod-openapi` +
 Scalar mounted at `/api/[[...route]]` · Postgres + Drizzle (schema / DAO /
-migrations) · Better Auth · Tailwind v4 + shadcn-style primitives · React Email +
-nodemailer · Vitest · ESLint 9 + Prettier · husky + lint-staged + commitlint ·
-pnpm 11 / Node 24 · Docker for dev Postgres.
+migrations) · Better Auth · Tailwind v4 + shadcn-style primitives · Vitest ·
+ESLint 9 + Prettier · husky + lint-staged + commitlint · pnpm 11 / Node 24 ·
+Docker for dev Postgres.
 
 No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 `/admin` area built from the design prototype.
@@ -29,7 +29,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/db/schema/`, `src/db/dao/`, `src/db/migrations/` | Drizzle schema, DAOs, generated migrations. `dao/product-sql.ts` is the product listing's SQL vocabulary — the family scalars, the orderings, the category and pet scopes — composed by `ProductDao` and imported by nothing else |
 | `src/lib/hono/` | API app, router factory, response envelope, routes |
 | `src/lib/hono/middleware/` | Cross-cutting middleware: the `requireAdmin`/`requireAuth` guards, and the `/api/*` rate limiter (the one deliberate `app.use('*')` — see its mount comment) |
-| `src/lib/auth/`, `src/lib/email/`, `src/lib/utils/env.ts` | Better Auth, mailer, env accessor |
+| `src/lib/auth/`, `src/lib/utils/env.ts` | Better Auth, env accessor |
 | `src/lib/sentry.ts` | The one `Sentry.init` options object, shared by all three runtimes (`sentry.server.config.ts`, `sentry.edge.config.ts`, `src/instrumentation-client.ts`). Owns the privacy contract: explicit `dataCollection` opt-outs and the removal of the console-breadcrumb integration, without which every OTP in the server log rides along on the next event |
 | `src/lib/content/` | Storefront editorial content: the client-safe zod schemas + key enum + area map + `isVisible` (`site-content.ts`), the saved-link contract + `resolveLink` (`link.ts`; its id → slug targets load in `src/logic/content/link-targets.ts`), the typed defaults + `resolveContent` fallback (`defaults.ts`), and the header/footer request-time read `readSiteChrome` (`chrome.ts`, `await connection()`). Values live in the `site_content` table; the page-organized admin editor is `/admin-panel/content/[area]` |
 | `src/features/<area>/<feature>/` | Feature components; route files stay thin |
@@ -58,8 +58,9 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   export in the same file (see `src/lib/hono/routes/health.ts`), registered with
   `app.openapi(route, handler)`. Sub-routers come from `createRouter()`.
 - **Envelope**: every response is `{ status: 'success', data }` or
-  `{ status: 'error', message, errors? }` (`src/lib/hono/envelope.ts`). Consume
-  with `getData`/`postData` from `src/lib/api-client.ts`.
+  `{ status: 'error', message, errors? }` (`src/lib/hono/envelope.ts`). Client
+  components write with the `*Data`/`postForm` helpers in `src/lib/api-client.ts`
+  (browser-only); server components read through `src/logic/` and the DAOs.
 - **Env vars**: names live in the `VARS` enum in `src/lib/utils/env.ts`, template
   in `.env.example`. `NEXT_PUBLIC_*` must also be listed in `STATIC_INLINED_VARS`
   there. Never commit `.env`.
@@ -367,7 +368,7 @@ pnpm create-admin 09121234567       # grant admin to a phone number
 `/api/reference` interactive API docs (non-production only). Sign-in is `/login`
 for customers and admins alike; the console SMS driver prints the one-time code
 to the server log, so no SMS account is needed locally.
-Other commands: `pnpm dev:email` (email preview), `pnpm drizzle-studio`,
+Other commands: `pnpm drizzle-studio`,
 `pnpm migration:reset-dev` (nuke volumes, re-migrate), `pnpm --dir design dev`
 (design prototype).
 

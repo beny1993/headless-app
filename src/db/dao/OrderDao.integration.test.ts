@@ -64,7 +64,7 @@ describe.skipIf(!databaseReachable)('OrderDao', () => {
     expect(second.orderNo).toBeGreaterThan(first.orderNo);
   });
 
-  it('reads an order back by its uuid and by its order_no', async () => {
+  it('reads an order back by its uuid, with its items', async () => {
     const { user, product } = await setup();
     const order = await OrderDao.create(
       fx.buildOrder(user, [{ product, qty: 2 }]),
@@ -72,11 +72,9 @@ describe.skipIf(!databaseReachable)('OrderDao', () => {
     fx.remember(order.id);
 
     const byId = await OrderDao.getById(order.id);
-    const byNo = await OrderDao.getByOrderNo(order.orderNo);
 
     expect(byId?.id).toBe(order.id);
-    expect(byNo?.id).toBe(order.id);
-    expect(byNo?.items).toHaveLength(1);
+    expect(byId?.items).toHaveLength(1);
   });
 
   it('returns null for an unknown id', async () => {

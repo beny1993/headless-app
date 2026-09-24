@@ -1,6 +1,5 @@
 'use client';
 
-import { AlertCircle } from 'lucide-react';
 import {
   PET_LABELS,
   PET_TYPES,
@@ -16,6 +15,8 @@ import {
   type LinkType,
 } from '@/lib/content/link';
 import { MAX_ROUTINE_CATEGORIES } from '@/lib/content/site-content';
+import { toPersianDigits } from '@/lib/format';
+import { controlClass, FieldMessage } from '@/components/ui/field';
 
 /** A category or active product a destination can point at. */
 export type LinkOption = {
@@ -60,28 +61,12 @@ const PAGE_LABELS: Record<LinkPage, string> = {
 const MISSING_CATEGORY = 'دسته‌بندی حذف‌شده';
 const MISSING_PRODUCT = 'محصول حذف‌شده یا غیرفعال';
 
-const controlClass = (error: string | undefined) =>
-  `bg-secondary h-12 w-full rounded-xl border px-4 text-sm outline-none ${
-    error
-      ? 'border-destructive'
-      : 'border-border focus-visible:border-accent-strong'
-  }`;
-
 /** A shop link carrying only the filters actually chosen — an empty select is "all". */
 const shopLink = (categoryId: string | undefined, pet: string): Link => ({
   type: LINK_TYPES.SHOP,
   ...(categoryId ? { categoryId } : {}),
   ...(pet ? { pet: pet as PetType } : {}),
 });
-
-function FieldError({ error }: { error?: string }) {
-  if (!error) return null;
-  return (
-    <p className="text-destructive mt-1.5 flex items-center gap-1 text-xs">
-      <AlertCircle size={12} aria-hidden="true" /> {error}
-    </p>
-  );
-}
 
 /**
  * One link's destination: a type, then the one or two choices that type needs,
@@ -142,7 +127,7 @@ export function LinkPicker({
           aria-label={LINK_PICKER_LABELS.type}
           value={value?.type ?? ''}
           onChange={(e) => changeType(e.target.value)}
-          className={controlClass(error)}
+          className={controlClass(Boolean(error))}
           data-umami-event="admin-panel-content-link-type-change"
         >
           <option value="">پیش‌فرض</option>
@@ -169,7 +154,7 @@ export function LinkPicker({
                 page: e.target.value as LinkPage,
               })
             }
-            className={controlClass(error)}
+            className={controlClass(Boolean(error))}
             data-umami-event="admin-panel-content-link-page-change"
           >
             {LINK_PAGES.map((page) => (
@@ -188,7 +173,7 @@ export function LinkPicker({
               onChange={(e) =>
                 onChange(shopLink(e.target.value, value.pet ?? ''))
               }
-              className={controlClass(error)}
+              className={controlClass(Boolean(error))}
               data-umami-event="admin-panel-content-link-category-change"
             >
               <option value="">همه دسته‌بندی‌ها</option>
@@ -208,7 +193,7 @@ export function LinkPicker({
               onChange={(e) =>
                 onChange(shopLink(value.categoryId, e.target.value))
               }
-              className={controlClass(error)}
+              className={controlClass(Boolean(error))}
               data-umami-event="admin-panel-content-link-pet-change"
             >
               <option value="">همه حیوانات</option>
@@ -228,7 +213,7 @@ export function LinkPicker({
             onChange={(e) =>
               onChange({ type: LINK_TYPES.PRODUCT, productId: e.target.value })
             }
-            className={controlClass(error)}
+            className={controlClass(Boolean(error))}
             data-umami-event="admin-panel-content-link-product-change"
           >
             {!options.products.some((p) => p.id === value.productId) && (
@@ -254,7 +239,7 @@ export function LinkPicker({
             onChange={(e) =>
               onChange({ type: LINK_TYPES.EXTERNAL, url: e.target.value })
             }
-            className={controlClass(error)}
+            className={controlClass(Boolean(error))}
           />
         )}
       </div>
@@ -267,7 +252,7 @@ export function LinkPicker({
         </span>
         {preview.external && ' (در برگه جدید)'}
       </p>
-      <FieldError error={error} />
+      <FieldMessage id={id} error={error} />
     </div>
   );
 }
@@ -345,14 +330,15 @@ export function CategoryPicker({
           `به این ترتیب نمایش داده می‌شوند: ${selected.map(titleOf).join('، ')}`
         ) : (
           <>
-            تا چهار دسته‌بندی، به ترتیب انتخاب. پیش‌فرض:{' '}
+            تا {toPersianDigits(MAX_ROUTINE_CATEGORIES)} دسته‌بندی، به ترتیب
+            انتخاب. پیش‌فرض:{' '}
             <span dir="ltr" className="inline-block align-middle">
               {fallback}
             </span>
           </>
         )}
       </p>
-      <FieldError error={error} />
+      <FieldMessage id={id} error={error} />
     </div>
   );
 }

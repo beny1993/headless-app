@@ -2,29 +2,40 @@
 
 import { useId, useState } from 'react';
 import {
-  AlertCircle,
   Check,
   CornerDownLeft,
   Layers,
   Loader2,
   Pencil,
-  Plus,
   Trash2,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { ApiRequestError, delData, postData, putData } from '@/lib/api-client';
+import { delData, postData, putData } from '@/lib/api-client';
 import {
   CATEGORY_PARENT_MESSAGES,
   type CategoryInputBody,
   categoryInputSchema,
 } from '@/lib/catalog/category-input';
 import { orderAsTree } from '@/lib/catalog/category-tree';
-import { parseFieldErrors } from '@/lib/checkout/field-errors';
+import {
+  reasonFrom,
+  requestFieldErrors,
+  zodFieldErrors,
+} from '@/lib/checkout/field-errors';
 import { API_PATHS, apiAdminCategoryPath } from '@/lib/constant/paths';
-import { formatNumber, toAsciiDigits } from '@/lib/format';
+import { formatNumber, parseDigits } from '@/lib/format';
 import type { CategoryView } from '@/lib/hono/routes/admin-categories';
 import { cn } from '@/lib/utils';
+import { AdminTable } from '@/features/admin-panel/shared/admin-table';
+import { CreateCard } from '@/features/admin-panel/shared/create-card';
+import {
+  COMPACT_CONTROL,
+  controlClass,
+  fieldAria,
+  FieldShell,
+  TextField,
+} from '@/components/ui/field';
 
 /**
  * The admin category manager: a create form over the live list, each row
@@ -71,39 +82,21 @@ async function saveCategory(
   draft: Draft,
   send: (body: CategoryInputBody) => Promise<CategoryView>,
 ): Promise<SaveResult> {
-  const sortOrder = toAsciiDigits(draft.sortOrder).trim();
   const parsed = categoryInputSchema.safeParse({
     title: draft.title,
     slug: draft.slug,
-    sortOrder: sortOrder === '' ? Number.NaN : Number(sortOrder),
+    sortOrder: parseDigits(draft.sortOrder) ?? Number.NaN,
     // `z.uuid()` refuses `''`; the empty option means top-level.
     parentId: draft.parentId === '' ? null : draft.parentId,
   });
   if (!parsed.success) {
-    const fields: Record<string, string> = {};
-    for (const issue of parsed.error.issues) {
-      const key = String(issue.path[0] ?? '');
-      if (key && !(key in fields)) fields[key] = issue.message;
-    }
-    return { ok: false, fields };
+    return { ok: false, fields: zodFieldErrors(parsed.error) };
   }
 
   try {
     return { ok: true, category: await send(parsed.data) };
   } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 400) {
-      const { fields, unmapped } = parseFieldErrors(error.errors);
-      const message =
-        Object.keys(fields).length === 0
-          ? error.message
-          : unmapped.join(' ') || undefined;
-      return { ok: false, fields, message };
-    }
-    return {
-      ok: false,
-      fields: {},
-      message: error instanceof Error ? error.message : GENERIC_ERROR,
-    };
+    return { ok: false, ...requestFieldErrors(error, GENERIC_ERROR) };
   }
 }
 
@@ -173,85 +166,56 @@ function CreateForm({
   };
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-      className="border-border bg-card flex flex-col gap-4 rounded-2xl border p-6"
-    >
-      <div className="flex items-center gap-2">
+    <CreateCard
+      title="ساخت دسته‌بندی"
+      icon={
         <Layers size={18} className="text-accent-strong" aria-hidden="true" />
-        <h2 className="font-bold">ساخت دسته‌بندی</h2>
-      </div>
-
-      {/* Two columns, not three: four fields in `sm:grid-cols-3` leave one
-          orphan on a half-width row. */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <CategoryField
-          id={`${id}-title`}
-          label="عنوان"
-          value={draft.title}
-          onChange={(title) => setDraft((d) => ({ ...d, title }))}
-          error={errors.title}
-          placeholder="مثل غذای خشک"
-          umami="admin-panel-categories-title"
-        />
-        <CategoryField
-          id={`${id}-slug`}
-          label="نشانی (slug)"
-          value={draft.slug}
-          onChange={(slug) => setDraft((d) => ({ ...d, slug }))}
-          error={errors.slug}
-          hint="در آدرس فروشگاه، مثل dry-food"
-          dir="ltr"
-          umami="admin-panel-categories-slug"
-        />
-        <CategoryField
-          id={`${id}-sort`}
-          label="ترتیب نمایش"
-          value={draft.sortOrder}
-          onChange={(sortOrder) => setDraft((d) => ({ ...d, sortOrder }))}
-          error={errors.sortOrder}
-          hint="عدد کمتر، اول نمایش داده می‌شود"
-          dir="ltr"
-          inputMode="numeric"
-          umami="admin-panel-categories-sort"
-        />
-        <ParentField
-          id={`${id}-parent`}
-          value={draft.parentId}
-          onChange={(parentId) => setDraft((d) => ({ ...d, parentId }))}
-          parents={parents}
-          error={errors.parentId}
-          umami="admin-panel-categories-parent"
-        />
-      </div>
-
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={busy}
-          data-umami-event="admin-panel-categories-create"
-          className="bg-accent-strong hover:bg-accent-hover inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? (
-            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-          ) : (
-            <Plus size={14} aria-hidden="true" />
-          )}
-          ساخت دسته‌بندی
-        </button>
-        {justCreated && (
-          <span
-            role="status"
-            className="text-success-strong flex items-center gap-1 text-sm"
-          >
-            <Check size={16} aria-hidden="true" /> «{justCreated}» ساخته شد
-          </span>
-        )}
-      </div>
-    </form>
+      }
+      onSubmit={submit}
+      busy={busy}
+      done={justCreated && <>«{justCreated}» ساخته شد</>}
+      submitLabel="ساخت دسته‌بندی"
+      umami="admin-panel-categories-create"
+    >
+      <TextField
+        id={`${id}-title`}
+        label="عنوان"
+        value={draft.title}
+        onChange={(title) => setDraft((d) => ({ ...d, title }))}
+        error={errors.title}
+        placeholder="مثل غذای خشک"
+        umami="admin-panel-categories-title"
+      />
+      <TextField
+        id={`${id}-slug`}
+        label="نشانی (slug)"
+        value={draft.slug}
+        onChange={(slug) => setDraft((d) => ({ ...d, slug }))}
+        error={errors.slug}
+        hint="در آدرس فروشگاه، مثل dry-food"
+        dir="ltr"
+        umami="admin-panel-categories-slug"
+      />
+      <TextField
+        id={`${id}-sort`}
+        label="ترتیب نمایش"
+        value={draft.sortOrder}
+        onChange={(sortOrder) => setDraft((d) => ({ ...d, sortOrder }))}
+        error={errors.sortOrder}
+        hint="عدد کمتر، اول نمایش داده می‌شود"
+        dir="ltr"
+        inputMode="numeric"
+        umami="admin-panel-categories-sort"
+      />
+      <ParentField
+        id={`${id}-parent`}
+        value={draft.parentId}
+        onChange={(parentId) => setDraft((d) => ({ ...d, parentId }))}
+        parents={parents}
+        error={errors.parentId}
+        umami="admin-panel-categories-parent"
+      />
+    </CreateCard>
   );
 }
 
@@ -276,46 +240,26 @@ function CategoryTable({
   }
 
   return (
-    <div className="border-border overflow-hidden rounded-2xl border bg-white">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-secondary/50">
-            <tr>
-              {['عنوان', 'نشانی (slug)', 'ترتیب نمایش'].map((heading) => (
-                <th
-                  key={heading}
-                  className="text-muted-foreground px-4 py-3 text-start font-semibold"
-                >
-                  {heading}
-                </th>
-              ))}
-              <th className="px-4 py-3">
-                <span className="sr-only">عملیات</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {/* Sub-rows sit directly under their parent — the nesting *is* the
-                count, so no badge. */}
-            {orderAsTree(categories).map(({ depth, ...category }) => (
-              <CategoryRow
-                key={category.id}
-                category={category}
-                depth={depth}
-                parentTitle={
-                  parents.find((p) => p.id === category.parentId)?.title
-                }
-                // A category with children cannot itself become one.
-                hasChildren={categories.some((c) => c.parentId === category.id)}
-                parents={parents.filter((p) => p.id !== category.id)}
-                onSaved={onSaved}
-                onDeleted={onDeleted}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <AdminTable
+      headings={['عنوان', 'نشانی (slug)', 'ترتیب نمایش']}
+      actions="عملیات"
+    >
+      {/* Sub-rows sit directly under their parent — the nesting *is* the
+          count, so no badge. */}
+      {orderAsTree(categories).map(({ depth, ...category }) => (
+        <CategoryRow
+          key={category.id}
+          category={category}
+          depth={depth}
+          parentTitle={parents.find((p) => p.id === category.parentId)?.title}
+          // A category with children cannot itself become one.
+          hasChildren={categories.some((c) => c.parentId === category.id)}
+          parents={parents.filter((p) => p.id !== category.id)}
+          onSaved={onSaved}
+          onDeleted={onDeleted}
+        />
+      ))}
+    </AdminTable>
   );
 }
 
@@ -392,11 +336,7 @@ function CategoryRow({
       onDeleted(category.id);
     } catch (requestError) {
       // A 409 carries the server's Persian refusal, naming the product count.
-      toast.error(
-        requestError instanceof Error
-          ? requestError.message
-          : 'حذف دسته‌بندی ناموفق بود.',
-      );
+      toast.error(reasonFrom(requestError) ?? 'حذف دسته‌بندی ناموفق بود.');
       setBusy(false);
     }
   };
@@ -412,7 +352,7 @@ function CategoryRow({
       {draft ? (
         <>
           <td className={titleCell}>
-            <CategoryField
+            <TextField
               id={`${id}-title`}
               label="عنوان"
               hideLabel
@@ -442,7 +382,7 @@ function CategoryRow({
             />
           </td>
           <td className="px-4 py-3">
-            <CategoryField
+            <TextField
               id={`${id}-slug`}
               label="نشانی (slug)"
               hideLabel
@@ -455,7 +395,7 @@ function CategoryRow({
             />
           </td>
           <td className="px-4 py-3">
-            <CategoryField
+            <TextField
               id={`${id}-sort`}
               label="ترتیب نمایش"
               hideLabel
@@ -570,65 +510,6 @@ function CategoryRow({
   );
 }
 
-/** One labelled text input with an inline error; `compact` for table rows. */
-function CategoryField({
-  id,
-  label,
-  value,
-  onChange,
-  error,
-  hint,
-  dir,
-  inputMode,
-  placeholder,
-  hideLabel,
-  compact,
-  umami,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  error?: string;
-  hint?: string;
-  dir?: 'ltr' | 'rtl';
-  inputMode?: 'text' | 'numeric';
-  placeholder?: string;
-  hideLabel?: boolean;
-  compact?: boolean;
-  umami: string;
-}) {
-  const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
-  return (
-    <div className={compact ? 'min-w-32' : undefined}>
-      <label
-        htmlFor={id}
-        className={hideLabel ? 'sr-only' : 'mb-1.5 block text-sm font-medium'}
-      >
-        {label}
-      </label>
-      <input
-        id={id}
-        type="text"
-        dir={dir}
-        inputMode={inputMode}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        aria-invalid={Boolean(error)}
-        aria-describedby={describedBy}
-        data-umami-event={umami}
-        className={cn(
-          'bg-secondary focus-visible:border-accent-strong w-full rounded-xl border px-4 text-start transition-colors outline-none focus-visible:ring-2',
-          compact ? 'h-10' : 'h-12',
-          error ? 'border-destructive bg-destructive-soft/40' : 'border-border',
-        )}
-      />
-      <FieldMessage id={id} error={error} hint={hint} />
-    </div>
-  );
-}
-
 /**
  * The «دسته‌بندی مادر» select — one control for create, move and promote, in the
  * create form and in every edit row. A native `<select>`: the platform picker is
@@ -657,27 +538,26 @@ function ParentField({
   compact?: boolean;
   umami: string;
 }) {
-  const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
   return (
-    <div className={compact ? 'mt-2 min-w-32' : undefined}>
-      <label
-        htmlFor={id}
-        className={hideLabel ? 'sr-only' : 'mb-1.5 block text-sm font-medium'}
-      >
-        دسته‌بندی مادر
-      </label>
+    <FieldShell
+      id={id}
+      label="دسته‌بندی مادر"
+      error={error}
+      hint={hint}
+      hideLabel={hideLabel}
+      className={compact ? 'mt-2 min-w-32' : undefined}
+    >
       <select
         id={id}
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
-        aria-invalid={Boolean(error)}
-        aria-describedby={describedBy}
+        {...fieldAria(id, error, hint)}
         data-umami-event={umami}
         className={cn(
-          'bg-secondary focus-visible:border-accent-strong w-full rounded-xl border px-4 text-start transition-colors outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60',
-          compact ? 'h-10' : 'h-12',
-          error ? 'border-destructive bg-destructive-soft/40' : 'border-border',
+          controlClass(Boolean(error)),
+          compact && COMPACT_CONTROL,
+          'disabled:cursor-not-allowed disabled:opacity-60',
         )}
       >
         <option value="">بدون مادر (دسته‌بندی اصلی)</option>
@@ -687,38 +567,6 @@ function ParentField({
           </option>
         ))}
       </select>
-      <FieldMessage id={id} error={error} hint={hint} />
-    </div>
+    </FieldShell>
   );
-}
-
-/** The hint-or-error slot under a field — the error wins while there is one. */
-function FieldMessage({
-  id,
-  error,
-  hint,
-}: {
-  id: string;
-  error?: string;
-  hint?: string;
-}) {
-  if (error) {
-    return (
-      <p
-        id={`${id}-error`}
-        className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
-      >
-        <AlertCircle size={12} className="shrink-0" aria-hidden="true" />{' '}
-        {error}
-      </p>
-    );
-  }
-  if (hint) {
-    return (
-      <p id={`${id}-hint`} className="text-muted-foreground mt-1.5 text-xs">
-        {hint}
-      </p>
-    );
-  }
-  return null;
 }

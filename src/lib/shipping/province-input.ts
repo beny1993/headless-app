@@ -85,5 +85,3 @@ export const provinceCreateSchema = z.object({
 
 /** Deactivate / reactivate — the only field a province toggle may write. */
 export const provinceToggleSchema = z.object({ isActive: z.boolean() });
-
-export type ProvinceCreateBody = z.infer<typeof provinceCreateSchema>;

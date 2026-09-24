@@ -1,7 +1,7 @@
 'use client';
 
 import type { CSSProperties } from 'react';
-import { Toaster as Sonner, type ToasterProps } from 'sonner';
+import { Toaster as Sonner } from 'sonner';
 
 /**
  * The admin panel's toast region, where request failures and partial saves are
@@ -12,7 +12,7 @@ import { Toaster as Sonner, type ToasterProps } from 'sonner';
  * the inline style inherits the body's Vazirmatn back (inline beats that rule).
  * Right-to-left, and colored by kind (`richColors`) so an error reads as one.
  */
-export function Toaster(props: ToasterProps) {
+export function Toaster() {
   return (
     <Sonner
       dir="rtl"
@@ -26,7 +26,6 @@ export function Toaster(props: ToasterProps) {
           '--normal-border': 'var(--border)',
         } as CSSProperties
       }
-      {...props}
     />
   );
 }

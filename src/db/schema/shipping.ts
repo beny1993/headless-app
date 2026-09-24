@@ -22,17 +22,8 @@ import {
   integer,
   pgTable,
   text,
-  timestamp,
 } from 'drizzle-orm/pg-core';
-
-const createdAt = timestamp('created_at', { withTimezone: true })
-  .defaultNow()
-  .notNull();
-
-const updatedAt = timestamp('updated_at', { withTimezone: true })
-  .defaultNow()
-  .$onUpdate(() => /* @__PURE__ */ new Date())
-  .notNull();
+import { createdAt, updatedAt } from '@/db/schema/columns';
 
 export const provinces = pgTable('provinces', {
   id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
@@ -79,6 +70,4 @@ export const shippingRates = pgTable(
 );
 
 export type Province = typeof provinces.$inferSelect;
-export type NewProvince = typeof provinces.$inferInsert;
 export type ShippingRate = typeof shippingRates.$inferSelect;
-export type NewShippingRate = typeof shippingRates.$inferInsert;

@@ -7,28 +7,38 @@
 // delete echoes its id). Every write is the owner-scoped `/api/me/pets` route;
 // the session is the only authority on whose pets these are.
 import { useState, type Dispatch, type SetStateAction } from 'react';
-import { AlertCircle, Camera, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Camera, Pencil, Plus, Trash2 } from 'lucide-react';
+import { delData, patchData, postData } from '@/lib/api-client';
 import {
-  delData,
-  patchData,
-  postData,
-  ApiRequestError,
-} from '@/lib/api-client';
-import { PET_GENDERS, isHttpsUrl, type PetInput } from '@/lib/account/pet';
+  PET_GENDERS,
+  isHttpsUrl,
+  type PetGender,
+  type PetInput,
+} from '@/lib/account/pet';
 import {
   PET_EMOJI,
   PET_LABELS,
   PET_TYPES,
   PET_TYPE_VALUES,
+  type PetType,
 } from '@/lib/catalog/product-query';
-import { parseFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiMePetPath } from '@/lib/constant/paths';
 import type { PetResponse } from '@/lib/hono/routes/me-pets';
 import { toPersianDigits } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { FieldShell, TextField } from '@/features/account/account-fields';
+import { FieldShell, TextField } from '@/components/ui/field';
+import {
+  DeleteConfirm,
+  EmptyState,
+  FormActions,
+  FormAlert,
+  useFormState,
+} from './account-ui';
 
-const GENERIC_ERROR = 'انجام نشد. لطفاً دوباره تلاش کن.';
+const GENDER_LABELS: Record<PetGender, string> = {
+  [PET_GENDERS.FEMALE]: 'ماده',
+  [PET_GENDERS.MALE]: 'نر',
+};
 
 type FormValues = {
   name: string;
@@ -104,15 +114,11 @@ export function PetsTab({
       </div>
 
       {pets.length === 0 && !editing && (
-        <div className="bg-secondary/40 rounded-2xl py-16 text-center">
-          <p className="mb-1 text-2xl" aria-hidden="true">
-            🐾
-          </p>
-          <p className="mb-1 font-semibold">هنوز حیوانی اضافه نکرده‌ای</p>
-          <p className="text-muted-foreground text-sm">
-            پروفایل حیوان خانگی‌ات را اینجا بساز.
-          </p>
-        </div>
+        <EmptyState
+          icon="🐾"
+          title="هنوز حیوانی اضافه نکرده‌ای"
+          description="پروفایل حیوان خانگی‌ات را اینجا بساز."
+        />
       )}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -123,20 +129,11 @@ export function PetsTab({
           >
             <div className="mb-4 flex items-center justify-between gap-2">
               <div className="flex items-center gap-3">
-                <div className="bg-secondary flex size-12 items-center justify-center overflow-hidden rounded-full text-2xl">
-                  {isHttpsUrl(pet.photoUrl) ? (
-                    <img
-                      src={pet.photoUrl}
-                      alt=""
-                      referrerPolicy="no-referrer"
-                      className="size-full object-cover"
-                    />
-                  ) : (
-                    <span aria-hidden="true">
-                      {pet.type === PET_TYPES.CAT ? '🐱' : '🐶'}
-                    </span>
-                  )}
-                </div>
+                <PetAvatar
+                  type={pet.type}
+                  photoUrl={pet.photoUrl}
+                  className="size-12"
+                />
                 <div>
                   <p className="font-bold">{pet.name}</p>
                   {pet.breed && (
@@ -171,6 +168,8 @@ export function PetsTab({
 
             {pendingDelete === pet.id ? (
               <DeleteConfirm
+                question="این حیوان حذف شود؟"
+                umami="account-pets-delete-confirm"
                 onCancel={() => setPendingDelete(null)}
                 onConfirm={async () => {
                   await delData(apiMePetPath(pet.id));
@@ -187,7 +186,7 @@ export function PetsTab({
                   [
                     ['سن', pet.age ? toPersianDigits(pet.age) : '—'],
                     ['وزن', pet.weight ? toPersianDigits(pet.weight) : '—'],
-                    ['جنس', pet.gender === PET_GENDERS.FEMALE ? 'ماده' : 'نر'],
+                    ['جنس', GENDER_LABELS[pet.gender]],
                     ['عقیم‌شده', pet.neutered ? 'بله' : 'خیر'],
                   ] as const
                 ).map(([label, value]) => (
@@ -230,57 +229,6 @@ export function PetsTab({
   );
 }
 
-function DeleteConfirm({
-  onCancel,
-  onConfirm,
-}: {
-  onCancel: () => void;
-  onConfirm: () => Promise<void>;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-  return (
-    <div className="bg-destructive-soft/40 rounded-lg p-3">
-      <p className="mb-2 text-sm font-medium">این حیوان حذف شود؟</p>
-      {error && (
-        <p role="alert" className="text-destructive mb-2 text-xs">
-          {error}
-        </p>
-      )}
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            setError(undefined);
-            try {
-              await onConfirm();
-            } catch (caught) {
-              setError(
-                caught instanceof Error ? caught.message : GENERIC_ERROR,
-              );
-              setBusy(false);
-            }
-          }}
-          className="bg-destructive rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-60"
-          data-umami-event="account-pets-delete-confirm"
-        >
-          {busy ? 'در حال حذف…' : 'حذف'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="border-border hover:bg-secondary rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60"
-        >
-          انصراف
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function PetForm({
   initial,
   onCancel,
@@ -292,53 +240,10 @@ function PetForm({
   onSaved: (pet: PetResponse) => void;
   submit: (body: PetInput) => Promise<PetResponse>;
 }) {
-  const [form, setForm] = useState(initial);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [topError, setTopError] = useState<string | undefined>();
-  const [busy, setBusy] = useState(false);
-
-  const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-    setFieldErrors((prev) => {
-      if (!(key in prev)) return prev;
-      const next = { ...prev };
-      delete next[key as string];
-      return next;
-    });
-  };
-
-  const save = async () => {
-    if (busy) return;
-    setBusy(true);
-    setTopError(undefined);
-    // Client-side gate for the one required field; the server stays authoritative.
-    if (!form.name.trim()) {
-      setFieldErrors({ name: 'نام حیوان را وارد کن.' });
-      setBusy(false);
-      return;
-    }
-    try {
-      onSaved(await submit(toBody(form)));
-    } catch (error) {
-      setBusy(false);
-      if (
-        error instanceof ApiRequestError &&
-        (error.status === 400 || error.status === 422)
-      ) {
-        const { fields, unmapped } = parseFieldErrors(error.errors);
-        setFieldErrors(fields);
-        setTopError(
-          unmapped.length > 0
-            ? unmapped.join(' ')
-            : Object.keys(fields).length === 0
-              ? error.message
-              : undefined,
-        );
-        return;
-      }
-      setTopError(error instanceof Error ? error.message : GENERIC_ERROR);
-    }
-  };
+  const { form, set, fieldErrors, topError, busy, save } = useFormState(
+    initial,
+    async (values) => onSaved(await submit(toBody(values))),
+  );
 
   return (
     <div className="bg-card border-accent/30 rounded-2xl border-2 p-6">
@@ -346,31 +251,14 @@ function PetForm({
         {initial.name ? 'ویرایش حیوان' : 'افزودن حیوان جدید'}
       </h3>
 
-      {topError && (
-        <p
-          role="alert"
-          className="text-destructive border-destructive/30 bg-destructive-soft/40 mb-4 flex items-center gap-2 rounded-xl border p-3 text-sm"
-        >
-          <AlertCircle size={16} className="shrink-0" aria-hidden="true" />
-          {topError}
-        </p>
-      )}
+      <FormAlert message={topError} />
 
       <div className="mb-5 flex items-center gap-4">
-        <div className="bg-secondary flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full text-2xl">
-          {isHttpsUrl(form.photoUrl) ? (
-            <img
-              src={form.photoUrl}
-              alt=""
-              referrerPolicy="no-referrer"
-              className="size-full object-cover"
-            />
-          ) : (
-            <span aria-hidden="true">
-              {form.type === PET_TYPES.CAT ? '🐱' : '🐶'}
-            </span>
-          )}
-        </div>
+        <PetAvatar
+          type={form.type}
+          photoUrl={form.photoUrl}
+          className="size-16 shrink-0"
+        />
         <div className="flex-1">
           <TextField
             id="pet-photo-url"
@@ -421,55 +309,28 @@ function PetForm({
         />
 
         <FieldShell id="pet-type" label="نوع">
-          <div className="flex gap-2">
-            {PET_TYPE_VALUES.map((v) => ({
-              v,
-              l: `${PET_EMOJI[v]} ${PET_LABELS[v]}`,
-            })).map((option) => (
-              <button
-                key={option.v}
-                type="button"
-                aria-pressed={form.type === option.v}
-                onClick={() => set('type', option.v)}
-                className={cn(
-                  'flex-1 rounded-xl border-2 py-2.5 text-sm font-medium transition-colors',
-                  form.type === option.v
-                    ? 'border-accent-strong bg-accent/10 text-accent-strong'
-                    : 'border-border',
-                )}
-                data-umami-event="account-pets-type"
-              >
-                {option.l}
-              </button>
-            ))}
-          </div>
+          <ToggleGroup
+            options={PET_TYPE_VALUES.map((value) => ({
+              value,
+              label: `${PET_EMOJI[value]} ${PET_LABELS[value]}`,
+            }))}
+            value={form.type}
+            onChange={(v) => set('type', v)}
+            umami="account-pets-type"
+          />
         </FieldShell>
 
         <FieldShell id="pet-gender" label="جنس">
-          <div className="flex gap-2">
-            {(
-              [
-                { v: PET_GENDERS.FEMALE, l: 'ماده' },
-                { v: PET_GENDERS.MALE, l: 'نر' },
-              ] as const
-            ).map((option) => (
-              <button
-                key={option.v}
-                type="button"
-                aria-pressed={form.gender === option.v}
-                onClick={() => set('gender', option.v)}
-                className={cn(
-                  'flex-1 rounded-xl border-2 py-2.5 text-sm font-medium transition-colors',
-                  form.gender === option.v
-                    ? 'border-accent-strong bg-accent/10 text-accent-strong'
-                    : 'border-border',
-                )}
-                data-umami-event="account-pets-gender"
-              >
-                {option.l}
-              </button>
-            ))}
-          </div>
+          <ToggleGroup
+            // Female first, as the form has always read — not the enum's order.
+            options={[PET_GENDERS.FEMALE, PET_GENDERS.MALE].map((value) => ({
+              value,
+              label: GENDER_LABELS[value],
+            }))}
+            value={form.gender}
+            onChange={(v) => set('gender', v)}
+            umami="account-pets-gender"
+          />
         </FieldShell>
       </div>
 
@@ -484,29 +345,83 @@ function PetForm({
         عقیم‌شده
       </label>
 
-      <div className="mt-5 flex gap-3">
+      <FormActions
+        busy={busy}
+        // Client-side gate for the one required field; the server stays authoritative.
+        onSave={() =>
+          save(form.name.trim() ? {} : { name: 'نام حیوان را وارد کن.' })
+        }
+        onCancel={onCancel}
+        saveUmami="account-pets-save"
+        cancelUmami="account-pets-cancel"
+        saveIcon={<Camera size={16} aria-hidden="true" />}
+      />
+    </div>
+  );
+}
+
+/** The pet's photo when it has a usable one, otherwise its kind's emoji. */
+function PetAvatar({
+  type,
+  photoUrl,
+  className,
+}: {
+  type: PetType;
+  photoUrl: string | null;
+  className: string;
+}) {
+  return (
+    <div
+      className={cn(
+        'bg-secondary flex items-center justify-center overflow-hidden rounded-full text-2xl',
+        className,
+      )}
+    >
+      {isHttpsUrl(photoUrl) ? (
+        <img
+          src={photoUrl}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="size-full object-cover"
+        />
+      ) : (
+        <span aria-hidden="true">{PET_EMOJI[type]}</span>
+      )}
+    </div>
+  );
+}
+
+/** A row of mutually exclusive buttons; the picked one is `aria-pressed`. */
+function ToggleGroup<T extends string>({
+  options,
+  value,
+  onChange,
+  umami,
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  umami: string;
+}) {
+  return (
+    <div className="flex gap-2">
+      {options.map((option) => (
         <button
+          key={option.value}
           type="button"
-          onClick={save}
-          disabled={busy}
-          className="bg-brand hover:bg-brand-hover text-brand-foreground flex-1 rounded-xl py-3 font-bold transition-colors disabled:opacity-60"
-          data-umami-event="account-pets-save"
+          aria-pressed={value === option.value}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            'flex-1 rounded-xl border-2 py-2.5 text-sm font-medium transition-colors',
+            value === option.value
+              ? 'border-accent-strong bg-accent/10 text-accent-strong'
+              : 'border-border',
+          )}
+          data-umami-event={umami}
         >
-          <span className="flex items-center justify-center gap-2">
-            <Camera size={16} aria-hidden="true" />
-            {busy ? 'در حال ذخیره…' : 'ذخیره'}
-          </span>
+          {option.label}
         </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="border-border hover:bg-secondary rounded-xl border-2 px-5 py-3 font-medium transition-colors disabled:opacity-60"
-          data-umami-event="account-pets-cancel"
-        >
-          انصراف
-        </button>
-      </div>
+      ))}
     </div>
   );
 }

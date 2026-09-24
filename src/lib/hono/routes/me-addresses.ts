@@ -23,7 +23,11 @@ import {
   toAddressResponse,
 } from '@/lib/account/address';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
-import { errorResponse } from '../route-responses';
+import {
+  IdParamSchema,
+  errorResponse,
+  openapiObject,
+} from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
@@ -43,28 +47,11 @@ const TOO_MANY_ADDRESSES_MESSAGE = 'به سقف تعداد آدرس‌ها رس�
  */
 const INVALID_PROVINCE_MESSAGE = 'استان انتخاب‌شده نامعتبر است.';
 
-/**
- * The shape lives in `@/lib/account/address`: one definition, client-safe,
- * so the server page that renders the first paint projects rows without
- * importing this file. Rebuilt into a local `z.object` before `.openapi()`: that method is
- * grafted on by `@hono/zod-openapi` and zod 4 hands it to newly built schemas
- * only, so calling it on an imported one depends on module evaluation order
- * (the trap documented above `ProductListQuerySchema` in ./catalog.ts).
- *
- * The ceiling that buys: `.shape` copies the FIELDS. An object-level modifier
- * on the source schema — `.strict()`, `.catchall()`, `.refine()`, a `.meta()`
- * on the object itself — is silently left behind, and the document would drift
- * with no failing test. None of the five projections has one today. Add one
- * there and it has to be repeated here, or the two stop being one definition.
- */
-const AddressSchema = z.object(addressResponseSchema.shape).openapi('Address');
+/** The shape lives in `@/lib/account/address` — see `openapiObject`. */
+const AddressSchema = openapiObject(addressResponseSchema, 'Address');
 
 /** Re-exported for the client components that already import the type here. */
 export type { AddressResponse } from '@/lib/account/address';
-
-const AddressIdParamSchema = z.object({
-  id: z.uuid().meta({ param: { name: 'id', in: 'path' } }),
-});
 
 const jsonBody = {
   content: { 'application/json': { schema: addressInputSchema } },
@@ -75,7 +62,7 @@ const addressResponse = (description: string) =>
   ({
     content: {
       'application/json': {
-        schema: apiSuccessSchema(AddressSchema, undefined),
+        schema: apiSuccessSchema(AddressSchema),
       },
     },
     description,
@@ -154,7 +141,7 @@ export const meAddressUpdateRoute = createRoute({
   path: '/me/addresses/{id}',
   tags: ['account'],
   summary: 'Update one of your own addresses (auth required, owner only)',
-  request: { params: AddressIdParamSchema, body: jsonBody },
+  request: { params: IdParamSchema, body: jsonBody },
   responses: {
     200: addressResponse('The updated address'),
     400: errorResponse('Invalid id or malformed body'),
@@ -189,12 +176,12 @@ export const meAddressDeleteRoute = createRoute({
   path: '/me/addresses/{id}',
   tags: ['account'],
   summary: 'Delete one of your own addresses (auth required, owner only)',
-  request: { params: AddressIdParamSchema },
+  request: { params: IdParamSchema },
   responses: {
     200: {
       content: {
         'application/json': {
-          schema: apiSuccessSchema(DeletedSchema, undefined),
+          schema: apiSuccessSchema(DeletedSchema),
         },
       },
       description: 'The id of the deleted address',

@@ -82,7 +82,8 @@ describe('content editor save boundary', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }));
     });
-    expect(toast.error).toHaveBeenCalledWith('upload failed');
+    // A dead connection's own text is English; the admin reads the fallback.
+    expect(toast.error).toHaveBeenCalledWith(DEFAULT_ERROR_MESSAGE);
     expect(putData).not.toHaveBeenCalled();
     expect(document.querySelector('fieldset')?.disabled).toBe(false);
     await act(async () => {
@@ -209,12 +210,12 @@ describe('content editor save boundary', () => {
             key: 'home.philosophy',
             value: DEFAULT_CONTENT['home.philosophy'],
           });
-        else fail(new Error('save failed'));
+        else fail(new ApiRequestError(403, 'دسترسی ندارید.'));
       });
       expect(
         fields.every((field) => field.closest('fieldset')?.disabled === false),
       ).toBe(true);
-      if (!succeeds) expect(toast.error).toHaveBeenCalledWith('save failed');
+      if (!succeeds) expect(toast.error).toHaveBeenCalledWith('دسترسی ندارید.');
     });
   }
 });

@@ -33,6 +33,12 @@ const adminColumns = { ...rateColumns, isActive: provinces.isActive };
 
 const hasRate = eq(shippingRates.provinceId, provinces.id);
 
+/** Every province joined to its rate (1:1, so an inner join loses nothing). */
+const selectRates = () =>
+  db.select(rateColumns).from(provinces).innerJoin(shippingRates, hasRate);
+const selectAdminRows = (on: Executor = db) =>
+  on.select(adminColumns).from(provinces).innerJoin(shippingRates, hasRate);
+
 export class ShippingRateDao {
   /**
    * Insert-or-update a province by name and ensure it has a rate. The seed
@@ -112,19 +118,12 @@ export class ShippingRateDao {
    * Persian collation is unreliable.
    */
   static async list(executor: Executor = db): Promise<AdminProvinceRow[]> {
-    return executor
-      .select(adminColumns)
-      .from(provinces)
-      .innerJoin(shippingRates, hasRate)
-      .orderBy(asc(provinces.id));
+    return selectAdminRows(executor).orderBy(asc(provinces.id));
   }
 
   /** The active provinces with their fees, id order — the storefront selects and public list. */
   static async listActive(): Promise<ShippingRateRow[]> {
-    return db
-      .select(rateColumns)
-      .from(provinces)
-      .innerJoin(shippingRates, hasRate)
+    return selectRates()
       .where(eq(provinces.isActive, true))
       .orderBy(asc(provinces.id));
   }
@@ -137,10 +136,7 @@ export class ShippingRateDao {
   static async getByProvinceId(
     provinceId: number,
   ): Promise<ShippingRateRow | null> {
-    const [row] = await db
-      .select(rateColumns)
-      .from(provinces)
-      .innerJoin(shippingRates, hasRate)
+    const [row] = await selectRates()
       .where(and(eq(provinces.id, provinceId), eq(provinces.isActive, true)))
       .limit(1);
     return row ?? null;
@@ -150,10 +146,7 @@ export class ShippingRateDao {
   static async getByProvinceIdForAdmin(
     provinceId: number,
   ): Promise<AdminProvinceRow | null> {
-    const [row] = await db
-      .select(adminColumns)
-      .from(provinces)
-      .innerJoin(shippingRates, hasRate)
+    const [row] = await selectAdminRows()
       .where(eq(provinces.id, provinceId))
       .limit(1);
     return row ?? null;
@@ -161,10 +154,7 @@ export class ShippingRateDao {
 
   /** A province by name (normalized first), active or not — the duplicate classifier. */
   static async findByName(name: string): Promise<AdminProvinceRow | null> {
-    const [row] = await db
-      .select(adminColumns)
-      .from(provinces)
-      .innerJoin(shippingRates, hasRate)
+    const [row] = await selectAdminRows()
       .where(eq(provinces.name, normalizeProvinceName(name)))
       .limit(1);
     return row ?? null;

@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/db', () => ({ db: {} }));
 
-const { ProductDao, buildProductSearchText } = await import('./ProductDao');
+const { ProductDao } = await import('./ProductDao');
+const { buildProductSearchText } = await import('./product-sql');
 
 describe('ProductDao — the soft-delete contract', () => {
   it('exposes no hard-delete method at all', () => {
