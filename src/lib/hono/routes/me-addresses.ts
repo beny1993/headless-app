@@ -23,7 +23,11 @@ import {
   toAddressResponse,
 } from '@/lib/account/address';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
-import { errorResponse, openapiObject } from '../route-responses';
+import {
+  IdParamSchema,
+  errorResponse,
+  openapiObject,
+} from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
@@ -48,10 +52,6 @@ const AddressSchema = openapiObject(addressResponseSchema, 'Address');
 
 /** Re-exported for the client components that already import the type here. */
 export type { AddressResponse } from '@/lib/account/address';
-
-const AddressIdParamSchema = z.object({
-  id: z.uuid().meta({ param: { name: 'id', in: 'path' } }),
-});
 
 const jsonBody = {
   content: { 'application/json': { schema: addressInputSchema } },
@@ -141,7 +141,7 @@ export const meAddressUpdateRoute = createRoute({
   path: '/me/addresses/{id}',
   tags: ['account'],
   summary: 'Update one of your own addresses (auth required, owner only)',
-  request: { params: AddressIdParamSchema, body: jsonBody },
+  request: { params: IdParamSchema, body: jsonBody },
   responses: {
     200: addressResponse('The updated address'),
     400: errorResponse('Invalid id or malformed body'),
@@ -176,7 +176,7 @@ export const meAddressDeleteRoute = createRoute({
   path: '/me/addresses/{id}',
   tags: ['account'],
   summary: 'Delete one of your own addresses (auth required, owner only)',
-  request: { params: AddressIdParamSchema },
+  request: { params: IdParamSchema },
   responses: {
     200: {
       content: {

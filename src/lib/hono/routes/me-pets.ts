@@ -24,7 +24,11 @@ import {
   toPetResponse,
 } from '@/lib/account/pet';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
-import { errorResponse, openapiObject } from '../route-responses';
+import {
+  IdParamSchema,
+  errorResponse,
+  openapiObject,
+} from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
@@ -44,10 +48,6 @@ const PetSchema = openapiObject(petResponseSchema, 'Pet');
 
 /** Re-exported for the client components that already import the type here. */
 export type { PetResponse } from '@/lib/account/pet';
-
-const PetIdParamSchema = z.object({
-  id: z.uuid().meta({ param: { name: 'id', in: 'path' } }),
-});
 
 const jsonBody = {
   content: { 'application/json': { schema: petInputSchema } },
@@ -126,7 +126,7 @@ export const mePetUpdateRoute = createRoute({
   path: '/me/pets/{id}',
   tags: ['account'],
   summary: 'Update one of your own pets (auth required, owner only)',
-  request: { params: PetIdParamSchema, body: jsonBody },
+  request: { params: IdParamSchema, body: jsonBody },
   responses: {
     200: petResponse('The updated pet'),
     400: errorResponse('Invalid id or malformed body'),
@@ -156,7 +156,7 @@ export const mePetDeleteRoute = createRoute({
   path: '/me/pets/{id}',
   tags: ['account'],
   summary: 'Delete one of your own pets (auth required, owner only)',
-  request: { params: PetIdParamSchema },
+  request: { params: IdParamSchema },
   responses: {
     200: {
       content: {
