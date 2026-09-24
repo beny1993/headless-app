@@ -10,7 +10,7 @@
 // the shape the address book and the checkout picker render. The address stores a
 // live `province_id`, not a snapshot: it is editable reference-linked data, not an
 // order's frozen record.
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns } from 'drizzle-orm';
 import { db } from '@/db';
 import { addresses, type Address } from '@/db/schema/account';
 import { provinces } from '@/db/schema/shipping';
@@ -20,18 +20,8 @@ import type { AddressInput } from '@/lib/account/address';
 export type AddressWithProvince = Address & { provinceName: string };
 
 const selection = {
-  id: addresses.id,
-  userId: addresses.userId,
-  title: addresses.title,
-  recipientName: addresses.recipientName,
-  recipientPhone: addresses.recipientPhone,
-  provinceId: addresses.provinceId,
+  ...getTableColumns(addresses),
   provinceName: provinces.name,
-  city: addresses.city,
-  postalCode: addresses.postalCode,
-  addressLine: addresses.addressLine,
-  createdAt: addresses.createdAt,
-  updatedAt: addresses.updatedAt,
 };
 
 const columns = (input: AddressInput) => ({
