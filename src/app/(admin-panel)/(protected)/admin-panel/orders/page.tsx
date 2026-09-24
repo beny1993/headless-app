@@ -16,6 +16,7 @@ import {
 } from '@/lib/orders/order-status';
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
 import { ADMIN_PAGE_SIZE, pageParamSchema } from '@/lib/pagination';
+import { AdminTable } from '@/features/admin-panel/shared/admin-table';
 
 export const metadata: Metadata = { title: 'سفارش‌ها' };
 
@@ -91,103 +92,87 @@ export default async function AdminOrdersPage({
         </form>
       </div>
 
-      <div className="border-border overflow-hidden rounded-2xl border bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-secondary/50">
-              <tr>
-                {[
-                  'شناسه',
-                  'مشتری',
-                  'تاریخ',
-                  'مبلغ',
-                  'پرداخت',
-                  'وضعیت',
-                  'روش پرداخت',
-                  'عملیات',
-                ].map((heading) => (
-                  <th
-                    key={heading}
-                    className="text-muted-foreground px-4 py-3 text-start font-semibold"
-                  >
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {orders.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={8}
-                    className="text-muted-foreground px-4 py-10 text-center"
-                  >
-                    {/* Past the last page is not the same as nothing matching:
+      <AdminTable
+        headings={[
+          'شناسه',
+          'مشتری',
+          'تاریخ',
+          'مبلغ',
+          'پرداخت',
+          'وضعیت',
+          'روش پرداخت',
+          'عملیات',
+        ]}
+      >
+        {orders.length === 0 ? (
+          <tr>
+            <td
+              colSpan={8}
+              className="text-muted-foreground px-4 py-10 text-center"
+            >
+              {/* Past the last page is not the same as nothing matching:
                         the pager below still links back. */}
-                    {total > 0
-                      ? 'این صفحه سفارشی ندارد.'
-                      : 'سفارشی با این فیلتر پیدا نشد.'}
-                  </td>
-                </tr>
-              ) : (
-                orders.map((order) => {
-                  const badge = orderStatusBadge(order.status);
-                  return (
-                    <tr
-                      key={order.id}
-                      className="border-border hover:bg-secondary/20 border-t transition-colors"
-                    >
-                      <td className="nums px-4 py-3.5 text-xs">
-                        #{toPersianDigits(order.orderNo)}
-                      </td>
-                      <td className="px-4 py-3.5 font-medium">
-                        {order.recipientName}
-                      </td>
-                      <td className="text-muted-foreground px-4 py-3.5 text-xs">
-                        {formatJalali(order.createdAt)}
-                      </td>
-                      <td className="nums px-4 py-3.5 font-semibold">
-                        {formatToman(order.total)}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        {order.isPaid ? (
-                          <span className="bg-success-soft text-success-strong rounded-full px-2.5 py-1 text-xs font-medium">
-                            پرداخت شده
-                          </span>
-                        ) : (
-                          <span className="bg-secondary text-muted-foreground rounded-full px-2.5 py-1 text-xs font-medium">
-                            پرداخت‌نشده
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.badge}`}
-                        >
-                          {badge.label}
-                        </span>
-                      </td>
-                      <td className="text-muted-foreground px-4 py-3.5 text-xs">
-                        {methodLabel(order.paymentMethod)}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <Link
-                          href={adminOrderPath(order.id)}
-                          aria-label={`مشاهده سفارش ${toPersianDigits(order.orderNo)}`}
-                          data-umami-event="admin-panel-orders-view"
-                          className="hover:bg-secondary flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
-                        >
-                          <Eye size={14} aria-hidden="true" />
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              {total > 0
+                ? 'این صفحه سفارشی ندارد.'
+                : 'سفارشی با این فیلتر پیدا نشد.'}
+            </td>
+          </tr>
+        ) : (
+          orders.map((order) => {
+            const badge = orderStatusBadge(order.status);
+            return (
+              <tr
+                key={order.id}
+                className="border-border hover:bg-secondary/20 border-t transition-colors"
+              >
+                <td className="nums px-4 py-3.5 text-xs">
+                  #{toPersianDigits(order.orderNo)}
+                </td>
+                <td className="px-4 py-3.5 font-medium">
+                  {order.recipientName}
+                </td>
+                <td className="text-muted-foreground px-4 py-3.5 text-xs">
+                  {formatJalali(order.createdAt)}
+                </td>
+                <td className="nums px-4 py-3.5 font-semibold">
+                  {formatToman(order.total)}
+                </td>
+                <td className="px-4 py-3.5">
+                  {order.isPaid ? (
+                    <span className="bg-success-soft text-success-strong rounded-full px-2.5 py-1 text-xs font-medium">
+                      پرداخت شده
+                    </span>
+                  ) : (
+                    <span className="bg-secondary text-muted-foreground rounded-full px-2.5 py-1 text-xs font-medium">
+                      پرداخت‌نشده
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-3.5">
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.badge}`}
+                  >
+                    {badge.label}
+                  </span>
+                </td>
+                <td className="text-muted-foreground px-4 py-3.5 text-xs">
+                  {methodLabel(order.paymentMethod)}
+                </td>
+                <td className="px-4 py-3.5">
+                  <Link
+                    href={adminOrderPath(order.id)}
+                    aria-label={`مشاهده سفارش ${toPersianDigits(order.orderNo)}`}
+                    data-umami-event="admin-panel-orders-view"
+                    className="hover:bg-secondary flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
+                  >
+                    <Eye size={14} aria-hidden="true" />
+                  </Link>
+                </td>
+              </tr>
+            );
+          })
+        )}
+      </AdminTable>
 
       <Pagination
         page={filters.page}

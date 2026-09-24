@@ -23,6 +23,7 @@ import {
 } from '@/lib/format';
 import type { DiscountCodeView } from '@/lib/hono/routes/admin-discounts';
 import { cn } from '@/lib/utils';
+import { AdminTable } from '@/features/admin-panel/shared/admin-table';
 import {
   controlClass,
   fieldAria,
@@ -271,37 +272,14 @@ function CodeTable({
   }
 
   return (
-    <div className="border-border overflow-hidden rounded-2xl border bg-white">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-secondary/50">
-            <tr>
-              {[
-                'کد',
-                'تخفیف',
-                'حداقل سفارش',
-                'استفاده',
-                'انقضا',
-                'وضعیت',
-                '',
-              ].map((heading, index) => (
-                <th
-                  key={heading || `action-${index}`}
-                  className="text-muted-foreground px-4 py-3 text-start font-semibold"
-                >
-                  {heading || <span className="sr-only">تغییر وضعیت</span>}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {codes.map((code) => (
-              <CodeRow key={code.id} code={code} onToggled={onToggled} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <AdminTable
+      headings={['کد', 'تخفیف', 'حداقل سفارش', 'استفاده', 'انقضا', 'وضعیت']}
+      actions="تغییر وضعیت"
+    >
+      {codes.map((code) => (
+        <CodeRow key={code.id} code={code} onToggled={onToggled} />
+      ))}
+    </AdminTable>
   );
 }
 

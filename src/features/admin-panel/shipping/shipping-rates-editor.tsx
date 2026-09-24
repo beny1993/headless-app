@@ -23,11 +23,13 @@ import {
 } from '@/lib/shipping/province-input';
 import { shippingFeeSchema } from '@/lib/shipping/shipping-query';
 import { cn } from '@/lib/utils';
+import { AdminTable } from '@/features/admin-panel/shared/admin-table';
 
 const DEACTIVATE_LABEL = 'غیرفعال\u200Cسازی';
 const ACTIVATE_LABEL = 'فعال\u200Cسازی';
 const BULK_FEE_LABEL = 'هزینه ارسال همه استان\u200Cها (تومان)';
 const APPLY_ALL_LABEL = 'اعمال روی همه استان\u200Cها';
+const PREVIEW_LABEL = 'پیش\u200Cنمایش';
 
 /**
  * A fee as typed — Persian or ASCII digits — to integer Toman, or `null` when it
@@ -91,40 +93,18 @@ export function ShippingRatesEditor({ rates }: { rates: AdminProvinceRow[] }) {
           هنوز استانی ثبت نشده است. اولین استان را با فرم بالا اضافه کن.
         </div>
       ) : (
-        <div className="border-border overflow-hidden rounded-2xl border bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-secondary/50">
-                <tr>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    استان
-                  </th>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    وضعیت
-                  </th>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    هزینه ارسال (تومان)
-                  </th>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    {'پیش\u200Cنمایش'}
-                  </th>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    <span className="sr-only">ذخیره و تغییر وضعیت</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((rate) => (
-                  <RateRow
-                    key={`${rate.provinceId}:${generation}`}
-                    rate={rate}
-                    onToggled={onToggled}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <AdminTable
+          headings={['استان', 'وضعیت', 'هزینه ارسال (تومان)', PREVIEW_LABEL]}
+          actions="ذخیره و تغییر وضعیت"
+        >
+          {rows.map((rate) => (
+            <RateRow
+              key={`${rate.provinceId}:${generation}`}
+              rate={rate}
+              onToggled={onToggled}
+            />
+          ))}
+        </AdminTable>
       )}
     </div>
   );

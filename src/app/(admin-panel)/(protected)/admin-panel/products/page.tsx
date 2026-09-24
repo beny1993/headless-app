@@ -9,6 +9,7 @@ import { ProductDao } from '@/db/dao/ProductDao';
 import { PET_TYPES } from '@/lib/catalog/product-query';
 import { adminNewProductPath } from '@/lib/constant/paths';
 import { ADMIN_PAGE_SIZE } from '@/lib/pagination';
+import { AdminTable } from '@/features/admin-panel/shared/admin-table';
 import { ProductRow } from '@/features/admin-panel/products/product-row';
 import {
   activeToFilter,
@@ -133,57 +134,41 @@ export default async function AdminProductsPage({
         </div>
       </form>
 
-      <div className="border-border overflow-hidden rounded-2xl border bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-secondary/50">
-              <tr>
-                {[
-                  'تصویر',
-                  'نام محصول',
-                  'برند',
-                  'دسته',
-                  'قیمت',
-                  'موجودی',
-                  'وضعیت',
-                  'عملیات',
-                ].map((heading) => (
-                  <th
-                    key={heading}
-                    className="text-muted-foreground px-4 py-3 text-start font-semibold"
-                  >
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={8}
-                    className="text-muted-foreground px-4 py-10 text-center"
-                  >
-                    {/* Past the last page is not the same as nothing matching:
+      <AdminTable
+        headings={[
+          'تصویر',
+          'نام محصول',
+          'برند',
+          'دسته',
+          'قیمت',
+          'موجودی',
+          'وضعیت',
+          'عملیات',
+        ]}
+      >
+        {items.length === 0 ? (
+          <tr>
+            <td
+              colSpan={8}
+              className="text-muted-foreground px-4 py-10 text-center"
+            >
+              {/* Past the last page is not the same as nothing matching:
                         the pager below still links back. */}
-                    {total > 0
-                      ? 'این صفحه محصولی ندارد.'
-                      : 'محصولی با این فیلترها پیدا نشد.'}
-                  </td>
-                </tr>
-              ) : (
-                items.map((product) => (
-                  <ProductRow
-                    key={product.id}
-                    product={product}
-                    categoryTitle={categoryTitle.get(product.categoryId) ?? '—'}
-                  />
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              {total > 0
+                ? 'این صفحه محصولی ندارد.'
+                : 'محصولی با این فیلترها پیدا نشد.'}
+            </td>
+          </tr>
+        ) : (
+          items.map((product) => (
+            <ProductRow
+              key={product.id}
+              product={product}
+              categoryTitle={categoryTitle.get(product.categoryId) ?? '—'}
+            />
+          ))
+        )}
+      </AdminTable>
 
       <Pagination
         page={filters.page}

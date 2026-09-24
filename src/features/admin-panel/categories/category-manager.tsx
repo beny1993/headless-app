@@ -28,6 +28,7 @@ import { API_PATHS, apiAdminCategoryPath } from '@/lib/constant/paths';
 import { formatNumber, parseDigits } from '@/lib/format';
 import type { CategoryView } from '@/lib/hono/routes/admin-categories';
 import { cn } from '@/lib/utils';
+import { AdminTable } from '@/features/admin-panel/shared/admin-table';
 import {
   COMPACT_CONTROL,
   controlClass,
@@ -268,46 +269,26 @@ function CategoryTable({
   }
 
   return (
-    <div className="border-border overflow-hidden rounded-2xl border bg-white">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-secondary/50">
-            <tr>
-              {['عنوان', 'نشانی (slug)', 'ترتیب نمایش'].map((heading) => (
-                <th
-                  key={heading}
-                  className="text-muted-foreground px-4 py-3 text-start font-semibold"
-                >
-                  {heading}
-                </th>
-              ))}
-              <th className="px-4 py-3">
-                <span className="sr-only">عملیات</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {/* Sub-rows sit directly under their parent — the nesting *is* the
+    <AdminTable
+      headings={['عنوان', 'نشانی (slug)', 'ترتیب نمایش']}
+      actions="عملیات"
+    >
+      {/* Sub-rows sit directly under their parent — the nesting *is* the
                 count, so no badge. */}
-            {orderAsTree(categories).map(({ depth, ...category }) => (
-              <CategoryRow
-                key={category.id}
-                category={category}
-                depth={depth}
-                parentTitle={
-                  parents.find((p) => p.id === category.parentId)?.title
-                }
-                // A category with children cannot itself become one.
-                hasChildren={categories.some((c) => c.parentId === category.id)}
-                parents={parents.filter((p) => p.id !== category.id)}
-                onSaved={onSaved}
-                onDeleted={onDeleted}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      {orderAsTree(categories).map(({ depth, ...category }) => (
+        <CategoryRow
+          key={category.id}
+          category={category}
+          depth={depth}
+          parentTitle={parents.find((p) => p.id === category.parentId)?.title}
+          // A category with children cannot itself become one.
+          hasChildren={categories.some((c) => c.parentId === category.id)}
+          parents={parents.filter((p) => p.id !== category.id)}
+          onSaved={onSaved}
+          onDeleted={onDeleted}
+        />
+      ))}
+    </AdminTable>
   );
 }
 
