@@ -57,7 +57,7 @@ const jsonBody = {
 const petResponse = (description: string) =>
   ({
     content: {
-      'application/json': { schema: apiSuccessSchema(PetSchema, undefined) },
+      'application/json': { schema: apiSuccessSchema(PetSchema) },
     },
     description,
   }) as const;
@@ -161,7 +161,7 @@ export const mePetDeleteRoute = createRoute({
     200: {
       content: {
         'application/json': {
-          schema: apiSuccessSchema(DeletedSchema, undefined),
+          schema: apiSuccessSchema(DeletedSchema),
         },
       },
       description: 'The id of the deleted pet',

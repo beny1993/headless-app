@@ -62,7 +62,7 @@ const addressResponse = (description: string) =>
   ({
     content: {
       'application/json': {
-        schema: apiSuccessSchema(AddressSchema, undefined),
+        schema: apiSuccessSchema(AddressSchema),
       },
     },
     description,
@@ -181,7 +181,7 @@ export const meAddressDeleteRoute = createRoute({
     200: {
       content: {
         'application/json': {
-          schema: apiSuccessSchema(DeletedSchema, undefined),
+          schema: apiSuccessSchema(DeletedSchema),
         },
       },
       description: 'The id of the deleted address',
