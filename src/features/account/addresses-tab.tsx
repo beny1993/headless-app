@@ -27,6 +27,7 @@ import {
   FieldShell,
   TextField,
 } from '@/components/ui/field';
+import { EmptyState } from './account-ui';
 
 const GENERIC_ERROR = 'انجام نشد. لطفاً دوباره تلاش کن.';
 
@@ -102,17 +103,17 @@ export function AddressesTab({
       </div>
 
       {addresses.length === 0 && !editing && (
-        <div className="bg-secondary/40 rounded-2xl py-16 text-center">
-          <MapPin
-            size={40}
-            className="text-muted-foreground mx-auto mb-3"
-            aria-hidden="true"
-          />
-          <p className="mb-1 font-semibold">هنوز آدرسی ذخیره نکرده‌ای</p>
-          <p className="text-muted-foreground text-sm">
-            یک آدرس ذخیره کن تا در تکمیل خرید سریع‌تر باشی.
-          </p>
-        </div>
+        <EmptyState
+          icon={
+            <MapPin
+              size={40}
+              className="text-muted-foreground mx-auto mb-3"
+              aria-hidden="true"
+            />
+          }
+          title="هنوز آدرسی ذخیره نکرده‌ای"
+          description="یک آدرس ذخیره کن تا در تکمیل خرید سریع‌تر باشی."
+        />
       )}
 
       <div className="mb-6 space-y-3">

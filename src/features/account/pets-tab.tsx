@@ -22,6 +22,7 @@ import type { PetResponse } from '@/lib/hono/routes/me-pets';
 import { toPersianDigits } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { FieldShell, TextField } from '@/components/ui/field';
+import { EmptyState } from './account-ui';
 
 const GENERIC_ERROR = 'انجام نشد. لطفاً دوباره تلاش کن.';
 
@@ -99,15 +100,15 @@ export function PetsTab({
       </div>
 
       {pets.length === 0 && !editing && (
-        <div className="bg-secondary/40 rounded-2xl py-16 text-center">
-          <p className="mb-1 text-2xl" aria-hidden="true">
-            🐾
-          </p>
-          <p className="mb-1 font-semibold">هنوز حیوانی اضافه نکرده‌ای</p>
-          <p className="text-muted-foreground text-sm">
-            پروفایل حیوان خانگی‌ات را اینجا بساز.
-          </p>
-        </div>
+        <EmptyState
+          icon={
+            <p className="mb-1 text-2xl" aria-hidden="true">
+              🐾
+            </p>
+          }
+          title="هنوز حیوانی اضافه نکرده‌ای"
+          description="پروفایل حیوان خانگی‌ات را اینجا بساز."
+        />
       )}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">

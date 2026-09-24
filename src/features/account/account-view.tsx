@@ -27,6 +27,7 @@ import type { OrderSummaryResponse } from '@/lib/hono/routes/me-orders';
 import type { PetResponse } from '@/lib/hono/routes/me-pets';
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
 import { cn } from '@/lib/utils';
+import { EmptyState } from './account-ui';
 
 type Tab = 'orders' | 'pets' | 'addresses' | 'profile';
 
@@ -125,17 +126,17 @@ function OrdersTab({ orders }: { orders: OrderSummaryResponse[] }) {
     <div>
       <h2 className="mb-5 text-xl font-bold">سفارش‌های من</h2>
       {orders.length === 0 ? (
-        <div className="bg-secondary/40 rounded-2xl py-16 text-center">
-          <Package
-            size={40}
-            className="text-muted-foreground mx-auto mb-3"
-            aria-hidden="true"
-          />
-          <p className="mb-1 font-semibold">هنوز سفارشی ثبت نکرده‌ای</p>
-          <p className="text-muted-foreground text-sm">
-            اولین سفارشت اینجا نمایش داده می‌شود.
-          </p>
-        </div>
+        <EmptyState
+          icon={
+            <Package
+              size={40}
+              className="text-muted-foreground mx-auto mb-3"
+              aria-hidden="true"
+            />
+          }
+          title="هنوز سفارشی ثبت نکرده‌ای"
+          description="اولین سفارشت اینجا نمایش داده می‌شود."
+        />
       ) : (
         <div className="space-y-3">
           {orders.map((order) => {
