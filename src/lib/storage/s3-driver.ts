@@ -16,6 +16,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getEnvVariable, VARS } from '@/lib/utils/env';
+import { imageSrc } from './image-url';
 import { UPLOAD_KEY_PREFIX } from './image-upload';
 import type { StorageDriver } from './index';
 
@@ -86,6 +87,12 @@ export const s3Driver: StorageDriver = {
     // S3 DeleteObject is idempotent — deleting a missing key succeeds — so there
     // is no not-found branch to mirror the local driver's ENOENT handling.
     await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+  },
+
+  // Reads resolve through the shared client-safe resolver, so a server-rendered
+  // URL and a browser-rendered one are byte-identical (see image-url.ts).
+  url(key) {
+    return imageSrc(key);
   },
 };
 

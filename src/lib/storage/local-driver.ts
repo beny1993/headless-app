@@ -88,6 +88,13 @@ export const localDriver: StorageDriver = {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
   },
+
+  // The storefront resolves an object key as a root-relative URL (`/${key}`),
+  // and the key already carries the `uploads/` namespace the serving route is
+  // mounted on — so this is the whole mapping.
+  url(key) {
+    return `/${key}`;
+  },
 };
 
 /**

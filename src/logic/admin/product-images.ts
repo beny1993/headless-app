@@ -35,7 +35,6 @@ import {
   type AcceptedImageType,
 } from '@/lib/storage/image-upload';
 import { getStorageDriver, type StorageDriver } from '@/lib/storage';
-import { imageSrc } from '@/lib/storage/image-url';
 
 /** What the upload route hands back — the stored key and a URL to render it. */
 export type StoredImage = {
@@ -48,14 +47,13 @@ export type StoredImage = {
 const isOurUpload = (objectKey: string): boolean =>
   objectKey.startsWith(`${UPLOAD_KEY_PREFIX}/`);
 
-const toStoredImage = (image: {
-  id: string;
-  objectKey: string;
-  sortOrder: number;
-}): StoredImage => ({
+const toStoredImage = (
+  image: { id: string; objectKey: string; sortOrder: number },
+  driver: StorageDriver,
+): StoredImage => ({
   id: image.id,
   objectKey: image.objectKey,
-  url: imageSrc(image.objectKey),
+  url: driver.url(image.objectKey),
   sortOrder: image.sortOrder,
 });
 
@@ -112,7 +110,7 @@ export async function appendProductImage(
     return null;
   }
 
-  return toStoredImage(image);
+  return toStoredImage(image, driver);
 }
 
 /**
@@ -157,5 +155,5 @@ export async function setProductImageOrder(
     await deleteQuietly(driver, objectKey);
   }
 
-  return images.map(toStoredImage);
+  return images.map((image) => toStoredImage(image, driver));
 }

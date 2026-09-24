@@ -10,8 +10,8 @@
 // serving route (`src/app/uploads/[...key]/route.ts`) answers `/uploads/*`.
 //
 // `NEXT_PUBLIC_STORAGE_BASE_URL` is build-time inlined, so this same function
-// returns byte-identical URLs on the server and the client, which is why it is
-// the only key → URL mapping. It must be set to
+// returns byte-identical URLs on the server and the client (the storage driver's
+// `url()` delegates here for exactly that reason). It must be set to
 // `${LIARA_ENDPOINT}/${LIARA_BUCKET_NAME}` when the provider is `s3`.
 import { getEnvVariable, VARS } from '@/lib/utils/env';
 import { UPLOAD_KEY_PREFIX } from './image-upload';

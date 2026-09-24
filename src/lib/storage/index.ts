@@ -6,8 +6,8 @@
 // and nothing else, no caller above the seam sees the difference.
 //
 // **Nothing above this seam knows where an image physically lives.** Callers
-// store the opaque object key `put` was given and render it through `imageSrc`
-// (`./image-url`), the one client-safe key → URL mapping.
+// store the opaque object key `put` was given and render it through `url(key)`;
+// the driver owns the URL↔location mapping.
 import {
   getEnvProvider,
   getEnvVariable,
@@ -22,10 +22,12 @@ import { s3Driver } from './s3-driver';
  * Everything a storage provider must do. `put` takes the server-generated key
  * (never a client filename), the bytes, and the sniffed content type (the S3
  * driver sends it; the local driver derives type from the extension instead).
+ * `url` resolves a stored key to something the browser can load.
  */
 export type StorageDriver = {
   put(key: string, data: Uint8Array, contentType: string): Promise<void>;
   delete(key: string): Promise<void>;
+  url(key: string): string;
 };
 
 /** Providers with a driver behind them. Arvan/Liana's `s3` joins this list. */
