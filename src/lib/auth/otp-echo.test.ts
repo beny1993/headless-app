@@ -45,11 +45,16 @@ describe('isOtpEchoEnabled', () => {
     expect(isOtpEchoEnabled()).toBe(false);
   });
 
-  it('takes only the exact string `true`', () => {
-    for (const value of ['1', 'yes', 'TRUE', 'true ', 'false']) {
+  it('takes only the string `true`', () => {
+    for (const value of ['1', 'yes', 'TRUE', 'false']) {
       setEnv(value, 'console');
       expect(isOtpEchoEnabled()).toBe(false);
     }
+  });
+
+  it('reads a padded ` true ` as on, like every other flag', () => {
+    setEnv(' true ', 'console');
+    expect(isOtpEchoEnabled()).toBe(true);
   });
 });
 

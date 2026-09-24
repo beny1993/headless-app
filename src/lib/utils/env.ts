@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export enum VARS {
   APP_CONFIG_DATABASE_URL = 'APP_CONFIG_DATABASE_URL',
 
@@ -147,6 +149,30 @@ export const getEnvVariable: Func = (
   }
 
   return result ?? defaultValue!;
+};
+
+/** An on/off switch: exactly `true`, padding ignored, is on; anything else is off. */
+export const getEnvFlag = (key: VARS): boolean =>
+  getEnvVariable(key, false, '').trim() === 'true';
+
+/**
+ * A provider seam's driver name, trimmed, blank meaning `fallback`. An unknown
+ * name throws rather than falling back: a deploy naming a driver that does not
+ * exist must fail loudly, not run on the default.
+ */
+export const getEnvProvider = <const T extends readonly [string, ...string[]]>(
+  key: VARS,
+  providers: T,
+  fallback: T[number],
+): T[number] => {
+  const configured = getEnvVariable(key, false, '').trim() || fallback;
+  const parsed = z.enum(providers).safeParse(configured);
+  if (!parsed.success) {
+    throw new Error(
+      `${key}="${configured}" has no driver. Known providers: ${providers.join(', ')}.`,
+    );
+  }
+  return parsed.data;
 };
 
 export const isDevelopmentServer = () => {

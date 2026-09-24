@@ -12,6 +12,7 @@ import * as Sentry from '@sentry/nextjs';
 import { API_PATHS } from '@/lib/constant/paths';
 import {
   getAppBaseUrl,
+  getEnvFlag,
   getEnvVariable,
   isDevelopmentServer,
   isProductionServer,
@@ -175,10 +176,9 @@ const readErrors = (errors: unknown): { code: number; message: string } => {
  */
 export const createZarinpalDriver = (): ZarinpalClient => {
   const merchantId = getEnvVariable(VARS.APP_CONFIG_ZARINPAL_MERCHANT_ID, true);
-  const sandbox =
-    getEnvVariable(VARS.APP_CONFIG_ZARINPAL_SANDBOX, false, 'false').trim() ===
-    'true';
-  const host = sandbox ? SANDBOX_HOST : LIVE_HOST;
+  const host = getEnvFlag(VARS.APP_CONFIG_ZARINPAL_SANDBOX)
+    ? SANDBOX_HOST
+    : LIVE_HOST;
 
   const post = async (path: string, body: unknown): Promise<unknown> => {
     const res = await fetch(`${host}${path}`, {
@@ -310,13 +310,8 @@ let mockRefusalLogged = false;
 export function assertMockGatewayAllowed(): void {
   if (getZarinpalProvider() !== 'mock') return;
   if (!isProductionServer()) return;
-  // `=== 'true'`, so a typo, `1`, `yes` or a blank is no escape at all.
-  if (
-    getEnvVariable(VARS.APP_CONFIG_ZARINPAL_ALLOW_MOCK, false, '').trim() ===
-    'true'
-  ) {
-    return;
-  }
+  // Exactly `true`, so a typo, `1`, `yes` or a blank is no escape at all.
+  if (getEnvFlag(VARS.APP_CONFIG_ZARINPAL_ALLOW_MOCK)) return;
 
   const message =
     `[zarinpal] ${VARS.APP_CONFIG_ZARINPAL_PROVIDER} is "mock" in a production ` +
@@ -337,7 +332,7 @@ export function assertMockGatewayAllowed(): void {
 
 /** Whether online payment is switched on for this deploy. */
 export const isZarinpalEnabled = (): boolean =>
-  getEnvVariable(VARS.APP_CONFIG_ZARINPAL_ENABLED, false, '').trim() === 'true';
+  getEnvFlag(VARS.APP_CONFIG_ZARINPAL_ENABLED);
 
 /**
  * The readiness half of {@link assertMockGatewayAllowed}: may this container

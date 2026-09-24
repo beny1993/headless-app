@@ -1,7 +1,7 @@
 import { ROLES } from '@/db/schema/auth';
 import { MaintenancePage } from '@/features/storefront/maintenance/maintenance-page';
 import { getSession } from '@/lib/auth/session';
-import { getEnvVariable, VARS } from '@/lib/utils/env';
+import { getEnvFlag, VARS } from '@/lib/utils/env';
 
 // The maintenance gate for every public storefront page. `login/` sits outside
 // this group on purpose — an admin has to be able to sign in while the shop is
@@ -19,9 +19,7 @@ export default async function StoreLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  if (getEnvVariable(VARS.APP_CONFIG_MAINTENANCE_MODE, false, '') !== 'true') {
-    return children;
-  }
+  if (!getEnvFlag(VARS.APP_CONFIG_MAINTENANCE_MODE)) return children;
 
   const session = await getSession();
   if (session?.user.role === ROLES.ADMIN) return children;
