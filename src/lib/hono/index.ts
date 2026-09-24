@@ -3,7 +3,7 @@ import type { Env } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { DEFAULT_SITE_NAME } from '@/constants';
 import { MAX_UPLOAD_BYTES } from '@/lib/storage/image-upload';
-import { getEnvVariable, VARS } from '@/lib/utils/env';
+import { isProductionServer } from '@/lib/utils/env';
 import { apiErrorHandler, createRouter } from './create-router';
 import { apiError } from './envelope';
 import { IMAGE_TOO_LARGE_MESSAGE } from './image-upload';
@@ -212,21 +212,13 @@ app.route('/', authed);
 // unauthenticated caller is turned away before anything is buffered.
 const admin = createRouter<Env & AuthedEnv>();
 admin.use('/admin/*', requireAdmin);
-admin.use(
-  '/admin/products/:id/images',
-  bodyLimit({
-    maxSize: MAX_UPLOAD_BYTES,
-    onError: (c) => c.json(apiError(IMAGE_TOO_LARGE_MESSAGE), 413),
-  }),
-);
+const imageBodyLimit = bodyLimit({
+  maxSize: MAX_UPLOAD_BYTES,
+  onError: (c) => c.json(apiError(IMAGE_TOO_LARGE_MESSAGE), 413),
+});
+admin.use('/admin/products/:id/images', imageBodyLimit);
 // Content image upload shares the same ceiling and refuse-before-buffer guard.
-admin.use(
-  '/admin/content/images',
-  bodyLimit({
-    maxSize: MAX_UPLOAD_BYTES,
-    onError: (c) => c.json(apiError(IMAGE_TOO_LARGE_MESSAGE), 413),
-  }),
-);
+admin.use('/admin/content/images', imageBodyLimit);
 admin.openapi(productCreateRoute, productCreateHandler);
 admin.openapi(productUpdateRoute, productUpdateHandler);
 admin.openapi(productDeleteRoute, productDeleteHandler);
@@ -288,7 +280,7 @@ const RATE_LIMITED_RESPONSE = {
 } as const;
 
 // OpenAPI document + interactive reference — never expose in production.
-if (getEnvVariable(VARS.NODE_ENV, false, '') !== 'production') {
+if (!isProductionServer()) {
   // Served by hand rather than with `app.doc`, so the 429 every route can now
   // answer is documented in ONE place. The limiter is middleware over the whole
   // app, so declaring it per route would be 35 identical copies that drift the

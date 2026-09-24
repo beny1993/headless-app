@@ -24,7 +24,7 @@ import {
 import { adminTransitionOrder } from '@/logic/orders/admin-transition';
 import { getAdminOrder, type AdminOrder } from '@/logic/orders/get-admin-order';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
-import { errorResponse } from '../route-responses';
+import { IdParamSchema, errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. */
@@ -134,10 +134,6 @@ export const toAdminOrderResponse = (
   })),
 });
 
-const OrderIdParamSchema = z.object({
-  id: z.uuid().meta({ param: { name: 'id', in: 'path' } }),
-});
-
 // ── Detail read ─────────────────────────────────────────────────────────────
 
 export const adminOrderDetailRoute = createRoute({
@@ -145,7 +141,7 @@ export const adminOrderDetailRoute = createRoute({
   path: '/admin/orders/{id}',
   tags: ['admin'],
   summary: 'Read one order in full — admin projection (admin only)',
-  request: { params: OrderIdParamSchema },
+  request: { params: IdParamSchema },
   responses: {
     200: {
       content: {
@@ -194,7 +190,7 @@ export const adminOrderTransitionRoute = createRoute({
   tags: ['admin'],
   summary: 'Move an order to a legal next status (admin only)',
   request: {
-    params: OrderIdParamSchema,
+    params: IdParamSchema,
     body: {
       content: { 'application/json': { schema: TransitionBodySchema } },
       required: true,

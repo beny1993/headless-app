@@ -7,7 +7,6 @@ import {
   formatZodIssues,
   type ApiResponse,
   unwrap,
-  unwrapOr,
 } from './envelope';
 
 describe('envelope', () => {
@@ -40,11 +39,6 @@ describe('envelope', () => {
     expect(() => unwrap({} as ApiResponse<number>)).toThrow(
       'Malformed API response',
     );
-  });
-
-  it('unwrapOr falls back on error', () => {
-    expect(unwrapOr(apiError('boom') as ApiResponse<number>, 7)).toBe(7);
-    expect(unwrapOr(apiSuccess(1), 7)).toBe(1);
   });
 
   it('formatZodIssues flattens issues to "path: message"', () => {

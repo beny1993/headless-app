@@ -16,7 +16,7 @@ import {
   type NewProduct,
 } from '@/db/schema/catalog';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
-import { API_PATHS, apiProductPath } from '@/lib/constant/paths';
+import { API_PATHS } from '@/lib/constant/paths';
 import type { ApiResponse } from '@/lib/hono/envelope';
 import type {
   CategoryResponse,
@@ -36,6 +36,8 @@ const getJson = async <T>(path: string) => {
     body: (await response.json()) as ApiResponse<T>,
   };
 };
+
+const productPath = (slug: string) => `${API_PATHS.PRODUCTS}/${slug}`;
 
 /** GET and assert the success branch, returning `data` narrowed. */
 const getData = async <T>(path: string): Promise<T> => {
@@ -247,9 +249,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
         categoryId: primary.id,
         extraCategoryIds: [extra.id],
       });
-      const detail = await getData<ProductResponse>(
-        apiProductPath(product.slug),
-      );
+      const detail = await getData<ProductResponse>(productPath(product.slug));
       expect(detail.extraCategoryIds).toEqual([extra.id]);
     });
 
@@ -491,9 +491,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
         'products/second.jpg',
       ]);
 
-      const detail = await getData<ProductResponse>(
-        apiProductPath(product.slug),
-      );
+      const detail = await getData<ProductResponse>(productPath(product.slug));
 
       expect(detail.id).toBe(product.id);
       expect(detail.description).toBe('توضیح کامل محصول');
@@ -519,7 +517,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       );
 
       const detail = await getData<ProductDetailResponse>(
-        apiProductPath(member.slug),
+        productPath(member.slug),
       );
 
       // Each chip names its sibling, prices it and says whether it can be
@@ -551,7 +549,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       const alone = await ProductDao.create(makeProduct(category));
 
       const detail = await getData<ProductDetailResponse>(
-        apiProductPath(alone.slug),
+        productPath(alone.slug),
       );
 
       // The field is present and empty, never absent — the page renders no
@@ -563,16 +561,14 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       const category = await makeCategory();
       const product = await ProductDao.create(makeProduct(category));
 
-      const detail = await getData<ProductResponse>(
-        apiProductPath(product.slug),
-      );
+      const detail = await getData<ProductResponse>(productPath(product.slug));
 
       expect(detail.images).toEqual([]);
     });
 
     it('404s an unknown slug in Persian', async () => {
       const { status, body } = await getJson<ProductResponse>(
-        apiProductPath('nothing-here-at-all'),
+        productPath('nothing-here-at-all'),
       );
 
       expect(status).toBe(404);
@@ -585,7 +581,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       await ProductDao.softDelete(product.id);
 
       const { status } = await getJson<ProductResponse>(
-        apiProductPath(product.slug),
+        productPath(product.slug),
       );
 
       expect(status).toBe(404);
@@ -598,11 +594,9 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       const product = await ProductDao.create(makeProduct(category));
       await ProductDao.softDelete(product.id);
 
-      const hidden = await getJson<ProductResponse>(
-        apiProductPath(product.slug),
-      );
+      const hidden = await getJson<ProductResponse>(productPath(product.slug));
       const missing = await getJson<ProductResponse>(
-        apiProductPath('nothing-here-at-all'),
+        productPath('nothing-here-at-all'),
       );
 
       expect(hidden.status).toBe(missing.status);
@@ -617,9 +611,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
         makeProduct(category, { price: 285_000, oldPrice: 320_000 }),
       );
 
-      const detail = await getData<ProductResponse>(
-        apiProductPath(product.slug),
-      );
+      const detail = await getData<ProductResponse>(productPath(product.slug));
 
       expect(detail.price).toBe(285_000);
       expect(detail.oldPrice).toBe(320_000);
@@ -635,9 +627,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       const price = Number.MAX_SAFE_INTEGER;
       const product = await ProductDao.create(makeProduct(category, { price }));
 
-      const detail = await getData<ProductResponse>(
-        apiProductPath(product.slug),
-      );
+      const detail = await getData<ProductResponse>(productPath(product.slug));
       const page = await getData<ProductListResponse>(
         `${API_PATHS.PRODUCTS}?category=${category.slug}`,
       );
@@ -651,9 +641,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       const category = await makeCategory();
       const product = await ProductDao.create(makeProduct(category));
 
-      const detail = await getData<ProductResponse>(
-        apiProductPath(product.slug),
-      );
+      const detail = await getData<ProductResponse>(productPath(product.slug));
 
       expect(detail.oldPrice).toBeNull();
       expect(detail).toHaveProperty('oldPrice');
@@ -665,9 +653,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       const category = await makeCategory();
       const product = await ProductDao.create(makeProduct(category));
 
-      const detail = await getData<ProductResponse>(
-        apiProductPath(product.slug),
-      );
+      const detail = await getData<ProductResponse>(productPath(product.slug));
 
       expect(detail).not.toHaveProperty('isActive');
       expect(detail).not.toHaveProperty('updatedAt');
@@ -677,9 +663,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       const category = await makeCategory();
       const product = await ProductDao.create(makeProduct(category));
 
-      const detail = await getData<ProductResponse>(
-        apiProductPath(product.slug),
-      );
+      const detail = await getData<ProductResponse>(productPath(product.slug));
 
       expect(detail.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
     });
@@ -689,9 +673,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       const title = 'اسباب‌بازی تعاملی پر و زنگوله';
       const product = await ProductDao.create(makeProduct(category, { title }));
 
-      const detail = await getData<ProductResponse>(
-        apiProductPath(product.slug),
-      );
+      const detail = await getData<ProductResponse>(productPath(product.slug));
 
       expect(detail.title).toBe(title);
       expect([...detail.title]).toEqual([...title]);

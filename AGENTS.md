@@ -57,8 +57,9 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   export in the same file (see `src/lib/hono/routes/health.ts`), registered with
   `app.openapi(route, handler)`. Sub-routers come from `createRouter()`.
 - **Envelope**: every response is `{ status: 'success', data }` or
-  `{ status: 'error', message, errors? }` (`src/lib/hono/envelope.ts`). Consume
-  with `getData`/`postData` from `src/lib/api-client.ts`.
+  `{ status: 'error', message, errors? }` (`src/lib/hono/envelope.ts`). Client
+  components write with the `*Data`/`postForm` helpers in `src/lib/api-client.ts`
+  (browser-only); server components read through `src/logic/` and the DAOs.
 - **Env vars**: names live in the `VARS` enum in `src/lib/utils/env.ts`, template
   in `.env.example`. `NEXT_PUBLIC_*` must also be listed in `STATIC_INLINED_VARS`
   there. Never commit `.env`.
