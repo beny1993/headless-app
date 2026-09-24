@@ -145,7 +145,9 @@ describe('getSmsSender', () => {
     // provider that was finally chosen, no adapter exists yet, and every login
     // silently succeeds while sending nothing.
     vi.stubEnv('APP_CONFIG_SMS_PROVIDER', 'kavenegar');
-    expect(() => getSmsSender()).toThrow(/kavenegar/);
+    expect(() => getSmsSender()).toThrow(
+      'APP_CONFIG_SMS_PROVIDER="kavenegar" has no driver. Known providers: console, smsir.',
+    );
   });
 
   it('refuses an unknown provider rather than falling back to console', () => {

@@ -109,7 +109,9 @@ describe('provider selection', () => {
 
   it('throws on an unrecognized provider rather than silently mocking', () => {
     vi.stubEnv('APP_CONFIG_ZARINPAL_PROVIDER', 'stripe');
-    expect(() => getZarinpalProvider()).toThrow(/no driver/);
+    expect(() => getZarinpalProvider()).toThrow(
+      'APP_CONFIG_ZARINPAL_PROVIDER="stripe" has no driver. Known providers: mock, zarinpal.',
+    );
   });
 
   it('does not resolve an inherited object member as a provider', () => {

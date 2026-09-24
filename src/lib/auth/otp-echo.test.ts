@@ -41,8 +41,13 @@ describe('isOtpEchoEnabled', () => {
   it('stays off with a real SMS provider even when the flag is set', () => {
     // The production safety net: a flag that leaked into an environment which
     // actually texts people must not turn that environment into an oracle.
-    setEnv('true', 'kavenegar');
+    setEnv('true', 'smsir');
     expect(isOtpEchoEnabled()).toBe(false);
+  });
+
+  it('refuses an unknown provider rather than guessing it is console', () => {
+    setEnv('true', 'kavenegar');
+    expect(() => isOtpEchoEnabled()).toThrow(/has no driver/);
   });
 
   it('takes only the string `true`', () => {
