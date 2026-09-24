@@ -36,6 +36,23 @@ export function toAsciiDigits(value: string): string {
     .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
 }
 
+/** Thousands separators an admin may paste: a Latin comma, and fa-IR's U+066C. */
+const THOUSANDS_SEPARATORS = /[,٬]/g;
+
+/**
+ * A number field's text → a number, for a zod schema to judge. Persian and
+ * Arabic-Indic digits fold, thousands separators drop, blank is `undefined`
+ * (the caller decides what «not given» means). Anything but a plain decimal is
+ * `NaN` — never `Number()`'s `1e3`/`0x10` — while a sign or a fraction is kept,
+ * so the schema's `.int()`/`.positive()` refuses it in its own Persian words.
+ */
+export function parseDigits(raw: string): number | undefined {
+  const trimmed = raw.trim();
+  if (trimmed === '') return undefined;
+  const ascii = toAsciiDigits(trimmed).replace(THOUSANDS_SEPARATORS, '');
+  return /^-?\d+(\.\d+)?$/.test(ascii) ? Number(ascii) : Number.NaN;
+}
+
 /** Persian digits with fa-IR thousands separators (U+066C, not a Latin comma). */
 export function formatNumber(value: number | bigint): string {
   if (typeof value === 'number' && !Number.isFinite(value)) {

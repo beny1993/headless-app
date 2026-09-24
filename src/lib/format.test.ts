@@ -6,6 +6,7 @@ import {
   formatNumber,
   formatToman,
   jalaliYearMonth,
+  parseDigits,
   toPersianDigits,
 } from '@/lib/format';
 
@@ -230,5 +231,48 @@ describe('formatJalaliYear', () => {
 
   it('defaults to now — the footer copyright has no date to pass', () => {
     expect(formatJalaliYear()).toMatch(/^[۰-۹]{4}$/);
+  });
+});
+
+describe('parseDigits', () => {
+  it('reads ASCII, Persian and Arabic-Indic digits', () => {
+    expect(parseDigits('1250')).toBe(1250);
+    expect(parseDigits('۱۲۵۰')).toBe(1250);
+    expect(parseDigits('١٢٥٠')).toBe(1250);
+    expect(parseDigits('۰')).toBe(0);
+  });
+
+  it('is undefined for empty or blank input', () => {
+    expect(parseDigits('')).toBeUndefined();
+    expect(parseDigits('   ')).toBeUndefined();
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(parseDigits('  ۴۲ ')).toBe(42);
+  });
+
+  it('drops Latin and Persian thousands separators', () => {
+    expect(parseDigits('1,250,000')).toBe(1_250_000);
+    expect(parseDigits(`۱${SEP}۲۵۰${SEP}۰۰۰`)).toBe(1_250_000);
+  });
+
+  it('keeps a sign and a decimal, so the schema can refuse them in its own words', () => {
+    expect(parseDigits('-5')).toBe(-5);
+    expect(parseDigits('۱.۵')).toBe(1.5);
+  });
+
+  it('is NaN for anything that is not a plain decimal number', () => {
+    for (const raw of [
+      'abc',
+      '12abc',
+      '1e3',
+      '0x10',
+      'Infinity',
+      '1 000',
+      '.',
+      '-',
+    ]) {
+      expect(parseDigits(raw)).toBeNaN();
+    }
   });
 });

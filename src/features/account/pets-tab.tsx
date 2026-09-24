@@ -8,12 +8,7 @@
 // the session is the only authority on whose pets these are.
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import { AlertCircle, Camera, Pencil, Plus, Trash2 } from 'lucide-react';
-import {
-  delData,
-  patchData,
-  postData,
-  ApiRequestError,
-} from '@/lib/api-client';
+import { delData, patchData, postData } from '@/lib/api-client';
 import { PET_GENDERS, isHttpsUrl, type PetInput } from '@/lib/account/pet';
 import {
   PET_EMOJI,
@@ -21,12 +16,12 @@ import {
   PET_TYPES,
   PET_TYPE_VALUES,
 } from '@/lib/catalog/product-query';
-import { parseFieldErrors } from '@/lib/checkout/field-errors';
+import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiMePetPath } from '@/lib/constant/paths';
 import type { PetResponse } from '@/lib/hono/routes/me-pets';
 import { toPersianDigits } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { FieldShell, TextField } from '@/features/account/account-fields';
+import { FieldShell, TextField } from '@/components/ui/field';
 
 const GENERIC_ERROR = 'انجام نشد. لطفاً دوباره تلاش کن.';
 
@@ -257,9 +252,7 @@ function DeleteConfirm({
             try {
               await onConfirm();
             } catch (caught) {
-              setError(
-                caught instanceof Error ? caught.message : GENERIC_ERROR,
-              );
+              setError(reasonFrom(caught) ?? GENERIC_ERROR);
               setBusy(false);
             }
           }}
@@ -321,22 +314,9 @@ function PetForm({
       onSaved(await submit(toBody(form)));
     } catch (error) {
       setBusy(false);
-      if (
-        error instanceof ApiRequestError &&
-        (error.status === 400 || error.status === 422)
-      ) {
-        const { fields, unmapped } = parseFieldErrors(error.errors);
-        setFieldErrors(fields);
-        setTopError(
-          unmapped.length > 0
-            ? unmapped.join(' ')
-            : Object.keys(fields).length === 0
-              ? error.message
-              : undefined,
-        );
-        return;
-      }
-      setTopError(error instanceof Error ? error.message : GENERIC_ERROR);
+      const { fields, message } = requestFieldErrors(error, GENERIC_ERROR);
+      setFieldErrors(fields);
+      setTopError(message);
     }
   };
 

@@ -26,8 +26,14 @@ import {
 } from '@/features/storefront/cart/cart';
 import { CardToCardPanel, type CardToCardContent } from './card-to-card';
 import { OrderSummary, type SummaryLine } from './order-summary';
-import { ApiRequestError, postData } from '@/lib/api-client';
-import { parseFieldErrors } from '@/lib/checkout/field-errors';
+import {
+  controlClass,
+  fieldAria,
+  FieldShell,
+  TextField,
+} from '@/components/ui/field';
+import { postData } from '@/lib/api-client';
+import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 import { API_PATHS, PATHS, checkoutResultPath } from '@/lib/constant/paths';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
@@ -47,6 +53,8 @@ type Status = 'idle' | 'submitting' | 'redirecting';
 const STEPS = ['اطلاعات', 'آدرس', 'پرداخت'] as const;
 
 const GENERIC_ERROR = 'ثبت سفارش انجام نشد. لطفاً دوباره تلاش کن.';
+
+const PROVINCE_HINT = 'هزینه ارسال بر اساس استان محاسبه می‌شود.';
 
 /** Which wizard step (1-based) a server/client field error belongs to. */
 const STEP_OF_FIELD: Record<string, number> = {
@@ -255,17 +263,12 @@ export function CheckoutForm({
       setApplied({ ...result, code: trimmed, signature: cartSignature });
     } catch (error) {
       setApplied(null);
-      if (
-        error instanceof ApiRequestError &&
-        (error.status === 422 || error.status === 400)
-      ) {
-        const { fields, unmapped } = parseFieldErrors(error.errors);
-        setDiscountError(fields.discountCode ?? unmapped[0] ?? error.message);
-      } else {
-        setDiscountError(
-          error instanceof Error ? error.message : GENERIC_ERROR,
-        );
-      }
+      const { fields, message } = requestFieldErrors(error, GENERIC_ERROR);
+      // Another field's entry is a 400's English zod text; the envelope's own
+      // `message` is the Persian sentence for it.
+      setDiscountError(
+        fields.discountCode ?? message ?? reasonFrom(error) ?? GENERIC_ERROR,
+      );
     } finally {
       setApplying(false);
     }
@@ -422,38 +425,25 @@ export function CheckoutForm({
       // 422 (server refused a well-formed body) and 400 (body failed the zod
       // schema) both carry `field: message` errors — map either to its input.
       // Anything with no matching field (e.g. a missing-Idempotency-Key 400)
-      // falls through to the top-level alert below via `unmapped`.
-      if (
-        error instanceof ApiRequestError &&
-        (error.status === 422 || error.status === 400)
-      ) {
-        const { fields, unmapped } = parseFieldErrors(error.errors);
-        setFieldErrors(fields);
-        // A discountCode error belongs on the code input (in the summary card),
-        // not the wizard steps — surface it there and drop any stale preview.
-        if (fields.discountCode) {
-          setApplied(null);
-          setDiscountError(fields.discountCode);
-        }
-        // Field errors on an input show inline; `items.*` (a cart line) and any
-        // unmapped message have no input to attach to → the top-level alert.
-        const itemMessages = Object.entries(fields)
-          .filter(([path]) => path.startsWith('items.'))
-          .map(([, message]) => message);
-        const top = [...itemMessages, ...unmapped];
-        setTopError(
-          top.length > 0
-            ? top.join(' ')
-            : Object.keys(fields).length === 0
-              ? error.message
-              : undefined,
-        );
-        // Jump to the earliest step that has an error so it is on screen.
-        const steps = Object.keys(fields).map(stepOfField);
-        if (steps.length > 0) setStep(Math.min(...steps));
-        return;
+      // is the request's own `message`, for the top-level alert below.
+      const { fields, message } = requestFieldErrors(error, GENERIC_ERROR);
+      setFieldErrors(fields);
+      // A discountCode error belongs on the code input (in the summary card),
+      // not the wizard steps — surface it there and drop any stale preview.
+      if (fields.discountCode) {
+        setApplied(null);
+        setDiscountError(fields.discountCode);
       }
-      setTopError(error instanceof Error ? error.message : GENERIC_ERROR);
+      // Field errors on an input show inline; `items.*` (a cart line) and the
+      // request's own message have no input to attach to → the top-level alert.
+      const top = Object.entries(fields)
+        .filter(([path]) => path.startsWith('items.'))
+        .map(([, itemMessage]) => itemMessage);
+      if (message) top.push(message);
+      setTopError(top.length > 0 ? top.join(' ') : undefined);
+      // Jump to the earliest step that has an error so it is on screen.
+      const steps = Object.keys(fields).map(stepOfField);
+      if (steps.length > 0) setStep(Math.min(...steps));
     }
   };
 
@@ -542,13 +532,11 @@ export function CheckoutForm({
                   از حساب کاربری‌ات پیش‌فرض شده — در صورت نیاز ویرایش کن.
                 </p>
                 {savedAddresses.length > 0 && (
-                  <div>
-                    <label
-                      htmlFor={`${fieldId}-saved`}
-                      className="mb-1.5 block text-sm font-medium"
-                    >
-                      آدرس تحویل
-                    </label>
+                  <FieldShell
+                    id={`${fieldId}-saved`}
+                    label="آدرس تحویل"
+                    hint="با انتخاب آدرس ذخیره‌شده، مستقیم به مرحله پرداخت می‌روی."
+                  >
                     <select
                       id={`${fieldId}-saved`}
                       value={savedIndex}
@@ -557,7 +545,7 @@ export function CheckoutForm({
                           ? startNewAddress()
                           : applySavedAddress(event.target.value)
                       }
-                      className="bg-secondary focus-visible:border-accent-strong border-border h-12 w-full rounded-xl border px-4 transition-colors outline-none focus-visible:ring-2"
+                      className={controlClass(false)}
                       data-umami-event="checkout-saved-address-select"
                     >
                       <option value="">آدرس جدید</option>
@@ -568,10 +556,7 @@ export function CheckoutForm({
                         </option>
                       ))}
                     </select>
-                    <p className="text-muted-foreground mt-1.5 text-xs">
-                      با انتخاب آدرس ذخیره‌شده، مستقیم به مرحله پرداخت می‌روی.
-                    </p>
-                  </div>
+                  </FieldShell>
                 )}
                 <TextField
                   id={`${fieldId}-name`}
@@ -604,13 +589,12 @@ export function CheckoutForm({
               <div className="space-y-4">
                 <h2 className="mb-5 text-xl font-bold">آدرس تحویل</h2>
 
-                <div>
-                  <label
-                    htmlFor={`${fieldId}-province`}
-                    className="mb-1.5 block text-sm font-medium"
-                  >
-                    استان
-                  </label>
+                <FieldShell
+                  id={`${fieldId}-province`}
+                  label="استان"
+                  error={provinceError}
+                  hint={PROVINCE_HINT}
+                >
                   <select
                     id={`${fieldId}-province`}
                     value={staleProvince ? '' : provinceId}
@@ -618,16 +602,12 @@ export function CheckoutForm({
                       setProvinceId(event.target.value);
                       clearError('address.provinceId');
                     }}
-                    aria-invalid={Boolean(provinceError)}
-                    aria-describedby={
-                      provinceError
-                        ? `${fieldId}-province-error`
-                        : `${fieldId}-province-hint`
-                    }
-                    className={cn(
-                      'bg-secondary focus-visible:border-accent-strong h-12 w-full rounded-xl border px-4 transition-colors outline-none focus-visible:ring-2',
-                      provinceError ? 'border-destructive' : 'border-border',
+                    {...fieldAria(
+                      `${fieldId}-province`,
+                      provinceError,
+                      PROVINCE_HINT,
                     )}
+                    className={controlClass(Boolean(provinceError))}
                     data-umami-event="checkout-province-change"
                   >
                     <option value="" disabled>
@@ -639,23 +619,7 @@ export function CheckoutForm({
                       </option>
                     ))}
                   </select>
-                  {provinceError ? (
-                    <p
-                      id={`${fieldId}-province-error`}
-                      className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
-                    >
-                      <AlertCircle size={12} aria-hidden="true" />{' '}
-                      {provinceError}
-                    </p>
-                  ) : (
-                    <p
-                      id={`${fieldId}-province-hint`}
-                      className="text-muted-foreground mt-1.5 text-xs"
-                    >
-                      هزینه ارسال بر اساس استان محاسبه می‌شود.
-                    </p>
-                  )}
-                </div>
+                </FieldShell>
 
                 <TextField
                   id={`${fieldId}-city`}
@@ -669,13 +633,11 @@ export function CheckoutForm({
                   umami="checkout-city"
                 />
 
-                <div>
-                  <label
-                    htmlFor={`${fieldId}-address`}
-                    className="mb-1.5 block text-sm font-medium"
-                  >
-                    آدرس کامل
-                  </label>
+                <FieldShell
+                  id={`${fieldId}-address`}
+                  label="آدرس کامل"
+                  error={fieldErrors['address.addressLine']}
+                >
                   <textarea
                     id={`${fieldId}-address`}
                     rows={3}
@@ -685,30 +647,16 @@ export function CheckoutForm({
                       clearError('address.addressLine');
                     }}
                     placeholder="خیابان، کوچه، پلاک، واحد"
-                    aria-invalid={Boolean(fieldErrors['address.addressLine'])}
-                    aria-describedby={
-                      fieldErrors['address.addressLine']
-                        ? `${fieldId}-address-error`
-                        : undefined
-                    }
-                    className={cn(
-                      'bg-secondary focus-visible:border-accent-strong w-full rounded-xl border px-4 py-3 text-start transition-colors outline-none focus-visible:ring-2',
-                      fieldErrors['address.addressLine']
-                        ? 'border-destructive bg-destructive-soft/40'
-                        : 'border-border',
+                    {...fieldAria(
+                      `${fieldId}-address`,
+                      fieldErrors['address.addressLine'],
+                    )}
+                    className={controlClass(
+                      Boolean(fieldErrors['address.addressLine']),
                     )}
                     data-umami-event="checkout-address-line"
                   />
-                  {fieldErrors['address.addressLine'] && (
-                    <p
-                      id={`${fieldId}-address-error`}
-                      className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
-                    >
-                      <AlertCircle size={12} aria-hidden="true" />{' '}
-                      {fieldErrors['address.addressLine']}
-                    </p>
-                  )}
-                </div>
+                </FieldShell>
 
                 <TextField
                   id={`${fieldId}-postal`}
@@ -891,10 +839,8 @@ export function CheckoutForm({
                     discountError ? `${fieldId}-discount-error` : undefined
                   }
                   className={cn(
-                    'bg-secondary focus-visible:border-accent-strong h-11 min-w-0 flex-1 rounded-xl border px-3 text-end transition-colors outline-none focus-visible:ring-2',
-                    discountError
-                      ? 'border-destructive bg-destructive-soft/40'
-                      : 'border-border',
+                    controlClass(Boolean(discountError)),
+                    'h-11 min-w-0 flex-1 px-3 py-0 text-end',
                   )}
                   data-umami-event="checkout-discount-code"
                 />
@@ -947,65 +893,5 @@ export function CheckoutForm({
         </div>
       </div>
     </main>
-  );
-}
-
-/** The one text-input pattern the wizard reuses: label, control, inline error. */
-function TextField({
-  id,
-  label,
-  value,
-  onChange,
-  error,
-  hint,
-  inputMode,
-  dir,
-  umami,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  error?: string;
-  hint?: string;
-  inputMode?: 'text' | 'tel' | 'numeric';
-  dir?: 'ltr' | 'rtl';
-  umami: string;
-}) {
-  const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium">
-        {label}
-      </label>
-      <input
-        id={id}
-        type="text"
-        inputMode={inputMode}
-        dir={dir}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-invalid={Boolean(error)}
-        aria-describedby={describedBy}
-        className={cn(
-          'bg-secondary focus-visible:border-accent-strong w-full rounded-xl border px-4 py-3 text-start transition-colors outline-none focus-visible:ring-2',
-          error ? 'border-destructive bg-destructive-soft/40' : 'border-border',
-        )}
-        data-umami-event={umami}
-      />
-      {error ? (
-        <p
-          id={`${id}-error`}
-          className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
-        >
-          <AlertCircle size={12} className="shrink-0" aria-hidden="true" />{' '}
-          {error}
-        </p>
-      ) : hint ? (
-        <p id={`${id}-hint`} className="text-muted-foreground mt-1.5 text-xs">
-          {hint}
-        </p>
-      ) : null}
-    </div>
   );
 }

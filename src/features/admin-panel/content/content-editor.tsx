@@ -1,11 +1,11 @@
 'use client';
 
 import { useId, useRef, useState } from 'react';
-import { AlertCircle, Check, Loader2 } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { ApiRequestError, postForm, putData } from '@/lib/api-client';
-import { parseFieldErrors } from '@/lib/checkout/field-errors';
+import { DEFAULT_ERROR_MESSAGE, postForm, putData } from '@/lib/api-client';
+import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiAdminContentPath } from '@/lib/constant/paths';
 import {
   CONTENT_SCHEMAS,
@@ -19,6 +19,7 @@ import {
   ImagePicker,
   validateImageFile,
 } from '@/features/admin-panel/shared/image-picker';
+import { controlClass, fieldAria, FieldShell } from '@/components/ui/field';
 import {
   BLOCK_FIELDS,
   getPath,
@@ -27,13 +28,11 @@ import {
 } from './block-fields';
 import { CategoryPicker, LinkPicker, type LinkOptions } from './link-picker';
 
-const GENERIC_ERROR = 'خطای غیرمنتظره رخ داد. دوباره تلاش کن.';
-
 /**
  * The storefront content editor for one area: one independent form per block in
  * `keys` (page order), each pre-filled from its row-or-default value and saved on
  * its own. Reuses the product form's stack — `useState` + a zod `safeParse` before
- * send + `putData` + the shared `parseFieldErrors` for server 400s — so there is
+ * send + `putData` + the shared `requestFieldErrors` for server refusals — so there is
  * no form library and no new mechanism here; the block-specific part is entirely
  * data (BLOCK_FIELDS). The `[area]` page hands it just its own area's keys, and
  * the categories and active products its destination pickers offer.
@@ -204,7 +203,7 @@ function BlockForm({
       setPreviews(remainingPreviews);
       saving.current = false;
       setBusy(false);
-      toast.error(error instanceof Error ? error.message : GENERIC_ERROR);
+      toast.error(reasonFrom(error) ?? DEFAULT_ERROR_MESSAGE);
       return;
     }
 
@@ -229,23 +228,10 @@ function BlockForm({
       setPreviews(remainingPreviews);
       saving.current = false;
       setBusy(false);
-      if (
-        error instanceof ApiRequestError &&
-        (error.status === 400 || error.status === 422)
-      ) {
-        const { fields, unmapped } = parseFieldErrors(error.errors);
-        setFieldErrors(fields);
-        // A refusal no field can show is the request's own failure: a toast.
-        const message =
-          unmapped.length > 0
-            ? unmapped.join(' ')
-            : Object.keys(fields).length === 0
-              ? error.message
-              : undefined;
-        if (message) toast.error(message);
-        return;
-      }
-      toast.error(error instanceof Error ? error.message : GENERIC_ERROR);
+      // A refusal no field can show is the request's own failure: a toast.
+      const { fields, message } = requestFieldErrors(error);
+      setFieldErrors(fields);
+      if (message) toast.error(message);
     }
   };
 
@@ -376,33 +362,24 @@ function BlockField({
     );
   }
 
+  const control = {
+    id,
+    value,
+    ...fieldAria(id, error),
+    className: controlClass(Boolean(error)),
+  };
   return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium">
-        {field.label}
-      </label>
+    <FieldShell id={id} label={field.label} error={error}>
       {field.kind === 'textarea' ? (
         <textarea
-          id={id}
+          {...control}
           rows={3}
-          value={value}
           onChange={(e) => onText(e.target.value)}
-          className={inputClass(error, true)}
         />
       ) : (
-        <input
-          id={id}
-          value={value}
-          onChange={(e) => onText(e.target.value)}
-          className={inputClass(error, false)}
-        />
+        <input {...control} onChange={(e) => onText(e.target.value)} />
       )}
-      {error && (
-        <p className="text-destructive mt-1.5 flex items-center gap-1 text-xs">
-          <AlertCircle size={12} aria-hidden="true" /> {error}
-        </p>
-      )}
-    </div>
+    </FieldShell>
   );
 }
 
@@ -412,12 +389,3 @@ const errorUnder = (errors: Record<string, string>, path: string) =>
   Object.entries(errors).find(
     ([key, message]) => message && key.startsWith(`${path}.`),
   )?.[1];
-
-const inputClass = (error: string | undefined, multiline: boolean) =>
-  `bg-secondary w-full rounded-xl px-4 text-sm outline-none border ${
-    multiline ? 'py-3' : 'h-12'
-  } ${
-    error
-      ? 'border-destructive'
-      : 'border-border focus-visible:border-accent-strong'
-  }`;

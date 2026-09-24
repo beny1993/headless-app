@@ -10,23 +10,19 @@
 // checkout does, so a code typed on a Persian keyboard stores canonically.
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import { AlertCircle, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
-import {
-  delData,
-  patchData,
-  postData,
-  ApiRequestError,
-} from '@/lib/api-client';
+import { delData, patchData, postData } from '@/lib/api-client';
 import type { AddressInput } from '@/lib/account/address';
-import { parseFieldErrors } from '@/lib/checkout/field-errors';
+import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
 import { API_PATHS, apiMeAddressPath } from '@/lib/constant/paths';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
 import { toAsciiDigits, toPersianDigits } from '@/lib/format';
 import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
 import {
   controlClass,
+  fieldAria,
   FieldShell,
   TextField,
-} from '@/features/account/account-fields';
+} from '@/components/ui/field';
 
 const GENERIC_ERROR = 'انجام نشد. لطفاً دوباره تلاش کن.';
 
@@ -237,9 +233,7 @@ function DeleteConfirm({
             try {
               await onConfirm();
             } catch (caught) {
-              setError(
-                caught instanceof Error ? caught.message : GENERIC_ERROR,
-              );
+              setError(reasonFrom(caught) ?? GENERIC_ERROR);
               setBusy(false);
             }
           }}
@@ -329,22 +323,9 @@ function AddressForm({
       onSaved(await submit(toBody(form)));
     } catch (error) {
       setBusy(false);
-      if (
-        error instanceof ApiRequestError &&
-        (error.status === 400 || error.status === 422)
-      ) {
-        const { fields, unmapped } = parseFieldErrors(error.errors);
-        setFieldErrors(fields);
-        setTopError(
-          unmapped.length > 0
-            ? unmapped.join(' ')
-            : Object.keys(fields).length === 0
-              ? error.message
-              : undefined,
-        );
-        return;
-      }
-      setTopError(error instanceof Error ? error.message : GENERIC_ERROR);
+      const { fields, message } = requestFieldErrors(error, GENERIC_ERROR);
+      setFieldErrors(fields);
+      setTopError(message);
     }
   };
 
@@ -379,8 +360,7 @@ function AddressForm({
             id="addr-province"
             value={staleProvince ? '' : form.provinceId}
             onChange={(event) => set('provinceId', event.target.value)}
-            aria-invalid={Boolean(provinceError)}
-            aria-describedby={provinceError ? 'addr-province-error' : undefined}
+            {...fieldAria('addr-province', provinceError)}
             className={controlClass(Boolean(provinceError))}
             data-umami-event="account-addresses-province"
           >
@@ -445,10 +425,7 @@ function AddressForm({
             value={form.addressLine}
             onChange={(event) => set('addressLine', event.target.value)}
             placeholder="خیابان، کوچه، پلاک، واحد"
-            aria-invalid={Boolean(fieldErrors.addressLine)}
-            aria-describedby={
-              fieldErrors.addressLine ? 'addr-line-error' : undefined
-            }
+            {...fieldAria('addr-line', fieldErrors.addressLine)}
             className={controlClass(Boolean(fieldErrors.addressLine))}
             data-umami-event="account-addresses-line"
           />

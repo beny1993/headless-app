@@ -438,6 +438,25 @@ describe('the checkout submit state machine', () => {
     expect(screen.queryByText('کد تخفیف اعمال شد.')).toBeNull();
   });
 
+  it('shows a preview 400 for another field in Persian, never its zod text', async () => {
+    // A zod 400 names `items.0.quantity` in English; the code input has no such
+    // field, so it reads the envelope's own Persian sentence instead.
+    postData.mockRejectedValue(
+      new ApiRequestError(400, 'ورودی نامعتبر است', [
+        'items.0.quantity: Too small: expected number to be >0',
+      ]),
+    );
+    fireEvent.change(screen.getByLabelText('کد تخفیف'), {
+      target: { value: 'save10' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'اعمال' }));
+    });
+
+    expect(screen.getByText('ورودی نامعتبر است')).toBeTruthy();
+    expect(screen.queryByText(/Too small/)).toBeNull();
+  });
+
   it('renders a discountCode 422 inline on the code input', async () => {
     postData.mockRejectedValue(
       new ApiRequestError(422, 'کد تخفیف واردشده معتبر نیست.', [
@@ -459,15 +478,21 @@ describe('the checkout submit state machine', () => {
     expect(getCart()).toHaveLength(1);
   });
 
-  it('surfaces a server error with no field mapping in the top-level alert', async () => {
-    postData.mockRejectedValue(new ApiRequestError(500, 'خطای سرور'));
+  it('surfaces a server error in Persian in the top-level alert', async () => {
+    // A 5xx `message` is the literal `Internal server error` — English
+    // developer text the shopper must never read.
+    postData.mockRejectedValue(
+      new ApiRequestError(500, 'Internal server error'),
+    );
     advanceToPayment();
 
     await act(async () => {
       fireEvent.click(submitButton());
     });
 
-    expect(screen.getByRole('alert').textContent).toContain('خطای سرور');
+    expect(screen.getByRole('alert').textContent).toBe(
+      'ثبت سفارش انجام نشد. لطفاً دوباره تلاش کن.',
+    );
     expect(submitButton().disabled).toBe(false);
     expect(getCart()).toHaveLength(1); // nothing created, cart kept
   });
