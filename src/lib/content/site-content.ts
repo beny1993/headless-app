@@ -114,8 +114,7 @@ const nav = z.tuple([t(30), t(30), t(30)]);
 // normalized and checked on write and on read: Persian/Arabic digits → ASCII,
 // spaces and dashes dropped, then exactly sixteen digits. `''` is an unused
 // slot (kept as `''`, like every blank here, so a default, a stored row and the
-// editor's empty field all parse to themselves). The message is digit-free,
-// like every Persian message here.
+// editor's empty field all parse to themselves). The message is digit-free.
 const CARD_NUMBER_MESSAGE = 'شماره کارت باید شانزده رقم باشد.';
 const cardNumber = z
   .string()
