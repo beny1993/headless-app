@@ -334,12 +334,13 @@ describe('readiness vs the money path, with online payment switched off', () => 
     // it — so the gateway is still reachable with the switch off, and it must
     // still fail closed there. If this ever passes, the relaxation has leaked
     // from "may this container serve" into "may this settle money".
-    const { getZarinpalClient, assertMockGatewayAllowed } = await load({
-      ...PROD_ON_MOCK,
-      APP_CONFIG_ZARINPAL_ENABLED: 'false',
-    });
+    const { getZarinpalClient: getClient, assertMockGatewayAllowed } =
+      await load({
+        ...PROD_ON_MOCK,
+        APP_CONFIG_ZARINPAL_ENABLED: 'false',
+      });
 
-    expect(() => getZarinpalClient()).toThrow(/APP_CONFIG_ZARINPAL_ALLOW_MOCK/);
+    expect(() => getClient()).toThrow(/APP_CONFIG_ZARINPAL_ALLOW_MOCK/);
     expect(() => assertMockGatewayAllowed()).toThrow();
   });
 });
