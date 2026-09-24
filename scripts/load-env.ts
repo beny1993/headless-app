@@ -6,7 +6,7 @@
 // points elsewhere — a worktree has no .env of its own, so it borrows the main
 // checkout's. A missing file is a no-op: CI and worktrees simply have none.
 try {
-  process.loadEnvFile(process.env.DOTENV_CONFIG_PATH ?? '.env');
+  process.loadEnvFile(process.env.DOTENV_CONFIG_PATH || '.env');
 } catch (error) {
   if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
 }
