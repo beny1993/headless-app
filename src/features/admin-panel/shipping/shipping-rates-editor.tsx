@@ -25,6 +25,7 @@ import { shippingFeeSchema } from '@/lib/shipping/shipping-query';
 import { cn } from '@/lib/utils';
 import { AdminTable } from '@/features/admin-panel/shared/admin-table';
 import { CreateCard } from '@/features/admin-panel/shared/create-card';
+import { Pill } from '@/features/admin-panel/shared/pill';
 
 const DEACTIVATE_LABEL = 'غیرفعال\u200Cسازی';
 const ACTIVATE_LABEL = 'فعال\u200Cسازی';
@@ -343,15 +344,9 @@ function RateRow({
     >
       <td className="px-4 py-2.5 font-medium">{rate.name}</td>
       <td className="px-4 py-2.5">
-        {rate.isActive ? (
-          <span className="text-success-strong bg-success-soft inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
-            فعال
-          </span>
-        ) : (
-          <span className="text-muted-foreground bg-muted inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
-            غیرفعال
-          </span>
-        )}
+        <Pill tone={rate.isActive ? 'success' : 'muted'}>
+          {rate.isActive ? 'فعال' : 'غیرفعال'}
+        </Pill>
       </td>
       <td className="px-4 py-2.5">
         <label htmlFor={inputId} className="sr-only">

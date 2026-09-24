@@ -25,6 +25,7 @@ import type { DiscountCodeView } from '@/lib/hono/routes/admin-discounts';
 import { cn } from '@/lib/utils';
 import { AdminTable } from '@/features/admin-panel/shared/admin-table';
 import { CreateCard } from '@/features/admin-panel/shared/create-card';
+import { Pill } from '@/features/admin-panel/shared/pill';
 import {
   controlClass,
   fieldAria,
@@ -309,15 +310,9 @@ function CodeRow({
         {code.expiresAt ? formatJalali(new Date(code.expiresAt)) : 'بدون انقضا'}
       </td>
       <td className="px-4 py-3">
-        {code.isActive ? (
-          <span className="text-success-strong bg-success-soft inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium">
-            فعال
-          </span>
-        ) : (
-          <span className="text-muted-foreground bg-muted inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium">
-            غیرفعال
-          </span>
-        )}
+        <Pill tone={code.isActive ? 'success' : 'muted'}>
+          {code.isActive ? 'فعال' : 'غیرفعال'}
+        </Pill>
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">

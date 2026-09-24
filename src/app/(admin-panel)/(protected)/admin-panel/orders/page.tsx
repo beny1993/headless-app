@@ -17,6 +17,7 @@ import {
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
 import { ADMIN_PAGE_SIZE, pageParamSchema } from '@/lib/pagination';
 import { AdminTable } from '@/features/admin-panel/shared/admin-table';
+import { Pill } from '@/features/admin-panel/shared/pill';
 
 export const metadata: Metadata = { title: 'سفارش‌ها' };
 
@@ -138,15 +139,9 @@ export default async function AdminOrdersPage({
                   {formatToman(order.total)}
                 </td>
                 <td className="px-4 py-3.5">
-                  {order.isPaid ? (
-                    <span className="bg-success-soft text-success-strong rounded-full px-2.5 py-1 text-xs font-medium">
-                      پرداخت شده
-                    </span>
-                  ) : (
-                    <span className="bg-secondary text-muted-foreground rounded-full px-2.5 py-1 text-xs font-medium">
-                      پرداخت‌نشده
-                    </span>
-                  )}
+                  <Pill tone={order.isPaid ? 'success' : 'muted'}>
+                    {order.isPaid ? 'پرداخت شده' : 'پرداخت‌نشده'}
+                  </Pill>
                 </td>
                 <td className="px-4 py-3.5">
                   <span
