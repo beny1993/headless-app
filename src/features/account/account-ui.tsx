@@ -1,0 +1,196 @@
+'use client';
+
+// The add / edit / delete shell the account tabs share.
+import { useState, type ReactNode } from 'react';
+import { AlertCircle, type LucideIcon } from 'lucide-react';
+import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
+import { cn } from '@/lib/utils';
+
+const GENERIC_ERROR = 'انجام نشد. لطفاً دوباره تلاش کن.';
+
+/** The «nothing here yet» card; `icon` is a lucide icon or an emoji. */
+export function EmptyState({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: LucideIcon | string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="bg-secondary/40 rounded-2xl py-16 text-center">
+      {typeof Icon === 'string' ? (
+        <p className="mb-1 text-2xl" aria-hidden="true">
+          {Icon}
+        </p>
+      ) : (
+        <Icon
+          size={40}
+          className="text-muted-foreground mx-auto mb-3"
+          aria-hidden="true"
+        />
+      )}
+      <p className="mb-1 font-semibold">{title}</p>
+      <p className="text-muted-foreground text-sm">{description}</p>
+    </div>
+  );
+}
+
+/** The inline «… حذف شود؟» strip; a throwing `onConfirm` shows its refusal. */
+export function DeleteConfirm({
+  question,
+  umami,
+  className,
+  onCancel,
+  onConfirm,
+}: {
+  question: string;
+  umami: string;
+  className?: string;
+  onCancel: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+  return (
+    <div className={cn('bg-destructive-soft/40 rounded-lg p-3', className)}>
+      <p className="mb-2 text-sm font-medium">{question}</p>
+      {error && (
+        <p role="alert" className="text-destructive mb-2 text-xs">
+          {error}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(undefined);
+            try {
+              await onConfirm();
+            } catch (caught) {
+              setError(reasonFrom(caught) ?? GENERIC_ERROR);
+              setBusy(false);
+            }
+          }}
+          className="bg-destructive rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-60"
+          data-umami-event={umami}
+        >
+          {busy ? 'در حال حذف…' : 'حذف'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="border-border hover:bg-secondary rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60"
+        >
+          انصراف
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** A form's whole-request error, above its fields. Renders nothing without one. */
+export function FormAlert({ message }: { message?: string }) {
+  if (!message) return null;
+  return (
+    <p
+      role="alert"
+      className="text-destructive border-destructive/30 bg-destructive-soft/40 mb-4 flex items-center gap-2 rounded-xl border p-3 text-sm"
+    >
+      <AlertCircle size={16} className="shrink-0" aria-hidden="true" />
+      {message}
+    </p>
+  );
+}
+
+/** The «ذخیره» / «انصراف» footer; both disable while a save is in flight. */
+export function FormActions({
+  busy,
+  onSave,
+  onCancel,
+  saveUmami,
+  cancelUmami,
+  saveIcon,
+}: {
+  busy: boolean;
+  onSave: () => void;
+  onCancel: () => void;
+  saveUmami: string;
+  cancelUmami: string;
+  saveIcon?: ReactNode;
+}) {
+  return (
+    <div className="mt-5 flex gap-3">
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={busy}
+        className="bg-brand hover:bg-brand-hover text-brand-foreground flex-1 rounded-xl py-3 font-bold transition-colors disabled:opacity-60"
+        data-umami-event={saveUmami}
+      >
+        <span className="flex items-center justify-center gap-2">
+          {saveIcon}
+          {busy ? 'در حال ذخیره…' : 'ذخیره'}
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={busy}
+        className="border-border hover:bg-secondary rounded-xl border-2 px-5 py-3 font-medium transition-colors disabled:opacity-60"
+        data-umami-event={cancelUmami}
+      >
+        انصراف
+      </button>
+    </div>
+  );
+}
+
+/**
+ * An edit form's state. `set` writes one field and clears its error; `save`
+ * takes the client gate's errors and only sends when there are none.
+ */
+export function useFormState<V extends object>(
+  initial: V,
+  send: (values: V) => Promise<void>,
+) {
+  const [form, setForm] = useState(initial);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [topError, setTopError] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
+
+  const set = <K extends keyof V>(key: K, value: V[K]) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    setFieldErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key as string];
+      return next;
+    });
+  };
+
+  const save = async (errors: Record<string, string>) => {
+    if (busy) return;
+    setBusy(true);
+    setTopError(undefined);
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setBusy(false);
+      return;
+    }
+    try {
+      await send(form);
+    } catch (error) {
+      setBusy(false);
+      const { fields, message } = requestFieldErrors(error, GENERIC_ERROR);
+      setFieldErrors(fields);
+      setTopError(message);
+    }
+  };
+
+  return { form, set, fieldErrors, topError, busy, save };
+}

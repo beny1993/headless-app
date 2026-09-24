@@ -12,6 +12,8 @@
 import { z } from 'zod';
 import type { AddressWithProvince } from '@/db/dao/AddressDao';
 import { addressSchema } from '@/lib/checkout/checkout-input';
+import { toAsciiDigits } from '@/lib/format';
+import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
 import { optionalBoundedText } from '@/lib/validation/text';
 
 const MAX_ADDRESS_TITLE = 60;
@@ -27,6 +29,36 @@ export const addressInputSchema = addressSchema.extend({
 });
 
 export type AddressInput = z.infer<typeof addressInputSchema>;
+
+/** A postal code as stored: ASCII digits only, whatever keyboard typed it. */
+export const normalizePostalCode = (value: string): string =>
+  toAsciiDigits(value).replace(/\D/g, '');
+
+/** The address fields as a form holds them: all text, the province id included. */
+type AddressFormValues = Record<keyof z.infer<typeof addressSchema>, string>;
+
+/**
+ * The client gate shared by checkout and the address book: field → message.
+ * Stricter than `addressSchema` on purpose; the server stays authoritative.
+ */
+export const validateAddress = (
+  values: AddressFormValues,
+  staleProvince: boolean,
+) => {
+  const errors: Partial<AddressFormValues> = {};
+  if (!values.recipientName.trim())
+    errors.recipientName = 'نام گیرنده را وارد کن.';
+  if (!values.recipientPhone.trim())
+    errors.recipientPhone = 'شماره تماس گیرنده را وارد کن.';
+  if (!values.provinceId) errors.provinceId = 'استان را انتخاب کن.';
+  else if (staleProvince) errors.provinceId = STALE_PROVINCE_MESSAGE;
+  if (!values.city.trim()) errors.city = 'شهر را وارد کن.';
+  if (values.addressLine.trim().length < 10)
+    errors.addressLine = 'آدرس کامل را وارد کن (حداقل ۱۰ حرف).';
+  if (normalizePostalCode(values.postalCode).length !== 10)
+    errors.postalCode = 'کد پستی باید ۱۰ رقم باشد.';
+  return errors;
+};
 
 /**
  * The saved address as it crosses the wire: the stored row plus the province

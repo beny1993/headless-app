@@ -9,13 +9,16 @@
 // contract drives both. The postal code is normalized to ASCII on save, as
 // checkout does, so a code typed on a Persian keyboard stores canonically.
 import { useState, type Dispatch, type SetStateAction } from 'react';
-import { AlertCircle, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
+import { MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
 import { delData, patchData, postData } from '@/lib/api-client';
-import type { AddressInput } from '@/lib/account/address';
-import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
+import {
+  normalizePostalCode,
+  validateAddress,
+  type AddressInput,
+} from '@/lib/account/address';
 import { API_PATHS, apiMeAddressPath } from '@/lib/constant/paths';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
-import { toAsciiDigits, toPersianDigits } from '@/lib/format';
+import { toPersianDigits } from '@/lib/format';
 import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
 import {
   controlClass,
@@ -23,8 +26,13 @@ import {
   FieldShell,
   TextField,
 } from '@/components/ui/field';
-
-const GENERIC_ERROR = 'انجام نشد. لطفاً دوباره تلاش کن.';
+import {
+  DeleteConfirm,
+  EmptyState,
+  FormActions,
+  FormAlert,
+  useFormState,
+} from './account-ui';
 
 /** The province options the select renders — the same rows checkout uses. */
 export type ProvinceOption = { provinceId: number; name: string };
@@ -65,7 +73,7 @@ const toBody = (form: FormValues): AddressInput => ({
   recipientPhone: form.recipientPhone.trim(),
   provinceId: Number(form.provinceId),
   city: form.city.trim(),
-  postalCode: toAsciiDigits(form.postalCode).replace(/\D/g, ''),
+  postalCode: normalizePostalCode(form.postalCode),
   addressLine: form.addressLine.trim(),
 });
 
@@ -98,17 +106,11 @@ export function AddressesTab({
       </div>
 
       {addresses.length === 0 && !editing && (
-        <div className="bg-secondary/40 rounded-2xl py-16 text-center">
-          <MapPin
-            size={40}
-            className="text-muted-foreground mx-auto mb-3"
-            aria-hidden="true"
-          />
-          <p className="mb-1 font-semibold">هنوز آدرسی ذخیره نکرده‌ای</p>
-          <p className="text-muted-foreground text-sm">
-            یک آدرس ذخیره کن تا در تکمیل خرید سریع‌تر باشی.
-          </p>
-        </div>
+        <EmptyState
+          icon={MapPin}
+          title="هنوز آدرسی ذخیره نکرده‌ای"
+          description="یک آدرس ذخیره کن تا در تکمیل خرید سریع‌تر باشی."
+        />
       )}
 
       <div className="mb-6 space-y-3">
@@ -160,6 +162,9 @@ export function AddressesTab({
 
             {pendingDelete === address.id && (
               <DeleteConfirm
+                question="این آدرس حذف شود؟"
+                umami="account-addresses-delete-confirm"
+                className="mt-4"
                 onCancel={() => setPendingDelete(null)}
                 onConfirm={async () => {
                   await delData(apiMeAddressPath(address.id));
@@ -206,55 +211,6 @@ export function AddressesTab({
   );
 }
 
-function DeleteConfirm({
-  onCancel,
-  onConfirm,
-}: {
-  onCancel: () => void;
-  onConfirm: () => Promise<void>;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-  return (
-    <div className="bg-destructive-soft/40 mt-4 rounded-lg p-3">
-      <p className="mb-2 text-sm font-medium">این آدرس حذف شود؟</p>
-      {error && (
-        <p role="alert" className="text-destructive mb-2 text-xs">
-          {error}
-        </p>
-      )}
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            setError(undefined);
-            try {
-              await onConfirm();
-            } catch (caught) {
-              setError(reasonFrom(caught) ?? GENERIC_ERROR);
-              setBusy(false);
-            }
-          }}
-          className="bg-destructive rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-60"
-          data-umami-event="account-addresses-delete-confirm"
-        >
-          {busy ? 'در حال حذف…' : 'حذف'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="border-border hover:bg-secondary rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60"
-        >
-          انصراف
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function AddressForm({
   provinces,
   initial,
@@ -268,10 +224,10 @@ function AddressForm({
   onSaved: (address: AddressResponse) => void;
   submit: (body: AddressInput) => Promise<AddressResponse>;
 }) {
-  const [form, setForm] = useState(initial);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [topError, setTopError] = useState<string | undefined>();
-  const [busy, setBusy] = useState(false);
+  const { form, set, fieldErrors, topError, busy, save } = useFormState(
+    initial,
+    async (values) => onSaved(await submit(toBody(values))),
+  );
 
   // An address saved against a province the admin has since deactivated: its id
   // is not among the (active) options, so React would display the first enabled
@@ -285,65 +241,13 @@ function AddressForm({
     fieldErrors.provinceId ??
     (staleProvince ? STALE_PROVINCE_MESSAGE : undefined);
 
-  const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-    setFieldErrors((prev) => {
-      if (!(key in prev)) return prev;
-      const next = { ...prev };
-      delete next[key as string];
-      return next;
-    });
-  };
-
-  const save = async () => {
-    if (busy) return;
-    setBusy(true);
-    setTopError(undefined);
-
-    // Client-side gate; the server stays authoritative.
-    const errors: Record<string, string> = {};
-    if (!form.recipientName.trim())
-      errors.recipientName = 'نام گیرنده را وارد کن.';
-    if (!form.recipientPhone.trim())
-      errors.recipientPhone = 'شماره تماس گیرنده را وارد کن.';
-    if (!form.provinceId) errors.provinceId = 'استان را انتخاب کن.';
-    else if (staleProvince) errors.provinceId = STALE_PROVINCE_MESSAGE;
-    if (!form.city.trim()) errors.city = 'شهر را وارد کن.';
-    if (form.addressLine.trim().length < 10)
-      errors.addressLine = 'آدرس کامل را وارد کن (حداقل ۱۰ حرف).';
-    if (toAsciiDigits(form.postalCode).replace(/\D/g, '').length !== 10)
-      errors.postalCode = 'کد پستی باید ۱۰ رقم باشد.';
-    if (Object.keys(errors).length > 0) {
-      setFieldErrors(errors);
-      setBusy(false);
-      return;
-    }
-
-    try {
-      onSaved(await submit(toBody(form)));
-    } catch (error) {
-      setBusy(false);
-      const { fields, message } = requestFieldErrors(error, GENERIC_ERROR);
-      setFieldErrors(fields);
-      setTopError(message);
-    }
-  };
-
   return (
     <div className="bg-card border-accent/30 rounded-2xl border-2 p-6">
       <h3 className="mb-4 font-bold">
         {initial.recipientName ? 'ویرایش آدرس' : 'افزودن آدرس جدید'}
       </h3>
 
-      {topError && (
-        <p
-          role="alert"
-          className="text-destructive border-destructive/30 bg-destructive-soft/40 mb-4 flex items-center gap-2 rounded-xl border p-3 text-sm"
-        >
-          <AlertCircle size={16} className="shrink-0" aria-hidden="true" />
-          {topError}
-        </p>
-      )}
+      <FormAlert message={topError} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <TextField
@@ -432,26 +336,14 @@ function AddressForm({
         </FieldShell>
       </div>
 
-      <div className="mt-5 flex gap-3">
-        <button
-          type="button"
-          onClick={save}
-          disabled={busy}
-          className="bg-brand hover:bg-brand-hover text-brand-foreground flex-1 rounded-xl py-3 font-bold transition-colors disabled:opacity-60"
-          data-umami-event="account-addresses-save"
-        >
-          {busy ? 'در حال ذخیره…' : 'ذخیره'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="border-border hover:bg-secondary rounded-xl border-2 px-5 py-3 font-medium transition-colors disabled:opacity-60"
-          data-umami-event="account-addresses-cancel"
-        >
-          انصراف
-        </button>
-      </div>
+      <FormActions
+        busy={busy}
+        // Client-side gate; the server stays authoritative.
+        onSave={() => save(validateAddress(form, staleProvince))}
+        onCancel={onCancel}
+        saveUmami="account-addresses-save"
+        cancelUmami="account-addresses-cancel"
+      />
     </div>
   );
 }
