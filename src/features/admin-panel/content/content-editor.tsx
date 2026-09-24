@@ -190,48 +190,49 @@ function BlockForm({
     let next = value;
     const remainingFiles = { ...files };
     const remainingPreviews = { ...previews };
+    // Either failure keeps what was uploaded on the form, pending picks intact.
+    const restore = () => {
+      setValue(next);
+      setFiles(remainingFiles);
+      setPreviews(remainingPreviews);
+    };
     try {
-      for (const [path, file] of Object.entries(files)) {
-        const key = await uploadContentImage(file);
-        next = setPath(next, path, key);
-        delete remainingFiles[path];
-        delete remainingPreviews[path];
+      try {
+        for (const [path, file] of Object.entries(files)) {
+          const key = await uploadContentImage(file);
+          next = setPath(next, path, key);
+          delete remainingFiles[path];
+          delete remainingPreviews[path];
+        }
+      } catch (error) {
+        restore();
+        toast.error(reasonFrom(error) ?? DEFAULT_ERROR_MESSAGE);
+        return;
       }
-    } catch (error) {
-      setValue(next);
-      setFiles(remainingFiles);
-      setPreviews(remainingPreviews);
-      saving.current = false;
-      setBusy(false);
-      toast.error(reasonFrom(error) ?? DEFAULT_ERROR_MESSAGE);
-      return;
-    }
 
-    // (3) Save the block. Adopt the stored value back, so the form now reflects
-    // exactly what is persisted (new image keys included) and pending picks clear.
-    try {
-      const saved = await putData<{
-        key: string;
-        value: ContentValues[ContentKey];
-      }>(apiAdminContentPath(contentKey), next);
-      setValue(saved.value);
-      setFiles({});
-      setPreviews({});
-      setFieldErrors({});
-      setJustSaved(true);
+      // (3) Save the block. Adopt the stored value back, so the form now
+      // reflects exactly what is persisted (new image keys included) and
+      // pending picks clear.
+      try {
+        const saved = await putData<{
+          key: string;
+          value: ContentValues[ContentKey];
+        }>(apiAdminContentPath(contentKey), next);
+        setValue(saved.value);
+        setFiles({});
+        setPreviews({});
+        setFieldErrors({});
+        setJustSaved(true);
+      } catch (error) {
+        restore();
+        // A refusal no field can show is the request's own failure: a toast.
+        const { fields, message } = requestFieldErrors(error);
+        setFieldErrors(fields);
+        if (message) toast.error(message);
+      }
+    } finally {
       saving.current = false;
       setBusy(false);
-    } catch (error) {
-      // Uploaded keys are already adopted into `next`; keep them on the form.
-      setValue(next);
-      setFiles(remainingFiles);
-      setPreviews(remainingPreviews);
-      saving.current = false;
-      setBusy(false);
-      // A refusal no field can show is the request's own failure: a toast.
-      const { fields, message } = requestFieldErrors(error);
-      setFieldErrors(fields);
-      if (message) toast.error(message);
     }
   };
 
