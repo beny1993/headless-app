@@ -1,9 +1,9 @@
 'use client';
 
-import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
 import { ContentLink } from '@/features/storefront/content-link';
+import { useModalDialog } from '@/hooks/use-modal-dialog';
 import { PATHS } from '@/lib/constant/paths';
 
 /**
@@ -26,27 +26,13 @@ export function MobileMenu({
 }: {
   links: readonly { label: string; href: string; external: boolean }[];
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const [open, setOpen] = useState(false);
-
-  // Closing goes through here, never through `dialogRef.current.close()`
-  // directly: the DOM call and the `open` mirror that drives aria-expanded have
-  // to move together. Relying on the dialog's `close` event to do the second
-  // half looks right but is not dependable — measured not to fire at all in
-  // Chromium here, leaving the toggle stuck at aria-expanded="true".
-  const close = () => {
-    dialogRef.current?.close();
-    setOpen(false);
-  };
+  const { open, show, close, dialogProps } = useModalDialog();
 
   return (
     <>
       <button
         type="button"
-        onClick={() => {
-          dialogRef.current?.showModal();
-          setOpen(true);
-        }}
+        onClick={show}
         className="hover:bg-secondary text-foreground flex size-10 items-center justify-center rounded-full transition-colors md:hidden"
         aria-label="باز کردن منو"
         aria-expanded={open}
@@ -56,22 +42,8 @@ export function MobileMenu({
       </button>
 
       <dialog
-        ref={dialogRef}
-        // Escape is the one close the UA performs on its own. Focus is trapped
-        // inside the dialog while it is open, so the keydown always lands here.
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') close();
-        }}
-        // Kept as a backstop for any other UA-initiated close; a no-op where
-        // the event does not fire, correct where it does.
-        onClose={() => setOpen(false)}
-        // A click whose target is the dialog itself landed on the backdrop.
-        // Only true because the panel below is `h-full`: without it the dialog
-        // element shows through under the short content and a tap on the
-        // panel's own empty space dismisses the menu.
-        onClick={(event) => {
-          if (event.target === dialogRef.current) close();
-        }}
+        // The panel below is `h-full`, which the hook's backdrop click needs.
+        {...dialogProps}
         // Undo the UA's centered-box defaults and pin the panel to the start
         // edge, full height. Logical `start-0` keeps it correct in both
         // directions; `backdrop:` styles the ::backdrop pseudo-element.

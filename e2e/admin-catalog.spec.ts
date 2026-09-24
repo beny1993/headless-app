@@ -1,5 +1,4 @@
 import { formatPetTypes } from '@/lib/catalog/product-query';
-import { randomInt } from 'node:crypto';
 import type { Locator, Page } from '@playwright/test';
 import { z } from 'zod';
 import { PET_TYPES } from '@/db/schema/catalog';
@@ -21,11 +20,13 @@ import {
   PRODUCT_PHOTO,
   SECOND_PRODUCT_PHOTO,
   THIRD_PRODUCT_PHOTO,
+  apiCall,
   completeCheckout,
   expect,
   expectFailedRequest,
   openCheckout,
   resultOrderId,
+  runId,
   test,
   unwrapImageSrc,
 } from './support';
@@ -35,9 +36,6 @@ test.use({ storageState: ADMIN_STATE });
 // Both leave a row behind by design (products only soft-delete, codes only
 // switch off), so they run at one width: one of each per run, not two.
 test.skip(({ isMobile }) => isMobile, 'creates rows that are never deleted');
-
-/** Unique per run, so a re-run never collides on a slug, SKU or code. */
-const runId = () => randomInt(2 ** 40).toString(36);
 
 /** A seeded sub-category, and a seeded top-level one that is not its parent. */
 const SUB_CATEGORY = SEED_SUBCATEGORIES[0];
@@ -399,11 +397,7 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
   await page.goto(`${PROTECTED_PATHS.PRODUCTS}?q=${encodeURIComponent(id)}`);
   page.once('dialog', (dialog) => dialog.accept());
   await Promise.all([
-    page.waitForResponse(
-      (response) =>
-        response.request().method() === 'DELETE' &&
-        new URL(response.url()).pathname.startsWith(API_PATHS.ADMIN_PRODUCTS),
-    ),
+    page.waitForResponse(apiCall('DELETE', API_PATHS.ADMIN_PRODUCTS)),
     page.getByRole('button', { name: `غیرفعال کردن ${title}` }).click(),
   ]);
   // A soft delete: the row stays, marked inactive, and stops offering it.

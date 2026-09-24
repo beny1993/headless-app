@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { toLocalIranPhone } from '@/lib/auth/phone';
 import { PROTECTED_PATHS } from '@/lib/constant/paths';
 import { formatJalali, formatToman, toPersianDigits } from '@/lib/format';
-import { PAYMENT_METHODS } from '@/lib/orders/order-status';
+import { PAYMENT_METHOD_LABELS } from '@/lib/orders/order-status';
 import {
   orderStatusBadge,
   paymentStatusBadge,
@@ -181,11 +181,7 @@ export default async function AdminOrderDetailPage({
                       )}
                       <PaymentRow
                         label="روش"
-                        value={
-                          payment.method === PAYMENT_METHODS.COD
-                            ? 'کارت به کارت'
-                            : 'زرین‌پال'
-                        }
+                        value={PAYMENT_METHOD_LABELS[payment.method]}
                       />
                       <div className="flex items-center justify-between gap-3">
                         <span

@@ -1,19 +1,21 @@
-import { randomInt } from 'node:crypto';
-import type { Page, Response } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { z } from 'zod';
 import { SEED_CATEGORIES, SEED_PRODUCTS } from '@/db/seed/catalog-data';
 import { API_PATHS, PROTECTED_PATHS } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
-import { ADMIN_STATE, expect, expectFailedRequest, test } from './support';
+import {
+  ADMIN_STATE,
+  apiCall,
+  expect,
+  expectFailedRequest,
+  runId,
+  test,
+} from './support';
+
+const categoryCall = (method: string) =>
+  apiCall(method, API_PATHS.ADMIN_CATEGORIES);
 
 test.use({ storageState: ADMIN_STATE });
-
-/** Unique per run, so a re-run never collides on a slug. */
-const runId = () => randomInt(2 ** 40).toString(36);
-
-const categoryCall = (method: string) => (response: Response) =>
-  response.request().method() === method &&
-  new URL(response.url()).pathname.startsWith(API_PATHS.ADMIN_CATEGORIES);
 
 /** The table row whose slug cell reads exactly `slug`. */
 const rowFor = (page: Page, slug: string) =>

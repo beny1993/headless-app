@@ -9,6 +9,7 @@ import {
   updateShopQuery,
   type ShopQuery,
 } from './shop-query';
+import { useModalDialog } from '@/hooks/use-modal-dialog';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -641,10 +642,8 @@ function PriceSlider({
 /**
  * The same panel on mobile, in a bottom sheet.
  *
- * Native modal `<dialog>`, the house pattern from `mobile-menu.tsx` and
- * `cart-drawer.tsx` — read that file's comments before changing anything here,
- * in particular why closing always goes through `close()` and never
- * `dialog.close()` alone. The design review asked for a real sheet with a focus
+ * Native modal `<dialog>` through `useModalDialog` — read its comment before
+ * changing anything here. The design review asked for a real sheet with a focus
  * trap and Escape (finding 3); the platform gives both, plus nothing focusable
  * while it is shut.
  */
@@ -661,13 +660,7 @@ export function ShopFilterSheet({
   /** Shown on the confirm button, so the shopper knows before closing it. */
   total: number;
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const [open, setOpen] = useState(false);
-
-  const close = () => {
-    dialogRef.current?.close();
-    setOpen(false);
-  };
+  const { open, show, close, dialogProps } = useModalDialog();
 
   // The same three groups `ActiveFilters` renders a chip for, price counted
   // once however many of its two bounds are set — «فیلتر (۲)» opening onto one
@@ -682,10 +675,7 @@ export function ShopFilterSheet({
     <>
       <button
         type="button"
-        onClick={() => {
-          dialogRef.current?.showModal();
-          setOpen(true);
-        }}
+        onClick={show}
         className="border-border hover:bg-secondary flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors lg:hidden"
         aria-expanded={open}
         data-umami-event="shop-filter-sheet-open"
@@ -698,15 +688,7 @@ export function ShopFilterSheet({
       </button>
 
       <dialog
-        ref={dialogRef}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') close();
-        }}
-        onClose={() => setOpen(false)}
-        // Target is the dialog itself → the click landed on the backdrop.
-        onClick={(event) => {
-          if (event.target === dialogRef.current) close();
-        }}
+        {...dialogProps}
         // Pinned to the bottom edge, undoing the UA's centred-box defaults.
         className="bg-background fixed inset-x-0 bottom-0 m-0 mt-auto max-h-[80vh] w-full max-w-none overflow-y-auto rounded-t-3xl border-0 p-0 shadow-lg backdrop:bg-black/50 lg:hidden"
         aria-label="فیلترها"

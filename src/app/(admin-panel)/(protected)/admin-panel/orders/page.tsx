@@ -10,9 +10,8 @@ import { formatJalali, formatToman, toPersianDigits } from '@/lib/format';
 import {
   ORDER_STATUS_VALUES,
   orderStatusSchema,
-  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
   type OrderStatus,
-  type PaymentMethod,
 } from '@/lib/orders/order-status';
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
 import { ADMIN_PAGE_SIZE, pageParamSchema } from '@/lib/pagination';
@@ -41,9 +40,6 @@ const ordersHref = (status: OrderStatus | undefined, page: number): string => {
     ? `${PROTECTED_PATHS.ORDERS}?${search}`
     : PROTECTED_PATHS.ORDERS;
 };
-
-const methodLabel = (method: PaymentMethod): string =>
-  method === PAYMENT_METHODS.COD ? 'کارت به کارت' : 'زرین‌پال';
 
 export default async function AdminOrdersPage({
   searchParams,
@@ -151,7 +147,7 @@ export default async function AdminOrdersPage({
                   </span>
                 </td>
                 <td className="text-muted-foreground px-4 py-3.5 text-xs">
-                  {methodLabel(order.paymentMethod)}
+                  {PAYMENT_METHOD_LABELS[order.paymentMethod]}
                 </td>
                 <td className="px-4 py-3.5">
                   <Link

@@ -1,6 +1,12 @@
 // Shared by the specs. Not a spec itself: Playwright only collects `*.spec.ts`
 // here, plus `*.setup.ts` for the setup project.
-import { expect, test as base, type Page } from '@playwright/test';
+import { randomInt } from 'node:crypto';
+import {
+  expect,
+  test as base,
+  type Page,
+  type Response,
+} from '@playwright/test';
 import { z } from 'zod';
 import { SEED_PRODUCTS } from '@/db/seed/catalog-data';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
@@ -13,6 +19,14 @@ export { expect };
 /** Sessions saved by auth.setup.ts, one per role. Gitignored. */
 export const CUSTOMER_STATE = 'e2e/.auth/customer.json';
 export const ADMIN_STATE = 'e2e/.auth/admin.json';
+
+/** Unique per run, so a re-run never collides on a slug, SKU, code or name. */
+export const runId = () => randomInt(2 ** 40).toString(36);
+
+/** A `waitForResponse` matcher: a `method` request to `path` or below it. */
+export const apiCall = (method: string, path: string) => (response: Response) =>
+  response.request().method() === method &&
+  new URL(response.url()).pathname.startsWith(path);
 
 /** Failed requests a spec has said it expects, per page, as `<status> <url>`. */
 const expectedFailures = new WeakMap<Page, RegExp[]>();

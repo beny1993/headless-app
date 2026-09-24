@@ -18,6 +18,22 @@ export type SummaryLine = {
   imageKey?: string;
 };
 
+/** A server order's item snapshots as summary lines: unit price × quantity. */
+export const toSummaryLines = (
+  items: readonly {
+    id: string;
+    title: string;
+    qty: number;
+    unitPrice: number;
+  }[],
+): SummaryLine[] =>
+  items.map((item) => ({
+    id: item.id,
+    title: item.title,
+    qty: item.qty,
+    lineTotal: item.unitPrice * item.qty,
+  }));
+
 /**
  * The order-summary CORE — the line items and the subtotal / shipping / total
  * rows, with no card chrome of its own so both callers can wrap it: `/checkout`

@@ -1,21 +1,22 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
 import { ChevronRight, Clock } from 'lucide-react';
-import { z } from 'zod';
-import { SiteContentDao } from '@/db/dao/SiteContentDao';
 import { CardToCardPanel } from '@/features/checkout/card-to-card';
 import {
+  loadOwnedOrder,
+  readCardToCardPayment,
+} from '@/features/checkout/load-owned-order';
+import {
   OrderSummary,
-  type SummaryLine,
+  toSummaryLines,
 } from '@/features/checkout/order-summary';
 import { RetryPaymentButton } from '@/features/checkout/retry-payment-button';
-import { requireSession } from '@/lib/auth/session';
 import { resultView } from '@/lib/checkout/result-view';
 import { accountOrderPath, PATHS } from '@/lib/constant/paths';
 import { formatJalali, toPersianDigits } from '@/lib/format';
 import {
   ORDER_STATUSES,
+  PAYMENT_METHOD_LABELS,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
 } from '@/lib/orders/order-status';
@@ -23,12 +24,8 @@ import {
   orderStatusBadge,
   paymentStatusBadge,
 } from '@/lib/orders/order-status-display';
-import { getOwnedOrder } from '@/logic/checkout/get-order';
 
 export const metadata: Metadata = { title: 'جزئیات سفارش' };
-
-/** The `[orderId]` path segment is a stranger's input — reject a non-uuid. */
-const orderIdSchema = z.uuid();
 
 /**
  * One of the customer's own orders, in full: snapshotted items and totals, the
@@ -46,24 +43,11 @@ export default async function Page({
 }: {
   params: Promise<{ orderId: string }>;
 }) {
-  const { orderId } = await params;
-  const parsed = orderIdSchema.safeParse(orderId);
-  if (!parsed.success) notFound();
-
-  const session = await requireSession(accountOrderPath(parsed.data));
-  const order = await getOwnedOrder(parsed.data, session.user.id);
-  if (!order) notFound();
+  const order = await loadOwnedOrder((await params).orderId, accountOrderPath);
 
   const status = orderStatusBadge(order.status);
   const view = resultView(order.status);
   const isCod = order.paymentMethod === PAYMENT_METHODS.COD;
-
-  const summaryLines: SummaryLine[] = order.items.map((item) => ({
-    id: item.id,
-    title: item.title,
-    qty: item.qty,
-    lineTotal: item.unitPrice * item.qty,
-  }));
 
   // A representative payment for the status line: a settled one if there is one,
   // else the most recent attempt. COD before delivery has a single pending row.
@@ -77,7 +61,7 @@ export default async function Page({
   // is the gate, not the payment status.
   const cardToCard =
     isCod && order.status === ORDER_STATUSES.PROCESSING
-      ? (await SiteContentDao.getMany(['checkout.payment']))['checkout.payment']
+      ? await readCardToCardPayment()
       : null;
 
   return (
@@ -134,7 +118,7 @@ export default async function Page({
         <div className="bg-card border-border mb-5 rounded-2xl border p-5">
           <h2 className="mb-3 font-bold">اقلام سفارش</h2>
           <OrderSummary
-            lines={summaryLines}
+            lines={toSummaryLines(order.items)}
             subtotal={order.subtotal}
             discount={order.discount}
             shippingFee={order.shippingFee}
@@ -162,7 +146,7 @@ export default async function Page({
             <div className="space-y-2.5 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <span className="font-medium">
-                  {isCod ? 'کارت به کارت' : 'زرین‌پال'}
+                  {PAYMENT_METHOD_LABELS[order.paymentMethod]}
                 </span>
                 <span className="text-muted-foreground">روش</span>
               </div>

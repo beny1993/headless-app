@@ -1,14 +1,15 @@
-import { randomInt } from 'node:crypto';
-import type { Page, Response } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { z } from 'zod';
 import { API_PATHS, PATHS, PROTECTED_PATHS } from '@/lib/constant/paths';
 import { formatToman } from '@/lib/format';
 import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
 import {
   ADMIN_STATE,
+  apiCall,
   expect,
   expectFailedRequest,
   openCheckout,
+  runId,
   test,
 } from './support';
 
@@ -19,9 +20,8 @@ test.use({ storageState: ADMIN_STATE });
 // provinces are never touched — other suites count on all of them being active.
 test.skip(({ isMobile }) => isMobile, 'creates a row that is never deleted');
 
-const provinceCall = (method: string) => (response: Response) =>
-  response.request().method() === method &&
-  new URL(response.url()).pathname.startsWith(API_PATHS.ADMIN_PROVINCES);
+const provinceCall = (method: string) =>
+  apiCall(method, API_PATHS.ADMIN_PROVINCES);
 
 const publicRatesSchema = z.object({
   data: z.array(z.object({ name: z.string() })),
@@ -40,7 +40,7 @@ test('a province an admin adds is offered at checkout until it is switched off',
   test.slow();
   // The two refused duplicates are the 409s this spec is here to see.
   expectFailedRequest(page, new RegExp(`^409 .*${API_PATHS.ADMIN_PROVINCES}$`));
-  const name = `استان آزمایشی ${randomInt(2 ** 40).toString(36)}`;
+  const name = `استان آزمایشی ${runId()}`;
   const fee = 31_415;
   const changed = fee + 1_000;
 
