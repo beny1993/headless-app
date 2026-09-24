@@ -6,6 +6,7 @@ import { Search } from 'lucide-react';
 import { buildShopHref, updateShopQuery, type ShopQuery } from './shop-query';
 import { MAX_SEARCH_TERM_LENGTH } from '@/lib/catalog/product-query';
 import { cn } from '@/lib/utils';
+import { controlClass } from '@/components/ui/field';
 
 /**
  * How long the box waits before turning what was typed into a URL.
@@ -159,7 +160,8 @@ export function ShopSearch({ query }: { query: ShopQuery }) {
           autoComplete="off"
           aria-busy={pending}
           className={cn(
-            'bg-secondary border-border focus-visible:border-accent-strong w-full rounded-xl border py-3 ps-11 pe-4 transition-colors',
+            controlClass(false),
+            'focus-visible:ring-ring ps-11',
             pending && 'opacity-70',
           )}
           data-umami-event="shop-search-type"

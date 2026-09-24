@@ -27,6 +27,7 @@ import { normalizeSearchText } from '@/lib/catalog/search-text';
 import { PATHS } from '@/lib/constant/paths';
 import { formatNumber, toPersianDigits } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { controlClass } from '@/components/ui/field';
 
 /**
  * How long before «ارسال دوباره کد» comes back.
@@ -365,10 +366,8 @@ export function LoginForm({ next }: { next: string }) {
                     setError(undefined);
                   }}
                   className={cn(
-                    'bg-secondary focus-visible:ring-ring w-full rounded-xl border px-4 py-3 text-start tracking-widest transition-colors outline-none focus-visible:ring-2',
-                    error
-                      ? 'border-destructive bg-destructive-soft/40'
-                      : 'border-border focus-visible:border-accent-strong',
+                    controlClass(Boolean(error)),
+                    'focus-visible:ring-ring tracking-widest',
                   )}
                 />
                 {error ? (
