@@ -2,7 +2,7 @@
 // migrate/seed commands and the dev server below all need the database. A
 // worktree has no .env of its own — point this at the main checkout's with
 // `DOTENV_CONFIG_PATH=<checkout>/.env pnpm test:e2e`.
-import 'dotenv/config';
+import './scripts/load-env';
 import { defineConfig } from '@playwright/test';
 
 import { API_PATHS } from './src/lib/constant/paths';

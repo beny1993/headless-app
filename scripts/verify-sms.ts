@@ -14,7 +14,7 @@
  * console default stays the local login path and this stays an explicit act.
  * If the SMS.ir panel's IP restriction is on, this machine's IP must be listed.
  */
-import 'dotenv/config';
+import './load-env';
 import { randomInt } from 'node:crypto';
 import { normalizeIranPhone } from '@/lib/auth/phone';
 import { sendOtpSms } from '@/lib/sms';

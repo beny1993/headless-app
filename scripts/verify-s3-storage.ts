@@ -14,7 +14,7 @@
  * LIARA_ACCESS_KEY, LIARA_SECRET_KEY, and NEXT_PUBLIC_STORAGE_BASE_URL
  * (= endpoint/bucket). Safe to re-run: the object it creates, it deletes.
  */
-import 'dotenv/config';
+import './load-env';
 import { s3Driver } from '@/lib/storage/s3-driver';
 
 // A 1x1 transparent PNG, so a real image byte stream round-trips.
