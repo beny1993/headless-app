@@ -48,15 +48,13 @@ const insufficientStock = (title: string) =>
   `موجودی «${title}» برای تعداد درخواستی کافی نیست.`;
 
 /**
- * Interim per-user cap on concurrent `pending_payment` orders (2026-09-02).
+ * Per-user cap on concurrent `pending_payment` orders (2026-09-02).
  *
- * A Zarinpal checkout reserves stock into a `pending_payment` order, and until
- * the abandoned-order expiry/reconcile job exists that stock has no release path
- * — so one phone-verified account could loop `POST /api/checkout` and permanently
- * zero the catalog (denial of inventory). This cap makes a pre-production / test
- * deploy safe in the meantime. The REAL fix — expiry + restock — arrives with
- * `Story - Zarinpal Payment Integration` (build order 15) and SUPERSEDES this cap
- * (raise or drop it once expiry exists — Benyamin's call at that point).
+ * A Zarinpal checkout reserves stock into a `pending_payment` order, and only
+ * the reconcile sweep (`src/logic/payments/reconcile.ts`) releases an abandoned
+ * one. The sweep is admin-triggered, so between runs one phone-verified account
+ * looping `POST /api/checkout` could still zero the catalog (denial of
+ * inventory); this cap bounds that. Raising or dropping it is Benyamin's call.
  *
  * N is generous (a real shopper rarely has >1 unpaid online order at once) yet
  * caps abuse; tune it here.
@@ -91,7 +89,8 @@ const isUniqueViolation = (error: unknown, constraint: string): boolean => {
  *
  *  1. Look up the shipping fee by province (fail-fast, before the transaction:
  *     an unknown province reserves nothing).
- *  2. Enforce the interim open-order cap (Zarinpal only — see `MAX_OPEN_ORDERS`).
+ *  2. Refuse a Zarinpal order while online payment is off, then enforce the
+ *     open-order cap (Zarinpal only — see `MAX_OPEN_ORDERS`).
  *  3. In one transaction, per line **in productId order** (deadlock symmetry with
  *     the restock path): reject a missing or inactive product, then run the atomic
  *     oversell guard; a 0-row decrement is out-of-stock. Snapshot title/sku/price
@@ -133,15 +132,7 @@ export const createOrder = async (
   const rate = await ShippingRateDao.getByProvinceId(input.address.provinceId);
   if (!rate) throw new CheckoutError('address.provinceId', INVALID_PROVINCE);
 
-  // 2. Interim open-order cap (fail-fast, before the transaction). Only orders
-  // that WOULD enter `pending_payment` are gated — the one state whose reserved
-  // stock has no release path yet — so a COD checkout (→ `processing`) is never
-  // blocked and never counted. See `MAX_OPEN_ORDERS`.
-  // ponytail: the count→create window is non-atomic, so a concurrent burst from
-  // one user can land a few over N; a sequential loop is hard-capped, which is
-  // what the anti-abuse guard needs. A hard invariant is the expiry/reconcile
-  // story's job (build order 15), which supersedes this cap.
-  // 1b. Online payment switched off. The checkout page hides the option
+  // 2a. Online payment switched off. The checkout page hides the option
   // (`APP_CONFIG_ZARINPAL_ENABLED`, read there to build the form), but a page is
   // not a boundary: the API took `paymentMethod` from the body and never asked.
   // A `zarinpal` order on a card-to-card-only shop lands `pending_payment` and
@@ -158,6 +149,13 @@ export const createOrder = async (
     throw new CheckoutError('paymentMethod', ONLINE_PAYMENT_UNAVAILABLE);
   }
 
+  // 2b. Open-order cap (fail-fast, before the transaction). Only orders that
+  // WOULD enter `pending_payment` are gated — the one state whose reserved stock
+  // waits on the reconcile sweep — so a COD checkout (→ `processing`) is never
+  // blocked and never counted. See `MAX_OPEN_ORDERS`.
+  // ponytail: the count→create window is non-atomic, so a concurrent burst from
+  // one user can land a few over N; a sequential loop is hard-capped, which is
+  // what the anti-abuse guard needs.
   if (
     initialStatusFor(input.paymentMethod) === ORDER_STATUSES.PENDING_PAYMENT
   ) {
