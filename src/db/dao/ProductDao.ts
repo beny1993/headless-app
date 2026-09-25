@@ -15,6 +15,8 @@ import {
   getTableColumns,
   inArray,
   isNull,
+  like,
+  lt,
   max,
   min,
   ne,
@@ -993,6 +995,33 @@ export class ProductDao {
       .where(eq(products.id, id))
       .returning();
     return row ?? null;
+  }
+
+  /**
+   * Switches off the active products a killed test run left behind — the
+   * `test-…` rows of the integration fixtures and the `e2e-…` rows of the
+   * catalog spec — so they stop filling the storefront's shelves. Returns how
+   * many it switched off. Called by `pnpm seed-catalog` and vitest's
+   * globalSetup.
+   *
+   * Only rows older than an hour: a run that is going on right now has its
+   * fresh fixtures left alone. Deliberately a bulk update past
+   * `assertNoActiveMembers` — a test family's members carry the same prefix, so
+   * no head goes inactive over a live member.
+   */
+  static async deactivateStaleTestProducts(): Promise<number> {
+    const rows = await db
+      .update(products)
+      .set({ isActive: false })
+      .where(
+        and(
+          eq(products.isActive, true),
+          or(like(products.slug, 'test-%'), like(products.slug, 'e2e-%')),
+          lt(products.createdAt, new Date(Date.now() - 60 * 60 * 1000)),
+        ),
+      )
+      .returning({ id: products.id });
+    return rows.length;
   }
 
   /**
