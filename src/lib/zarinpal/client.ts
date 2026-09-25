@@ -8,15 +8,17 @@
 // ledger); persistence is the caller's job in `src/logic/payments`. Keeping the
 // database out also lets `client.test.ts` run on the DB-less path with 0 failures.
 import { z } from 'zod';
-import * as Sentry from '@sentry/nextjs';
 import { API_PATHS } from '@/lib/constant/paths';
 import {
   getAppBaseUrl,
+  getEnvFlag,
+  getEnvProvider,
   getEnvVariable,
   isDevelopmentServer,
   isProductionServer,
   VARS,
 } from '@/lib/utils/env';
+import { warnOnce } from '@/lib/warn-once';
 
 /**
  * Zarinpal's amount unit. `IRT` = Toman, so the shop's internal integer-Toman
@@ -175,10 +177,9 @@ const readErrors = (errors: unknown): { code: number; message: string } => {
  */
 export const createZarinpalDriver = (): ZarinpalClient => {
   const merchantId = getEnvVariable(VARS.APP_CONFIG_ZARINPAL_MERCHANT_ID, true);
-  const sandbox =
-    getEnvVariable(VARS.APP_CONFIG_ZARINPAL_SANDBOX, false, 'false').trim() ===
-    'true';
-  const host = sandbox ? SANDBOX_HOST : LIVE_HOST;
+  const host = getEnvFlag(VARS.APP_CONFIG_ZARINPAL_SANDBOX)
+    ? SANDBOX_HOST
+    : LIVE_HOST;
 
   const post = async (path: string, body: unknown): Promise<unknown> => {
     const res = await fetch(`${host}${path}`, {
@@ -310,13 +311,8 @@ let mockRefusalLogged = false;
 export function assertMockGatewayAllowed(): void {
   if (getZarinpalProvider() !== 'mock') return;
   if (!isProductionServer()) return;
-  // `=== 'true'`, so a typo, `1`, `yes` or a blank is no escape at all.
-  if (
-    getEnvVariable(VARS.APP_CONFIG_ZARINPAL_ALLOW_MOCK, false, '').trim() ===
-    'true'
-  ) {
-    return;
-  }
+  // Only `true` (padding aside), so a typo, `1`, `yes` or a blank is no escape.
+  if (getEnvFlag(VARS.APP_CONFIG_ZARINPAL_ALLOW_MOCK)) return;
 
   const message =
     `[zarinpal] ${VARS.APP_CONFIG_ZARINPAL_PROVIDER} is "mock" in a production ` +
@@ -337,7 +333,7 @@ export function assertMockGatewayAllowed(): void {
 
 /** Whether online payment is switched on for this deploy. */
 export const isZarinpalEnabled = (): boolean =>
-  getEnvVariable(VARS.APP_CONFIG_ZARINPAL_ENABLED, false, '').trim() === 'true';
+  getEnvFlag(VARS.APP_CONFIG_ZARINPAL_ENABLED);
 
 /**
  * The readiness half of {@link assertMockGatewayAllowed}: may this container
@@ -367,17 +363,14 @@ export function assertReadyToServe(): void {
   assertMockGatewayAllowed();
 }
 
-let mockWarningLogged = false;
-
 const warnIfMocked = () => {
-  if (isDevelopmentServer() || mockWarningLogged) return;
-  mockWarningLogged = true;
-  const message =
+  if (isDevelopmentServer()) return;
+  warnOnce(
+    'zarinpal-mock',
     '[zarinpal] APP_CONFIG_ZARINPAL_PROVIDER is "mock": payments are simulated, ' +
-    'not charged. Intended for mock/test deployments — set a real provider and ' +
-    'merchant id before taking real payments.';
-  console.warn(message);
-  Sentry.captureMessage(message, 'warning');
+      'not charged. Intended for mock/test deployments — set a real provider ' +
+      'and merchant id before taking real payments.',
+  );
 };
 
 /**
@@ -386,27 +379,12 @@ const warnIfMocked = () => {
  * names the real gateway, has no driver yet, and reports every checkout as paid
  * while charging nothing. Routes also use this to gate the mock-only endpoints.
  */
-export function getZarinpalProvider(): ZarinpalProvider {
-  // `||` not `??`: an empty value (the var left blank in a `.env`) is an unset
-  // one, and `??` would hand `''` through as a provider name.
-  const configured =
-    getEnvVariable(
-      VARS.APP_CONFIG_ZARINPAL_PROVIDER,
-      false,
-      DEFAULT_PROVIDER,
-    ).trim() || DEFAULT_PROVIDER;
-
-  // `Object.hasOwn`, not truthiness on the lookup: inherited members
-  // (`toString`, `constructor`) would otherwise resolve to functions and pass as
-  // drivers — the exact silent failure this guard exists to prevent.
-  if (!Object.hasOwn(DRIVERS, configured)) {
-    throw new Error(
-      `${VARS.APP_CONFIG_ZARINPAL_PROVIDER}="${configured}" has no driver. ` +
-        `Known providers: ${ZARINPAL_PROVIDERS.join(', ')}.`,
-    );
-  }
-  return configured as ZarinpalProvider;
-}
+export const getZarinpalProvider = (): ZarinpalProvider =>
+  getEnvProvider(
+    VARS.APP_CONFIG_ZARINPAL_PROVIDER,
+    ZARINPAL_PROVIDERS,
+    DEFAULT_PROVIDER,
+  );
 
 /**
  * The configured driver. Selecting `mock` in a production build throws unless

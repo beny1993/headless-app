@@ -1,7 +1,7 @@
 // Serves the local storage driver's uploaded images at `/uploads/<uuid>.<ext>`.
 // This is the read half of the `local` driver (its write half is `put`); when the
-// S3-compatible driver is selected, `url(key)` points the browser straight at the
-// bucket and this route is simply never hit.
+// S3-compatible driver is selected, `imageSrc(key)` points the browser straight at
+// the bucket and this route is simply never hit.
 //
 // It is a trust boundary, so it is defensive by construction: the only thing it
 // will serve is a filename shaped exactly like a key we generated — a uuid plus

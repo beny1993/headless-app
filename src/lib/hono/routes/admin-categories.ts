@@ -33,7 +33,7 @@ import {
   openapiObject,
 } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
-import { pgErrorOf } from '../pg-error';
+import { pgErrorOf } from '@/db/pg-error';
 
 /** User-facing copy, so Persian. */
 export const CATEGORY_NOT_FOUND_MESSAGE = 'دسته‌بندی یافت نشد.';

@@ -15,6 +15,7 @@ import { PaymentDao } from '@/db/dao/PaymentDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import type { Order } from '@/db/schema/orders';
 import {
+  byProductId,
   canTransition,
   ORDER_STATUSES,
   PAYMENT_METHODS,
@@ -77,11 +78,7 @@ export const transitionOrder = async (
     // ponytail: this covers the single-order cancels this story ships; a future
     // batch-cancel that restocks many orders in one tx must sort the *combined*
     // item set by productId for the same reason.
-    const items = (await OrderDao.getItems(tx, orderId))
-      .slice()
-      .sort((a, b) =>
-        a.productId < b.productId ? -1 : a.productId > b.productId ? 1 : 0,
-      );
+    const items = (await OrderDao.getItems(tx, orderId)).sort(byProductId);
     for (const item of items) {
       await ProductDao.restock(tx, item.productId, item.qty);
     }

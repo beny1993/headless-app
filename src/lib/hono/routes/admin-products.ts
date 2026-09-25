@@ -43,7 +43,7 @@ import { errorResponse, IdParamSchema } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 import { VARIANT_MESSAGES } from '@/lib/catalog/variant';
 import { ProductImageSchema, ProductSchema } from '../product-schema';
-import { pgErrorOf } from '../pg-error';
+import { pgErrorOf } from '@/db/pg-error';
 
 /** User-facing copy, so Persian. */
 export const PRODUCT_NOT_FOUND_MESSAGE = 'محصول یافت نشد';

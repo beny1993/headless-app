@@ -10,9 +10,14 @@
 // free text. A `(to, message)` seam could only have been served by the bulk
 // endpoint, which needs a dedicated line and is not where OTP is routed.
 import { z } from 'zod';
-import * as Sentry from '@sentry/nextjs';
 import { toLocalIranPhone } from '@/lib/auth/phone';
-import { getEnvVariable, isDevelopmentServer, VARS } from '@/lib/utils/env';
+import {
+  getEnvProvider,
+  getEnvVariable,
+  isDevelopmentServer,
+  VARS,
+} from '@/lib/utils/env';
+import { warnOnce } from '@/lib/warn-once';
 
 /** Everything a provider has to do: get one sign-in code to one number. */
 export type OtpSender = (to: string, code: string) => Promise<void>;
@@ -175,35 +180,22 @@ const DRIVERS: Record<SmsProvider, () => OtpSender> = {
   smsir: () => createSmsIrDriver(),
 };
 
-let mockWarningLogged = false;
-
 const warnIfMocked = () => {
-  if (isDevelopmentServer() || mockWarningLogged) return;
-  mockWarningLogged = true;
-  const message =
+  if (isDevelopmentServer()) return;
+  warnOnce(
+    'sms-console',
     '[sms] APP_CONFIG_SMS_PROVIDER is "console": one-time codes are being ' +
-    'written to the server log, not sent. Intended for mock deployments — ' +
-    'set APP_CONFIG_SMS_PROVIDER=smsir before taking real customers.';
-  console.warn(message);
-  // The message is a fixed string with no code and no phone number in it.
-  Sentry.captureMessage(message, 'warning');
+      'written to the server log, not sent. Intended for mock deployments — ' +
+      'set APP_CONFIG_SMS_PROVIDER=smsir before taking real customers.',
+  );
 };
 
 /**
- * What the environment names as the provider, defaulted and trimmed. Not
- * checked against `DRIVERS` — `getSmsSender` does that; this is also what
+ * The configured provider, validated: an unknown name throws. Also what
  * `src/lib/auth/otp-echo.ts` reads to answer "is anything real being sent?".
  */
-export function getConfiguredSmsProvider(): SmsProvider {
-  const configured = getEnvVariable(
-    VARS.APP_CONFIG_SMS_PROVIDER,
-    false,
-    DEFAULT_PROVIDER,
-  );
-  // `||` not `??`: an empty value (`APP_CONFIG_SMS_PROVIDER=` left in a `.env`)
-  // is an unset one, and `??` would hand `''` through as a provider name.
-  return (configured.trim() || DEFAULT_PROVIDER) as SmsProvider;
-}
+export const getConfiguredSmsProvider = (): SmsProvider =>
+  getEnvProvider(VARS.APP_CONFIG_SMS_PROVIDER, SMS_PROVIDERS, DEFAULT_PROVIDER);
 
 /**
  * The configured driver.
@@ -215,20 +207,8 @@ export function getConfiguredSmsProvider(): SmsProvider {
  */
 export function getSmsSender(): OtpSender {
   const provider = getConfiguredSmsProvider();
-
-  // `Object.hasOwn`, not a truthiness check on the lookup: `DRIVERS` is an
-  // object literal, so `constructor`/`toString`/`valueOf` would otherwise
-  // resolve to inherited functions, pass as drivers, and "send" every code
-  // into the void — the exact silent failure this throw exists to prevent.
-  const driver = Object.hasOwn(DRIVERS, provider) ? DRIVERS[provider] : null;
-  if (!driver) {
-    throw new Error(
-      `${VARS.APP_CONFIG_SMS_PROVIDER}="${provider}" has no driver. ` +
-        `Known providers: ${SMS_PROVIDERS.join(', ')}.`,
-    );
-  }
   if (provider === 'console') warnIfMocked();
-  return driver();
+  return DRIVERS[provider]();
 }
 
 /** Dispatch one sign-in code. Rejects if the driver does. */

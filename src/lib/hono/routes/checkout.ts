@@ -18,7 +18,8 @@ import type { Env } from 'hono';
 import { z } from 'zod';
 import { checkoutInputSchema } from '@/lib/checkout/checkout-input';
 import { orderStatusSchema } from '@/lib/orders/order-status';
-import { CheckoutError, createOrder } from '@/logic/checkout/create-order';
+import { CheckoutError } from '@/logic/checkout/checkout-error';
+import { createOrder } from '@/logic/checkout/create-order';
 import { previewDiscount } from '@/logic/checkout/preview-discount';
 import {
   apiError,

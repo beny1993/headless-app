@@ -25,19 +25,16 @@ import {
   ORDER_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
+  byProductId,
   initialStatusFor,
 } from '@/lib/orders/order-status';
+import { pgErrorOf } from '@/db/pg-error';
 import { CheckoutError } from '@/logic/checkout/checkout-error';
 import {
   DISCOUNT_EXHAUSTED,
   DISCOUNT_FIELD,
   assertDiscountApplicable,
 } from '@/logic/checkout/discount';
-
-// Re-exported so the many importers of `CheckoutError` keep their path
-// (`@/logic/checkout/create-order`); the class itself lives in ./checkout-error
-// so the discount policy can throw it without an import cycle.
-export { CheckoutError };
 
 // Persian, customer-facing. The `errors[]` detail the route builds is
 // `${field}: ${message}`, per the design note.
@@ -51,24 +48,18 @@ const insufficientStock = (title: string) =>
   `موجودی «${title}» برای تعداد درخواستی کافی نیست.`;
 
 /**
- * Interim per-user cap on concurrent `pending_payment` orders (2026-09-02).
+ * Per-user cap on concurrent `pending_payment` orders (2026-09-02).
  *
- * A Zarinpal checkout reserves stock into a `pending_payment` order, and until
- * the abandoned-order expiry/reconcile job exists that stock has no release path
- * — so one phone-verified account could loop `POST /api/checkout` and permanently
- * zero the catalog (denial of inventory). This cap makes a pre-production / test
- * deploy safe in the meantime. The REAL fix — expiry + restock — arrives with
- * `Story - Zarinpal Payment Integration` (build order 15) and SUPERSEDES this cap
- * (raise or drop it once expiry exists — Benyamin's call at that point).
+ * A Zarinpal checkout reserves stock into a `pending_payment` order, and only
+ * the reconcile sweep (`src/logic/payments/reconcile.ts`) releases an abandoned
+ * one. The sweep is admin-triggered, so between runs one phone-verified account
+ * looping `POST /api/checkout` could still zero the catalog (denial of
+ * inventory); this cap bounds that. Raising or dropping it is Benyamin's call.
  *
  * N is generous (a real shopper rarely has >1 unpaid online order at once) yet
  * caps abuse; tune it here.
  */
 export const MAX_OPEN_ORDERS = 5;
-
-/** Ascending productId — the deterministic lock order the design mandates. */
-const byProductId = (a: { productId: string }, b: { productId: string }) =>
-  a.productId < b.productId ? -1 : a.productId > b.productId ? 1 : 0;
 
 /**
  * The partial unique index that anchors idempotent order creation
@@ -81,19 +72,14 @@ const IDEMPOTENCY_CONSTRAINT = 'orders_user_idempotency_key_unique';
 
 /**
  * Whether `error` is a Postgres unique-violation (23505) on `constraint`.
- *
- * node-postgres raises a `DatabaseError` carrying `code`/`constraint`; drizzle
- * may re-wrap it, so the original is checked at `.cause` too. Matching the
- * constraint name (not just the 23505 code) keeps this from mistaking an
+ * Matching the constraint name (not just the code) keeps this from mistaking an
  * unrelated unique conflict — a future one added to `orders` — for an
  * idempotency hit.
  */
-const isUniqueViolation = (error: unknown, constraint: string): boolean =>
-  [error, (error as { cause?: unknown })?.cause].some((candidate) => {
-    const pgError = candidate as
-      { code?: string; constraint?: string } | null | undefined;
-    return pgError?.code === '23505' && pgError?.constraint === constraint;
-  });
+const isUniqueViolation = (error: unknown, constraint: string): boolean => {
+  const pg = pgErrorOf(error);
+  return pg?.code === '23505' && pg.constraint === constraint;
+};
 
 /**
  * Creates an order for `userId` from a validated checkout body.
@@ -103,7 +89,8 @@ const isUniqueViolation = (error: unknown, constraint: string): boolean =>
  *
  *  1. Look up the shipping fee by province (fail-fast, before the transaction:
  *     an unknown province reserves nothing).
- *  2. Enforce the interim open-order cap (Zarinpal only — see `MAX_OPEN_ORDERS`).
+ *  2. Refuse a Zarinpal order while online payment is off, then enforce the
+ *     open-order cap (Zarinpal only — see `MAX_OPEN_ORDERS`).
  *  3. In one transaction, per line **in productId order** (deadlock symmetry with
  *     the restock path): reject a missing or inactive product, then run the atomic
  *     oversell guard; a 0-row decrement is out-of-stock. Snapshot title/sku/price
@@ -145,15 +132,7 @@ export const createOrder = async (
   const rate = await ShippingRateDao.getByProvinceId(input.address.provinceId);
   if (!rate) throw new CheckoutError('address.provinceId', INVALID_PROVINCE);
 
-  // 2. Interim open-order cap (fail-fast, before the transaction). Only orders
-  // that WOULD enter `pending_payment` are gated — the one state whose reserved
-  // stock has no release path yet — so a COD checkout (→ `processing`) is never
-  // blocked and never counted. See `MAX_OPEN_ORDERS`.
-  // ponytail: the count→create window is non-atomic, so a concurrent burst from
-  // one user can land a few over N; a sequential loop is hard-capped, which is
-  // what the anti-abuse guard needs. A hard invariant is the expiry/reconcile
-  // story's job (build order 15), which supersedes this cap.
-  // 1b. Online payment switched off. The checkout page hides the option
+  // 2a. Online payment switched off. The checkout page hides the option
   // (`APP_CONFIG_ZARINPAL_ENABLED`, read there to build the form), but a page is
   // not a boundary: the API took `paymentMethod` from the body and never asked.
   // A `zarinpal` order on a card-to-card-only shop lands `pending_payment` and
@@ -170,6 +149,13 @@ export const createOrder = async (
     throw new CheckoutError('paymentMethod', ONLINE_PAYMENT_UNAVAILABLE);
   }
 
+  // 2b. Open-order cap (fail-fast, before the transaction). Only orders that
+  // WOULD enter `pending_payment` are gated — the one state whose reserved stock
+  // waits on the reconcile sweep — so a COD checkout (→ `processing`) is never
+  // blocked and never counted. See `MAX_OPEN_ORDERS`.
+  // ponytail: the count→create window is non-atomic, so a concurrent burst from
+  // one user can land a few over N; a sequential loop is hard-capped, which is
+  // what the anti-abuse guard needs.
   if (
     initialStatusFor(input.paymentMethod) === ORDER_STATUSES.PENDING_PAYMENT
   ) {

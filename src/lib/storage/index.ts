@@ -8,8 +8,13 @@
 // **Nothing above this seam knows where an image physically lives.** Callers
 // store the opaque object key `put` was given and render it through `url(key)`;
 // the driver owns the URL↔location mapping.
-import * as Sentry from '@sentry/nextjs';
-import { getEnvVariable, isDevelopmentServer, VARS } from '@/lib/utils/env';
+import {
+  getEnvProvider,
+  getEnvVariable,
+  isDevelopmentServer,
+  VARS,
+} from '@/lib/utils/env';
+import { warnOnce } from '@/lib/warn-once';
 import { localDriver } from './local-driver';
 import { s3Driver } from './s3-driver';
 
@@ -46,64 +51,43 @@ const DRIVERS: Record<StorageProvider, () => StorageDriver> = {
   },
 };
 
-let publicBaseWarningLogged = false;
-
 // `s3` writes to the bucket at runtime, but the browser resolves read URLs from
 // the build-time NEXT_PUBLIC_STORAGE_BASE_URL. If that is unset while `s3` is the
 // provider, uploads succeed but render as broken `/uploads/*` local paths — warn
 // loudly once rather than fail silently.
 const warnIfMissingPublicBase = () => {
-  if (publicBaseWarningLogged) return;
   if (getEnvVariable(VARS.NEXT_PUBLIC_STORAGE_BASE_URL, false, '').trim())
     return;
-  publicBaseWarningLogged = true;
-  const message =
+  warnOnce(
+    'storage-public-base',
     `[storage] APP_CONFIG_STORAGE_PROVIDER is "s3" but ` +
-    `${VARS.NEXT_PUBLIC_STORAGE_BASE_URL} is unset: uploads will be stored in ` +
-    'the bucket but rendered as broken local URLs. Set it (at build time) to ' +
-    "the bucket's public base, e.g. https://<endpoint>/<bucket>.";
-  console.warn(message);
-  Sentry.captureMessage(message, 'warning');
+      `${VARS.NEXT_PUBLIC_STORAGE_BASE_URL} is unset: uploads will be stored in ` +
+      'the bucket but rendered as broken local URLs. Set it (at build time) to ' +
+      "the bucket's public base, e.g. https://<endpoint>/<bucket>.",
+  );
 };
 
-let localWarningLogged = false;
-
 const warnIfLocal = () => {
-  if (isDevelopmentServer() || localWarningLogged) return;
-  localWarningLogged = true;
-  const message =
+  if (isDevelopmentServer()) return;
+  warnOnce(
+    'storage-local',
     '[storage] APP_CONFIG_STORAGE_PROVIDER is "local": uploaded images are ' +
-    'stored on the local filesystem, which does not survive a redeploy on ' +
-    'ephemeral hosting. Intended for local/test deployments — set the ' +
-    'S3-compatible provider before taking real uploads.';
-  console.warn(message);
-  Sentry.captureMessage(message, 'warning');
+      'stored on the local filesystem, which does not survive a redeploy on ' +
+      'ephemeral hosting. Intended for local/test deployments — set the ' +
+      'S3-compatible provider before taking real uploads.',
+  );
 };
 
 /**
- * The configured provider name, validated. An unrecognized value throws rather
- * than defaulting to local: naming a provider whose driver is not wired yet must
- * fail loudly, not silently store uploads somewhere they will be lost.
+ * The configured provider, validated: an unknown name throws rather than
+ * defaulting to local, which would store uploads somewhere they will be lost.
  */
-export function getStorageProvider(): StorageProvider {
-  // `||` not `??`: an empty value (the var left blank) is an unset one.
-  const configured =
-    getEnvVariable(
-      VARS.APP_CONFIG_STORAGE_PROVIDER,
-      false,
-      DEFAULT_PROVIDER,
-    ).trim() || DEFAULT_PROVIDER;
-
-  // `Object.hasOwn`, not truthiness — inherited members must not resolve as
-  // drivers (see the identical guard in the SMS/Zarinpal seams).
-  if (!Object.hasOwn(DRIVERS, configured)) {
-    throw new Error(
-      `${VARS.APP_CONFIG_STORAGE_PROVIDER}="${configured}" has no driver. ` +
-        `Known providers: ${STORAGE_PROVIDERS.join(', ')}.`,
-    );
-  }
-  return configured as StorageProvider;
-}
+export const getStorageProvider = (): StorageProvider =>
+  getEnvProvider(
+    VARS.APP_CONFIG_STORAGE_PROVIDER,
+    STORAGE_PROVIDERS,
+    DEFAULT_PROVIDER,
+  );
 
 /** The configured driver. Selecting `local` outside development shouts once. */
 export function getStorageDriver(): StorageDriver {

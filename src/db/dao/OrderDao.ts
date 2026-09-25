@@ -200,10 +200,10 @@ export class OrderDao {
 
   /**
    * How many `pending_payment` orders `userId` currently holds — the input to
-   * checkout's interim open-order cap. Only `pending_payment` counts: it is the
-   * one state whose reserved stock has no release path until the Zarinpal
-   * expiry/reconcile job exists, so it is the only state the cap must bound. COD
-   * enters at `processing` (a releasable state) and is deliberately excluded.
+   * checkout's open-order cap. Only `pending_payment` counts: it is the one
+   * state whose reserved stock waits on the admin-triggered reconcile sweep, so
+   * it is the only state the cap must bound. COD enters at `processing` (a
+   * releasable state) and is deliberately excluded.
    */
   static async countOpenForUser(userId: string): Promise<number> {
     return db.$count(

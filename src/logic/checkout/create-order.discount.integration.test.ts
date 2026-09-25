@@ -15,11 +15,12 @@ import { products as productsTable } from '@/db/schema/catalog';
 import { provinces, shippingRates } from '@/db/schema/shipping';
 import { DISCOUNT_TYPES } from '@/lib/discount/discount-code';
 import { PAYMENT_METHODS } from '@/lib/orders/order-status';
+import { CheckoutError } from '@/logic/checkout/checkout-error';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 
-const { createOrder, CheckoutError } = await importWithDb(
+const { createOrder } = await importWithDb(
   () => import('@/logic/checkout/create-order'),
 );
 const { DiscountCodeDao } = await importWithDb(
