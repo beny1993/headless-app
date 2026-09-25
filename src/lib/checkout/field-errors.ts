@@ -20,7 +20,7 @@ const FIELD_PATH = /^[A-Za-z0-9_.]+$/;
 
 const SEPARATOR = ': ';
 
-export type FieldErrors = {
+type FieldErrors = {
   /** `path -> message`, first occurrence of a path winning. */
   fields: Record<string, string>;
   /** Entries with no field path — rendered in a top-level alert. */

@@ -28,12 +28,12 @@ import { IdParamSchema, errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. */
-export const ADMIN_ORDER_NOT_FOUND_MESSAGE = 'سفارش یافت نشد';
+const ADMIN_ORDER_NOT_FOUND_MESSAGE = 'سفارش یافت نشد';
 /** The target is not an admin-triggerable next status from the order's current one. */
-export const ILLEGAL_TRANSITION_MESSAGE =
+const ILLEGAL_TRANSITION_MESSAGE =
   'این تغییر وضعیت مجاز نیست؛ فقط وضعیت‌های بعدیِ مجاز قابل انتخاب‌اند.';
 /** The order moved under the operator before the change was applied. */
-export const TRANSITION_CONFLICT_MESSAGE =
+const TRANSITION_CONFLICT_MESSAGE =
   'وضعیت سفارش هم‌زمان تغییر کرده است؛ صفحه را تازه کن و دوباره تلاش کن.';
 
 const AdminOrderItemSchema = z
@@ -90,12 +90,10 @@ const AdminOrderDetailSchema = z
   .openapi('AdminOrderDetail');
 
 /** The admin order shape the detail page and the transition endpoint return. */
-export type AdminOrderDetailResponse = z.infer<typeof AdminOrderDetailSchema>;
+type AdminOrderDetailResponse = z.infer<typeof AdminOrderDetailSchema>;
 
 /** AdminOrder → the wire projection: internal columns already dropped, Dates to ISO. */
-export const toAdminOrderResponse = (
-  order: AdminOrder,
-): AdminOrderDetailResponse => ({
+const toAdminOrderResponse = (order: AdminOrder): AdminOrderDetailResponse => ({
   orderId: order.id,
   orderNo: order.orderNo,
   status: order.status,

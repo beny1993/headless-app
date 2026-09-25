@@ -18,15 +18,11 @@ import { validateImageFile } from '@/features/admin-panel/shared/image-picker';
 // opening image — so the order is the only thing that decides it and there is no
 // `is_primary` anywhere.
 //
-// A sibling of `ImagePicker` rather than a `multiple` mode on it: that picker is
-// shared with the storefront content editor, and a mode flag would fork its
-// layout in two and leave the editor one regression away. What is shared is the
-// part that must not drift is `validateImageFile`, so that the two Persian
-// refusals live in one place. The accept list and the format hint come
-// straight from `@/lib/storage/image-upload`, which owns the cap they
-// describe — an earlier version of this comment claimed all three were
-// shared while the hint was a retyped copy promising a ceiling the route
-// no longer enforced.
+// A sibling of `ImagePicker` rather than a `multiple` mode on it: a mode flag
+// would fork that picker's layout and leave the content editor one regression
+// away. What they share is `validateImageFile`, so the Persian refusals live in
+// one place; the accept list and format hint come from
+// `@/lib/storage/image-upload`, which owns the cap they describe.
 
 /** One tile's value: a photo already stored, or a file picked but not yet sent. */
 export type ProductPhoto =
@@ -90,23 +86,15 @@ export function ProductImagesField({
   const [rejections, setRejections] = useState<string[]>([]);
   /**
    * The single polite line that reorder, add and remove all speak through.
-   *
-   * The counter is load-bearing, not bookkeeping: a live region announces only
-   * when its text *changes*, and every message here is a pure function of an
-   * index — removing the second photo twice produces the identical sentence,
-   * so the second removal reached nobody. The seq is rendered as a trailing
-   * run of non-breaking spaces, which screen readers swallow and which makes a
-   * repeat a different string.
+   * `seq` is load-bearing: a live region announces only when its text changes,
+   * so it renders as trailing non-breaking spaces that make a repeat differ.
    */
   const [announcement, setAnnouncement] = useState({ text: '', seq: 0 });
   /** The tile being dragged, or null. Only its opacity depends on this. */
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const slotRefs = useRef<(HTMLLIElement | null)[]>([]);
-  /**
-   * The gesture in flight, or null. Held in a ref rather than state because the
-   * window listeners below read it, and because nothing renders from it.
-   */
+  /** The gesture in flight, or null — read by the window listeners. */
   const dragging = useRef<{ pointerId: number; photoId: string } | null>(null);
   /** Aborts the window listeners that carry the gesture. */
   const dragListeners = useRef<AbortController | null>(null);
@@ -116,42 +104,28 @@ export function ProductImagesField({
    * they captured at `pointerdown`.
    */
   const latest = useRef({ photos, onChange });
-  // A layout effect, not a passive one. Passive effects are flushed in a
-  // scheduled task and Chrome dispatches input from a higher-priority queue, so
-  // a `pointermove` can land after the commit and before the write — leaving
-  // the live region naming the photo's old position, and the «already there»
-  // check comparing a fresh DOM index against a stale one. A layout effect
-  // runs synchronously inside the commit, where no input can interleave.
-  // `react-hooks/refs` is satisfied either way: the rule is about writing a
-  // ref *during render*, which this still does not do.
+  // A layout effect, not a passive one: a `pointermove` can land between the
+  // commit and a passive effect, and read a stale list. Nothing interleaves a
+  // layout effect.
   useLayoutEffect(() => {
     latest.current = { photos, onChange };
   });
   /** The add tile's input, the fallback when the last photo is removed. */
   const addRef = useRef<HTMLInputElement | null>(null);
   /**
-   * The tile index focus is owed after a removal, or null. Set by `removeAt`
-   * and spent by the effect below: the button that had focus unmounts with its
-   * tile, and a browser drops focus to `<body>` when that happens — which ends
-   * a keyboard admin's traversal at the top of the document with no
-   * announcement of what became of it.
+   * The tile index focus is owed after a removal, or null: the focused button
+   * unmounts with its tile, dropping focus to `<body>`.
    */
   const focusAfterRemoval = useRef<number | null>(null);
   /**
-   * The tile index whose handle focus is owed after a keyboard move. Same
-   * hazard as `focusAfterRemoval` and the same cure: React reorders a keyed
-   * list with `insertBefore`, and moving the element that holds focus drops
-   * `document.activeElement` to `<body>`. `react-dom` does not use the
-   * `moveBefore` that would preserve it. The two directions were not even
-   * symmetric — `from < to` moves the dragged tile, `from > to` the displaced
-   * one — so arrowing one way kept focus and the other way lost it.
+   * The tile index whose handle focus is owed after a keyboard move: React
+   * reorders a keyed list with `insertBefore`, and moving the focused element
+   * drops focus to `<body>` — in one direction only (`from < to`).
    */
   const focusHandleAt = useRef<number | null>(null);
 
-  // Revoking on unmount as well as on removal: without this the form leaks one
-  // blob per pick for the life of the tab, which the single-slot picker did.
-  // A ref, not the `photos` prop, because the cleanup must see the list as it
-  // is at unmount and must not run on every change.
+  // Revoke on unmount as well as on removal, or every pick leaks a blob. A ref,
+  // so the cleanup sees the list at unmount and does not run on every change.
   const pendingUrls = useRef<Set<string>>(new Set());
   useEffect(() => {
     for (const photo of photos) {
@@ -293,17 +267,10 @@ export function ProductImagesField({
   };
 
   /**
-   * End the gesture — but only for the contact that started it. A foreign
-   * release (a resting thumb lifting, a stray tap elsewhere on the page) also
-   * reaches these window listeners, and ending on one killed a drag whose
-   * finger was still down. The multi-touch guard below refuses a second
-   * *gesture*; this is the other half, refusing a second *release*.
-   *
-   * `blur` passes no pointer and ends it unconditionally, which is the point:
-   * capture is disposable here by design, so an alt-tab mid-drag would
-   * otherwise leave the gesture running with no finger — the tile dimmed, the
-   * guard refusing every new drag, and the photo following the bare cursor on
-   * return.
+   * End the gesture — only for the contact that started it: a foreign release
+   * (a resting thumb, a stray tap) reaches these window listeners too. `blur`
+   * passes no pointer and ends it unconditionally, so an alt-tab mid-drag
+   * cannot leave the gesture running with no finger.
    */
   const endDrag = (event?: Event) => {
     const drag = dragging.current;
@@ -321,23 +288,11 @@ export function ProductImagesField({
   };
 
   /**
-   * The gesture runs on `window`, and pointer capture is not what carries it.
-   *
-   * React reorders a keyed list with `insertBefore`. Moving the `<li>` that
-   * holds the captured element silently drops the capture and fires **neither
-   * `pointerup` nor `pointercancel`** — only `lostpointercapture`, on an
-   * element that is mid-move. A handle-bound gesture therefore died after a
-   * single cell in the one direction that moves the dragged tile
-   * (`from < to`), and `draggingId` stayed set so the tile kept its drag
-   * opacity for good. The other direction moves the *displaced* tile and
-   * happened to work — which is the direction the E2E spec dragged, and why
-   * every gate was green.
-   *
-   * Window listeners are immune, being nowhere near the node that moves.
-   * Capture is still requested and nothing here depends on it: it survives a
-   * drag toward the start, where React moves the displaced tile, and is lost
-   * on the first cell of a drag toward the end, where it moves the dragged
-   * one.
+   * The gesture runs on `window`; pointer capture is not what carries it.
+   * React reorders with `insertBefore`, and moving the `<li>` holding the
+   * captured element drops the capture firing **neither `pointerup` nor
+   * `pointercancel`** — so a handle-bound drag toward the end dies after one
+   * cell. Capture is still requested; nothing depends on it.
    */
   const onHandlePointerDown = (event: React.PointerEvent, index: number) => {
     // Left button or a touch/pen contact only — a right-click must not start a
@@ -380,16 +335,9 @@ export function ProductImagesField({
     const from = current.findIndex((photo) => photo.id === drag.photoId);
     if (from === -1) return;
 
-    // Read per move rather than snapshotted at `pointerdown`: a snapshot is
-    // viewport-relative, so a mid-drag scroll or an `sm:` breakpoint change
-    // left every stored rect describing a cell that had moved. At most
-    // `MAX_PRODUCT_IMAGES` cells, so the read is trivial.
-    //
-    // A `null` keeps its index rather than being compacted away by `filter`.
-    // That is hardening, not a fixed bug: React detaches every ref in the
-    // mutation phase before attaching any in the layout phase, so no slot in
-    // range is ever null during a move. It costs nothing and removes the
-    // question.
+    // Read per move, not snapshotted: rects are viewport-relative, and a
+    // mid-drag scroll or breakpoint change moves every cell. A `null` keeps its
+    // index so positions stay aligned.
     const rects = slotRefs.current
       .slice(0, current.length)
       .map((slot) => slot?.getBoundingClientRect() ?? null);
@@ -401,9 +349,7 @@ export function ProductImagesField({
         event.clientY >= rect.top &&
         event.clientY <= rect.bottom,
     );
-    // Outside every cell, or already there: nothing to swap with, so the drag
-    // waits. `findIndex` over this array cannot exceed the list, so the old
-    // clamp had nothing to clamp.
+    // Outside every cell, or already there: the drag waits.
     if (target === -1 || target === from) return;
     moveTo(from, target);
   };
@@ -433,9 +379,7 @@ export function ProductImagesField({
               className={`bg-secondary relative aspect-square overflow-hidden rounded-xl ${
                 index === 0 ? 'ring-accent-strong ring-2 ring-offset-2' : ''
               } ${photo.id === draggingId ? 'opacity-60' : ''}`}
-              // A hook the spec can assert on. `toHaveCount(0)` against the
-              // Tailwind class went green the moment the class was renamed or
-              // the opacity tuned, which is no pin at all.
+              // The E2E spec's hook — asserting on the Tailwind class pins nothing.
               data-photo-dragging={photo.id === draggingId ? '' : undefined}
             >
               <Image

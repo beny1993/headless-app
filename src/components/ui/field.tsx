@@ -18,8 +18,12 @@ import { cn } from '@/lib/utils';
  */
 export const controlClass = (invalid: boolean) =>
   cn(
-    'bg-secondary focus-visible:border-accent-strong w-full rounded-xl border px-4 py-3 text-start transition-colors outline-none focus-visible:ring-2',
-    invalid ? 'border-destructive bg-destructive-soft/40' : 'border-border',
+    'bg-secondary w-full rounded-xl border px-4 py-3 text-start transition-colors outline-none focus-visible:ring-2',
+    // Focus recolours only a valid border: an invalid one stays red while the
+    // shopper is still in the field.
+    invalid
+      ? 'border-destructive bg-destructive-soft/40'
+      : 'border-border focus-visible:border-accent-strong',
   );
 
 /** The table-row size of a control: `h-10`, padding no longer setting it. */

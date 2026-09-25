@@ -18,7 +18,7 @@ import { provinces, shippingRates } from '@/db/schema/shipping';
 import { normalizeProvinceName } from '@/lib/shipping/province-input';
 
 /** A province and its current fee, the joined shape the storefront API serves. */
-export type ShippingRateRow = { provinceId: number; name: string; fee: number };
+type ShippingRateRow = { provinceId: number; name: string; fee: number };
 
 /** The admin view: the storefront row plus whether the province is active. */
 export type AdminProvinceRow = ShippingRateRow & { isActive: boolean };

@@ -48,8 +48,7 @@ import { pgErrorOf } from '@/db/pg-error';
 /** User-facing copy, so Persian. */
 export const PRODUCT_NOT_FOUND_MESSAGE = 'محصول یافت نشد';
 /** A save refused by the database (duplicate slug/sku, bad category…). */
-export const PRODUCT_SAVE_FAILED_MESSAGE =
-  'محصول ذخیره نشد؛ ورودی را بررسی کن.';
+const PRODUCT_SAVE_FAILED_MESSAGE = 'محصول ذخیره نشد؛ ورودی را بررسی کن.';
 
 /**
  * The admin view of a product: the storefront's own payload, minus the images
@@ -157,7 +156,7 @@ const variantErrorField = (
  * a psql-side change could still surface one, and a 400 beats a 500. The caller
  * rethrows on `null`, so an unrecognized error stays the 500 it is.
  */
-export const productWriteErrors = (
+const productWriteErrors = (
   error: unknown,
   /**
    * The `variantOf` this request sent. One family rule means two different

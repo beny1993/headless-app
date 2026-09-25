@@ -31,10 +31,10 @@ import {
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
-export const ADDRESS_NOT_FOUND_MESSAGE = 'آدرس یافت نشد';
+const ADDRESS_NOT_FOUND_MESSAGE = 'آدرس یافت نشد';
 
 /** A soft per-user ceiling, refused (422) rather than stored unbounded — see me-pets.ts. */
-export const MAX_ADDRESSES_PER_USER = 20;
+const MAX_ADDRESSES_PER_USER = 20;
 const TOO_MANY_ADDRESSES_MESSAGE = 'به سقف تعداد آدرس‌ها رسیده‌ای.';
 
 /**

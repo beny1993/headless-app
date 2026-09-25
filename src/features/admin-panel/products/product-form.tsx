@@ -81,10 +81,10 @@ export type ProductFormInitial = {
  * that stands in for an indent inside a flat option list, `title` is the plain
  * one a chip shows. Both come from `categoryOptions`.
  */
-export type CategoryOption = { id: string; title: string; label: string };
+type CategoryOption = { id: string; title: string; label: string };
 
 /** One candidate head for the «زیرمجموعه‌ی» select. */
-export type VariantHeadOption = {
+type VariantHeadOption = {
   id: string;
   title: string;
   /** Null when the candidate has no «نوع» of its own yet — offered, disabled. */
@@ -379,8 +379,7 @@ export function ProductForm({
           objectKeys.push(key);
         } catch (error) {
           failed += 1;
-          // The first refusal's own words. `uploadImage` already builds the
-          // server's sentence and it used to be thrown away here.
+          // The first refusal's own words, as `uploadImage` built them.
           uploadReason ??= reasonFrom(error);
         }
       }
@@ -774,7 +773,7 @@ export function ProductForm({
           <FieldShell
             id={fid('price')}
             label="قیمت (تومان)"
-            hint={money(form.price) ?? 'عدد صحیح، بدون جداکننده'}
+            hint={money(form.price) ?? 'عدد صحیح، با جداکننده یا بدون آن'}
             error={fieldErrors.price}
           >
             <input

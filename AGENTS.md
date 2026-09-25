@@ -371,6 +371,8 @@ to the server log, so no SMS account is needed locally.
 Other commands: `pnpm drizzle-studio`,
 `pnpm migration:reset-dev` (nuke volumes, re-migrate), `pnpm --dir design dev`
 (design prototype).
+Running `next dev` on any port but 3000 needs `NEXT_PUBLIC_APP_URL` overridden
+in the shell to match, or Better Auth rejects every POST with 403.
 
 Agent worktrees have no `.env` of their own: build there with
 `pnpm build:local` (see Quality gates), and give the database-backed tests the

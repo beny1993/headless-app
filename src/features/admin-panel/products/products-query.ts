@@ -11,8 +11,8 @@ import { PROTECTED_PATHS } from '@/lib/constant/paths';
 import { pageParamSchema } from '@/lib/pagination';
 
 /** Active filter as it appears in the URL; mapped to the DAO's `active` below. */
-export const ACTIVE_VALUES = ['all', 'active', 'inactive'] as const;
-export type ActiveValue = (typeof ACTIVE_VALUES)[number];
+const ACTIVE_VALUES = ['all', 'active', 'inactive'] as const;
+type ActiveValue = (typeof ACTIVE_VALUES)[number];
 
 export const adminProductFilterSchema = z.object({
   q: z.string().trim().min(1).optional().catch(undefined),

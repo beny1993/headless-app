@@ -12,9 +12,9 @@
 import { ORDER_STATUSES, type OrderStatus } from '@/lib/orders/order-status';
 
 /** Which of the three result views an order status renders. */
-export type ResultKind = 'success' | 'pending' | 'failed';
+type ResultKind = 'success' | 'pending' | 'failed';
 
-export type ResultView = {
+type ResultView = {
   kind: ResultKind;
   /**
    * Whether to offer "retry payment" (→ POST /api/payments/zarinpal/request).

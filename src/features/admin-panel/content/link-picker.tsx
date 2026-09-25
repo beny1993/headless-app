@@ -2,7 +2,7 @@
 
 import {
   PET_LABELS,
-  PET_TYPES,
+  PET_TYPE_VALUES,
   type PetType,
 } from '@/lib/catalog/product-query';
 import {
@@ -197,7 +197,7 @@ export function LinkPicker({
               data-umami-event="admin-panel-content-link-pet-change"
             >
               <option value="">همه حیوانات</option>
-              {Object.values(PET_TYPES).map((pet) => (
+              {PET_TYPE_VALUES.map((pet) => (
                 <option key={pet} value={pet}>
                   {PET_LABELS[pet]}
                 </option>

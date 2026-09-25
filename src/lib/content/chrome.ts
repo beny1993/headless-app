@@ -29,7 +29,7 @@ import type { LinkTargets } from '@/lib/content/link';
 import type { ContentValues } from '@/lib/content/site-content';
 import { loadLinkTargets } from '@/logic/content/link-targets';
 
-export type SiteChrome = Pick<ContentValues, 'header' | 'footer'> & {
+type SiteChrome = Pick<ContentValues, 'header' | 'footer'> & {
   /** The catalog slugs the header's and footer's saved destinations resolve to. */
   targets: LinkTargets;
 };

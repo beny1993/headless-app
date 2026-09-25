@@ -31,7 +31,7 @@ import { errorResponse } from '../route-responses';
  */
 export const INVALID_PROVINCE_MESSAGE = 'استان نامعتبر است';
 
-export const ShippingRateSchema = z
+const ShippingRateSchema = z
   .object({
     provinceId: z.number().int().positive(),
     /** Canonical Persian province name — what the <select> renders. */

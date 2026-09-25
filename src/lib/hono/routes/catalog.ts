@@ -167,7 +167,7 @@ const ProductSlugParamSchema = z.object({
 /** The catalog payloads the storefront renders. Import these, don't restate them. */
 export type CategoryResponse = z.infer<typeof CategorySchema>;
 export type ProductResponse = z.infer<typeof ProductSchema>;
-export type ProductCardResponse = z.infer<typeof ProductCardSchema>;
+type ProductCardResponse = z.infer<typeof ProductCardSchema>;
 export type ProductDetailResponse = z.infer<typeof ProductDetailSchema>;
 export type ProductListResponse = z.infer<typeof ProductListSchema>;
 export type ProductListQuery = z.infer<typeof ProductListQuerySchema>;

@@ -23,31 +23,17 @@ export type ShopCategoryOption = {
 /**
  * The shop's filter panel: category, pet type and price range.
  *
- * Rendered twice — once in the desktop sidebar, once inside the mobile sheet
- * below — so every id is namespaced with `useId`; two `<input id="f-toys">` on
- * one page would point both labels at the first checkbox.
+ * Rendered twice (desktop sidebar, mobile sheet), so every id is namespaced
+ * with `useId`.
  *
- * Real inputs in labelled `<fieldset>`s, per the design review (finding 3: the
- * prototype's `div onClick` had no input element at all) — but `peer sr-only`
- * radios with the indicator drawn on the `<label>`, not the visible-control
- * card `checkout-form.tsx` uses. The rows are a dense list where the design
- * asks for a dot and a background rather than a box, which a native radio
- * cannot be styled into; `sr-only` keeps the real control for the keyboard and
- * the screen reader and lets the label carry the look.
+ * Real inputs in labelled `<fieldset>`s: `peer sr-only` radios with the look
+ * drawn on the `<label>`. Hiding the native control hides its focus ring too,
+ * so it is rebuilt through `peer-focus-visible:` — anything that hides a
+ * native indicator owes one back for **every** engine.
  *
- * The cost is that the UA's focus ring is invisible too, so it is rebuilt on
- * the label through `peer-focus-visible:`. Anything that hides a native
- * indicator owes one back for **every** engine — the slider below is where
- * that debt went unpaid for Gecko.
- *
- * The panel holds no state of its own. Every change navigates to the URL that
- * describes the new filter set, and the next render reads it back — the URL is
- * the state, so a shared link and the back button cannot disagree with what is
- * on screen.
- *
- * The prototype's «برند» and «نیاز» groups are deliberately absent: the catalog
- * API has no parameters behind them, and a control that filters nothing is
- * worse than one that is missing (ledger finding 18).
+ * No state of its own: every change navigates, and the URL is the state.
+ * The prototype's «برند» and «نیاز» groups are absent — the catalog API has
+ * nothing behind them.
  */
 export function ShopFilters({
   query,
@@ -73,9 +59,7 @@ export function ShopFilters({
 
   return (
     <div
-      // While a navigation is in flight the controls still show the old URL's
-      // state, because that is what is still on screen. Saying so beats
-      // pretending the click did nothing.
+      // The controls show the old URL's state until the navigation lands.
       aria-busy={pending}
       className={cn(
         'transition-opacity duration-200 motion-reduce:transition-none',
@@ -86,14 +70,8 @@ export function ShopFilters({
 
       <fieldset className="border-border/70 mb-5 border-b pb-5">
         <legend className="mb-2 text-sm font-semibold">دسته‌بندی</legend>
-        {/* A real list, not `div`s: the indent alone is visual, and a screen
-            reader has to hear that a sub-category sits inside its parent.
-            Radios, not checkboxes — the panel mirrors a single `?category=`,
-            and a box promises a multi-select the URL cannot hold. What a
-            checkbox did give was click-to-clear; the «همه» row below restores
-            it, and says out loud what was previously undiscoverable. The
-            parent's *results* include its children (the DAO's job); the
-            control does not pretend to. */}
+        {/* A nested list so a screen reader hears the hierarchy. Radios: the
+            URL holds a single `?category=`; the «همه» row clears it. */}
         <ul className="space-y-0.5">
           <li>
             <CategoryRow
@@ -118,9 +96,7 @@ export function ShopFilters({
                 }
               />
               {children.length > 0 && (
-                // The rail is the hierarchy. An indent alone left «مالت» and
-                // «مکمل» looking like siblings at a glance, which is the thing
-                // this panel most has to make obvious.
+                // The rail shows the hierarchy an indent alone did not.
                 <ul className="border-border ms-3 mt-0.5 space-y-0.5 border-s ps-3">
                   {children.map((child) => (
                     <li key={child.slug}>
@@ -145,9 +121,6 @@ export function ShopFilters({
 
       <fieldset className="border-border/70 mb-5 border-b pb-5">
         <legend className="mb-2 text-sm font-semibold">نوع حیوان</legend>
-        {/* Two options and a «no filter» state: a segmented control says that
-            in one line, where four stacked checkbox rows said it in four and
-            still left «both» unnamed. */}
         <div className="bg-secondary flex gap-1 rounded-xl p-1">
           <PetSegment
             label="همه"
@@ -174,17 +147,7 @@ export function ShopFilters({
   );
 }
 
-/**
- * What is filtering the results right now, as one removable chip each.
- *
- * The panel already encodes this across three sections, but reading it meant
- * scanning all three. Stating it once, at the top, is what turns «why am I
- * seeing these products» into a glance — and each chip drops its own filter
- * without hunting for the control that set it.
- *
- * Renders nothing when nothing is applied, so an unfiltered shop is not asked
- * to carry an empty box.
- */
+/** What is filtering the results right now, one removable chip each. */
 function ActiveFilters({
   query,
   categories,
@@ -233,12 +196,8 @@ function ActiveFilters({
         <p className="text-sm font-semibold">فیلترهای فعال</p>
         <button
           type="button"
-          // Clears the filters this panel shows — the ones with a chip beside
-          // this button — and nothing else. A bare link to `/shop` also threw
-          // away the search term and the sort, neither of which is a chip and
-          // neither of which the shopper asked to undo; and being a link it
-          // navigated *past* the sheet on mobile, leaving it open over the
-          // results it had just changed.
+          // Clears the chip filters only — the search term and sort stay —
+          // and goes through `onChange`, so the mobile sheet closes too.
           onClick={() =>
             onChange(
               updateShopQuery(query, {
@@ -262,8 +221,6 @@ function ActiveFilters({
               type="button"
               onClick={() => onChange(chip.clear)}
               className="bg-accent-soft text-foreground hover:bg-secondary focus-visible:ring-accent-strong inline-flex min-h-9 items-center gap-1.5 rounded-full ps-3 pe-2 text-xs font-medium transition-colors duration-200 focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none"
-              // Names the filter, not just «remove» — a screen reader reading
-              // three of these in a row otherwise hears the same word thrice.
               aria-label={`حذف فیلتر ${chip.label}`}
               data-umami-event="shop-filter-chip-remove"
             >
@@ -285,11 +242,7 @@ function priceLabel(min: number | undefined, max: number | undefined): string {
   return `تا ${formatNumber(max ?? 0)}`;
 }
 
-/**
- * The flat, tree-ordered options as parents with their children. `orderAsTree`
- * has already put each sub-category straight after its parent, so one pass is
- * enough — no nested type travels from the page to here.
- */
+/** The tree-ordered options (`orderAsTree`) as parents with their children. */
 function categoryGroups(categories: readonly ShopCategoryOption[]) {
   const groups: {
     parent: ShopCategoryOption;
@@ -304,12 +257,8 @@ function categoryGroups(categories: readonly ShopCategoryOption[]) {
 }
 
 /**
- * One category row: a radio whose whole row is the target.
- *
- * The input is `sr-only` rather than hidden — it keeps the keyboard, the
- * grouping and the announcement the platform gives a radio, while the label
- * becomes a 44px row instead of a 16px box to aim at. Selection is carried by
- * fill **and** weight **and** the dot, never by colour alone.
+ * One category row: an `sr-only` radio whose 44px label is the target.
+ * Selection is carried by fill, weight and the dot — never colour alone.
  */
 function CategoryRow({
   label,
@@ -338,7 +287,6 @@ function CategoryRow({
         className="peer sr-only"
         checked={checked}
         onChange={onSelect}
-        // One event name for one behaviour, sub-categories and «all» included.
         data-umami-event="shop-filter-category-toggle"
       />
       <label
@@ -417,14 +365,9 @@ const floorTo = (value: number, step: number) =>
 const ceilTo = (value: number, step: number) => Math.ceil(value / step) * step;
 
 /**
- * Where the two handles start, for any URL at all.
- *
- * Both ends are clamped into the track and then kept a step apart. Clamping one
- * side each — the floor under `from`, the ceiling over `to` — left the pair
- * free to arrive crossed: `?maxPrice=1` put the high handle below the low one,
- * and one nudge of the low handle then rendered «−۹٬۹۹۹ تا ۱». A negative
- * Toman price is against the money rule whether or not anyone can reach it by
- * dragging, so the ordering is established here rather than trusted.
+ * Where the two handles start, for any URL: both clamped into the track and
+ * kept a step apart, so a hand-typed URL can never produce crossed handles
+ * and, from them, a negative price.
  */
 const trackRange = (
   query: ShopQuery,
@@ -440,22 +383,12 @@ const trackRange = (
 };
 
 /**
- * The price range, as a two-handled slider over the catalogue's own bounds.
+ * The price range: two native `<input type="range">` stacked on one track (the
+ * platform brings keyboard, announcement and focus). Only the thumbs take
+ * pointer events.
  *
- * Built from two native `<input type="range">` stacked on one track rather than
- * a slider dependency: the platform brings the keyboard (arrows, Home/End), the
- * announced value and the focus ring, which is most of what a custom slider has
- * to rebuild. Only the thumbs take pointer events, so the one nearer the cursor
- * wins and neither input swallows clicks meant for the other.
- *
- * **Dragging does not navigate.** The handles are local state and commit once,
- * on release (pointer up, or key up for the keyboard) — a push per pixel would
- * be a navigation storm. The figure above the track updates live, so the
- * feedback is immediate even though the results are not.
- *
- * Resync is the same trick the inputs used: the fieldset is `key`ed on the
- * URL's bounds, so a cleared filter or the back button remounts it rather than
- * leaving the handles showing a range nobody asked for.
+ * **Dragging does not navigate** — the handles are local state and commit on
+ * release (pointer up / key up); the figure above updates live.
  */
 function PriceFilter({
   query,
@@ -470,15 +403,12 @@ function PriceFilter({
   const floor = floorTo(bounds.min, PRICE_STEP);
   const ceiling = ceilTo(bounds.max, PRICE_STEP);
 
-  // Nothing to slide over: an empty catalogue, or one where everything costs
-  // the same. A slider with both handles on one point filters nothing.
+  // Nothing to slide over: an empty catalogue, or one price for everything.
   if (ceiling <= floor) return null;
 
   return (
-    // Keyed on the bounds AND the track: a catalogue whose cheapest or
-    // dearest product changed between navigations moves the ends the
-    // handles are positioned against, and stale handles would be showing a
-    // percentage of a track that no longer exists.
+    // Keyed on the URL's bounds AND the track, so a cleared filter, the back
+    // button or a changed catalogue remounts the handles.
     <fieldset key={`${query.minPrice}-${query.maxPrice}-${floor}-${ceiling}`}>
       <legend className="mb-2 text-sm font-semibold">
         محدوده قیمت (تومان)
@@ -490,9 +420,7 @@ function PriceFilter({
         onCommit={(from, to) =>
           onSubmit(
             updateShopQuery(query, {
-              // A handle left at its end is «no bound», not a bound that
-              // happens to equal it — so clearing the slider clears the URL
-              // instead of pinning `?minPrice=` to the cheapest product.
+              // A handle at its end is «no bound», not a bound equal to it.
               minPrice: from <= floor ? undefined : from,
               maxPrice: to >= ceiling ? undefined : to,
             }),
@@ -518,19 +446,14 @@ function PriceSlider({
 }) {
   const [range, setRange] = useState<[number, number]>([from, to]);
   const [low, high] = range;
-  // What the URL already says, so a release that moved nothing navigates
-  // nowhere. `pointerUp` and `keyUp` fire for a bare click on the thumb and
-  // for the Tab that lands on it — both used to push, and on mobile both also
-  // closed the sheet, which put the price filter out of a keyboard shopper's
-  // reach entirely. Remounted with the fieldset's `key`, so it never holds a
-  // range the URL has moved on from.
+  // What the URL already says: `pointerUp`/`keyUp` also fire for a bare click
+  // and for the Tab that lands on a thumb, and must not navigate (on mobile
+  // that closes the sheet).
   const applied = useRef<[number, number]>([from, to]);
 
   const pct = (value: number) => ((value - floor) / (ceiling - floor)) * 100;
 
-  // Logical, not `left`: under `dir="rtl"` the browser flips the range inputs
-  // so the floor sits at the right, and the fill has to start from the same
-  // edge or it would run the wrong way.
+  // Logical, not `left`: RTL flips the range inputs, and the fill must follow.
   const fill = {
     insetInlineStart: `${pct(low)}%`,
     width: `${pct(high) - pct(low)}%`,
@@ -543,12 +466,7 @@ function PriceSlider({
     onCommit(low, high);
   };
 
-  /**
-   * Handles never cross — each stops a step short of the other — and neither
-   * leaves the track. The ends are re-imposed here as well as on the way in:
-   * this is the arithmetic that produced a negative price, and money is not a
-   * place to rely on the caller.
-   */
+  /** Handles never cross and never leave the track — re-imposed here too. */
   const setLow = (value: number) =>
     setRange(([, currentHigh]) => [
       Math.max(floor, Math.min(value, currentHigh - PRICE_STEP)),
@@ -560,11 +478,8 @@ function PriceSlider({
       Math.min(ceiling, Math.max(value, currentLow + PRICE_STEP)),
     ]);
 
-  // Which thumb takes the pointer where they overlap. They are a step apart at
-  // most, which on a wide track is fewer pixels than a thumb is across, and the
-  // max input — later in the DOM — swallowed every press once they met, so the
-  // min handle could not be dragged back out. Whichever one is crowded against
-  // the far end gets priority, so there is always a way out of the corner.
+  // Where the thumbs overlap, the one crowded toward the far end is on top,
+  // so there is always a way out of the corner.
   const minOnTop = low > (floor + ceiling) / 2;
 
   const thumb =
@@ -572,17 +487,11 @@ function PriceSlider({
     '[&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:size-5 [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-accent-strong [&::-webkit-slider-thumb]:shadow ' +
     '[&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:size-5 [&::-moz-range-thumb]:cursor-grab [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-accent-strong ' +
     'focus-visible:[&::-webkit-slider-thumb]:ring-accent-strong/40 focus-visible:[&::-webkit-slider-thumb]:ring-4 ' +
-    // The same ring for Gecko. `focus-visible:outline-none` above takes the
-    // native indicator away from every browser, so a ring written only for
-    // `::-webkit-slider-thumb` left Firefox with no visible focus at all
-    // (WCAG 2.4.7) — the keyboard still worked, silently.
+    // The same ring for Gecko: `outline-none` removed it from every engine.
     'focus-visible:[&::-moz-range-thumb]:ring-accent-strong/40 focus-visible:[&::-moz-range-thumb]:ring-4';
 
   return (
     <>
-      {/* The figure, not the input, is what a shopper reads — so it is the one
-          place the range is rendered, and it goes through `format.ts` like
-          every other number on the storefront. */}
       <p className="nums text-muted-foreground mb-3 text-sm">
         {formatNumber(low)} تا {formatNumber(high)}
       </p>
@@ -603,9 +512,6 @@ function PriceSlider({
           onPointerUp={commit}
           onKeyUp={commit}
           aria-label="کمترین قیمت"
-          // What the figure above the track says, not `150000` — every number
-          // a shopper is given goes through `format.ts`, and a screen reader
-          // is given this one.
           aria-valuetext={`${formatNumber(low)} تومان`}
           className={cn(thumb, minOnTop ? 'z-20' : 'z-10')}
           data-umami-event="shop-filter-min-price-drag"
@@ -626,11 +532,7 @@ function PriceSlider({
         />
       </div>
 
-      {/* Floor first: `justify-between` puts the first child at the *start*,
-          which under `dir="rtl"` is the right — the same edge the browser
-          flips the range input's minimum to. Written the other way round the
-          labels contradict the track, which is exactly what they are there to
-          explain. */}
+      {/* Floor first: the start edge, where RTL puts the range's minimum. */}
       <div className="nums text-muted-foreground flex justify-between text-xs">
         <span>{formatNumber(floor)}</span>
         <span>{formatNumber(ceiling)}</span>
@@ -640,12 +542,8 @@ function PriceSlider({
 }
 
 /**
- * The same panel on mobile, in a bottom sheet.
- *
- * Native modal `<dialog>` through `useModalDialog` — read its comment before
- * changing anything here. The design review asked for a real sheet with a focus
- * trap and Escape (finding 3); the platform gives both, plus nothing focusable
- * while it is shut.
+ * The same panel on mobile, in a bottom sheet: a native modal `<dialog>`
+ * through `useModalDialog` (read its comment before changing this).
  */
 export function ShopFilterSheet({
   query,
@@ -662,9 +560,7 @@ export function ShopFilterSheet({
 }) {
   const { open, show, close, dialogProps } = useModalDialog();
 
-  // The same three groups `ActiveFilters` renders a chip for, price counted
-  // once however many of its two bounds are set — «فیلتر (۲)» opening onto one
-  // chip is the badge disagreeing with the panel it opens.
+  // One per `ActiveFilters` chip — price counts once, however many bounds.
   const activeCount = [
     query.category,
     query.pet,
@@ -711,9 +607,7 @@ export function ShopFilterSheet({
             query={query}
             categories={categories}
             priceBounds={priceBounds}
-            // A filter change navigates and the results are behind the sheet,
-            // so it gets out of the way rather than leaving the shopper to
-            // dismiss it before seeing what they just did.
+            // The results are behind the sheet, so a change closes it.
             onApply={close}
           />
           <button

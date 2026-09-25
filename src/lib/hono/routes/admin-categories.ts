@@ -38,8 +38,7 @@ import { pgErrorOf } from '@/db/pg-error';
 /** User-facing copy, so Persian. */
 export const CATEGORY_NOT_FOUND_MESSAGE = 'دسته‌بندی یافت نشد.';
 /** A save refused by the database (a duplicate slug). */
-export const CATEGORY_SAVE_FAILED_MESSAGE =
-  'دسته‌بندی ذخیره نشد؛ ورودی را بررسی کن.';
+const CATEGORY_SAVE_FAILED_MESSAGE = 'دسته‌بندی ذخیره نشد؛ ورودی را بررسی کن.';
 
 /**
  * The delete refusal. It names the count and says hidden products count too —
@@ -67,7 +66,7 @@ export type { CategoryView } from '@/lib/catalog/category-view';
  * rethrow. Both create and update run a body through it, so the two cannot
  * answer the same refusal differently.
  */
-export const categoryWriteErrors = (error: unknown): string[] | null => {
+const categoryWriteErrors = (error: unknown): string[] | null => {
   if (error instanceof CategoryParentError) {
     return [`parentId: ${CATEGORY_PARENT_MESSAGES[error.reason]}`];
   }

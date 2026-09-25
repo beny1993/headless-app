@@ -51,11 +51,8 @@ export const VISIBLE_CHAR = /[\p{L}\p{N}\p{P}\p{S}]/u;
  * first so a field of only whitespace fails `.min(1)` rather than storing blank.
  *
  * The refine covers U+0000, which would otherwise reach the `pg` driver and 500
- * on insert (it is a `\p{Cc}` member), and the bidi family — which it did NOT
- * until 2026-09-21. Before that this checked only for a null byte, so checkout,
- * the pets list, the address book and every site-content field accepted a
- * right-to-left override: a shopper could post a recipient name that reorders
- * the admin's own order screen, with nothing visible in review or in psql.
+ * on insert (it is a `\p{Cc}` member), and the bidi family — a right-to-left
+ * override in a recipient name would reorder the admin's own order screen.
  *
  * The Persian messages are surfaced verbatim in the checkout/account forms (via
  * `formatZodIssues` → `parseFieldErrors`), so they must be Persian to satisfy the

@@ -4,8 +4,8 @@
 // by `PetDao`, which ANDs the session id into every read and write. The `{id}` in
 // the path is the RESOURCE, never the owner — the owner is always `c.get('user')`.
 //
-// "Not found" and "not yours" are the same 404 (a null from `getOwned`/`update`,
-// a false from `delete`), so the API never confirms another user's pet exists.
+// "Not found" and "not yours" are the same 404 (a null from `update`, a
+// false from `delete`), so the API never confirms another user's pet exists.
 // The `{id}` param is `z.uuid()`: a non-uuid against a uuid column is a Postgres
 // 22P02 the driver throws as a 500, rejected as a 400 here first.
 //
@@ -32,7 +32,7 @@ import {
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
-export const PET_NOT_FOUND_MESSAGE = 'حیوان یافت نشد';
+const PET_NOT_FOUND_MESSAGE = 'حیوان یافت نشد';
 
 /**
  * A soft per-user ceiling. A real account holds a handful of pets; a request past

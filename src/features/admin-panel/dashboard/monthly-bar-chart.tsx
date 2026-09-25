@@ -1,5 +1,5 @@
 /** One month's bar. `value` is already the aggregate (Toman or a count). */
-export type ChartPoint = { label: string; value: number };
+type ChartPoint = { label: string; value: number };
 
 /**
  * A dependency-free monthly bar chart — six labelled bars scaled to the series
