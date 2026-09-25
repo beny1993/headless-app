@@ -162,6 +162,11 @@ than skipping — a configured-but-down database is a broken environment, not a
 green build. Bring it up with
 `docker compose --file docker-compose-dev.yaml up --wait`. CI must provide
 Postgres and set the variable, or it never exercises these suites at all.
+A killed run never reaches its `afterAll` cleanup, so its active `test-…`
+fixture products stay behind; vitest's globalSetup (`src/db/test-global-setup.ts`)
+and `pnpm seed-catalog` switch off every active `test-…`/`e2e-…` product older
+than an hour (`ProductDao.deactivateStaleTestProducts`) — keep those prefixes for
+test-made products, and never give a real product one.
 
 ### Component tests
 
@@ -316,8 +321,12 @@ suite pins it on; the disabled option is component-tested in
   `checkout.payment` content row equal to the default (it puts the old values
   back in a `finally`). The shipping-rate and headline
   specs put the old value back, the one-fee-for-all spec puts every province's
-  own fee back (through the API, all attempted before any failure is reported), and the province spec switches its province
-  off, even when they fail.
+  own fee back (through the API, all attempted before any failure is reported), the province spec switches its province
+  off, and the catalog spec switches its product off (through the API), even when they fail.
+- **Leaked active test products break shelf pagination.** Shelves list
+  newest-first, 12 a page, so a stray active `test-…`/`e2e-…` product pushes a
+  seeded one to a later page and a spec that looks for it on page one fails.
+  The seed's sweep switches off any older than an hour.
 - **Uploaded images never count as failed requests.** A dev database keeps the
   uploads it was given while `.env` pointed at object storage, and this run's
   local driver has no file for them. The catalog spec proves the upload path
