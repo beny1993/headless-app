@@ -164,9 +164,9 @@ green build. Bring it up with
 Postgres and set the variable, or it never exercises these suites at all.
 A killed run never reaches its `afterAll` cleanup, so its active `test-…`
 fixture products stay behind; vitest's globalSetup (`src/db/test-global-setup.ts`)
-and `pnpm seed-catalog` switch off every active `test-…`/`e2e-…` product older
-than an hour (`ProductDao.deactivateStaleTestProducts`) — keep those prefixes for
-test-made products, and never give a real product one.
+and `pnpm seed-catalog` switch off every active `test-…`/`e2e-…` product not
+updated for an hour (`ProductDao.deactivateStaleTestProducts`) — keep those
+prefixes for test-made products, and never give a real product one.
 
 ### Component tests
 
@@ -326,7 +326,7 @@ suite pins it on; the disabled option is component-tested in
 - **Leaked active test products break shelf pagination.** Shelves list
   newest-first, 12 a page, so a stray active `test-…`/`e2e-…` product pushes a
   seeded one to a later page and a spec that looks for it on page one fails.
-  The seed's sweep switches off any older than an hour.
+  The seed's sweep switches off any not updated for an hour.
 - **Uploaded images never count as failed requests.** A dev database keeps the
   uploads it was given while `.env` pointed at object storage, and this run's
   local driver has no file for them. The catalog spec proves the upload path

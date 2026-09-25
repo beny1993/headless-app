@@ -1004,10 +1004,13 @@ export class ProductDao {
    * many it switched off. Called by `pnpm seed-catalog` and vitest's
    * globalSetup.
    *
-   * Only rows older than an hour: a run that is going on right now has its
-   * fresh fixtures left alone. Deliberately a bulk update past
-   * `assertNoActiveMembers` — a test family's members carry the same prefix, so
-   * no head goes inactive over a live member.
+   * Only rows untouched for an hour, by `updated_at`: a run going on right now
+   * has its fresh fixtures left alone — even the ones inserted with a backdated
+   * `created_at` to pin a newest-first ordering, which `pnpm seed-catalog` (the
+   * e2e server's boot) would otherwise switch off under a concurrent vitest
+   * run. Deliberately a bulk update past `assertNoActiveMembers` — a test
+   * family's members carry the same prefix, so no head goes inactive over a
+   * live member.
    */
   static async deactivateStaleTestProducts(): Promise<number> {
     const rows = await db
@@ -1017,7 +1020,7 @@ export class ProductDao {
         and(
           eq(products.isActive, true),
           or(like(products.slug, 'test-%'), like(products.slug, 'e2e-%')),
-          lt(products.createdAt, new Date(Date.now() - 60 * 60 * 1000)),
+          lt(products.updatedAt, new Date(Date.now() - 60 * 60 * 1000)),
         ),
       )
       .returning({ id: products.id });
