@@ -1,3 +1,4 @@
+import type { Dialog } from '@playwright/test';
 import { SEED_CATEGORIES } from '@/db/seed/catalog-data';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
 import {
@@ -8,6 +9,7 @@ import {
   shopPath,
 } from '@/lib/constant/paths';
 import { formatToman, toAsciiDigits } from '@/lib/format';
+import { PROVINCE_MESSAGES } from '@/lib/shipping/province-input';
 import {
   ADMIN_STATE,
   expect,
@@ -93,6 +95,21 @@ test('one fee an admin applies to every province is what checkout charges', asyn
   // From the first click on: if the cancelled confirm ever DID send the write,
   // the fees have moved and the `finally` is what puts them back.
   try {
+    // Refused at the field, before any confirm: a dot-grouped `25.000` read as
+    // 25 would put 25-Toman shipping on every province.
+    const confirms: string[] = [];
+    const recordConfirm = (dialog: Dialog) => {
+      confirms.push(dialog.message());
+      void dialog.dismiss();
+    };
+    page.on('dialog', recordConfirm);
+    await bulkFee.fill('25.000');
+    await apply.click();
+    await expect(page.getByText(PROVINCE_MESSAGES.fee)).toBeVisible();
+    page.off('dialog', recordConfirm);
+    expect(confirms).toEqual([]);
+    expect(writes).toEqual([]);
+
     // Cancelled at the confirm: nothing is sent.
     await bulkFee.fill(String(applied));
     page.once('dialog', (dialog) => void dialog.dismiss());

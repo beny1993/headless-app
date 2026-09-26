@@ -39,18 +39,27 @@ export function toAsciiDigits(value: string): string {
 /** Thousands separators an admin may paste: a Latin comma, and fa-IR's U+066C. */
 const THOUSANDS_SEPARATORS = /[,٬]/g;
 
+/** The one shape a separator counts in: grouping thousands, `1,250,000`. */
+const GROUPED_THOUSANDS = /^-?[1-9]\d{0,2}(?:[,٬]\d{3})+$/;
+
 /**
- * A number field's text → a number, for a zod schema to judge. Persian and
- * Arabic-Indic digits fold, thousands separators drop, blank is `undefined`
- * (the caller decides what «not given» means). Anything but a plain decimal is
- * `NaN` — never `Number()`'s `1e3`/`0x10` — while a sign or a fraction is kept,
- * so the schema's `.int()`/`.positive()` refuses it in its own Persian words.
+ * A number field's text → a whole number, for a zod schema to judge. Persian and
+ * Arabic-Indic digits fold, blank is `undefined` (the caller decides what «not
+ * given» means), and a sign is kept so the schema refuses it in its own Persian
+ * words. Everything else is `NaN`, for the schema's base `z.number({ error })`:
+ * a separator that does not group thousands (`7,5`, `1,200,00` — a typo or a
+ * decimal comma, never read as another number), any fraction (every field this
+ * feeds is whole Toman or a count, and `25.000` may mean 25 or 25,000), and
+ * `Number()`'s `1e3`/`0x10`.
  */
 export function parseDigits(raw: string): number | undefined {
   const trimmed = raw.trim();
   if (trimmed === '') return undefined;
-  const ascii = toAsciiDigits(trimmed).replace(THOUSANDS_SEPARATORS, '');
-  return /^-?\d+(\.\d+)?$/.test(ascii) ? Number(ascii) : Number.NaN;
+  const ascii = toAsciiDigits(trimmed);
+  const plain = GROUPED_THOUSANDS.test(ascii)
+    ? ascii.replace(THOUSANDS_SEPARATORS, '')
+    : ascii;
+  return /^-?\d+$/.test(plain) ? Number(plain) : Number.NaN;
 }
 
 /** Persian digits with fa-IR thousands separators (U+066C, not a Latin comma). */
