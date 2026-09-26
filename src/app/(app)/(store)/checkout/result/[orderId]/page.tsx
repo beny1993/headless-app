@@ -1,26 +1,26 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
 import { Check, Clock, XCircle } from 'lucide-react';
-import { z } from 'zod';
-import { SiteContentDao } from '@/db/dao/SiteContentDao';
 import { CardToCardPanel } from '@/features/checkout/card-to-card';
 import {
+  loadOwnedOrder,
+  readCardToCardPayment,
+} from '@/features/checkout/load-owned-order';
+import {
   OrderSummary,
-  type SummaryLine,
+  toSummaryLines,
 } from '@/features/checkout/order-summary';
 import { RetryPaymentButton } from '@/features/checkout/retry-payment-button';
-import { requireSession } from '@/lib/auth/session';
+import { SupportLine } from '@/features/checkout/support-line';
 import { resultView } from '@/lib/checkout/result-view';
 import { PATHS, checkoutResultPath, shopPath } from '@/lib/constant/paths';
 import { formatJalali, toPersianDigits } from '@/lib/format';
-import { PAYMENT_METHODS } from '@/lib/orders/order-status';
-import { getOwnedOrder } from '@/logic/checkout/get-order';
+import {
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_METHODS,
+} from '@/lib/orders/order-status';
 
 export const metadata: Metadata = { title: 'نتیجه سفارش' };
-
-/** The `[orderId]` path segment is a stranger's input — reject a non-uuid. */
-const orderIdSchema = z.uuid();
 
 /**
  * The one checkout result page, for COD confirmation and every Zarinpal outcome.
@@ -36,24 +36,17 @@ export default async function Page({
 }: {
   params: Promise<{ orderId: string }>;
 }) {
-  const { orderId } = await params;
-  const parsed = orderIdSchema.safeParse(orderId);
-  if (!parsed.success) notFound();
-
-  const session = await requireSession(checkoutResultPath(parsed.data));
-  const order = await getOwnedOrder(parsed.data, session.user.id);
-  // Missing and not-owned are the same 404 — the page never leaks that someone
-  // else's order exists.
-  if (!order) notFound();
+  const order = await loadOwnedOrder(
+    (await params).orderId,
+    checkoutResultPath,
+  );
 
   const view = resultView(order.status);
   const isCod = order.paymentMethod === PAYMENT_METHODS.COD;
   // A card-to-card order is created unpaid: show where to send the money again,
   // but only on the success view — a cancelled one has nothing left to pay.
   const cardToCard =
-    isCod && view.kind === 'success'
-      ? (await SiteContentDao.getMany(['checkout.payment']))['checkout.payment']
-      : null;
+    isCod && view.kind === 'success' ? await readCardToCardPayment() : null;
 
   const copy = {
     success: {
@@ -77,13 +70,6 @@ export default async function Page({
       sub: 'پرداخت این سفارش کامل نشد و مبلغی از حساب شما کسر نشده است. برای خرید می‌توانی دوباره اقدام کنی.',
     },
   }[view.kind];
-
-  const summaryLines: SummaryLine[] = order.items.map((item) => ({
-    id: item.id,
-    title: item.title,
-    qty: item.qty,
-    lineTotal: item.unitPrice * item.qty,
-  }));
 
   return (
     <main className="bg-secondary/20 min-h-screen pt-20">
@@ -111,12 +97,12 @@ export default async function Page({
               <span className="text-muted-foreground">تاریخ ثبت</span>
             </div>
             <div className="border-border flex items-center justify-between gap-3 border-t px-4 py-3 text-sm">
-              <span>{isCod ? 'کارت به کارت' : 'زرین‌پال'}</span>
+              <span>{PAYMENT_METHOD_LABELS[order.paymentMethod]}</span>
               <span className="text-muted-foreground">روش پرداخت</span>
             </div>
             <div className="border-border border-t p-4">
               <OrderSummary
-                lines={summaryLines}
+                lines={toSummaryLines(order.items)}
                 subtotal={order.subtotal}
                 discount={order.discount}
                 shippingFee={order.shippingFee}
@@ -148,15 +134,7 @@ export default async function Page({
           </div>
         </div>
 
-        {view.kind !== 'success' && (
-          <p className="text-muted-foreground mt-6 text-center text-xs">
-            شماره پشتیبانی:{' '}
-            <span dir="ltr" className="nums">
-              {toPersianDigits('021-1234567')}
-            </span>{' '}
-            — هر روز ۹ تا ۱۸
-          </p>
-        )}
+        {view.kind !== 'success' && <SupportLine className="text-center" />}
       </div>
     </main>
   );

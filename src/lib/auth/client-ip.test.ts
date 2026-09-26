@@ -30,6 +30,13 @@ describe('clientIpHeaders', () => {
     expect(clientIpHeaders()).toEqual(['cf-connecting-ip', 'x-forwarded-for']);
   });
 
+  it('reads a padded " true " as on, like every other flag', async () => {
+    process.env[VARS.APP_CONFIG_TRUST_CF_HEADER] = ' true ';
+    const { clientIpHeaders } = await load();
+
+    expect(clientIpHeaders()).toEqual(['cf-connecting-ip', 'x-forwarded-for']);
+  });
+
   it('treats any value other than "true" as off — a typo must not open the header', async () => {
     for (const value of ['false', '1', 'yes', 'TRUE', '']) {
       process.env[VARS.APP_CONFIG_TRUST_CF_HEADER] = value;

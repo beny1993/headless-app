@@ -14,15 +14,13 @@
  * LIARA_ACCESS_KEY, LIARA_SECRET_KEY, and NEXT_PUBLIC_STORAGE_BASE_URL
  * (= endpoint/bucket). Safe to re-run: the object it creates, it deletes.
  */
-import 'dotenv/config';
+import './load-env';
 import { s3Driver } from '@/lib/storage/s3-driver';
 
 // A 1x1 transparent PNG, so a real image byte stream round-trips.
-const PNG_1X1 = Uint8Array.from(
-  atob(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-  ),
-  (c) => c.charCodeAt(0),
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+  'base64',
 );
 
 const key = `uploads/${crypto.randomUUID()}.png`;

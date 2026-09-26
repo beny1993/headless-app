@@ -293,9 +293,6 @@ export const productInputSchema = z
     path: ['variantLabel'],
   });
 
-/** The validated body — assignable to `ProductDao`'s `ProductInput`. */
-export type ProductInputBody = z.infer<typeof productInputSchema>;
-
 /** The inventory observed when opening the edit form; required for safe stock writes. */
 export const productUpdateInputSchema = productInputSchema.safeExtend({
   expectedStock: z.number().int().nonnegative().max(MAX_STOCK),
@@ -340,6 +337,3 @@ export const productImagesOrderSchema = z.object({
     })
     .transform((keys) => keys as string[]),
 });
-
-/** The validated gallery-order body. */
-export type ProductImagesOrderBody = z.infer<typeof productImagesOrderSchema>;

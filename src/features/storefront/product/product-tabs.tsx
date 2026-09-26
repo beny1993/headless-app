@@ -2,7 +2,7 @@
 
 import { useId, useState } from 'react';
 
-export type ProductTab = {
+type ProductTab = {
   id: string;
   label: string;
   /** Rendered by the server component that passes it — see the note below. */

@@ -12,9 +12,9 @@ one branch. Read the story note before touching code.
 
 Next 16 App Router (React 19, TypeScript strict) · Hono `@hono/zod-openapi` +
 Scalar mounted at `/api/[[...route]]` · Postgres + Drizzle (schema / DAO /
-migrations) · Better Auth · Tailwind v4 + shadcn-style primitives · React Email +
-nodemailer · Vitest · ESLint 9 + Prettier · husky + lint-staged + commitlint ·
-pnpm 11 / Node 24 · Docker for dev Postgres.
+migrations) · Better Auth · Tailwind v4 + shadcn-style primitives · Vitest ·
+ESLint 9 + Prettier · husky + lint-staged + commitlint · pnpm 11 / Node 24 ·
+Docker for dev Postgres.
 
 No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 `/admin` area built from the design prototype.
@@ -29,10 +29,11 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/db/schema/`, `src/db/dao/`, `src/db/migrations/` | Drizzle schema, DAOs, generated migrations. `dao/product-sql.ts` is the product listing's SQL vocabulary — the family scalars, the orderings, the category and pet scopes — composed by `ProductDao` and imported by nothing else |
 | `src/lib/hono/` | API app, router factory, response envelope, routes |
 | `src/lib/hono/middleware/` | Cross-cutting middleware: the `requireAdmin`/`requireAuth` guards, and the `/api/*` rate limiter (the one deliberate `app.use('*')` — see its mount comment) |
-| `src/lib/auth/`, `src/lib/email/`, `src/lib/utils/env.ts` | Better Auth, mailer, env accessor |
-| `src/lib/sentry.ts` | The one `Sentry.init` options object, shared by all three runtimes (`sentry.server.config.ts`, `sentry.edge.config.ts`, `src/instrumentation-client.ts`). Owns the privacy contract: explicit `dataCollection` opt-outs and the removal of the console-breadcrumb integration, without which every OTP in the server log rides along on the next event |
+| `src/lib/auth/`, `src/lib/utils/env.ts` | Better Auth, env accessor |
+| `src/lib/sentry.ts` | The one `Sentry.init` options object, shared by all three runtimes (`register()` in `src/instrumentation.ts` for Node and edge, `src/instrumentation-client.ts` for the browser). Owns the privacy contract: explicit `dataCollection` opt-outs and the removal of the console-breadcrumb integration, without which every OTP in the server log rides along on the next event |
 | `src/lib/content/` | Storefront editorial content: the client-safe zod schemas + key enum + area map + `isVisible` (`site-content.ts`), the saved-link contract + `resolveLink` (`link.ts`; its id → slug targets load in `src/logic/content/link-targets.ts`), the typed defaults + `resolveContent` fallback (`defaults.ts`), and the header/footer request-time read `readSiteChrome` (`chrome.ts`, `await connection()`). Values live in the `site_content` table; the page-organized admin editor is `/admin-panel/content/[area]` |
 | `src/features/<area>/<feature>/` | Feature components; route files stay thin |
+| `src/hooks/` | Shared client hooks (`@/hooks`). `use-modal-dialog.ts` is the one wiring for every native modal `<dialog>` — mobile menu, cart drawer, shop filter sheet |
 | `src/lib/catalog/variant.ts` | Product families: `displayTitle` (the **single** derivation used by the product heading, the admin list and the `order_items` snapshot), the label cap and the Persian refusals. A family is `products.variant_of` + `variant_label` — a member is an ordinary product row, so the cart, the stock decrement and `order_items` are untouched; the storefront lists `variant_of is null` and reaches members from the head's page |
 | `design/` | **Canonical design reference** — vendored Figma prototype (own deps, own `pnpm dev` on :5173). FE stories port from it. Never imported by the app. |
 | `scripts/create-admin.ts` | Grant admin by phone (`pnpm create-admin <phone> [name]`) — creates or promotes |
@@ -57,8 +58,9 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   export in the same file (see `src/lib/hono/routes/health.ts`), registered with
   `app.openapi(route, handler)`. Sub-routers come from `createRouter()`.
 - **Envelope**: every response is `{ status: 'success', data }` or
-  `{ status: 'error', message, errors? }` (`src/lib/hono/envelope.ts`). Consume
-  with `getData`/`postData` from `src/lib/api-client.ts`.
+  `{ status: 'error', message, errors? }` (`src/lib/hono/envelope.ts`). Client
+  components write with the `*Data`/`postForm` helpers in `src/lib/api-client.ts`
+  (browser-only); server components read through `src/logic/` and the DAOs.
 - **Env vars**: names live in the `VARS` enum in `src/lib/utils/env.ts`, template
   in `.env.example`. `NEXT_PUBLIC_*` must also be listed in `STATIC_INLINED_VARS`
   there. Never commit `.env`.
@@ -160,6 +162,11 @@ than skipping — a configured-but-down database is a broken environment, not a
 green build. Bring it up with
 `docker compose --file docker-compose-dev.yaml up --wait`. CI must provide
 Postgres and set the variable, or it never exercises these suites at all.
+A killed run never reaches its `afterAll` cleanup, so its active `test-…`
+fixture products stay behind; vitest's globalSetup (`src/db/test-global-setup.ts`)
+and `pnpm seed-catalog` switch off every active `test-…`/`e2e-…` product not
+updated for an hour (`ProductDao.deactivateStaleTestProducts`) — keep those
+prefixes for test-made products, and never give a real product one.
 
 ### Component tests
 
@@ -259,7 +266,8 @@ family's members each listed and named by their own label, the head's
 (read-only, so it runs at both widths and leaves nothing behind); a discount
 code a shopper redeems,
 then cannot once it is switched off; a shipping rate that checkout then
-charges, and one fee applied to every province at once (cancelled at the
+charges, and one fee applied to every province at once (a dot-grouped
+`25.000` refused at the field before any confirm, then cancelled at the
 confirm, then confirmed) that checkout then charges; a province an admin adds, that checkout and the address book then
 offer and, once it is switched off, no longer offer — a saved address on it
 flagged in both — until it is switched back on; a home headline that the
@@ -314,8 +322,12 @@ suite pins it on; the disabled option is component-tested in
   `checkout.payment` content row equal to the default (it puts the old values
   back in a `finally`). The shipping-rate and headline
   specs put the old value back, the one-fee-for-all spec puts every province's
-  own fee back (through the API, all attempted before any failure is reported), and the province spec switches its province
-  off, even when they fail.
+  own fee back (through the API, all attempted before any failure is reported), the province spec switches its province
+  off, and the catalog spec switches its product off (through the API), even when they fail.
+- **Leaked active test products break shelf pagination.** Shelves list
+  newest-first, 12 a page, so a stray active `test-…`/`e2e-…` product pushes a
+  seeded one to a later page and a spec that looks for it on page one fails.
+  The seed's sweep switches off any not updated for an hour.
 - **Uploaded images never count as failed requests.** A dev database keeps the
   uploads it was given while `.env` pointed at object storage, and this run's
   local driver has no file for them. The catalog spec proves the upload path
@@ -366,9 +378,11 @@ pnpm create-admin 09121234567       # grant admin to a phone number
 `/api/reference` interactive API docs (non-production only). Sign-in is `/login`
 for customers and admins alike; the console SMS driver prints the one-time code
 to the server log, so no SMS account is needed locally.
-Other commands: `pnpm dev:email` (email preview), `pnpm drizzle-studio`,
+Other commands: `pnpm drizzle-studio`,
 `pnpm migration:reset-dev` (nuke volumes, re-migrate), `pnpm --dir design dev`
 (design prototype).
+Running `next dev` on any port but 3000 needs `NEXT_PUBLIC_APP_URL` overridden
+in the shell to match, or Better Auth rejects every POST with 403.
 
 Agent worktrees have no `.env` of their own: build there with
 `pnpm build:local` (see Quality gates), and give the database-backed tests the

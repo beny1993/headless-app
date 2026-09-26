@@ -40,10 +40,10 @@ export const PET_GENDER_VALUES = Object.values(PET_GENDERS) as [
 ];
 
 /** cat/dog, reusing the catalog's tuple so the species vocabulary is one thing. */
-export const PET_KIND_VALUES = [PET_TYPES.CAT, PET_TYPES.DOG] as const;
+const PET_KIND_VALUES = [PET_TYPES.CAT, PET_TYPES.DOG] as const;
 
-export const petKindSchema = z.enum(PET_KIND_VALUES);
-export const petGenderSchema = z.enum(PET_GENDER_VALUES);
+const petKindSchema = z.enum(PET_KIND_VALUES);
+const petGenderSchema = z.enum(PET_GENDER_VALUES);
 
 /**
  * A render-time guard for a stored photo URL: `true` only for a real `https:` URL.

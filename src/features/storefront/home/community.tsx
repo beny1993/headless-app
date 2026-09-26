@@ -12,10 +12,8 @@ import { imageSrc } from '@/lib/storage/image-url';
  * Each slot's alt text is derived in code from its name and owner, so a swapped
  * photo cannot carry a stale alt.
  *
- * Two design-review findings shape it: the captions are always visible rather
- * than hover-only (a hover caption is unreachable on touch), and each tile is
- * a `<figure>` that links nowhere — a card that looks clickable but is not was
- * the thing being objected to, so it is not dressed as one.
+ * Captions are always visible (hover is unreachable on touch), and each tile
+ * is a `<figure>` that links nowhere, so it is not dressed as a card.
  */
 export function CommunitySection({
   content,

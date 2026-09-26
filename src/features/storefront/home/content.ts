@@ -17,6 +17,7 @@
 // checked against `PetType` by the `satisfies` on `LIFE_MOMENT_TARGETS`, so a
 // renamed enum value still breaks `pnpm type-check`.
 import type { PetType } from '@/db/schema/catalog';
+import { PET_EMOJI } from '@/lib/catalog/product-query';
 import { LINK_TYPES, type Link } from '@/lib/content/link';
 
 /**
@@ -37,7 +38,7 @@ export const CATEGORY_IMAGES: Record<string, string> = {
   hygiene: '/site/cat-hygiene.jpg',
 };
 
-export type LifeMomentTarget = {
+type LifeMomentTarget = {
   /** Rendered as decoration next to the card title, not as a functional icon. */
   emoji: string;
   filters: { category: string; pet: PetType };
@@ -57,7 +58,7 @@ export const LIFE_MOMENT_TARGETS = [
   { emoji: '🐶', filters: { category: 'dry-food', pet: 'dog' } },
 ] as const satisfies readonly LifeMomentTarget[];
 
-export type RoutineTarget = {
+type RoutineTarget = {
   emoji: string;
   /** Category slugs; the tiles take their titles from the database. */
   categories: readonly string[];
@@ -76,8 +77,6 @@ export const ROUTINE_TARGETS = [
   { emoji: '🌤️', categories: ['supplements', 'hygiene'] },
   { emoji: '🌙', categories: ['treats', 'wet-food'] },
 ] as const satisfies readonly RoutineTarget[];
-
-const PET_EMOJI: Record<PetType, string> = { cat: '🐱', dog: '🐶' };
 
 /**
  * The emoji on moment card `index`: the code one (`LIFE_MOMENT_TARGETS`) until a

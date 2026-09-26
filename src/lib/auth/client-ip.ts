@@ -1,6 +1,6 @@
 import { getIp } from 'better-auth/api';
 
-import { getEnvVariable, VARS } from '@/lib/utils/env';
+import { getEnvFlag, VARS } from '@/lib/utils/env';
 
 /**
  * The one ordered client-IP header list. Better Auth's `ipAddressHeaders` and
@@ -28,7 +28,7 @@ import { getEnvVariable, VARS } from '@/lib/utils/env';
  * the two are guaranteed to agree per process, not per request.
  */
 export const clientIpHeaders = (): string[] =>
-  getEnvVariable(VARS.APP_CONFIG_TRUST_CF_HEADER, false, '') === 'true'
+  getEnvFlag(VARS.APP_CONFIG_TRUST_CF_HEADER)
     ? ['cf-connecting-ip', 'x-forwarded-for']
     : ['x-forwarded-for'];
 

@@ -7,9 +7,7 @@ import { resolveLink, type LinkTargets } from '@/lib/content/link';
  * The closing statement. The eyebrow, headline, accent line, body and link label
  * are admin content (plain text; the break before the accent line is a code
  * `<br />`), and so is where the link goes (unset: /about). The eyebrow is
- * `white/60`,
- * not `white/40`: the design review measured the original at 3.72:1 on `--ink`
- * and it failed AA.
+ * `white/60`, not `white/40`, which is 3.72:1 on `--ink` and fails AA.
  */
 export function PhilosophySection({
   content,

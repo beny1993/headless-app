@@ -6,6 +6,7 @@ import { displayTitle } from '@/lib/catalog/variant';
 import { adminEditProductPath, productPath } from '@/lib/constant/paths';
 import { formatToman } from '@/lib/format';
 import { imageSrc } from '@/lib/storage/image-url';
+import { Pill } from '@/features/admin-panel/shared/pill';
 import { DeleteProductButton } from './delete-product-button';
 import { StockBadge } from './stock-badge';
 
@@ -49,15 +50,9 @@ export function ProductRow({
         <StockBadge stock={product.stock} />
       </td>
       <td className="px-4 py-3">
-        {product.isActive ? (
-          <span className="bg-success-soft text-success-strong rounded-full px-2.5 py-1 text-xs font-medium">
-            فعال
-          </span>
-        ) : (
-          <span className="bg-secondary text-muted-foreground rounded-full px-2.5 py-1 text-xs font-medium">
-            غیرفعال
-          </span>
-        )}
+        <Pill tone={product.isActive ? 'success' : 'muted'}>
+          {product.isActive ? 'فعال' : 'غیرفعال'}
+        </Pill>
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-1">

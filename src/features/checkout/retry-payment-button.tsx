@@ -2,16 +2,13 @@
 
 import { useState } from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
-import { postData } from '@/lib/api-client';
-import { API_PATHS } from '@/lib/constant/paths';
+import { reasonFrom } from '@/lib/checkout/field-errors';
+import { startZarinpalPayment } from '@/lib/checkout/start-zarinpal-payment';
 
 /**
  * "Retry payment" for a `pending_payment` order on the result page — the only
  * interactive piece of that otherwise server-rendered page, so only `orderId`
- * crosses to the client. It starts a fresh Zarinpal attempt
- * (`POST /api/payments/zarinpal/request`, which mints a new authority) and sends
- * the browser to the returned gateway URL. The order id is the sole input; the
- * endpoint re-checks ownership and that the order is still awaiting payment.
+ * crosses to the client; `startZarinpalPayment` does the rest.
  */
 export function RetryPaymentButton({ orderId }: { orderId: string }) {
   const [busy, setBusy] = useState(false);
@@ -22,15 +19,9 @@ export function RetryPaymentButton({ orderId }: { orderId: string }) {
     setBusy(true);
     setError(undefined);
     try {
-      const { redirectUrl } = await postData<{ redirectUrl: string }>(
-        API_PATHS.PAYMENT_REQUEST,
-        { orderId },
-      );
-      window.location.assign(redirectUrl);
+      await startZarinpalPayment(orderId);
     } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : 'شروع پرداخت ناموفق بود.',
-      );
+      setError(reasonFrom(caught) ?? 'شروع پرداخت ناموفق بود.');
       setBusy(false);
     }
   };

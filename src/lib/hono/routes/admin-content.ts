@@ -135,12 +135,11 @@ export const contentUpdateHandler: RouteHandler<
 export const contentImageUploadHandler = async (
   c: Context<Env & AuthedEnv>,
 ): Promise<Response> => {
-  const upload = await readImageUpload(c);
-  if (!upload.ok) return upload.response;
+  const { bytes, type } = await readImageUpload(c);
 
   const driver = getStorageDriver();
-  const key = objectKeyFor(upload.type);
-  await driver.put(key, upload.bytes, upload.type);
+  const key = objectKeyFor(type);
+  await driver.put(key, bytes, type);
 
   // ponytail: no orphan sweep — an upload whose block is never saved, or a
   // replaced uploads/ key, is left on disk. Keys are uuids used by at most one

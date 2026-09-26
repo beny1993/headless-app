@@ -12,16 +12,20 @@ import {
   SEED_SUBCATEGORIES,
 } from '@/db/seed/catalog-data';
 
+/** `map.get(key)`, or throw `message` — a seed that points at nothing is a bug. */
+const must = <V>(map: Map<string, V>, key: string, message: string): V => {
+  const value = map.get(key);
+  if (value === undefined) throw new Error(message);
+  return value;
+};
+
 export const seedCatalog = async (): Promise<{
   categories: number;
   products: number;
 }> => {
   const categoryIdBySlug = new Map<string, string>();
-  const idFor = (slug: string, sku: string) => {
-    const id = categoryIdBySlug.get(slug);
-    if (!id) throw new Error(`Seed product ${sku}: no category ${slug}`);
-    return id;
-  };
+  const idFor = (slug: string, sku: string) =>
+    must(categoryIdBySlug, slug, `Seed product ${sku}: no category ${slug}`);
 
   // Parents before children: `upsertBySlug` sets the parent on insert, so a
   // sub-category seeded first would land top-level and stay there — the
@@ -42,14 +46,12 @@ export const seedCatalog = async (): Promise<{
   // A family's head has to exist before its members can point at it, so the
   // runner keeps the ids it has written and `SEED_PRODUCTS` lists heads first.
   const productIdBySku = new Map<string, string>();
-  const headIdFor = (headSku: string, sku: string) => {
-    const id = productIdBySku.get(headSku);
-    if (!id)
-      throw new Error(
-        `Seed product ${sku}: head ${headSku} not seeded yet — list it first`,
-      );
-    return id;
-  };
+  const headIdFor = (headSku: string, sku: string) =>
+    must(
+      productIdBySku,
+      headSku,
+      `Seed product ${sku}: head ${headSku} not seeded yet — list it first`,
+    );
 
   for (const {
     categorySlug,

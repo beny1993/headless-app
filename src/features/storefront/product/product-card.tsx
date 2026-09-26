@@ -18,9 +18,7 @@ import { imageSrc } from '@/lib/storage/image-url';
  * across the whole card instead, so there is exactly one tab stop for
  * navigation, named by the product title, and the add button sits above it.
  *
- * Two things the design shows are deliberately absent: the star rating
- * (reviews are backlog) and the wishlist heart (backlog) — both cut in the
- * design review's «Omitted in v1» list.
+ * The design's star rating and wishlist heart are backlog, deliberately absent.
  *
  * The `group-data-[view=list]/results:` classes are the shop's list view, and
  * they are driven entirely by an ancestor (`data-view` on the shop's results

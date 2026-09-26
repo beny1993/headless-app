@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { XCircle } from 'lucide-react';
+import { SupportLine } from '@/features/checkout/support-line';
 import { PATHS, shopPath } from '@/lib/constant/paths';
-import { toPersianDigits } from '@/lib/format';
 
 export const metadata: Metadata = { title: 'پرداخت ناموفق' };
 
@@ -51,13 +51,7 @@ export default function Page() {
               سفارش‌های من
             </Link>
           </div>
-          <p className="text-muted-foreground mt-6 text-xs">
-            شماره پشتیبانی:{' '}
-            <span dir="ltr" className="nums">
-              {toPersianDigits('021-1234567')}
-            </span>{' '}
-            — هر روز ۹ تا ۱۸
-          </p>
+          <SupportLine />
         </div>
       </div>
     </main>

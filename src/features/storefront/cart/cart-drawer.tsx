@@ -1,12 +1,6 @@
 'use client';
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react';
 import { subscribeToCartDrawer } from './drawer-open';
@@ -22,6 +16,7 @@ import {
   subscribe,
   type CartLine,
 } from './cart';
+import { useModalDialog } from '@/hooks/use-modal-dialog';
 import { PATHS } from '@/lib/constant/paths';
 import { formatNumber, formatToman } from '@/lib/format';
 import { imageSrc } from '@/lib/storage/image-url';
@@ -32,42 +27,18 @@ import { cn } from '@/lib/utils';
  * component, because the badge and the panel render the same cart and the
  * button owns whether the panel is open.
  *
- * Built on a native modal `<dialog>`, the house pattern from `mobile-menu.tsx`:
- * the platform gives the focus trap, Escape, background inertness, top-layer
- * stacking and nothing focusable while closed, with no overlay dependency.
- * Read that file's comments before changing anything here — in particular why
- * closing always goes through `close()` and never `dialog.close()` alone.
- *
- * The scroll lock is `body:has(dialog[open])` in globals.css.
+ * Built on a native modal `<dialog>` through `useModalDialog` — read its
+ * comment before changing anything here.
  */
 export function CartDrawer({ className }: { className?: string }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const { open, show, close, dialogProps } = useModalDialog();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
 
   // The server has no cart, so the first paint is a hidden badge and the real
   // one arrives on the render right after hydration. `getServerCart` is a
   // separate function on purpose — see its comment.
   const lines = useSyncExternalStore(subscribe, getCart, getServerCart);
   const count = cartCount(lines);
-
-  // The DOM call and the `open` mirror that drives aria-expanded must move
-  // together; the dialog's own `close` event is not dependable (see
-  // mobile-menu.tsx — measured not to fire at all in Chromium here).
-  const close = () => {
-    dialogRef.current?.close();
-    setOpen(false);
-  };
-
-  // Both halves, always — the DOM call and the `open` mirror — for the same
-  // reason `close` does them together. Stable identity so the subscription
-  // below is set up once rather than on every cart change.
-  const show = useCallback(() => {
-    // `showModal()` on an already-open dialog throws InvalidStateError, and
-    // that is reachable: adding to the cart while the drawer is open.
-    if (!dialogRef.current?.open) dialogRef.current?.showModal();
-    setOpen(true);
-  }, []);
 
   // Opening from elsewhere on the site — the product page's add button, which
   // is in a different branch of the tree entirely. See ./drawer-open.ts for
@@ -96,16 +67,8 @@ export function CartDrawer({ className }: { className?: string }) {
       </button>
 
       <dialog
-        ref={dialogRef}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') close();
-        }}
-        onClose={() => setOpen(false)}
-        // Target is the dialog itself → the click landed on the backdrop. Only
-        // reliable because the panel below is `h-full`.
-        onClick={(event) => {
-          if (event.target === dialogRef.current) close();
-        }}
+        // The panel below is `h-full`, which the hook's backdrop click needs.
+        {...dialogProps}
         // Pinned to the start edge — the right, in RTL — full height, undoing
         // the UA's centred-box defaults. Logical `start-0` keeps it correct in
         // both directions.

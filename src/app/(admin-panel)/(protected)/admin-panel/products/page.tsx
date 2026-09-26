@@ -6,9 +6,14 @@ import { Pagination } from '@/components/ui/pagination';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { categoryOptions } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
-import { PET_TYPES } from '@/lib/catalog/product-query';
+import {
+  PET_EMOJI,
+  PET_LABELS,
+  PET_TYPE_VALUES,
+} from '@/lib/catalog/product-query';
 import { adminNewProductPath } from '@/lib/constant/paths';
 import { ADMIN_PAGE_SIZE } from '@/lib/pagination';
+import { AdminTable } from '@/features/admin-panel/shared/admin-table';
 import { ProductRow } from '@/features/admin-panel/products/product-row';
 import {
   activeToFilter,
@@ -105,8 +110,11 @@ export default async function AdminProductsPage({
             className="border-border focus-visible:border-accent-strong h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none"
           >
             <option value="">همه حیوانات</option>
-            <option value={PET_TYPES.CAT}>🐱 گربه</option>
-            <option value={PET_TYPES.DOG}>🐶 سگ</option>
+            {PET_TYPE_VALUES.map((pet) => (
+              <option key={pet} value={pet}>
+                {PET_EMOJI[pet]} {PET_LABELS[pet]}
+              </option>
+            ))}
           </select>
         </div>
         <div className="flex gap-2">
@@ -133,57 +141,41 @@ export default async function AdminProductsPage({
         </div>
       </form>
 
-      <div className="border-border overflow-hidden rounded-2xl border bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-secondary/50">
-              <tr>
-                {[
-                  'تصویر',
-                  'نام محصول',
-                  'برند',
-                  'دسته',
-                  'قیمت',
-                  'موجودی',
-                  'وضعیت',
-                  'عملیات',
-                ].map((heading) => (
-                  <th
-                    key={heading}
-                    className="text-muted-foreground px-4 py-3 text-start font-semibold"
-                  >
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={8}
-                    className="text-muted-foreground px-4 py-10 text-center"
-                  >
-                    {/* Past the last page is not the same as nothing matching:
-                        the pager below still links back. */}
-                    {total > 0
-                      ? 'این صفحه محصولی ندارد.'
-                      : 'محصولی با این فیلترها پیدا نشد.'}
-                  </td>
-                </tr>
-              ) : (
-                items.map((product) => (
-                  <ProductRow
-                    key={product.id}
-                    product={product}
-                    categoryTitle={categoryTitle.get(product.categoryId) ?? '—'}
-                  />
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <AdminTable
+        headings={[
+          'تصویر',
+          'نام محصول',
+          'برند',
+          'دسته',
+          'قیمت',
+          'موجودی',
+          'وضعیت',
+          'عملیات',
+        ]}
+      >
+        {items.length === 0 ? (
+          <tr>
+            <td
+              colSpan={8}
+              className="text-muted-foreground px-4 py-10 text-center"
+            >
+              {/* Past the last page is not the same as nothing matching:
+                 the pager below still links back. */}
+              {total > 0
+                ? 'این صفحه محصولی ندارد.'
+                : 'محصولی با این فیلترها پیدا نشد.'}
+            </td>
+          </tr>
+        ) : (
+          items.map((product) => (
+            <ProductRow
+              key={product.id}
+              product={product}
+              categoryTitle={categoryTitle.get(product.categoryId) ?? '—'}
+            />
+          ))
+        )}
+      </AdminTable>
 
       <Pagination
         page={filters.page}

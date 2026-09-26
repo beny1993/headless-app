@@ -43,13 +43,12 @@ import { errorResponse, IdParamSchema } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 import { VARIANT_MESSAGES } from '@/lib/catalog/variant';
 import { ProductImageSchema, ProductSchema } from '../product-schema';
-import { pgErrorOf } from '../pg-error';
+import { pgErrorOf } from '@/db/pg-error';
 
 /** User-facing copy, so Persian. */
 export const PRODUCT_NOT_FOUND_MESSAGE = 'محصول یافت نشد';
 /** A save refused by the database (duplicate slug/sku, bad category…). */
-export const PRODUCT_SAVE_FAILED_MESSAGE =
-  'محصول ذخیره نشد؛ ورودی را بررسی کن.';
+const PRODUCT_SAVE_FAILED_MESSAGE = 'محصول ذخیره نشد؛ ورودی را بررسی کن.';
 
 /**
  * The admin view of a product: the storefront's own payload, minus the images
@@ -157,7 +156,7 @@ const variantErrorField = (
  * a psql-side change could still surface one, and a 400 beats a 500. The caller
  * rethrows on `null`, so an unrecognized error stays the 500 it is.
  */
-export const productWriteErrors = (
+const productWriteErrors = (
   error: unknown,
   /**
    * The `variantOf` this request sent. One family rule means two different
@@ -375,10 +374,9 @@ export const productImageUploadHandler = async (
   // The shared trust boundary: parse the body, refuse a missing/empty/oversize
   // file, and sniff the real type from the bytes. Identical to the content
   // upload — the only difference is what happens with the bytes afterwards.
-  const upload = await readImageUpload(c);
-  if (!upload.ok) return upload.response;
+  const { bytes, type } = await readImageUpload(c);
 
-  const stored = await appendProductImage(product, upload.bytes, upload.type);
+  const stored = await appendProductImage(product, bytes, type);
   // The check above is the fast path, which keeps a refused photo from being
   // buffered at all; this is the one that still holds when two uploads race.
   // Same refusal either way, so an admin cannot tell which caught it.

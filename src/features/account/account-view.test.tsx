@@ -6,6 +6,7 @@ import {
   screen,
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiRequestError } from '@/lib/api-client';
 import { AccountView } from './account-view';
 import type { PetResponse } from '@/lib/hono/routes/me-pets';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
@@ -108,7 +109,9 @@ describe('account resource state', () => {
       ).toBeTruthy();
     });
     it(`${resource}: a failed deletion preserves the item and its open editor`, async () => {
-      delData.mockRejectedValue(new Error('delete failed'));
+      // The server's own refusal is what reaches the alert; a 5xx or a dead
+      // connection would read the generic sentence instead.
+      delData.mockRejectedValue(new ApiRequestError(409, 'حذف انجام نشد.'));
       show();
       click(`account-tab-${resource}`);
       click(`account-${resource}-edit`);
@@ -116,7 +119,7 @@ describe('account resource state', () => {
       await act(async () => {
         click(`account-${resource}-delete-confirm`);
       });
-      expect(screen.getByRole('alert').textContent).toBe('delete failed');
+      expect(screen.getByRole('alert').textContent).toBe('حذف انجام نشد.');
       expect(
         document.querySelector(`[data-umami-event="account-${resource}-save"]`),
       ).not.toBeNull();

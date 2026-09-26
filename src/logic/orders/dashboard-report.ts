@@ -16,7 +16,7 @@ import { formatJalaliMonth, jalaliYearMonth } from '@/lib/format';
 import { ORDER_STATUSES } from '@/lib/orders/order-status';
 
 /** One month's bar on the dashboard charts. `key` is `year*12 + (month-1)`. */
-export type MonthlyPoint = {
+type MonthlyPoint = {
   key: number;
   label: string;
   revenue: number;
@@ -31,7 +31,7 @@ export type DashboardStats = {
   awaitingProcessing: number;
 };
 
-export type DashboardReport = {
+type DashboardReport = {
   months: MonthlyPoint[];
   stats: DashboardStats;
 };

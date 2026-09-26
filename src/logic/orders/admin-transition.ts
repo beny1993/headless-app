@@ -21,7 +21,7 @@ import {
   transitionOrder,
 } from '@/logic/orders/state-machine';
 
-export type AdminTransitionResult =
+type AdminTransitionResult =
   | { outcome: 'ok' }
   /** No order with that id. */
   | { outcome: 'not_found' }

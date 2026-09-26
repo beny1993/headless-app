@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { HTTPException } from 'hono/http-exception';
 
-const mocks = vi.hoisted(() => ({ captureException: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  captureException: vi.fn(),
+  production: false,
+}));
+
+// `isProductionServer` reads NODE_ENV as captured at module load, so the
+// production branch is switched here rather than with `vi.stubEnv`.
+vi.mock('@/lib/utils/env', async (original) => ({
+  ...(await original<typeof import('@/lib/utils/env')>()),
+  isProductionServer: () => mocks.production,
+}));
 
 vi.mock('@sentry/nextjs', () => ({
   captureException: mocks.captureException,
@@ -68,10 +78,10 @@ describe('apiErrorHandler', () => {
 
   it('keeps the error out of the response body in production', async () => {
     // The capture is what carries the detail now; the envelope must not.
-    vi.stubEnv('NODE_ENV', 'production');
+    mocks.production = true;
     const response = await callBoom(new Error('connection string: secret'));
     const body = await response.text();
-    vi.unstubAllEnvs();
+    mocks.production = false;
 
     expect(body).not.toContain('secret');
     expect(mocks.captureException).toHaveBeenCalled();

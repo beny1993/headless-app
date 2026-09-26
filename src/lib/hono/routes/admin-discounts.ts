@@ -16,7 +16,6 @@
 // order-snapshotted by amount + string — so "delete" is a deactivate via toggle.
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
-import { z } from 'zod';
 import { DiscountCodeDao } from '@/db/dao/DiscountCodeDao';
 import {
   discountCodeInputSchema,
@@ -25,33 +24,24 @@ import {
   toDiscountView,
 } from '@/lib/discount/discount-code';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
-import { errorResponse, IdParamSchema } from '../route-responses';
+import {
+  IdParamSchema,
+  errorResponse,
+  openapiObject,
+} from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
-import { pgErrorOf } from '../pg-error';
+import { pgErrorOf } from '@/db/pg-error';
 
 /** User-facing copy, so Persian. */
-export const DISCOUNT_NOT_FOUND_MESSAGE = 'کد تخفیف یافت نشد.';
+const DISCOUNT_NOT_FOUND_MESSAGE = 'کد تخفیف یافت نشد.';
 /** A save refused by the database (a duplicate code, or a CHECK). */
-export const DISCOUNT_SAVE_FAILED_MESSAGE =
-  'کد تخفیف ذخیره نشد؛ ورودی را بررسی کن.';
+const DISCOUNT_SAVE_FAILED_MESSAGE = 'کد تخفیف ذخیره نشد؛ ورودی را بررسی کن.';
 
-/**
- * The shape lives in `@/lib/discount/discount-code`: one definition, client-safe,
- * so the server page that renders the first paint projects rows without
- * importing this file. Rebuilt into a local `z.object` before `.openapi()`: that method is
- * grafted on by `@hono/zod-openapi` and zod 4 hands it to newly built schemas
- * only, so calling it on an imported one depends on module evaluation order
- * (the trap documented above `ProductListQuerySchema` in ./catalog.ts).
- *
- * The ceiling that buys: `.shape` copies the FIELDS. An object-level modifier
- * on the source schema — `.strict()`, `.catchall()`, `.refine()`, a `.meta()`
- * on the object itself — is silently left behind, and the document would drift
- * with no failing test. None of the five projections has one today. Add one
- * there and it has to be repeated here, or the two stop being one definition.
- */
-const DiscountCodeSchema = z
-  .object(discountCodeViewSchema.shape)
-  .openapi('DiscountCode');
+/** The shape lives in `@/lib/discount/discount-code` — see `openapiObject`. */
+const DiscountCodeSchema = openapiObject(
+  discountCodeViewSchema,
+  'DiscountCode',
+);
 
 /** Re-exported for the client components that already import the type here. */
 export type { DiscountCodeView } from '@/lib/discount/discount-code';
@@ -63,7 +53,7 @@ export type { DiscountCodeView } from '@/lib/discount/discount-code';
  * bounds the input schema already blocks, but psql could still surface — is a
  * generic 400 rather than a 500. Unknown errors rethrow as the 500 they are.
  */
-export const discountWriteErrors = (error: unknown): string[] | null => {
+const discountWriteErrors = (error: unknown): string[] | null => {
   const pg = pgErrorOf(error);
   if (!pg) return null;
   if (pg.code === '23505' && pg.constraint === 'discount_codes_code_unique') {

@@ -10,7 +10,6 @@
  *
  * Lives in its own module so both `create-order` and the discount policy
  * (`discount.ts`, which `create-order` imports) can throw it without a cycle.
- * Re-exported from `create-order` so existing importers keep their path.
  */
 export class CheckoutError extends Error {
   constructor(

@@ -49,11 +49,11 @@ export const MAX_LINE_QTY = 1000;
 // Field caps. `boundedText` itself (the trim / min(1) / max / null-byte gate) is
 // shared with the account pet/address contracts in `@/lib/validation/text` so the
 // U+0000 500-hole gate is defined once and never hand-mirrored across boundaries.
-export const MAX_RECIPIENT_NAME = 200;
-export const MAX_RECIPIENT_PHONE = 20;
-export const MAX_CITY = 100;
-export const MAX_POSTAL_CODE = 20;
-export const MAX_ADDRESS_LINE = 500;
+const MAX_RECIPIENT_NAME = 200;
+const MAX_RECIPIENT_PHONE = 20;
+const MAX_CITY = 100;
+const MAX_POSTAL_CODE = 20;
+const MAX_ADDRESS_LINE = 500;
 /** Cap on a checkout discount code; shared with the admin create contract. */
 export const MAX_DISCOUNT_CODE = 64;
 

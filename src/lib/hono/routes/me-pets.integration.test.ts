@@ -136,7 +136,9 @@ describe.skipIf(!databaseReachable)('/api/me/pets', () => {
       expect((await patch(pet.id, petBody({ name: 'هک‌شده' }))).status).toBe(
         404,
       );
-      const reread = await PetDao.getOwned(pet.id, owner.id);
+      const reread = (await PetDao.listByUser(owner.id)).find(
+        (p) => p.id === pet.id,
+      );
       expect(reread?.name).toBe('اصلی');
     });
 
@@ -147,7 +149,9 @@ describe.skipIf(!databaseReachable)('/api/me/pets', () => {
       asUser(attacker.id);
 
       expect((await del(pet.id)).status).toBe(404);
-      expect(await PetDao.getOwned(pet.id, owner.id)).not.toBeNull();
+      expect(
+        (await PetDao.listByUser(owner.id)).find((p) => p.id === pet.id),
+      ).toBeDefined();
     });
   });
 
@@ -181,7 +185,9 @@ describe.skipIf(!databaseReachable)('/api/me/pets', () => {
       const body = (await res.json()) as ApiResponse<{ id: string }>;
       if (body.status !== 'success') throw new Error(body.message);
       expect(body.data.id).toBe(pet.id);
-      expect(await PetDao.getOwned(pet.id, user.id)).toBeNull();
+      expect(
+        (await PetDao.listByUser(user.id)).find((p) => p.id === pet.id),
+      ).toBeUndefined();
     });
   });
 

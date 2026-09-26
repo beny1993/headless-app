@@ -54,12 +54,16 @@ const create = async () => {
 
 describe('CategoryManager request failures', () => {
   it('reports a failed create as an error toast', async () => {
-    postData.mockRejectedValue(new Error('server down'));
+    postData.mockRejectedValue(
+      new ApiRequestError(500, 'Internal server error'),
+    );
     render(<CategoryManager initialCategories={[]} />);
 
     await create();
 
-    expect(toast.error).toHaveBeenCalledWith('server down');
+    expect(toast.error).toHaveBeenCalledWith(
+      'ذخیره دسته‌بندی ناموفق بود. دوباره تلاش کن.',
+    );
   });
 
   it('keeps a field refusal next to its field, without a toast', async () => {

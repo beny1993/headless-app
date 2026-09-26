@@ -10,9 +10,9 @@ import {
   CONTENT_KEYS,
   CONTENT_SCHEMAS,
   FOOTER_SOCIAL_DEFAULT,
-  imageKeySchema,
   type ContentKey,
 } from './site-content';
+import { imageKeySchema } from '@/lib/storage/image-upload';
 import { DEFAULT_CONTENT, resolveContent } from './defaults';
 
 /** Every image key that appears anywhere in the defaults. */

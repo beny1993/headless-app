@@ -1,18 +1,11 @@
 overrides:
-  # vite 8 (via vitest) and react-email 6 want esbuild ^0.27||^0.28 while
+  # vite 8 (via vitest) wants esbuild ^0.27||^0.28 while
   # tsx/drizzle-kit pull 0.25 — route every consumer to one patched esbuild.
   'esbuild@>=0.17.0 <0.28.1': ^0.28.1
   # GHSA-jqff-g426-hqxp: fast-uri <3.1.6 host confusion. Dev-only path
-  # (commitlint + react-email CLI), not in the runtime bundle, but the
+  # (commitlint), not in the runtime bundle, but the
   # pre-push audit gate is repo-wide — pin the patched line everywhere.
   'fast-uri@>=3.0.0 <3.1.6': ^3.1.6
-  # GHSA-2x7j-588g-ccc2 + the windows-host RCE: two CRITICAL unauthenticated
-  # RCEs in Next <16.3.3, one of them in Image Optimization — which this app
-  # uses (`images.remotePatterns` in next.config.ts). The app's own `next` is
-  # already 16.3.4; this override exists for the SECOND copy that
-  # `@react-email/ui` pins at 16.3.0. Dev-only (the email preview server) and
-  # never in the shipped image, but the audit gate is repo-wide.
-  'next@>=16.0.0 <16.3.3': ^16.3.4
   # GHSA-2883-xcg3-v3hh: js-yaml <4.3.2 unbounded CPU on empty merge keys.
   # 27 transitive paths, all tooling.
   'js-yaml@>=4.0.0 <4.3.2': ^4.3.2

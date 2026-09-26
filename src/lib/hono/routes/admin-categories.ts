@@ -16,7 +16,6 @@
 // into a 409 naming how many products and sub-categories are attached.
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
-import { z } from 'zod';
 import { CategoryDao, CategoryParentError } from '@/db/dao/CategoryDao';
 import {
   CATEGORY_PARENT_MESSAGES,
@@ -28,15 +27,18 @@ import {
 } from '@/lib/catalog/category-view';
 import { formatNumber } from '@/lib/format';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
-import { errorResponse, IdParamSchema } from '../route-responses';
+import {
+  IdParamSchema,
+  errorResponse,
+  openapiObject,
+} from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
-import { pgErrorOf } from '../pg-error';
+import { pgErrorOf } from '@/db/pg-error';
 
 /** User-facing copy, so Persian. */
 export const CATEGORY_NOT_FOUND_MESSAGE = 'دسته‌بندی یافت نشد.';
 /** A save refused by the database (a duplicate slug). */
-export const CATEGORY_SAVE_FAILED_MESSAGE =
-  'دسته‌بندی ذخیره نشد؛ ورودی را بررسی کن.';
+const CATEGORY_SAVE_FAILED_MESSAGE = 'دسته‌بندی ذخیره نشد؛ ورودی را بررسی کن.';
 
 /**
  * The delete refusal. It names the count and says hidden products count too —
@@ -53,23 +55,8 @@ export const categoryInUseMessage = (productCount: number, childCount = 0) => {
   return `${formatNumber(childCount)} زیردسته و ${formatNumber(productCount)} محصول (شامل محصولات غیرفعال) هنوز در این دسته‌بندی است؛ اول آن‌ها را جابه‌جا یا حذف کن.`;
 };
 
-/**
- * The shape lives in `@/lib/catalog/category-view`: one definition, client-safe,
- * so the server page that renders the first paint projects rows without
- * importing this file. Rebuilt into a local `z.object` before `.openapi()`: that method is
- * grafted on by `@hono/zod-openapi` and zod 4 hands it to newly built schemas
- * only, so calling it on an imported one depends on module evaluation order
- * (the trap documented above `ProductListQuerySchema` in ./catalog.ts).
- *
- * The ceiling that buys: `.shape` copies the FIELDS. An object-level modifier
- * on the source schema — `.strict()`, `.catchall()`, `.refine()`, a `.meta()`
- * on the object itself — is silently left behind, and the document would drift
- * with no failing test. None of the five projections has one today. Add one
- * there and it has to be repeated here, or the two stop being one definition.
- */
-const CategorySchema = z
-  .object(categoryViewSchema.shape)
-  .openapi('AdminCategory');
+/** The shape lives in `@/lib/catalog/category-view` — see `openapiObject`. */
+const CategorySchema = openapiObject(categoryViewSchema, 'AdminCategory');
 
 /** Re-exported for the client components that already import the type here. */
 export type { CategoryView } from '@/lib/catalog/category-view';
@@ -79,7 +66,7 @@ export type { CategoryView } from '@/lib/catalog/category-view';
  * rethrow. Both create and update run a body through it, so the two cannot
  * answer the same refusal differently.
  */
-export const categoryWriteErrors = (error: unknown): string[] | null => {
+const categoryWriteErrors = (error: unknown): string[] | null => {
   if (error instanceof CategoryParentError) {
     return [`parentId: ${CATEGORY_PARENT_MESSAGES[error.reason]}`];
   }

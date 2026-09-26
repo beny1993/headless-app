@@ -10,7 +10,7 @@ import {
   toLocalIranPhone,
 } from './phone';
 
-export type AdminProvisionResult = {
+type AdminProvisionResult = {
   outcome: 'created' | 'promoted' | 'already-admin';
   user: User;
 };

@@ -7,11 +7,13 @@
 //   · a terminal order offers nothing.
 //
 // Mocked at the module edge only: `next/navigation` (refresh is a recorder) and
-// `@/lib/api-client` (postData is a recorder), plus `sonner`'s `toast`, where a
-// refused transition is reported. The derivation runs for real.
+// `@/lib/api-client` (postData is a recorder; `ApiRequestError` stays real),
+// plus `sonner`'s `toast`, where a refused transition is reported. The
+// derivation runs for real.
 import { act } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiRequestError } from '@/lib/api-client';
 import { apiAdminOrderTransitionsPath } from '@/lib/constant/paths';
 import { ORDER_STATUSES } from '@/lib/orders/order-status';
 import { OrderTransition } from './order-transition';
@@ -22,7 +24,10 @@ const { refresh, postData, toast } = vi.hoisted(() => ({
   toast: { error: vi.fn() },
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }));
-vi.mock('@/lib/api-client', () => ({ postData }));
+vi.mock('@/lib/api-client', async (original) => ({
+  ...(await original<typeof import('@/lib/api-client')>()),
+  postData,
+}));
 vi.mock('sonner', () => ({ toast }));
 
 const ORDER_ID = '11111111-1111-1111-1111-111111111111';
@@ -114,7 +119,9 @@ describe('OrderTransition', () => {
   });
 
   it('reports a rejected transition as an error toast and does not refresh', async () => {
-    postData.mockRejectedValue(new Error('این تغییر وضعیت مجاز نیست'));
+    postData.mockRejectedValue(
+      new ApiRequestError(409, 'این تغییر وضعیت مجاز نیست'),
+    );
     render(<OrderTransition orderId={ORDER_ID} status={ORDER_STATUSES.PAID} />);
 
     fireEvent.click(screen.getByRole('button', { name: /لغو سفارش/ }));

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { categories, productCategories, products } from '@/db/schema/catalog';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { PET_TYPES } from '@/lib/catalog/product-query';
-import { pgErrorOf } from '@/lib/hono/pg-error';
+import { pgErrorOf } from '@/db/pg-error';
 
 const { CategoryDao, CategoryParentError } = await importWithDb(
   () => import('@/db/dao/CategoryDao'),

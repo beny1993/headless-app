@@ -49,22 +49,7 @@ describe.skipIf(!databaseReachable)('PetDao', () => {
     expect(list.map((p) => p.name)).toEqual(['اولی', 'دومی']);
   });
 
-  it('reads a pet the caller owns', async () => {
-    const user = await fx.user();
-    const created = await PetDao.create(user.id, petInput());
-    const read = await PetDao.getOwned(created.id, user.id);
-    expect(read?.id).toBe(created.id);
-  });
-
   describe('cross-user isolation (IDOR)', () => {
-    it('getOwned returns null for another user’s pet', async () => {
-      const owner = await fx.user();
-      const attacker = await fx.user();
-      const pet = await PetDao.create(owner.id, petInput());
-
-      expect(await PetDao.getOwned(pet.id, attacker.id)).toBeNull();
-    });
-
     it('update does not touch another user’s pet and returns null', async () => {
       const owner = await fx.user();
       const attacker = await fx.user();
@@ -78,7 +63,9 @@ describe.skipIf(!databaseReachable)('PetDao', () => {
       expect(result).toBeNull();
 
       // The row is untouched — the owner still reads the original name.
-      const reread = await PetDao.getOwned(pet.id, owner.id);
+      const reread = (await PetDao.listByUser(owner.id)).find(
+        (p) => p.id === pet.id,
+      );
       expect(reread?.name).toBe('اصلی');
     });
 
@@ -88,7 +75,9 @@ describe.skipIf(!databaseReachable)('PetDao', () => {
       const pet = await PetDao.create(owner.id, petInput());
 
       expect(await PetDao.delete(pet.id, attacker.id)).toBe(false);
-      expect(await PetDao.getOwned(pet.id, owner.id)).not.toBeNull();
+      expect(
+        (await PetDao.listByUser(owner.id)).find((p) => p.id === pet.id),
+      ).toBeDefined();
     });
   });
 
@@ -110,7 +99,9 @@ describe.skipIf(!databaseReachable)('PetDao', () => {
     const user = await fx.user();
     const pet = await PetDao.create(user.id, petInput());
     expect(await PetDao.delete(pet.id, user.id)).toBe(true);
-    expect(await PetDao.getOwned(pet.id, user.id)).toBeNull();
+    expect(
+      (await PetDao.listByUser(user.id)).find((p) => p.id === pet.id),
+    ).toBeUndefined();
   });
 
   it('counts only the owner’s pets', async () => {

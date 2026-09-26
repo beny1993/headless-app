@@ -1,14 +1,11 @@
 /**
  * Envelope-aware API client for the Hono routes under /api.
  *
- * Prefer the `getData`/`postData`/`patchData` variants — they unwrap the
- * `{ status: 'success', data }` envelope and throw `Error(message)` on the
- * error branch. Use the raw `get`/`post`/`patch` only when the caller must
- * inspect the envelope itself.
+ * The `*Data` helpers unwrap the `{ status: 'success', data }` envelope and
+ * throw `ApiRequestError` on the error branch.
  */
 import { z } from 'zod';
 import { unwrap, type ApiResponse } from '@/lib/hono/envelope';
-import { getAppBaseUrl } from '@/lib/utils/env';
 
 /**
  * What an admin or a shopper reads when the failure carried no sentence of its
@@ -39,27 +36,7 @@ export class ApiRequestError extends Error {
   }
 }
 
-type Query = Record<string, string | number | boolean | string[] | undefined>;
-
 type Headers = Record<string, string>;
-
-const buildUrl = (path: string, query?: Query): string => {
-  const base =
-    typeof window === 'undefined' ? getAppBaseUrl() : window.location.origin;
-  const url = new URL(path, base);
-  if (query) {
-    Object.entries(query).forEach(([key, value]) => {
-      if (value !== undefined) {
-        if (Array.isArray(value)) {
-          value.forEach((v) => url.searchParams.append(key, String(v)));
-        } else {
-          url.searchParams.append(key, String(value));
-        }
-      }
-    });
-  }
-  return url.toString();
-};
 
 async function handleError(response: Response): Promise<never> {
   const body = (await response.json().catch(() => null)) as {
@@ -79,28 +56,27 @@ async function handleError(response: Response): Promise<never> {
   throw new ApiRequestError(response.status, message, errors);
 }
 
-async function request<T>(
-  path: string,
-  init: RequestInit & { query?: Query } = {},
-): Promise<T> {
-  const { query, ...rest } = init;
-  const response = await fetch(buildUrl(path, query), {
-    ...rest,
-    headers: {
-      // Only a JSON body gets the JSON header. A `FormData` body writes its
-      // own `multipart/form-data; boundary=…`, and declaring
-      // `application/json` over it loses the boundary — the server then parses
-      // no parts at all, so the upload arrives fileless rather than failing
-      // loudly. Both admin image uploads hand-rolled a bare `fetch` to dodge
-      // exactly that. A bodyless `GET`/`DELETE` gets no header either: it has
-      // no content to describe, and a `Content-Type` on a GET is a documented
-      // trigger for WAF rules and a reason for a CDN to skip the cache.
-      ...(rest.body !== undefined && !(rest.body instanceof FormData)
-        ? { 'Content-Type': 'application/json' }
-        : {}),
-      ...rest.headers,
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(
+    new URL(path, window.location.origin).toString(),
+    {
+      ...init,
+      headers: {
+        // Only a JSON body gets the JSON header. A `FormData` body writes its
+        // own `multipart/form-data; boundary=…`, and declaring
+        // `application/json` over it loses the boundary — the server then parses
+        // no parts at all, so the upload arrives fileless rather than failing
+        // loudly. Both admin image uploads hand-rolled a bare `fetch` to dodge
+        // exactly that. A bodyless `GET`/`DELETE` gets no header either: it has
+        // no content to describe, and a `Content-Type` on a GET is a documented
+        // trigger for WAF rules and a reason for a CDN to skip the cache.
+        ...(init.body !== undefined && !(init.body instanceof FormData)
+          ? { 'Content-Type': 'application/json' }
+          : {}),
+        ...init.headers,
+      },
     },
-  });
+  );
   if (!response.ok) await handleError(response);
   return response.json() as Promise<T>;
 }
@@ -115,17 +91,13 @@ const withBody = (
   ...(headers ? { headers } : {}),
 });
 
-/** Raw envelope readers — caller branches on `status` itself. */
-export const get = <T>(path: string, query?: Query) =>
-  request<ApiResponse<T>>(path, { method: 'GET', query });
-
-export const post = <T>(path: string, body?: unknown, headers?: Headers) =>
+const post = <T>(path: string, body?: unknown, headers?: Headers) =>
   request<ApiResponse<T>>(path, withBody('POST', body, headers));
 
-export const patch = <T>(path: string, body?: unknown) =>
+const patch = <T>(path: string, body?: unknown) =>
   request<ApiResponse<T>>(path, withBody('PATCH', body));
 
-export const put = <T>(path: string, body?: unknown) =>
+const put = <T>(path: string, body?: unknown) =>
   request<ApiResponse<T>>(path, withBody('PUT', body));
 
 /**
@@ -133,16 +105,13 @@ export const put = <T>(path: string, body?: unknown) =>
  * reads `response.json()` unconditionally, and a 204 would leave it parsing an
  * empty body. The authed `/me` delete routes answer `apiSuccess({ id })`.
  */
-export const del = <T>(path: string) =>
+const del = <T>(path: string) =>
   request<ApiResponse<T>>(path, withBody('DELETE'));
 
 /**
  * Envelope-unwrapping variants — return `data`, throw `ApiRequestError` (an
  * `Error` subclass carrying `status` and the envelope's `errors[]`).
  */
-export const getData = async <T>(path: string, query?: Query): Promise<T> =>
-  unwrap(await get<T>(path, query));
-
 export const postData = async <T>(
   path: string,
   body?: unknown,

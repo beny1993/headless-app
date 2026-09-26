@@ -27,10 +27,9 @@ export async function generateMetadata({
 }
 
 /**
- * One content area's editor — «صفحه اصلی» / «درباره ما» / «هدر» / «فوتر». The
- * dynamic `[area]` segment is validated against the zod enum; an unknown area is a
- * 404 (the products/[id] precedent). The bare `/admin-panel/content` redirects
- * here (home area), so v1's "«محتوای سایت» opens the content editor" stays true.
+ * One `CONTENT_AREAS` editor. The dynamic `[area]` segment is validated against
+ * the zod enum; an unknown area is a 404. The bare `/admin-panel/content`
+ * redirects here (home area).
  */
 export default async function AdminContentAreaPage({
   params,

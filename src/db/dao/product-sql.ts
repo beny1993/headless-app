@@ -3,12 +3,6 @@
 // card reads, the orderings, and the two scopes behind the category and pet
 // filters. No methods and no transactions — `ProductDao` composes all of it.
 //
-// Split out of that file because it was the one part of it with nothing in it
-// that runs: 1161 lines carrying eight unrelated concerns, and the cost was
-// visible in review — the guard that refuses to hide a family head sat ~500
-// lines from the other door onto the same rule, which is how one of them came
-// to exist without the other.
-//
 // Still «never raw SQL outside the DAO layer»: this module is part of that
 // layer, and nothing but `ProductDao` and its own tests may import it.
 import {
@@ -45,10 +39,7 @@ export const SEARCHABLE_FIELDS = [
   'variantLabel',
 ] as const;
 
-export type SearchableFields = Pick<
-  NewProduct,
-  (typeof SEARCHABLE_FIELDS)[number]
->;
+type SearchableFields = Pick<NewProduct, (typeof SEARCHABLE_FIELDS)[number]>;
 
 /**
  * A product's searchable text: every field in {@link SEARCHABLE_FIELDS} as one
@@ -81,7 +72,7 @@ export const buildProductSearchText = (product: SearchableFields): string =>
  * — the extension's own default — a single mistyped character stops matching,
  * which is precisely the case this story exists to serve.
  */
-export const SEARCH_SIMILARITY_THRESHOLD = '0.45';
+const SEARCH_SIMILARITY_THRESHOLD = '0.45';
 
 /**
  * The threshold, set for one transaction.
@@ -120,7 +111,7 @@ export const applySearchThreshold = sql`select set_config('pg_trgm.word_similari
 // `fam.id` instead of the outer row: `fam.variant_of = fam.id` is false for
 // every row, silently, with no error and a plausible-looking result. Nesting
 // the fragment is what makes drizzle emit `"products"."id"`.
-export const FAMILY_SCOPE = sql`from products fam where (fam.id = ${products.id} or fam.variant_of = ${products.id}) and fam.is_active`;
+const FAMILY_SCOPE = sql`from products fam where (fam.id = ${products.id} or fam.variant_of = ${products.id}) and fam.is_active`;
 
 /** «The members of this row», for the one scalar that must exclude the row. */
 export const MEMBER_SCOPE = sql`from products fam where fam.variant_of = ${products.id} and fam.is_active`;
@@ -191,7 +182,7 @@ export const petFilter = (petType: PetType): SQL =>
  * `or` over two tables the moment a product can sit in more than one category,
  * and then it would list that product twice and break `total` with it.
  */
-export const categoryScope = (slug: string) => {
+const categoryScope = (slug: string) => {
   const parent = alias(categories, 'parent');
   return db
     .select({ id: categories.id })

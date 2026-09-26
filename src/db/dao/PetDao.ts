@@ -4,9 +4,9 @@
 // session (the route passes `c.get('user').id`), and it is part of the `WHERE` on
 // every read AND every write. That is the IDOR defence — a pet id in the URL can
 // never reach a row that belongs to someone else, because the query also demands
-// the row's `user_id` match the caller. `getOwned` / `update` / `delete` return
-// `null` / `false` for "not yours", indistinguishable from "does not exist", so
-// the API answers 404 either way and never confirms another user's pet exists.
+// the row's `user_id` match the caller. `update` / `delete` return `null` /
+// `false` for "not yours", indistinguishable from "does not exist", so the API
+// answers 404 either way and never confirms another user's pet exists.
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { pets, type Pet } from '@/db/schema/account';
@@ -32,19 +32,6 @@ export class PetDao {
       .from(pets)
       .where(eq(pets.userId, userId))
       .orderBy(asc(pets.createdAt), asc(pets.id));
-  }
-
-  /**
-   * One pet the caller owns, or `null`. The `userId` is ANDed into the lookup, so
-   * another user's pet id returns `null` — never their row.
-   */
-  static async getOwned(id: string, userId: string): Promise<Pet | null> {
-    const [row] = await db
-      .select()
-      .from(pets)
-      .where(and(eq(pets.id, id), eq(pets.userId, userId)))
-      .limit(1);
-    return row ?? null;
   }
 
   /** Insert a pet for `userId`. The owner is set from the session, never the body. */
@@ -89,10 +76,6 @@ export class PetDao {
 
   /** How many pets `userId` holds — the input to the per-user cap in the route. */
   static async countForUser(userId: string): Promise<number> {
-    const rows = await db
-      .select({ id: pets.id })
-      .from(pets)
-      .where(eq(pets.userId, userId));
-    return rows.length;
+    return db.$count(pets, eq(pets.userId, userId));
   }
 }

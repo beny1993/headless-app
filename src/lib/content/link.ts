@@ -129,7 +129,7 @@ export type LinkTargets = {
 };
 
 /** Where a link goes, and whether it leaves the site (new tab, `noopener`). */
-export type ResolvedLink = { href: string; external: boolean };
+type ResolvedLink = { href: string; external: boolean };
 
 /**
  * Where a saved link goes right now. Pure (the catalog lookups arrive in
@@ -164,7 +164,7 @@ export function resolveLink(
 }
 
 /** A catalog id a content value references, at the field path it sits on. */
-export type LinkRef = {
+type LinkRef = {
   path: string;
   kind: 'category' | 'product';
   id: string;

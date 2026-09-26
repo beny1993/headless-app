@@ -49,7 +49,7 @@ export const QUIZ_NEEDS: readonly QuizNeed[] = [
   { label: 'آرامش', category: 'supplements' },
 ] as const;
 
-export type QuizAnswers = {
+type QuizAnswers = {
   pet: PetType | null;
   need: QuizNeed | null;
 };

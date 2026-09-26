@@ -9,6 +9,9 @@ const pool = new Pool({
 
 export const db = drizzle(pool, { schema });
 
+/** Closes the pool — for a process that must exit once it is done with `db`. */
+export const closeDb = () => pool.end();
+
 /**
  * One connection of the pool, inside a transaction — drizzle names the type
  * only as the argument of the callback it hands to `db.transaction`.

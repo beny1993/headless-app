@@ -13,7 +13,7 @@ export const AVAILABILITY = {
   OUT_OF_STOCK: 'out-of-stock',
 } as const;
 
-export type Availability = (typeof AVAILABILITY)[keyof typeof AVAILABILITY];
+type Availability = (typeof AVAILABILITY)[keyof typeof AVAILABILITY];
 
 /** At or below this many units the page warns how few are left (design). */
 export const LOW_STOCK_THRESHOLD = 5;
