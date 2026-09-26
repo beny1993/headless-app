@@ -214,6 +214,19 @@ describe('ShippingRatesEditor', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    // The create form shows no preview of the parsed fee, so a dot-grouped
+    // 25.000 read as 25 would be charged at checkout unseen.
+    it('refuses a fee typed as 25.000 instead of saving 25 Toman', () => {
+      render(<ShippingRatesEditor rates={RATES} />);
+
+      fireEvent.change(nameInput(), { target: { value: 'یزد' } });
+      fireEvent.change(newFeeInput(), { target: { value: '25.000' } });
+      fireEvent.click(addButton());
+
+      expect(screen.getByText(PROVINCE_MESSAGES.fee)).toBeTruthy();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it('reports a 409 duplicate as an error toast and keeps the input', async () => {
       fetchMock.mockResolvedValue(
         errorEnvelope(409, 'این استان غیرفعال است — فعالش کن'),
@@ -412,6 +425,7 @@ describe('ShippingRatesEditor', () => {
       ['an empty fee', ''],
       ['a negative fee', '-5'],
       ['a fractional fee', '1500.5'],
+      ['a dot-grouped fee', '25.000'],
       ['text', 'abc'],
     ])(
       'shows the Persian fee error for %s, without asking or sending',

@@ -108,18 +108,22 @@ const expiresAtField = z
   .nullish()
   .transform((value) => (value ? new Date(value) : null));
 
-/** The fields every code carries, regardless of type. */
+/**
+ * The fields every code carries, regardless of type. Each number carries its
+ * message on the base `z.number()` too: the form sends `parseDigits`' NaN for
+ * text that is not a whole number, and zod's own answer to that is English.
+ */
 const sharedFields = {
   code: codeField,
   expiresAt: expiresAtField,
   usageLimit: z
-    .number()
+    .number({ error: MESSAGES.usageLimit })
     .int(MESSAGES.usageLimit)
     .positive(MESSAGES.usageLimit)
     .max(2_147_483_647, MESSAGES.usageLimit)
     .nullish(),
   minOrderAmount: z
-    .number()
+    .number({ error: MESSAGES.minOrder })
     .int(MESSAGES.minOrder)
     .nonnegative(MESSAGES.minOrder)
     .default(0),
@@ -138,7 +142,7 @@ export const discountCodeInputSchema = z.discriminatedUnion('type', [
     ...sharedFields,
     type: z.literal(DISCOUNT_TYPES.PERCENT),
     value: z
-      .number()
+      .number({ error: MESSAGES.percent })
       .int(MESSAGES.percent)
       .min(1, MESSAGES.percent)
       .max(100, MESSAGES.percent),
@@ -146,7 +150,10 @@ export const discountCodeInputSchema = z.discriminatedUnion('type', [
   z.object({
     ...sharedFields,
     type: z.literal(DISCOUNT_TYPES.FIXED),
-    value: z.number().int(MESSAGES.fixed).positive(MESSAGES.fixed),
+    value: z
+      .number({ error: MESSAGES.fixed })
+      .int(MESSAGES.fixed)
+      .positive(MESSAGES.fixed),
   }),
 ]);
 

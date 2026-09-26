@@ -76,3 +76,24 @@ describe('DiscountManager request failures', () => {
     expect(toast.error).toHaveBeenCalledWith('تغییر وضعیت ناموفق بود.');
   });
 });
+
+describe('DiscountManager number fields', () => {
+  it('refuses a percent typed as 7,5 instead of creating a 75% code', async () => {
+    render(<DiscountManager initialCodes={[]} />);
+
+    fireEvent.change(screen.getByLabelText('کد'), {
+      target: { value: 'SUMMER' },
+    });
+    fireEvent.change(screen.getByLabelText(/^درصد/), {
+      target: { value: '7,5' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'ساخت کد' }));
+    });
+
+    expect(postData).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('درصد تخفیف باید عددی صحیح بین ۱ تا ۱۰۰ باشد.'),
+    ).toBeTruthy();
+  });
+});

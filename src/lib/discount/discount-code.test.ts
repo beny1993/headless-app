@@ -171,6 +171,48 @@ describe('discountCodeInputSchema (admin create body)', () => {
       }).success,
     ).toBe(false);
   });
+
+  // The admin form hands a number field `parseDigits`' NaN (or `undefined`) for
+  // text that is not a whole number, and shows the issue's message as-is — so a
+  // field needs its Persian copy on the base type, not only on `.int()`.
+  it.each([
+    [
+      'percent value',
+      { type: 'percent', value: Number.NaN },
+      { type: 'percent', value: 0 },
+      'value',
+    ],
+    [
+      'fixed value',
+      { type: 'fixed', value: undefined },
+      { type: 'fixed', value: 0 },
+      'value',
+    ],
+    [
+      'minimum order',
+      { type: 'percent', value: 10, minOrderAmount: Number.NaN },
+      { type: 'percent', value: 10, minOrderAmount: -1 },
+      'minOrderAmount',
+    ],
+    [
+      'usage limit',
+      { type: 'percent', value: 10, usageLimit: Number.NaN },
+      { type: 'percent', value: 10, usageLimit: 0 },
+      'usageLimit',
+    ],
+  ])(
+    'answers an unreadable %s with the field’s own Persian message',
+    (_label, unreadable, outOfRange, path) => {
+      const messageFor = (fields: object) =>
+        discountCodeInputSchema
+          .safeParse({ ...base, ...fields })
+          .error?.issues.find((issue) => issue.path[0] === path)?.message;
+
+      const persian = messageFor(outOfRange);
+      expect(persian).toMatch(/[؀-ۿ]/);
+      expect(messageFor(unreadable)).toBe(persian);
+    },
+  );
 });
 
 // The admin projection: what create and toggle return, and what the panel lists.

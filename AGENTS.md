@@ -266,7 +266,8 @@ family's members each listed and named by their own label, the head's
 (read-only, so it runs at both widths and leaves nothing behind); a discount
 code a shopper redeems,
 then cannot once it is switched off; a shipping rate that checkout then
-charges, and one fee applied to every province at once (cancelled at the
+charges, and one fee applied to every province at once (a dot-grouped
+`25.000` refused at the field before any confirm, then cancelled at the
 confirm, then confirmed) that checkout then charges; a province an admin adds, that checkout and the address book then
 offer and, once it is switched off, no longer offer — a saved address on it
 flagged in both — until it is switched back on; a home headline that the
