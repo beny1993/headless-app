@@ -15,7 +15,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError } from '@/lib/api-client';
 import { CATEGORY_PARENT_MESSAGES } from '@/lib/catalog/category-input';
+import { HOME_CATEGORY_TILES } from '@/lib/catalog/category-tree';
 import { API_PATHS } from '@/lib/constant/paths';
+import { formatNumber } from '@/lib/format';
+import { IMAGE_TOO_LARGE_MESSAGE } from '@/lib/hono/image-upload';
 import type { CategoryView } from '@/lib/hono/routes/admin-categories';
 import { IMAGE_TYPE_ERROR } from '@/lib/storage/image-upload';
 import { imageSrc } from '@/lib/storage/image-url';
@@ -374,8 +377,9 @@ describe('CategoryManager photos', () => {
   });
 
   it('keeps the saved photo when an edit changes only the title', async () => {
-    // PUT replaces the whole category: a body without the key would delete
-    // the photo the admin never touched.
+    // The edit draft starts from the saved key. Seeded as null instead, the PUT
+    // would carry an explicit null and remove a photo the admin never touched;
+    // an omitted key would leave it (categoryInputSchema).
     putData.mockResolvedValue({ ...WITH_PHOTO, title: 'غذای خشک گربه' });
     render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
 
@@ -523,5 +527,122 @@ describe('CategoryManager photos', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'انصراف' }));
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:1');
+  });
+
+  /** The picker's slot around a photo input: its preview and remove button. */
+  const slotOf = (input: HTMLInputElement) => input.closest('fieldset')!;
+
+  it('reports a failed upload, unlocks the form and keeps the pick for the retry', async () => {
+    postForm
+      .mockRejectedValueOnce(new ApiRequestError(413, IMAGE_TOO_LARGE_MESSAGE))
+      .mockResolvedValueOnce({ key: UPLOADED });
+    postData.mockResolvedValue({ ...DRY, imageKey: UPLOADED });
+    render(<CategoryManager initialCategories={[]} />);
+
+    pick(photoInputs()[0], png());
+    await create();
+
+    expect(toast.error).toHaveBeenCalledWith(IMAGE_TOO_LARGE_MESSAGE);
+    expect(postData).not.toHaveBeenCalled();
+    expect(slotOf(photoInputs()[0]).disabled).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^ساخت دسته/ }));
+    });
+    expect(postForm).toHaveBeenCalledTimes(2);
+    expect(postData).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: UPLOADED }),
+    );
+  });
+
+  it('reports a failed upload in an edit row and keeps the row for the retry', async () => {
+    postForm
+      .mockRejectedValueOnce(new ApiRequestError(413, IMAGE_TOO_LARGE_MESSAGE))
+      .mockResolvedValueOnce({ key: UPLOADED });
+    putData.mockResolvedValue({ ...DRY, imageKey: UPLOADED });
+    render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
+
+    edit();
+    pick(photoInputs()[1], png());
+    await saveRow();
+
+    expect(toast.error).toHaveBeenCalledWith(IMAGE_TOO_LARGE_MESSAGE);
+    expect(putData).not.toHaveBeenCalled();
+    expect(slotOf(photoInputs()[1]).disabled).toBe(false);
+
+    await saveRow();
+    expect(postForm).toHaveBeenCalledTimes(2);
+    expect(putData).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: UPLOADED }),
+    );
+  });
+
+  it('shows a good pick after a refused one, and drops it on removal', async () => {
+    postData.mockResolvedValue(DRY);
+    render(<CategoryManager initialCategories={[]} />);
+
+    pick(
+      photoInputs()[0],
+      new File(['x'], 'notes.txt', { type: 'text/plain' }),
+    );
+    expect(screen.getByText(IMAGE_TYPE_ERROR)).toBeTruthy();
+    pick(photoInputs()[0], png());
+
+    // The good pick clears the refusal and previews itself.
+    expect(screen.queryByText(IMAGE_TYPE_ERROR)).toBeNull();
+    const slot = slotOf(photoInputs()[0]);
+    expect(slot.querySelector('img')?.getAttribute('src')).toBe('blob:0');
+
+    fireEvent.click(within(slot).getByRole('button', { name: 'حذف تصویر' }));
+    expect(slotOf(photoInputs()[0]).querySelector('img')).toBeNull();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:0');
+
+    await create();
+    expect(postForm).not.toHaveBeenCalled();
+    expect(postData).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: null }),
+    );
+  });
+
+  it('previews a row’s pick over its saved photo, and removes both on removal', async () => {
+    putData.mockResolvedValue(DRY);
+    render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
+
+    edit();
+    pick(photoInputs()[1], png());
+
+    // The picker shows the pick; the row's thumbnail still shows what is saved.
+    const slot = slotOf(photoInputs()[1]);
+    expect(slot.querySelector('img')?.getAttribute('src')).toBe('blob:0');
+    const [, row] = screen.getAllByRole('row');
+    const thumbnail = [...row.querySelectorAll('img')].find(
+      (img) => !slot.contains(img),
+    );
+    expect(decodeURIComponent(thumbnail?.getAttribute('src') ?? '')).toContain(
+      `url=${imageSrc(PHOTO)}`,
+    );
+
+    fireEvent.click(within(slot).getByRole('button', { name: 'حذف تصویر' }));
+    await saveRow();
+
+    // The fresh pick went with the saved photo: nothing uploads.
+    expect(postForm).not.toHaveBeenCalled();
+    expect(putData).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: null }),
+    );
+  });
+
+  it('tells the admin, with the input, which home tiles a photo shows on', () => {
+    render(<CategoryManager initialCategories={[]} />);
+
+    const describedBy = photoInputs()[0].getAttribute('aria-describedby');
+    // The strip's own cap, not a promise that every main category gets a tile.
+    expect(document.getElementById(describedBy!)?.textContent).toContain(
+      formatNumber(HOME_CATEGORY_TILES),
+    );
   });
 });

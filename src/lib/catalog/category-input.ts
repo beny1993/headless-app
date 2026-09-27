@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { toPersianDigits } from '@/lib/format';
 import { imageKeySchema } from '@/lib/storage/image-upload';
 import { FORBIDDEN_TEXT_CHARS, VISIBLE_CHAR } from '@/lib/validation/text';
-import { SLUG_PATTERN } from './product-input';
+import { MIN_SLUG_LENGTH, SLUG_PATTERN } from './product-input';
 import { MAX_SLUG_LENGTH } from './sku';
 
 /**
@@ -28,7 +28,7 @@ export const CATEGORY_MESSAGES = {
   title: 'عنوان دسته‌بندی الزامی است.',
   titleLength: `عنوان دسته‌بندی حداکثر ${toPersianDigits(MAX_TITLE_LENGTH)} نویسه است.`,
   titleChars: 'عنوان دسته‌بندی نویسه‌های نامعتبر دارد.',
-  slug: 'نشانی فقط با حروف کوچک انگلیسی، عدد و خط تیره (حداقل ۳ نویسه).',
+  slug: `نشانی فقط با حروف کوچک انگلیسی، عدد و خط تیره (حداقل ${toPersianDigits(MIN_SLUG_LENGTH)} نویسه).`,
   slugLength: `نشانی حداکثر ${toPersianDigits(MAX_SLUG_LENGTH)} نویسه است.`,
   sortOrder: 'ترتیب نمایش باید عددی صحیح و صفر یا بیشتر باشد.',
   parent: 'دسته‌بندی مادر نامعتبر است.',
@@ -82,22 +82,23 @@ export const categoryInputSchema = z.object({
     .int(CATEGORY_MESSAGES.sortOrder)
     .nonnegative(CATEGORY_MESSAGES.sortOrder)
     .max(MAX_SORT_ORDER, CATEGORY_MESSAGES.sortOrder),
-  // PUT replaces the whole category, so an omitted parent means «top-level»,
-  // not «leave it alone» — which is also what keeps every body written before
-  // sub-categories existed valid. Whether the id names a category, and whether
-  // that category may be a parent, is `CategoryDao`'s call: a schema cannot see
-  // another row.
+  // PUT replaces every field but the photo (below), so an omitted parent
+  // means «top-level», not «leave it alone» — which is also what keeps every
+  // body written before sub-categories existed valid. Whether the id names a
+  // category, and whether that category may be a parent, is `CategoryDao`'s
+  // call: a schema cannot see another row.
   parentId: z.uuid(CATEGORY_MESSAGES.parent).nullable().default(null),
   // The tile photo's storage key: the manager uploads the file through the
   // shared content-image route first and sends back the key it was given, the
-  // content editor's flow. Unlike the fields above, omitted is not «none»: it
-  // leaves the photo as it is, and only an explicit null removes it — so a
-  // client that knows nothing of photos (an admin tab opened before they
-  // shipped) cannot wipe one by saving a title. A replaced key's file stays in
+  // content editor's flow. On an update, unlike the fields above, omitted is
+  // not «none»: it leaves the photo as it is, and only an explicit null removes
+  // it — so a client that knows nothing of photos (an admin tab opened before
+  // they shipped) cannot wipe one by saving a title. A create has no photo to
+  // keep, so there omitted means none. A replaced key's file stays in
   // storage: deleting it would first need proof the key is this category's own
   // — a body can name any well-formed key — and category photos change too
   // rarely to leave anything worth collecting.
-  imageKey: imageKeySchema.nullable().optional(),
+  imageKey: imageKeySchema.nullish(),
 });
 
 /** The validated body — assignable to `CategoryDao`'s `CategoryInput`. */

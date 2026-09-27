@@ -347,6 +347,7 @@ function BlockField({
         error={error}
         buttonLabel="تغییر تصویر"
         onPick={onPick}
+        umami="admin-panel-content-image-pick"
       />
     );
   }

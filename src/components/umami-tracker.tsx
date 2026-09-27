@@ -14,6 +14,16 @@ declare global {
 }
 
 /**
+ * Auto-track's own wait before a pageview: Next streams the new page's
+ * `<title>` in after the commit, and a pageview sent at once can go out with
+ * none.
+ */
+const PAGEVIEW_WAIT_MS = 300;
+
+/** The page the last pageview counted, and the page that referred it. */
+type CountedPage = { url: string; referrer: string | null };
+
+/**
  * Self-hosted Umami, with the tracker's auto-track switched off.
  *
  * Auto-track hijacks links. Its capture-phase click listener calls
@@ -42,13 +52,11 @@ export function UmamiTracker({
 }) {
   const pathname = usePathname();
   const search = useSearchParams().toString();
-  const lastUrl = useRef<string | null>(null);
+  const counted = useRef<CountedPage | null>(null);
 
-  // A search-only change is a new page too, as it was under auto-track. So is
-  // the wait, which is auto-track's own: Next streams the new page's `<title>`
-  // in after the commit, and a pageview sent at once can go out with none.
+  // A search-only change is a new page too, as it was under auto-track.
   useEffect(() => {
-    const timer = setTimeout(() => trackPageview(lastUrl), 300);
+    const timer = setTimeout(() => trackPageview(counted), PAGEVIEW_WAIT_MS);
     return () => clearTimeout(timer);
   }, [pathname, search]);
 
@@ -58,10 +66,18 @@ export function UmamiTracker({
     const onClick = (event: MouseEvent) => {
       if (!(event.target instanceof Element)) return;
       const name = trackedEventOf(event.target);
-      if (name) {
-        const url = window.location.href;
-        window.umami?.track((props) => ({ ...props, url, name }));
-      }
+      if (!name) return;
+      const url = window.location.href;
+      // Referred like its page, as auto-track's events were. A page still in
+      // its pageview wait is referred by the one counted before it.
+      const page = counted.current;
+      const referrer = page && (page.url === url ? page.referrer : page.url);
+      window.umami?.track((props) => ({
+        ...props,
+        url,
+        name,
+        ...(referrer && { referrer }),
+      }));
     };
     document.addEventListener('click', onClick, true);
     return () => document.removeEventListener('click', onClick, true);
@@ -73,7 +89,7 @@ export function UmamiTracker({
       data-website-id={websiteId}
       data-auto-track="false"
       // The landing pageview, if the effect's came due before the script did.
-      onLoad={() => trackPageview(lastUrl)}
+      onLoad={() => trackPageview(counted)}
     />
   );
 }
@@ -81,8 +97,10 @@ export function UmamiTracker({
 /**
  * The event a click on `target` sends, if any. The tracker's own rule, so the
  * dashboards read as they did under auto-track: the name on the nearest link
- * or button, else on the element clicked — never a container's. So a tracked
- * non-link has to carry its name on what a tap actually lands on.
+ * or button, else on the element clicked — never a container's. So the name
+ * goes on the `<a>` or `<button>` whenever a tap can land inside one; on the
+ * form control itself when a `<label>` wraps or points at it, since the label
+ * forwards its click there; otherwise on the exact element tapped.
  */
 export function trackedEventOf(target: Element): string | null {
   return (target.closest('a,button') ?? target).getAttribute(
@@ -94,13 +112,13 @@ export function trackedEventOf(target: Element): string | null {
  * One pageview for the current URL, referred by the last one counted. A URL
  * already counted is skipped, like the tracker's own history hook skips one.
  */
-function trackPageview(lastUrl: RefObject<string | null>) {
+function trackPageview(counted: RefObject<CountedPage | null>) {
   const url = window.location.href;
-  if (!window.umami || url === lastUrl.current) return;
+  if (!window.umami || url === counted.current?.url) return;
 
   // The first pageview keeps the tracker's referrer: where the visitor came from.
-  const referrer = lastUrl.current;
-  lastUrl.current = url;
+  const referrer = counted.current?.url ?? null;
+  counted.current = { url, referrer };
   window.umami.track((props) => ({
     ...props,
     url,

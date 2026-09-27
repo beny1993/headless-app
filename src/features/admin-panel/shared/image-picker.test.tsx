@@ -10,15 +10,24 @@
 //
 // The picker renders in the content editor and in the category manager (the
 // product form has its own multi-photo field). Their own tests pin how each
-// uses it; this file proves the fixes.
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, expect, it } from 'vitest';
+// uses it; this file proves the fixes — and the picker's own behaviours no
+// caller's test can see: the hint it announces, the input it empties after
+// every pick, and the input carrying its event name.
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { trackedEventOf } from '@/components/umami-tracker';
 import { IMAGE_TYPE_ERROR } from '@/lib/storage/image-upload';
 import { ImagePicker } from './image-picker';
 
 afterEach(cleanup);
 
-const show = (error?: string) =>
+const UMAMI = 'admin-panel-test-image';
+const HINT = 'روی کاشی صفحه‌ی اصلی دیده می‌شود.';
+
+const show = (
+  error?: string,
+  { hint, onPick = () => {} }: { hint?: string; onPick?: () => void } = {},
+) =>
   render(
     <ImagePicker
       id="hero-image"
@@ -26,9 +35,18 @@ const show = (error?: string) =>
       preview={null}
       error={error}
       buttonLabel="تغییر تصویر"
-      onPick={() => {}}
+      onPick={onPick}
+      umami={UMAMI}
+      hint={hint}
     />,
   );
+
+/** The texts an input's `aria-describedby` points at, in its order. */
+const describedTexts = (input: HTMLElement) =>
+  (input.getAttribute('aria-describedby') ?? '')
+    .split(' ')
+    .filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent);
 
 it('names the input after the field, not after the upload button', () => {
   show();
@@ -60,6 +78,46 @@ it('says nothing about an error there is none of', () => {
   const input = screen.getByLabelText('تصویر شاخص');
   expect(input.getAttribute('aria-describedby')).toBeNull();
   expect(input.getAttribute('aria-invalid')).toBeNull();
+});
+
+it('announces its hint with the input, after an error', () => {
+  show(undefined, { hint: HINT });
+  expect(describedTexts(screen.getByLabelText('تصویر شاخص'))).toEqual([HINT]);
+
+  cleanup();
+  show(IMAGE_TYPE_ERROR, { hint: HINT });
+  const [error, hint] = describedTexts(screen.getByLabelText('تصویر شاخص'));
+  expect(error).toContain(IMAGE_TYPE_ERROR);
+  expect(hint).toBe(HINT);
+});
+
+it('empties the input after a pick, so picking that file again still counts', () => {
+  const onPick = vi.fn();
+  show(undefined, { onPick });
+  const input = screen.getByLabelText('تصویر شاخص') as HTMLInputElement;
+  const file = new File(['x'], 'photo.png', { type: 'image/png' });
+
+  // Through the input's own `files` setter, as a browser sets it: fireEvent's
+  // `target.files` would shadow the property and fire whatever the value was.
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  input.files = transfer.files;
+  expect(input.value).not.toBe('');
+  fireEvent.change(input);
+
+  expect(onPick).toHaveBeenCalledWith(file);
+  // Still holding the file, the input would fire no change for the same pick.
+  expect(input.value).toBe('');
+});
+
+it('carries its event name on the input, which the label forwards taps to', () => {
+  show();
+  const input = screen.getByLabelText('تصویر شاخص');
+
+  // On the label instead, a tap on its camera icon would read the unnamed
+  // icon, and the click the label forwards would reach an unnamed input.
+  expect(trackedEventOf(input)).toBe(UMAMI);
+  expect(input.closest('label')!.hasAttribute('data-umami-event')).toBe(false);
 });
 
 it('puts the focus treatment on the styled label that can actually show it', () => {

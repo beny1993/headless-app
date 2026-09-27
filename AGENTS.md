@@ -37,7 +37,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/lib/catalog/variant.ts` | Product families: `displayTitle` (the **single** derivation used by the product heading, the admin list and the `order_items` snapshot), the label cap and the Persian refusals. A family is `products.variant_of` + `variant_label` — a member is an ordinary product row, so the cart, the stock decrement and `order_items` are untouched; the storefront lists `variant_of is null` and reaches members from the head's page |
 | `design/` | **Canonical design reference** — vendored Figma prototype (own deps, own `pnpm dev` on :5173). FE stories port from it. Never imported by the app. |
 | `scripts/create-admin.ts` | Grant admin by phone (`pnpm create-admin <phone> [name]`) — creates or promotes |
-| `src/db/seed/`, `scripts/seed-catalog.ts` | Demo catalog seed (`pnpm seed-catalog`), idempotent; its images live in `public/products/` |
+| `src/db/seed/`, `scripts/seed-catalog.ts` | Demo catalog seed (`pnpm seed-catalog`), idempotent; its images live in `public/products/`, plus the hygiene tile's `public/site/cat-hygiene.jpg` |
 | `scripts/seed-shipping.ts` | Seed all 31 provinces + placeholder shipping rates (`pnpm seed-shipping`), idempotent (upserts by name, never resets a tuned fee). Migration `0011_seed_provinces` plants the same 31 in every environment — production cannot run this script — adding only what is missing and recognising a hand-typed spelling (spaces/ZWNJ) as the same province; pinned by `src/db/seed/shipping-migration.integration.test.ts` |
 | `e2e/`, `playwright.config.ts` | Playwright E2E suite (`pnpm test:e2e`): the core-flow regression walk — see *End-to-end tests* under Testing standard |
 
@@ -54,6 +54,10 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 - **DB access only through DAOs** in `src/db/dao/`. Multi-DAO operations go in
   `src/logic/` (create it when needed) — never in route handlers or components.
   Never write raw SQL. Schema change → `pnpm migration:generate` + review the SQL.
+  A migration's journal `when` must be newer than every entry before it: the
+  runtime migrator silently skips an older-dated one, so a merge conflict in
+  `meta/_journal.json` is resolved by regenerating, never by renumbering with
+  the old `when` (`src/db/migrations/journal.test.ts` pins the order).
 - **API routes**: a `createRoute` definition plus a separate typed `RouteHandler`
   export in the same file (see `src/lib/hono/routes/health.ts`), registered with
   `app.openapi(route, handler)`. Sub-routers come from `createRouter()`.
@@ -81,8 +85,11 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 - Interactive elements carry `data-umami-event="<page>-<element>-<action>"`,
   sent by `src/components/umami-tracker.tsx`. Umami's auto-track stays off: it
   cancels the click on every tracked `<a>` and reloads the page itself. The
-  name is read off the nearest link or button, else the element tapped — never
-  a container's — so it goes on what a tap lands on (`trackedEventOf`).
+  name is read off the nearest link or button, else the element clicked, never
+  a container's (`trackedEventOf`). So it goes on the `<a>` or `<button>`
+  whenever a tap can land inside one; on the form control itself when a
+  `<label>` wraps or points at it, since the label forwards its click there;
+  otherwise on the exact element tapped.
 - Conventional commits (commitlint enforces the type list).
 
 ## Non-negotiables (from the vault note — these affect code, not just docs)
@@ -266,10 +273,10 @@ renders on from `.next/cache`) — repriced, found
 under both category filters and taken off the shop; a sub-category nested under
 a category the panel then refuses to delete until it is emptied; a category
 given a photo that its home-page tile then shows (the file probed with
-`request.get`), and a plain tile once the photo is removed; a photo picked
-through the button in the list's last row — below the fold, so `main` has
-scrolled — with the panel frame still filling the screen (read-only, so both
-widths); a product
+`request.get`), a new one picked in its edit row that the tile then follows,
+and a plain tile once the photo is removed; a photo picked through the button
+in the list's last row — below the fold, so `main` has scrolled — with the
+panel frame still filling the screen (read-only, so both widths); a product
 family's members each listed and named by their own label, the head's
 «زیرمجموعه‌ی» select disabled because it has members and a member's live
 (read-only, so it runs at both widths and leaves nothing behind); a discount
@@ -298,8 +305,12 @@ areas other than the home headline, a wrong or resent login code, maintenance
 mode switched on (the suite pins it off; the gate is unit-tested in
 `src/app/(app)/(store)/layout.test.ts`), Zarinpal switched off at checkout (the
 suite pins it on; the disabled option is component-tested in
-`src/features/checkout/checkout-form.submit.test.tsx`), and anything visual
-(RTL layout, Persian font rendering).
+`src/features/checkout/checkout-form.submit.test.tsx`), analytics switched on
+(the suite blanks Umami, so the tracker never mounts; its mount is unit-tested
+in `src/app/layout.test.ts` and the tracker in
+`src/components/umami-tracker.test.tsx`) — walk a tracked link with the real
+tracker loaded and check it still swaps the page in place — and anything
+visual (RTL layout, Persian font rendering).
 
 - **It starts its own server**: `next dev` on :3100, never a running :3000 —
   that one may be another checkout on another branch. Before it: migrate,
@@ -328,7 +339,7 @@ suite pins it on; the disabled option is component-tested in
   province with the customer's address on it — those three specs run at 1280px
   only, since none of those rows can be deleted. The sub-category spec deletes
   both rows it creates, so it runs at both widths, and so does the category-photo
-  spec — whose photo file stays under `uploads/`, one per width per run, since
+  spec — whose two photo files stay under `uploads/`, per width per run, since
   nothing deletes a category's replaced or removed photo. The card-to-card spec leaves a
   `checkout.payment` content row equal to the default (it puts the old values
   back in a `finally`). The shipping-rate and headline
@@ -343,8 +354,11 @@ suite pins it on; the disabled option is component-tested in
   first six by sort order, then title, and a killed integration run leaves its
   «دسته آزمایشی …» category at sort order 0 with nothing to switch it off. The
   category-photo spec survives them because its «آزمون عکس …» title sorts first
-  under the dev database's `en_US.utf8` collation. Six leaked «آزمون عکس …»
-  rows (from killed runs of that spec) would crowd it out too: delete them.
+  under the dev database's `en_US.utf8` collation. Its own leftovers can still
+  crowd it out: a run killed or timed out mid-spec leaves its «آزمون عکس …»
+  row, and with six of those beside it the new tile misses the strip whenever
+  its random id sorts last among them — one run in seven, more with every
+  further leftover. Delete them.
 - **Uploaded images never count as failed requests.** A dev database keeps the
   uploads it was given while `.env` pointed at object storage, and this run's
   local driver has no file for them. The catalog spec proves the upload path

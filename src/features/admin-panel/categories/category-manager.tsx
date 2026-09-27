@@ -24,7 +24,7 @@ import {
   type CategoryInputBody,
   categoryInputSchema,
 } from '@/lib/catalog/category-input';
-import { orderAsTree } from '@/lib/catalog/category-tree';
+import { HOME_CATEGORY_TILES, orderAsTree } from '@/lib/catalog/category-tree';
 import {
   reasonFrom,
   requestFieldErrors,
@@ -686,10 +686,10 @@ function PhotoField({
         buttonLabel={preview ? 'تغییر تصویر' : 'انتخاب تصویر'}
         onPick={onPick}
         umami={umami}
+        // The strip's own cap, so an admin is not told a photo will show on a
+        // tile the strip never renders.
+        hint={`روی کاشی دسته‌بندی در صفحه‌ی اصلی دیده می‌شود (فقط ${formatNumber(HOME_CATEGORY_TILES)} دسته‌بندی اصلی اول، به ترتیب نمایش).`}
       />
-      <p className="text-muted-foreground text-xs">
-        روی کاشی دسته‌بندی در صفحه‌ی اصلی دیده می‌شود (فقط دسته‌بندی‌های اصلی).
-      </p>
       {preview && (
         <button
           type="button"

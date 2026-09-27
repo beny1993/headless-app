@@ -1,6 +1,12 @@
+import { PET_TYPES } from '@/db/schema/catalog';
 import { SEED_PRODUCTS } from '@/db/seed/catalog-data';
+import {
+  adminProductFilterSchema,
+  productsHref,
+} from '@/features/admin-panel/products/products-query';
 import { PATHS, PROTECTED_PATHS, adminOrderPath } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
+import { ORDER_STATUSES } from '@/lib/orders/order-status';
 import {
   ADMIN_STATE,
   CUSTOMER_STATE,
@@ -139,6 +145,63 @@ test.describe('an admin', () => {
       await expect(
         page.locator(`[data-umami-event="${row}"]`).first(),
       ).toBeVisible();
+    }
+  });
+
+  test('a list reopened from the sidebar drops the filters it showed', async ({
+    page,
+  }) => {
+    // Filtered by a full page load, as the GET form's submit is. The sidebar
+    // link back to the same list is a client-side navigation, which updates the
+    // page in place: a form left mounted keeps showing, and re-submits, a
+    // filter the list no longer applies.
+    for (const { filtered, list, controls } of [
+      {
+        filtered: `${PROTECTED_PATHS.ORDERS}?${new URLSearchParams({
+          status: ORDER_STATUSES.PAID,
+        })}`,
+        list: PROTECTED_PATHS.ORDERS,
+        controls: [
+          {
+            name: 'فیلتر وضعیت سفارش',
+            applied: ORDER_STATUSES.PAID,
+            reset: '',
+          },
+        ],
+      },
+      {
+        filtered: productsHref(
+          adminProductFilterSchema.parse({
+            pet: PET_TYPES.CAT,
+            active: 'inactive',
+          }),
+          1,
+        ),
+        list: PROTECTED_PATHS.PRODUCTS,
+        controls: [
+          { name: 'نوع حیوان', applied: PET_TYPES.CAT, reset: '' },
+          { name: 'وضعیت نمایش', applied: 'inactive', reset: 'all' },
+        ],
+      },
+    ]) {
+      await page.goto(filtered);
+      for (const { name, applied } of controls) {
+        await expect(page.getByRole('combobox', { name })).toHaveValue(applied);
+      }
+
+      // The drawer hides the sidebar below `lg`.
+      const menu = page.locator(
+        '[data-umami-event="admin-panel-mobile-menu-open"]',
+      );
+      if (await menu.isVisible()) await menu.click();
+      await page
+        .locator(`[data-umami-event^="admin-panel-nav-"][href="${list}"]`)
+        .click();
+      await expect(page).toHaveURL(new RegExp(`${list}$`));
+
+      for (const { name, reset } of controls) {
+        await expect(page.getByRole('combobox', { name })).toHaveValue(reset);
+      }
     }
   });
 });

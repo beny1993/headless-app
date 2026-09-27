@@ -51,6 +51,13 @@ const tooLong = (label: string, max: number) =>
 const MAX_STOCK = 2_147_483_647;
 
 /**
+ * The shortest slug either catalog form accepts. `SLUG_PATTERN` and both slug
+ * refusals derive from it, so the pattern and the message quoting it cannot
+ * drift apart.
+ */
+export const MIN_SLUG_LENGTH = 3;
+
+/**
  * How many categories a product may carry beyond its main one — so six in all.
  * A product filed everywhere makes every filter meaningless.
  */
@@ -68,7 +75,7 @@ export const MAX_PRODUCT_IMAGES = 5;
 export const PRODUCT_MESSAGES = {
   title: 'عنوان محصول الزامی است.',
   titleLength: tooLong('عنوان محصول', PRODUCT_TEXT_LIMITS.title),
-  slug: 'نشانی فقط با حروف کوچک انگلیسی، عدد و خط تیره (حداقل ۳ نویسه).',
+  slug: `نشانی فقط با حروف کوچک انگلیسی، عدد و خط تیره (حداقل ${toPersianDigits(MIN_SLUG_LENGTH)} نویسه).`,
   slugLength: tooLong('نشانی یکتا (slug)', MAX_SLUG_LENGTH),
   brandLength: tooLong('برند', PRODUCT_TEXT_LIMITS.brand),
   benefitLength: tooLong('جمله مزیت', PRODUCT_TEXT_LIMITS.benefit),
@@ -94,7 +101,7 @@ export const PRODUCT_MESSAGES = {
 };
 
 /** Latin URL segment; the same shape the categories schema documents. */
-export const SLUG_PATTERN = /^[a-z0-9-]{3,}$/;
+export const SLUG_PATTERN = new RegExp(`^[a-z0-9-]{${MIN_SLUG_LENGTH},}$`);
 
 /**
  * An array element that accepts anything, so a bad one is reported by the

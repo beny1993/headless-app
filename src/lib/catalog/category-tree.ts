@@ -9,6 +9,13 @@
 /** The «— » that stands in for an indent inside a flat `<option>` list. */
 export const SUBCATEGORY_PREFIX = '— ';
 
+/**
+ * How many top-level categories the home strip shows, first by sort order then
+ * title. The admin manager's photo hint quotes it, so a photo an admin is told
+ * will show is one the strip renders.
+ */
+export const HOME_CATEGORY_TILES = 6;
+
 type Node = { id: string; parentId: string | null };
 
 /**

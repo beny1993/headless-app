@@ -128,7 +128,7 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
       slug: value,
       imageKey: 'products/cat-dry-food.jpg',
     });
-    await CategoryDao.update(inserted.id, {
+    const updated = await CategoryDao.update(inserted.id, {
       title: inserted.title,
       slug: value,
       sortOrder: 0,
@@ -140,14 +140,33 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
       slug: value,
       imageKey: 'products/cat-dry-food.jpg',
     });
+
+    // Seeded keyless, given a photo in the panel, re-seeded keyless: the
+    // conflict path must write the null itself, since drizzle drops an
+    // undefined key from the `set` and would leave the admin's photo.
+    const keyless = slug();
     const plain = await CategoryDao.upsertBySlug({
       title: 'مالت',
-      slug: slug(),
+      slug: keyless,
+    });
+    const given = await CategoryDao.update(plain.id, {
+      title: plain.title,
+      slug: keyless,
+      sortOrder: 0,
+      parentId: null,
+      imageKey: UPLOAD_KEY,
+    });
+    const cleared = await CategoryDao.upsertBySlug({
+      title: 'مالت',
+      slug: keyless,
     });
 
     expect(inserted.imageKey).toBe('products/cat-dry-food.jpg');
+    expect(updated?.imageKey).toBe(UPLOAD_KEY);
     expect(reseeded.imageKey).toBe('products/cat-dry-food.jpg');
     expect(plain.imageKey).toBeNull();
+    expect(given?.imageKey).toBe(UPLOAD_KEY);
+    expect(cleared.imageKey).toBeNull();
   });
 
   it('defaults sort order to zero', async () => {

@@ -132,6 +132,18 @@ export const imageKeySchema = z
   );
 
 /**
+ * What the shared admin image upload answers: the stored key, for the form to
+ * save into its own body, and a URL to preview it by. Declared once, for the
+ * route to build its reply from and the client to parse it with, so the two
+ * cannot drift apart.
+ */
+export const imageUploadResultSchema = z.object({
+  key: imageKeySchema,
+  url: z.string(),
+});
+export type ImageUploadResult = z.infer<typeof imageUploadResultSchema>;
+
+/**
  * Megabytes for the copy below, to one decimal place. Rounded because the
  * division is exact only for a power-of-two cap: a 5,000,000-byte ceiling
  * would otherwise print «۴.۷۶۸۳۷۱۵۸۲۰۳۱۲۵ مگابایت» in the field an admin is
