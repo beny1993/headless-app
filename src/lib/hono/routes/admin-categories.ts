@@ -136,7 +136,7 @@ export const categoryUpdateRoute = createRoute({
   path: '/admin/categories/{id}',
   tags: ['admin'],
   summary:
-    'Replace a category’s title, slug, sort order and parent (admin only)',
+    'Replace a category’s title, slug, sort order and parent, and set or remove its photo (admin only)',
   request: {
     params: IdParamSchema,
     body: {

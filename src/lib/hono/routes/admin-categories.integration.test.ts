@@ -603,12 +603,27 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
       if (replaced.body.status !== 'success') throw new Error('replace failed');
       expect(replaced.body.data.imageKey).toBe(OTHER_KEY);
 
-      // PUT replaces the whole category: a body without a photo removes it.
+      // A body that says nothing of the photo — what an admin tab opened
+      // before photos shipped sends — keeps it.
+      const kept = await parse<CategoryView>(
+        await json(
+          apiAdminCategoryPath(created.id),
+          'PUT',
+          body({ slug: created.slug, title: 'غذای خشک گربه' }),
+        ),
+      );
+      if (kept.body.status !== 'success') throw new Error('rename failed');
+      expect(kept.body.data).toMatchObject({
+        title: 'غذای خشک گربه',
+        imageKey: OTHER_KEY,
+      });
+
+      // Only an explicit null removes it.
       const removed = await parse<CategoryView>(
         await json(
           apiAdminCategoryPath(created.id),
           'PUT',
-          body({ slug: created.slug }),
+          body({ slug: created.slug, imageKey: null }),
         ),
       );
       if (removed.body.status !== 'success') throw new Error('remove failed');

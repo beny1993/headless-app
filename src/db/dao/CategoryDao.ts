@@ -21,8 +21,9 @@ export type CategoryInput = {
   /** `null` for a top-level category. */
   parentId: string | null;
   /**
-   * The tile photo's storage key. Omitted means none: `update` replaces the
-   * whole category, photo included — the API's full-replace PUT.
+   * The tile photo's storage key, `null` for none. Omitted means none on
+   * `create` and «leave it as it is» on `update`, where only an explicit null
+   * removes a photo.
    */
   imageKey?: string | null;
 };
@@ -103,13 +104,14 @@ export class CategoryDao {
   }
 
   /**
-   * Replaces title, slug, sort order, parent and photo. `null` for an unknown
-   * id. A parent the one-level rule refuses throws {@link CategoryParentError}
-   * and writes nothing.
+   * Replaces title, slug, sort order and parent, and the photo when the input
+   * names one (`undefined` is skipped by `.set`, so the stored key stays).
+   * `null` for an unknown id. A parent the one-level rule refuses throws
+   * {@link CategoryParentError} and writes nothing.
    */
   static async update(
     id: string,
-    { title, slug, sortOrder, parentId, imageKey = null }: CategoryInput,
+    { title, slug, sortOrder, parentId, imageKey }: CategoryInput,
   ): Promise<Category | null> {
     return db.transaction(async (tx) => {
       await CategoryDao.assertParent(tx, id, parentId);

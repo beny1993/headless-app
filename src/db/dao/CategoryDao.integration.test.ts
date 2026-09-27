@@ -256,8 +256,9 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
       });
     });
 
-    it('replaces the photo, and clears it when the input omits one', async () => {
-      // The whole category is replaced, photo included — the API's PUT rule.
+    it('replaces the photo, keeps it when the input omits one, and removes it on null', async () => {
+      // Omitted is not «none»: an update from a client that knows nothing of
+      // photos leaves the photo alone. Only an explicit null removes it.
       const created = await CategoryDao.create({
         title: 'غذای تر',
         slug: slug(),
@@ -276,10 +277,15 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
         ...fields,
         imageKey: UPLOAD_KEY,
       });
-      const cleared = await CategoryDao.update(created.id, fields);
+      const kept = await CategoryDao.update(created.id, fields);
+      const removed = await CategoryDao.update(created.id, {
+        ...fields,
+        imageKey: null,
+      });
 
       expect(replaced?.imageKey).toBe(UPLOAD_KEY);
-      expect(cleared?.imageKey).toBeNull();
+      expect(kept?.imageKey).toBe(UPLOAD_KEY);
+      expect(removed?.imageKey).toBeNull();
     });
 
     it('returns null for an unknown id', async () => {

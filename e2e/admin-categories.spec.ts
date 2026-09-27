@@ -158,13 +158,15 @@ test('a category photo reaches its home tile, and removing it leaves a plain til
     const key = await renderedKey(thumbnail);
     expect(key).toMatch(/^uploads\//);
 
-    // The home tile shows that very file, and the file really serves — next/
-    // image lazy-loads, so the tile is brought into view before it is read.
+    // The home tile shows that very file, and the file really serves. Counted
+    // before the scroll: `scrollIntoViewIfNeeded` has no timeout of its own, so
+    // a tile crowded out of the strip would wait out the test instead of
+    // failing here. Then scrolled into view, since next/image lazy-loads.
     await page.goto(PATHS.HOME);
-    await tile.scrollIntoViewIfNeeded();
     const photo = tile.locator('img');
     await expect(photo).toHaveCount(1);
     expect(await renderedKey(photo)).toBe(key);
+    await tile.scrollIntoViewIfNeeded();
     await expectRendered(photo);
     expect((await page.request.get(`/${key}`)).status()).toBe(200);
 

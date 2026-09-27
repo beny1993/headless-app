@@ -202,11 +202,21 @@ describe('categoryInputSchema', () => {
       );
     });
 
-    it('reads an omitted photo as none, since PUT replaces the whole category', () => {
+    it('leaves an omitted photo out, so an update keeps the one it has', () => {
+      // A client that knows nothing of photos — an admin tab opened before
+      // they shipped — must not remove one by saving a title.
       const { imageKey, ...withoutPhoto } = valid;
       void imageKey;
 
-      expect(categoryInputSchema.parse(withoutPhoto).imageKey).toBeNull();
+      expect(categoryInputSchema.parse(withoutPhoto)).not.toHaveProperty(
+        'imageKey',
+      );
+    });
+
+    it('keeps an explicit null, which is how a photo is removed', () => {
+      expect(
+        categoryInputSchema.parse({ ...valid, imageKey: null }).imageKey,
+      ).toBeNull();
     });
 
     // A key is a storage key, never a URL or a path: whatever the admin form

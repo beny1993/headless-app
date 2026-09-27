@@ -332,6 +332,12 @@ suite pins it on; the disabled option is component-tested in
   newest-first, 12 a page, so a stray active `test-…`/`e2e-…` product pushes a
   seeded one to a later page and a spec that looks for it on page one fails.
   The seed's sweep switches off any not updated for an hour.
+- **Leaked top-level test categories crowd the home strip.** It shows the
+  first six by sort order, then title, and a killed integration run leaves its
+  «دسته آزمایشی …» category at sort order 0 with nothing to switch it off. The
+  category-photo spec survives them because its «آزمون عکس …» title sorts first
+  under the dev database's `en_US.utf8` collation. Six leaked «آزمون عکس …»
+  rows (from killed runs of that spec) would crowd it out too: delete them.
 - **Uploaded images never count as failed requests.** A dev database keeps the
   uploads it was given while `.env` pointed at object storage, and this run's
   local driver has no file for them. The catalog spec proves the upload path

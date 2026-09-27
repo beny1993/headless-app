@@ -300,8 +300,8 @@ function CreateForm({
         id={`${id}-image`}
         preview={previewOf(pick, draft.imageKey)}
         error={errors.imageKey}
-        // Ignored mid-save: what uploads is what was on screen at the click.
-        onPick={(file) => !busy && pickPhoto(file, choosePhoto, setErrors)}
+        disabled={busy}
+        onPick={(file) => pickPhoto(file, choosePhoto, setErrors)}
         onRemove={() => {
           choosePhoto(null);
           setDraft((d) => ({ ...d, imageKey: null }));
@@ -455,7 +455,7 @@ function CategoryRow({
         {/* The saved photo, in both modes — the products list's thumbnail, so
             a category still missing its home-tile photo shows at a glance. */}
         <div className="bg-muted relative h-10 w-10 overflow-hidden rounded-lg">
-          {category.imageKey ? (
+          {category.imageKey && (
             <Image
               src={imageSrc(category.imageKey)}
               alt=""
@@ -463,9 +463,10 @@ function CategoryRow({
               sizes="40px"
               className="object-cover"
             />
-          ) : (
-            <span className="sr-only">بدون تصویر</span>
           )}
+          <span className="sr-only">
+            {category.imageKey ? 'دارای تصویر' : 'بدون تصویر'}
+          </span>
         </div>
       </td>
       {draft ? (
@@ -506,9 +507,8 @@ function CategoryRow({
                 id={`${id}-image`}
                 preview={previewOf(pick, draft.imageKey)}
                 error={errors.imageKey}
-                onPick={(file) =>
-                  !busy && pickPhoto(file, choosePhoto, setErrors)
-                }
+                disabled={busy}
+                onPick={(file) => pickPhoto(file, choosePhoto, setErrors)}
                 onRemove={() => {
                   choosePhoto(null);
                   setDraft({ ...draft, imageKey: null });
@@ -651,11 +651,16 @@ function CategoryRow({
  * picker, where the photo shows, and a remove button while there is a photo to
  * remove — the saved one or a fresh pick. Removing is local until the save, as
  * every other field here is.
+ *
+ * `disabled` while a save runs (the content editor's `<fieldset>`): the upload
+ * brings back the key of the photo that was on screen at the click, and a
+ * removal or a new pick made meanwhile would be silently overwritten by it.
  */
 function PhotoField({
   id,
   preview,
   error,
+  disabled,
   onPick,
   onRemove,
   umami,
@@ -663,12 +668,16 @@ function PhotoField({
   id: string;
   preview: string | null;
   error?: string;
+  disabled: boolean;
   onPick: (file: File | undefined) => void;
   onRemove: () => void;
   umami: string;
 }) {
   return (
-    <div className="flex min-w-60 flex-col items-start gap-2">
+    <fieldset
+      disabled={disabled}
+      className="flex min-w-60 flex-col items-start gap-2 disabled:opacity-60"
+    >
       <ImagePicker
         id={id}
         label="تصویر دسته‌بندی"
@@ -684,7 +693,12 @@ function PhotoField({
       {preview && (
         <button
           type="button"
-          onClick={onRemove}
+          onClick={() => {
+            onRemove();
+            // The button leaves with the photo; hand focus to the picker's
+            // input, which stays, rather than dropping it on the page.
+            document.getElementById(id)?.focus();
+          }}
           data-umami-event={`${umami}-remove`}
           className="text-destructive hover:bg-destructive-soft inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-colors"
         >
@@ -692,7 +706,7 @@ function PhotoField({
           حذف تصویر
         </button>
       )}
-    </div>
+    </fieldset>
   );
 }
 

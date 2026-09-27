@@ -90,12 +90,14 @@ export const categoryInputSchema = z.object({
   parentId: z.uuid(CATEGORY_MESSAGES.parent).nullable().default(null),
   // The tile photo's storage key: the manager uploads the file through the
   // shared content-image route first and sends back the key it was given, the
-  // content editor's flow. Omitted means «no photo», by the same full-replace
-  // rule as `parentId`. A replaced key's file stays in storage: deleting it
-  // would first need proof the key is this category's own — a body can name any
-  // well-formed key — and category photos change too rarely to leave anything
-  // worth collecting.
-  imageKey: imageKeySchema.nullable().default(null),
+  // content editor's flow. Unlike the fields above, omitted is not «none»: it
+  // leaves the photo as it is, and only an explicit null removes it — so a
+  // client that knows nothing of photos (an admin tab opened before they
+  // shipped) cannot wipe one by saving a title. A replaced key's file stays in
+  // storage: deleting it would first need proof the key is this category's own
+  // — a body can name any well-formed key — and category photos change too
+  // rarely to leave anything worth collecting.
+  imageKey: imageKeySchema.nullable().optional(),
 });
 
 /** The validated body — assignable to `CategoryDao`'s `CategoryInput`. */

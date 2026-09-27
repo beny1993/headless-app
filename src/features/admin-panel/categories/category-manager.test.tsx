@@ -368,6 +368,7 @@ describe('CategoryManager photos', () => {
     const [withPhoto, without] = screen.getAllByRole('row').slice(1);
 
     expect(shows(withPhoto)).toContain(`url=${imageSrc(PHOTO)}`);
+    expect(within(withPhoto).getByText('دارای تصویر')).toBeTruthy();
     expect(without.querySelector('img')).toBeNull();
     expect(within(without).getByText('بدون تصویر')).toBeTruthy();
   });
@@ -421,7 +422,8 @@ describe('CategoryManager photos', () => {
     );
   });
 
-  it('drops a picked photo on cancel: nothing uploads, and the saved one is back', () => {
+  it('drops a picked photo on cancel: the saved one is back, and a save uploads nothing', async () => {
+    putData.mockResolvedValue(WITH_PHOTO);
     render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
 
     edit();
@@ -429,7 +431,6 @@ describe('CategoryManager photos', () => {
     fireEvent.click(screen.getByRole('button', { name: 'انصراف' }));
     edit();
 
-    expect(postForm).not.toHaveBeenCalled();
     // The thumbnail and the picker's preview: both the saved photo, neither the
     // dropped pick's blob.
     const [, row] = screen.getAllByRole('row');
@@ -438,5 +439,89 @@ describe('CategoryManager photos', () => {
     );
     expect(sources).toHaveLength(2);
     for (const src of sources) expect(src).toContain(`url=${imageSrc(PHOTO)}`);
+
+    await saveRow();
+    expect(postForm).not.toHaveBeenCalled();
+    expect(putData).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: PHOTO }),
+    );
+  });
+
+  it('keeps the uploaded key when an edit is refused, so the retry does not upload again', async () => {
+    postForm.mockResolvedValue({ key: UPLOADED });
+    putData
+      .mockRejectedValueOnce(
+        new ApiRequestError(400, 'ذخیره نشد.', ['slug: این نشانی تکراری است.']),
+      )
+      .mockResolvedValueOnce({ ...DRY, imageKey: UPLOADED });
+    render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
+
+    edit();
+    pick(photoInputs()[1], png());
+    await saveRow();
+    await saveRow();
+
+    expect(postForm).toHaveBeenCalledTimes(1);
+    expect(putData).toHaveBeenCalledTimes(2);
+    expect(putData).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: UPLOADED }),
+    );
+  });
+
+  it('locks the photo field while the save is in flight', async () => {
+    // A removal or a new pick mid-upload would be overwritten by the key the
+    // upload brings back, so the field takes neither until the save is done.
+    let finishUpload: (value: { key: string }) => void = () => {};
+    postForm.mockReturnValue(
+      new Promise((resolve) => {
+        finishUpload = resolve;
+      }),
+    );
+    putData.mockResolvedValue({ ...DRY, imageKey: UPLOADED });
+    render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
+
+    edit();
+    pick(photoInputs()[1], png());
+    const photoField = () => photoInputs()[1].closest('fieldset');
+    expect(photoField()?.disabled).toBe(false);
+    await saveRow();
+
+    expect(photoField()?.disabled).toBe(true);
+    expect(
+      screen.getByRole('button', { name: 'حذف تصویر' }).closest('fieldset')
+        ?.disabled,
+    ).toBe(true);
+
+    await act(async () => finishUpload({ key: UPLOADED }));
+    expect(putData).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: UPLOADED }),
+    );
+  });
+
+  it('puts focus back on the photo input after a removal', () => {
+    // The remove button unmounts with the photo; without this, focus falls to
+    // the page and a keyboard user starts over from the top.
+    render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
+
+    edit();
+    fireEvent.click(screen.getByRole('button', { name: 'حذف تصویر' }));
+
+    expect(document.activeElement).toBe(photoInputs()[1]);
+  });
+
+  it('revokes each picked photo’s blob once it is replaced or dropped', () => {
+    render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
+
+    edit();
+    pick(photoInputs()[1], png());
+    pick(photoInputs()[1], png());
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:0');
+    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'انصراف' }));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:1');
   });
 });
