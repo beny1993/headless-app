@@ -52,7 +52,7 @@ export default async function AdminProductsPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-baseline gap-3">
           <h1 className="text-2xl font-black">محصولات</h1>
           {/* Everything the filters match, across all pages. */}
