@@ -11,6 +11,7 @@ describe('toCategoryView', () => {
     slug: 'dry-food',
     sortOrder: 2,
     parentId: null,
+    imageKey: null,
     createdAt: new Date('2026-03-01T00:00:00.000Z'),
     updatedAt: new Date('2026-03-15T09:00:00.000Z'),
   };
@@ -22,6 +23,7 @@ describe('toCategoryView', () => {
       slug: 'dry-food',
       sortOrder: 2,
       parentId: null,
+      imageKey: null,
       createdAt: '2026-03-01T00:00:00.000Z',
       updatedAt: '2026-03-15T09:00:00.000Z',
     });
@@ -30,5 +32,10 @@ describe('toCategoryView', () => {
   it('carries a sub-category’s parent through', () => {
     const parentId = '66666666-6666-4666-8666-666666666666';
     expect(toCategoryView({ ...row, parentId }).parentId).toBe(parentId);
+  });
+
+  it('carries the photo’s storage key through, never a URL', () => {
+    const imageKey = 'uploads/123e4567-e89b-42d3-a456-426614174000.webp';
+    expect(toCategoryView({ ...row, imageKey }).imageKey).toBe(imageKey);
   });
 });

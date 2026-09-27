@@ -13,20 +13,50 @@
 import { PET_TYPES, type PetType } from '@/db/schema/catalog';
 
 export const SEED_CATEGORIES = [
-  { title: 'غذای خشک', slug: 'dry-food', sortOrder: 1 },
-  { title: 'غذای تر', slug: 'wet-food', sortOrder: 2 },
-  { title: 'تشویقی', slug: 'treats', sortOrder: 3 },
-  { title: 'مکمل', slug: 'supplements', sortOrder: 4 },
-  { title: 'اسباب‌بازی', slug: 'toys', sortOrder: 5 },
-  { title: 'بهداشت', slug: 'hygiene', sortOrder: 6 },
+  {
+    title: 'غذای خشک',
+    slug: 'dry-food',
+    sortOrder: 1,
+    imageKey: 'products/cat-dry-food.jpg',
+  },
+  {
+    title: 'غذای تر',
+    slug: 'wet-food',
+    sortOrder: 2,
+    imageKey: 'products/cat-wet-food.jpg',
+  },
+  {
+    title: 'تشویقی',
+    slug: 'treats',
+    sortOrder: 3,
+    imageKey: 'products/cat-treats.jpg',
+  },
+  {
+    title: 'مکمل',
+    slug: 'supplements',
+    sortOrder: 4,
+    imageKey: 'products/cat-supplement.jpg',
+  },
+  {
+    title: 'اسباب‌بازی',
+    slug: 'toys',
+    sortOrder: 5,
+    imageKey: 'products/cat-toy.jpg',
+  },
+  {
+    title: 'بهداشت',
+    slug: 'hygiene',
+    sortOrder: 6,
+    imageKey: 'site/cat-hygiene.jpg',
+  },
 ] as const;
 
 /**
  * One level of sub-categories, kept in an export of its own rather than mixed
- * into `SEED_CATEGORIES`: the home strip shows top-level categories only and
- * has a photo per slug in code (`CATEGORY_IMAGES`), and the quiz deep-links at
- * top-level shelves. Both read `SEED_CATEGORIES` and would demand a photo, or
- * a quiz answer, for every sub-category added here.
+ * into `SEED_CATEGORIES`: the home strip shows top-level categories only, each
+ * with the photo its seed row carries, and the quiz deep-links at top-level
+ * shelves. Both read `SEED_CATEGORIES` and would demand a photo, or a quiz
+ * answer, for every sub-category added here.
  *
  * `parentSlug` is typed from `SEED_CATEGORIES`, so a sub-category under a
  * sub-category — or under nothing — fails `pnpm type-check`, not a test run.

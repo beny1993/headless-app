@@ -9,6 +9,7 @@
 // a body carrying them has them stripped rather than applied.
 import { z } from 'zod';
 import { toPersianDigits } from '@/lib/format';
+import { imageKeySchema } from '@/lib/storage/image-upload';
 import { FORBIDDEN_TEXT_CHARS, VISIBLE_CHAR } from '@/lib/validation/text';
 import { SLUG_PATTERN } from './product-input';
 import { MAX_SLUG_LENGTH } from './sku';
@@ -87,6 +88,16 @@ export const categoryInputSchema = z.object({
   // that category may be a parent, is `CategoryDao`'s call: a schema cannot see
   // another row.
   parentId: z.uuid(CATEGORY_MESSAGES.parent).nullable().default(null),
+  // The tile photo's storage key: the manager uploads the file through the
+  // shared content-image route first and sends back the key it was given, the
+  // content editor's flow. Unlike the fields above, omitted is not «none»: it
+  // leaves the photo as it is, and only an explicit null removes it — so a
+  // client that knows nothing of photos (an admin tab opened before they
+  // shipped) cannot wipe one by saving a title. A replaced key's file stays in
+  // storage: deleting it would first need proof the key is this category's own
+  // — a body can name any well-formed key — and category photos change too
+  // rarely to leave anything worth collecting.
+  imageKey: imageKeySchema.nullable().optional(),
 });
 
 /** The validated body — assignable to `CategoryDao`'s `CategoryInput`. */

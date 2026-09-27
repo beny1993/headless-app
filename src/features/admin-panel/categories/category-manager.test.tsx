@@ -1,19 +1,31 @@
 // Pins how the category manager reports request failures: as error toasts (a
 // refused delete carries the server's Persian reason), while a field refusal
-// stays next to its field. Mocked at the module edge: the api-client's senders
-// and `sonner`'s `toast`; `ApiRequestError` and the field-error mapping are real.
+// stays next to its field — and how a photo rides a save: uploaded first, its
+// key then sent with the category. Mocked at the module edge: the api-client's
+// senders and `sonner`'s `toast`; `ApiRequestError` and the field-error mapping
+// are real.
 import { act } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError } from '@/lib/api-client';
 import { CATEGORY_PARENT_MESSAGES } from '@/lib/catalog/category-input';
+import { API_PATHS } from '@/lib/constant/paths';
 import type { CategoryView } from '@/lib/hono/routes/admin-categories';
+import { IMAGE_TYPE_ERROR } from '@/lib/storage/image-upload';
+import { imageSrc } from '@/lib/storage/image-url';
 import { CategoryManager } from './category-manager';
 
-const { postData, putData, delData, toast } = vi.hoisted(() => ({
+const { postData, putData, delData, postForm, toast } = vi.hoisted(() => ({
   postData: vi.fn(),
   putData: vi.fn(),
   delData: vi.fn(),
+  postForm: vi.fn(),
   toast: { error: vi.fn() },
 }));
 vi.mock('@/lib/api-client', async (original) => ({
@@ -21,6 +33,7 @@ vi.mock('@/lib/api-client', async (original) => ({
   postData,
   putData,
   delData,
+  postForm,
 }));
 vi.mock('sonner', () => ({ toast }));
 
@@ -30,6 +43,7 @@ const DRY: CategoryView = {
   slug: 'dry-food',
   sortOrder: 1,
   parentId: null,
+  imageKey: null,
   createdAt: '2026-09-01T00:00:00.000Z',
   updatedAt: '2026-09-01T00:00:00.000Z',
 };
@@ -38,6 +52,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const create = async () => {
@@ -122,7 +137,7 @@ describe('CategoryManager sub-categories', () => {
     screen
       .getAllByRole('row')
       .slice(1)
-      .map((row) => row.querySelectorAll('td')[1]?.textContent);
+      .map((row) => row.querySelectorAll('td')[2]?.textContent);
 
   // Every «دسته‌بندی مادر» select carries that same label; the create form's is
   // first in the DOM, and the row being edited owns the next one.
@@ -228,5 +243,285 @@ describe('CategoryManager sub-categories', () => {
 
     expect(screen.getByText(CATEGORY_PARENT_MESSAGES.nested)).toBeTruthy();
     expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('CategoryManager photos', () => {
+  const PHOTO = 'uploads/123e4567-e89b-42d3-a456-426614174000.jpg';
+  const UPLOADED = 'uploads/223e4567-e89b-42d3-a456-426614174000.png';
+  const WITH_PHOTO: CategoryView = { ...DRY, imageKey: PHOTO };
+
+  beforeEach(() => {
+    // happy-dom's `createObjectURL` wants a real Blob; a distinguishable
+    // string is all these tests need.
+    let next = 0;
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:${next++}`);
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  const png = () =>
+    new File([new Uint8Array([0x89, 0x50])], 'cat.png', { type: 'image/png' });
+  /** The photo inputs: the create form's first, then an editing row's. */
+  const photoInputs = () =>
+    screen.getAllByLabelText('تصویر دسته‌بندی') as HTMLInputElement[];
+  const pick = (input: HTMLInputElement, file: File) =>
+    fireEvent.change(input, { target: { files: [file] } });
+  const edit = () =>
+    fireEvent.click(
+      screen.getByRole('button', { name: `ویرایش ${DRY.title}` }),
+    );
+  const saveRow = () =>
+    act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }));
+    });
+  /** The object key behind an `<img>`, through next/image's URL. */
+  const shows = (scope: HTMLElement) =>
+    decodeURIComponent(scope.querySelector('img')?.getAttribute('src') ?? '');
+
+  it('uploads a picked photo first, then creates the category with its key', async () => {
+    postForm.mockResolvedValue({ key: UPLOADED });
+    postData.mockResolvedValue({ ...DRY, imageKey: UPLOADED });
+    render(<CategoryManager initialCategories={[]} />);
+
+    pick(photoInputs()[0], png());
+    await create();
+
+    expect(postForm).toHaveBeenCalledWith(
+      API_PATHS.ADMIN_CONTENT_IMAGES,
+      expect.any(FormData),
+      expect.anything(),
+    );
+    expect(postData).toHaveBeenCalledWith(
+      API_PATHS.ADMIN_CATEGORIES,
+      expect.objectContaining({ imageKey: UPLOADED }),
+    );
+    expect(postForm.mock.invocationCallOrder[0]).toBeLessThan(
+      postData.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('uploads nothing while the rest of the form is refused', async () => {
+    render(<CategoryManager initialCategories={[]} />);
+
+    pick(photoInputs()[0], png());
+    fireEvent.change(screen.getByLabelText('نشانی (slug)'), {
+      target: { value: 'Bad Slug' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^ساخت دسته/ }));
+    });
+
+    expect(postForm).not.toHaveBeenCalled();
+    expect(postData).not.toHaveBeenCalled();
+  });
+
+  it('refuses a file that is no image on the field, and creates without it', async () => {
+    postData.mockResolvedValue(DRY);
+    render(<CategoryManager initialCategories={[]} />);
+
+    pick(
+      photoInputs()[0],
+      new File(['x'], 'notes.txt', { type: 'text/plain' }),
+    );
+    expect(screen.getByText(IMAGE_TYPE_ERROR)).toBeTruthy();
+    await create();
+
+    expect(postForm).not.toHaveBeenCalled();
+    expect(postData).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: null }),
+    );
+  });
+
+  it('keeps the uploaded key when the create is refused, so the retry does not upload again', async () => {
+    postForm.mockResolvedValue({ key: UPLOADED });
+    postData
+      .mockRejectedValueOnce(
+        new ApiRequestError(400, 'ذخیره نشد.', ['slug: این نشانی تکراری است.']),
+      )
+      .mockResolvedValueOnce({ ...DRY, imageKey: UPLOADED });
+    render(<CategoryManager initialCategories={[]} />);
+
+    pick(photoInputs()[0], png());
+    await create();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^ساخت دسته/ }));
+    });
+
+    expect(postForm).toHaveBeenCalledTimes(1);
+    expect(postData).toHaveBeenCalledTimes(2);
+    expect(postData).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: UPLOADED }),
+    );
+  });
+
+  it('shows each row’s photo, and says so when a category has none', () => {
+    render(
+      <CategoryManager
+        initialCategories={[
+          WITH_PHOTO,
+          { ...DRY, id: '77777777-7777-4777-8777-777777777777', slug: 'bare' },
+        ]}
+      />,
+    );
+    const [withPhoto, without] = screen.getAllByRole('row').slice(1);
+
+    expect(shows(withPhoto)).toContain(`url=${imageSrc(PHOTO)}`);
+    expect(within(withPhoto).getByText('دارای تصویر')).toBeTruthy();
+    expect(without.querySelector('img')).toBeNull();
+    expect(within(without).getByText('بدون تصویر')).toBeTruthy();
+  });
+
+  it('keeps the saved photo when an edit changes only the title', async () => {
+    // PUT replaces the whole category: a body without the key would delete
+    // the photo the admin never touched.
+    putData.mockResolvedValue({ ...WITH_PHOTO, title: 'غذای خشک گربه' });
+    render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
+
+    edit();
+    fireEvent.change(screen.getAllByLabelText('عنوان')[1], {
+      target: { value: 'غذای خشک گربه' },
+    });
+    await saveRow();
+
+    expect(postForm).not.toHaveBeenCalled();
+    expect(putData).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: PHOTO }),
+    );
+  });
+
+  it('replaces the saved photo with a new pick', async () => {
+    postForm.mockResolvedValue({ key: UPLOADED });
+    putData.mockResolvedValue({ ...DRY, imageKey: UPLOADED });
+    render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
+
+    edit();
+    pick(photoInputs()[1], png());
+    await saveRow();
+
+    expect(putData).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: UPLOADED }),
+    );
+  });
+
+  it('removes the saved photo', async () => {
+    putData.mockResolvedValue(DRY);
+    render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
+
+    edit();
+    fireEvent.click(screen.getByRole('button', { name: 'حذف تصویر' }));
+    await saveRow();
+
+    expect(postForm).not.toHaveBeenCalled();
+    expect(putData).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: null }),
+    );
+  });
+
+  it('drops a picked photo on cancel: the saved one is back, and a save uploads nothing', async () => {
+    putData.mockResolvedValue(WITH_PHOTO);
+    render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
+
+    edit();
+    pick(photoInputs()[1], png());
+    fireEvent.click(screen.getByRole('button', { name: 'انصراف' }));
+    edit();
+
+    // The thumbnail and the picker's preview: both the saved photo, neither the
+    // dropped pick's blob.
+    const [, row] = screen.getAllByRole('row');
+    const sources = [...row.querySelectorAll('img')].map((img) =>
+      decodeURIComponent(img.getAttribute('src') ?? ''),
+    );
+    expect(sources).toHaveLength(2);
+    for (const src of sources) expect(src).toContain(`url=${imageSrc(PHOTO)}`);
+
+    await saveRow();
+    expect(postForm).not.toHaveBeenCalled();
+    expect(putData).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: PHOTO }),
+    );
+  });
+
+  it('keeps the uploaded key when an edit is refused, so the retry does not upload again', async () => {
+    postForm.mockResolvedValue({ key: UPLOADED });
+    putData
+      .mockRejectedValueOnce(
+        new ApiRequestError(400, 'ذخیره نشد.', ['slug: این نشانی تکراری است.']),
+      )
+      .mockResolvedValueOnce({ ...DRY, imageKey: UPLOADED });
+    render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
+
+    edit();
+    pick(photoInputs()[1], png());
+    await saveRow();
+    await saveRow();
+
+    expect(postForm).toHaveBeenCalledTimes(1);
+    expect(putData).toHaveBeenCalledTimes(2);
+    expect(putData).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: UPLOADED }),
+    );
+  });
+
+  it('locks the photo field while the save is in flight', async () => {
+    // A removal or a new pick mid-upload would be overwritten by the key the
+    // upload brings back, so the field takes neither until the save is done.
+    let finishUpload: (value: { key: string }) => void = () => {};
+    postForm.mockReturnValue(
+      new Promise((resolve) => {
+        finishUpload = resolve;
+      }),
+    );
+    putData.mockResolvedValue({ ...DRY, imageKey: UPLOADED });
+    render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
+
+    edit();
+    pick(photoInputs()[1], png());
+    const photoField = () => photoInputs()[1].closest('fieldset');
+    expect(photoField()?.disabled).toBe(false);
+    await saveRow();
+
+    expect(photoField()?.disabled).toBe(true);
+    expect(
+      screen.getByRole('button', { name: 'حذف تصویر' }).closest('fieldset')
+        ?.disabled,
+    ).toBe(true);
+
+    await act(async () => finishUpload({ key: UPLOADED }));
+    expect(putData).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ imageKey: UPLOADED }),
+    );
+  });
+
+  it('puts focus back on the photo input after a removal', () => {
+    // The remove button unmounts with the photo; without this, focus falls to
+    // the page and a keyboard user starts over from the top.
+    render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
+
+    edit();
+    fireEvent.click(screen.getByRole('button', { name: 'حذف تصویر' }));
+
+    expect(document.activeElement).toBe(photoInputs()[1]);
+  });
+
+  it('revokes each picked photo’s blob once it is replaced or dropped', () => {
+    render(<CategoryManager initialCategories={[WITH_PHOTO]} />);
+
+    edit();
+    pick(photoInputs()[1], png());
+    pick(photoInputs()[1], png());
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:0');
+    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'انصراف' }));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:1');
   });
 });

@@ -120,6 +120,13 @@
       "when": 1789806148995,
       "tag": "0016_variant_label_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790502481776,
+      "tag": "0017_category_image_key",
+      "breakpoints": true
     }
   ]
 }

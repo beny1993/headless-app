@@ -60,6 +60,12 @@ export const categories = pgTable(
     parentId: uuid('parent_id').references((): AnyPgColumn => categories.id, {
       onDelete: 'restrict',
     }),
+    /**
+     * The photo on the category's home-page tile: a storage key, the same shape
+     * as `product_images.object_key` (never a URL), or `null` for none. A
+     * replaced photo's file is not deleted — see `categoryInputSchema`.
+     */
+    imageKey: text('image_key'),
     createdAt,
     updatedAt,
   },

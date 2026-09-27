@@ -8,9 +8,9 @@
 // nobody. The error was a bare `<p>`, shown and never announced. And the input
 // is `sr-only`, so the global focus outline landed on something invisible.
 //
-// The content editor is this picker's only render site now that the product
-// form has its own multi-photo field, so «unchanged for both callers» is what
-// content-editor.test.tsx next door proves; this file proves the fixes.
+// The picker renders in the content editor and in the category manager (the
+// product form has its own multi-photo field). Their own tests pin how each
+// uses it; this file proves the fixes.
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it } from 'vitest';
 import { IMAGE_TYPE_ERROR } from '@/lib/storage/image-upload';

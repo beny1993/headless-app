@@ -4,6 +4,7 @@ import { randomInt } from 'node:crypto';
 import {
   expect,
   test as base,
+  type Locator,
   type Page,
   type Response,
 } from '@playwright/test';
@@ -57,6 +58,19 @@ export const unwrapImageSrc = (url: URL): string =>
     ? (url.searchParams.get('url') ?? '')
     : url.pathname
   ).replace(/^\//, '');
+
+/** The storage key an `<img>` is actually showing. */
+export async function renderedKey(img: Locator): Promise<string> {
+  const src = await img.getAttribute('src');
+  return unwrapImageSrc(new URL(src ?? '', 'http://localhost'));
+}
+
+/** An image the browser managed to decode — a broken one has no natural width. */
+export async function expectRendered(img: Locator) {
+  await expect
+    .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+}
 
 /**
  * An uploaded image, straight or through the image optimizer. A dev database
