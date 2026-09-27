@@ -61,19 +61,27 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
           }),
     });
 
-  const parse = async <T>(res: Response) => ({
-    status: res.status,
-    body: (await res.json()) as ApiResponse<T>,
-  });
+  /**
+   * Every category the API answers with is tracked for teardown here, so a
+   * refusal that regresses into a create fails its own test without leaving a
+   * row behind in the dev database.
+   */
+  const parse = async <T>(res: Response) => {
+    const payload = (await res.json()) as ApiResponse<T>;
+    if (payload.status === 'success') {
+      const { id } = (payload.data ?? {}) as { id?: unknown };
+      if (typeof id === 'string') categoryIds.push(id);
+    }
+    return { status: res.status, body: payload };
+  };
 
-  /** Create through the API as the admin, tracked for teardown. */
+  /** Create through the API as the admin. */
   const create = async (over: Record<string, unknown> = {}) => {
     asAdmin();
     const res = await parse<CategoryView>(
       await json(API_PATHS.ADMIN_CATEGORIES, 'POST', body(over)),
     );
     if (res.body.status !== 'success') throw new Error(res.body.message);
-    categoryIds.push(res.body.data.id);
     return res.body.data;
   };
 
@@ -175,7 +183,6 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
 
       expect(res.status).toBe(201);
       if (res.body.status !== 'success') throw new Error(res.body.message);
-      categoryIds.push(res.body.data.id);
       expect(res.body.data.id).not.toBe(pinned);
       expect(res.body.data).toMatchObject({
         title: 'اسباب‌بازی',
