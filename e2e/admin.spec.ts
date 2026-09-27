@@ -51,6 +51,17 @@ test.describe('an admin', () => {
     const orderId = await resultOrderId(shopper);
 
     await page.goto(PROTECTED_PATHS.ORDERS);
+    // Numbered from one down the first page, however many orders it holds.
+    const rows = page.getByRole('row').filter({
+      has: page.locator('[data-umami-event="admin-panel-orders-view"]'),
+    });
+    await expect(rows.first().getByRole('cell').first()).toHaveText(
+      formatNumber(1),
+    );
+    await expect(rows.last().getByRole('cell').first()).toHaveText(
+      formatNumber(await rows.count()),
+    );
+
     await page
       .locator(
         `[data-umami-event="admin-panel-orders-view"][href="${adminOrderPath(orderId)}"]`,

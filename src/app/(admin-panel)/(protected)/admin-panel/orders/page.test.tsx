@@ -1,8 +1,8 @@
 // Pins how the admin orders list pages: the page and the status filter come
-// from the URL, every page link keeps the status, and a page past the end says
-// so. The page renders for real with its DAO and the admin guard mocked at the
-// module edge.
-import { cleanup, render, screen } from '@testing-library/react';
+// from the URL, every page link keeps the status, rows are numbered on from the
+// pages before, and a page past the end says so. The page renders for real with
+// its DAO and the admin guard mocked at the module edge.
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AdminOrderRow } from '@/db/dao/OrderDao';
 import { PROTECTED_PATHS } from '@/lib/constant/paths';
@@ -85,6 +85,27 @@ describe('admin orders paging', () => {
       limit: ADMIN_PAGE_SIZE,
     });
     expect(screen.queryByRole('link', { name: 'صفحه بعد' })).toBeNull();
+  });
+
+  it('numbers rows on from the pages before', async () => {
+    pageForAdmin.mockResolvedValue({
+      items: [
+        ORDER,
+        { ...ORDER, id: '00000000-0000-4000-8000-000000000102', orderNo: 102 },
+      ],
+      total: ADMIN_PAGE_SIZE + 2,
+    });
+
+    await renderPage({ page: '2' });
+
+    // Page two starts after one full page, as the DAO's offset does.
+    const [, ...rows] = screen.getAllByRole('row');
+    expect(
+      rows.map((row) => within(row).getAllByRole('cell')[0].textContent),
+    ).toEqual([
+      formatNumber(ADMIN_PAGE_SIZE + 1),
+      formatNumber(ADMIN_PAGE_SIZE + 2),
+    ]);
   });
 
   it('says a page past the end is empty, and still links back', async () => {
