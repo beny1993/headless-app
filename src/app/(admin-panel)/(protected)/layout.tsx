@@ -18,7 +18,12 @@ export default async function ProtectedLayout({
     // `relative`, so this clips absolutely positioned content too: the tables'
     // `sr-only` text otherwise sits against the page, beyond every clip, and at
     // a phone's width pans the whole admin sideways.
-    <div className="bg-background relative flex h-screen overflow-hidden">
+    // `overflow-clip`, never `overflow-hidden`: a hidden box is still a scroll
+    // container. The image pickers' `sr-only` file inputs sit at their
+    // unscrolled place — below the frame once `main` has scrolled — and
+    // focusing one scrolled this whole frame up over a blank band. A clipped
+    // box clips the same and cannot scroll at all.
+    <div className="bg-background relative flex h-screen overflow-clip">
       <AdminSidebar />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
