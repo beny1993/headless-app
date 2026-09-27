@@ -37,7 +37,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/lib/catalog/variant.ts` | Product families: `displayTitle` (the **single** derivation used by the product heading, the admin list and the `order_items` snapshot), the label cap and the Persian refusals. A family is `products.variant_of` + `variant_label` — a member is an ordinary product row, so the cart, the stock decrement and `order_items` are untouched; the storefront lists `variant_of is null` and reaches members from the head's page |
 | `design/` | **Canonical design reference** — vendored Figma prototype (own deps, own `pnpm dev` on :5173). FE stories port from it. Never imported by the app. |
 | `scripts/create-admin.ts` | Grant admin by phone (`pnpm create-admin <phone> [name]`) — creates or promotes |
-| `src/db/seed/`, `scripts/seed-catalog.ts` | Demo catalog seed (`pnpm seed-catalog`), idempotent; its images live in `public/products/` |
+| `src/db/seed/`, `scripts/seed-catalog.ts` | Demo catalog seed (`pnpm seed-catalog`), idempotent; its images live in `public/products/`, plus the hygiene tile's `public/site/cat-hygiene.jpg` |
 | `scripts/seed-shipping.ts` | Seed all 31 provinces + placeholder shipping rates (`pnpm seed-shipping`), idempotent (upserts by name, never resets a tuned fee). Migration `0011_seed_provinces` plants the same 31 in every environment — production cannot run this script — adding only what is missing and recognising a hand-typed spelling (spaces/ZWNJ) as the same province; pinned by `src/db/seed/shipping-migration.integration.test.ts` |
 | `e2e/`, `playwright.config.ts` | Playwright E2E suite (`pnpm test:e2e`): the core-flow regression walk — see *End-to-end tests* under Testing standard |
 
@@ -54,6 +54,10 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 - **DB access only through DAOs** in `src/db/dao/`. Multi-DAO operations go in
   `src/logic/` (create it when needed) — never in route handlers or components.
   Never write raw SQL. Schema change → `pnpm migration:generate` + review the SQL.
+  A migration's journal `when` must be newer than every entry before it: the
+  runtime migrator silently skips an older-dated one, so a merge conflict in
+  `meta/_journal.json` is resolved by regenerating, never by renumbering with
+  the old `when` (`src/db/migrations/journal.test.ts` pins the order).
 - **API routes**: a `createRoute` definition plus a separate typed `RouteHandler`
   export in the same file (see `src/lib/hono/routes/health.ts`), registered with
   `app.openapi(route, handler)`. Sub-routers come from `createRouter()`.

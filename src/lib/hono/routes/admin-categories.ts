@@ -1,7 +1,8 @@
-// Admin category CRUD — create, update (full body), delete. Mounted under
-// `/admin/*` behind `requireAdmin` in ../index.ts; the guard runs before every
-// handler here (401 without a session, 403 without the admin role), so nothing
-// below re-checks authorization.
+// Admin category CRUD — create, update (every field but the photo: an omitted
+// `imageKey` keeps it, see ../../catalog/category-input.ts), delete. Mounted
+// under `/admin/*` behind `requireAdmin` in ../index.ts; the guard runs before
+// every handler here (401 without a session, 403 without the admin role), so
+// nothing below re-checks authorization.
 //
 // Same shape as ./admin-discounts.ts: a `createRoute` definition plus a separate
 // typed `RouteHandler`, and the body is the shared, client-safe
@@ -136,7 +137,7 @@ export const categoryUpdateRoute = createRoute({
   path: '/admin/categories/{id}',
   tags: ['admin'],
   summary:
-    'Replace a category’s title, slug, sort order and parent, and set or remove its photo (admin only)',
+    'Replace a category’s title, slug, sort order and parent, and set or remove its photo (omit imageKey to keep the photo, null to remove it; admin only)',
   request: {
     params: IdParamSchema,
     body: {

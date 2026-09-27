@@ -481,7 +481,8 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
       expect(sub.parentId).toBe(parent.id);
       if (moved.body.status !== 'success') throw new Error(moved.body.message);
       expect(moved.body.data.parentId).toBe(other.id);
-      // An omitted `parentId` is «top-level», because PUT replaces the row.
+      // An omitted `parentId` is «top-level», because PUT replaces every field
+      // but the photo.
       if (promoted.body.status !== 'success')
         throw new Error(promoted.body.message);
       expect(promoted.body.data.parentId).toBeNull();

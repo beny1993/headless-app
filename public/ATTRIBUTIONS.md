@@ -49,11 +49,16 @@ repo weight.
 | `lili.webp` | Lili — owner-supplied photo, identity-preserving portrait edit |
 | `sansa.webp` | Sansa — owner-supplied photo, identity-preserving portrait edit |
 
-Legacy stock stand-ins retained for existing stored content values:
+Stock photography the demo catalog seed uses (the hygiene category's tile):
 
 | File | Source |
 | --- | --- |
 | `cat-hygiene.jpg` | https://unsplash.com/photos/photo-1548802673-380ab8ebc7b7 |
+
+Legacy stock stand-ins retained for existing stored content values:
+
+| File | Source |
+| --- | --- |
 | `community-baron.jpg` | https://unsplash.com/photos/photo-1568640347023-a616a30bc3bd |
 | `community-luna.jpg` | https://unsplash.com/photos/photo-1514888286974-6c03e2ca1dba |
 | `community-misha.jpg` | https://unsplash.com/photos/photo-1606214174585-fe31582dc6ee |
