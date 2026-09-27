@@ -126,9 +126,12 @@ describe('the Umami tracker', () => {
     });
   });
 
-  it('counts the landing page once the script has loaded', () => {
+  it('counts the landing page once the script has loaded, however late', () => {
     const tracker = renderTracker();
-    expect(track).not.toHaveBeenCalled();
+    // The wait comes due before the script arrives, as on any visit where the
+    // self-hosted script takes longer. It must not use the landing URL up, or
+    // the load below would skip the landing pageview.
+    wait(PAGEVIEW_WAIT_MS);
 
     tracker.load();
 
@@ -207,23 +210,51 @@ describe('the Umami tracker', () => {
   it('counts what auto-track counted: the nearest link or button, else the element', () => {
     const tracker = renderTracker();
     tracker.load();
-    // A tracked container, as the gallery's `<ul>` and the photo field's
-    // `<label>` are. Counting every click inside one would fire the label twice
-    // per click — once for itself, once for the input it forwards the click to.
+    // A tracked container: a list, a wrapper, a `<label>` round an input.
+    // Counting every click inside one would fire a label twice per click —
+    // once for itself, once for the input it forwards the click to.
     const container = document.createElement('div');
     container.dataset.umamiEvent = 'container';
     const untrackedLink = document.createElement('a');
     untrackedLink.href = '/elsewhere';
     const child = document.createElement('span');
     container.append(untrackedLink, child);
-    document.body.append(container);
+    // A tracked button wrapping an icon, as every admin save and delete does.
+    const button = document.createElement('button');
+    button.dataset.umamiEvent = 'button';
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    button.append(icon);
+    document.body.append(container, button);
 
     clickAndReadPrevented(untrackedLink);
     clickAndReadPrevented(child);
     clickAndReadPrevented(container);
+    clickAndReadPrevented(icon);
 
     expect(sent().slice(1)).toEqual([
       { ...STALE, url: `${origin()}/product/first`, name: 'container' },
+      { ...STALE, url: `${origin()}/product/first`, name: 'button' },
+    ]);
+  });
+
+  it('refers a click like the page it happened on, even inside its wait', () => {
+    const tracker = renderTracker();
+    tracker.load();
+
+    tracker.navigate('/shop');
+    // Inside the wait /shop is not counted yet, but the landing page refers it.
+    clickAndReadPrevented(trackedLink('inside-the-wait'));
+    wait(PAGEVIEW_WAIT_MS);
+    clickAndReadPrevented(trackedLink('after-the-wait'));
+
+    const referred = {
+      ...STALE,
+      url: `${origin()}/shop`,
+      referrer: `${origin()}/product/first`,
+    };
+    expect(sent().filter((payload) => 'name' in payload)).toEqual([
+      { ...referred, name: 'inside-the-wait' },
+      { ...referred, name: 'after-the-wait' },
     ]);
   });
 

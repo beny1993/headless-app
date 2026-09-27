@@ -81,8 +81,11 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 - Interactive elements carry `data-umami-event="<page>-<element>-<action>"`,
   sent by `src/components/umami-tracker.tsx`. Umami's auto-track stays off: it
   cancels the click on every tracked `<a>` and reloads the page itself. The
-  name is read off the nearest link or button, else the element tapped — never
-  a container's — so it goes on what a tap lands on (`trackedEventOf`).
+  name is read off the nearest link or button, else the element clicked, never
+  a container's (`trackedEventOf`). So it goes on the `<a>` or `<button>`
+  whenever a tap can land inside one; on the form control itself when a
+  `<label>` wraps or points at it, since the label forwards its click there;
+  otherwise on the exact element tapped.
 - Conventional commits (commitlint enforces the type list).
 
 ## Non-negotiables (from the vault note — these affect code, not just docs)
@@ -298,8 +301,12 @@ areas other than the home headline, a wrong or resent login code, maintenance
 mode switched on (the suite pins it off; the gate is unit-tested in
 `src/app/(app)/(store)/layout.test.ts`), Zarinpal switched off at checkout (the
 suite pins it on; the disabled option is component-tested in
-`src/features/checkout/checkout-form.submit.test.tsx`), and anything visual
-(RTL layout, Persian font rendering).
+`src/features/checkout/checkout-form.submit.test.tsx`), analytics switched on
+(the suite blanks Umami, so the tracker never mounts; its mount is unit-tested
+in `src/app/layout.test.ts` and the tracker in
+`src/components/umami-tracker.test.tsx`) — walk a tracked link with the real
+tracker loaded and check it still swaps the page in place — and anything
+visual (RTL layout, Persian font rendering).
 
 - **It starts its own server**: `next dev` on :3100, never a running :3000 —
   that one may be another checkout on another branch. Before it: migrate,

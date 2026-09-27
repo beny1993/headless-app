@@ -231,7 +231,8 @@ test('a product family is one card, and its page picks the member', async ({
   // Picking a sibling is ordinary navigation to that member's own slug — swapped
   // in place, from where the shopper was. Scrolled past the page's top first:
   // only then does Next's default throw the page back up, which is what read as
-  // a reload (a real reload lands at the top as well).
+  // a reload. (This run blanks Umami, so its full reload on a tracked link is
+  // pinned by src/app/layout.test.ts and umami-tracker.test.tsx, not here.)
   const chip = chips.filter({ hasText: cheapest.variantLabel! });
   await chip.evaluate((element) =>
     window.scrollTo(
