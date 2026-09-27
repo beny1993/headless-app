@@ -150,8 +150,6 @@ export function ProductGallery({
         // Both: `scrollbar-width` alone still paints on pre-121 Chromium and
         // Safari.
         className="bg-secondary flex snap-x snap-mandatory [scrollbar-width:none] overflow-x-auto overscroll-x-contain scroll-smooth rounded-3xl [&::-webkit-scrollbar]:hidden"
-        // Umami tracks clicks only, so the event is named for a tap.
-        data-umami-event="product-gallery-photo-tap"
       >
         {images.map((image, index) => (
           <li
@@ -181,6 +179,10 @@ export function ProductGallery({
               fetchPriority={index === 0 ? 'high' : 'low'}
               sizes="(min-width: 1024px) 50vw, 100vw"
               className="object-cover"
+              // Umami tracks clicks only, so the event is named for a tap. On
+              // the photo, not the track: a tap lands on the `<img>` filling
+              // the slide, and the tracker never reads a container's name.
+              data-umami-event="product-gallery-photo-tap"
             />
           </li>
         ))}

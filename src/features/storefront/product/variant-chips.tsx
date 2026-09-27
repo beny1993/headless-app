@@ -18,6 +18,11 @@ import { cn } from '@/lib/utils';
  *
  * The current member is a `<span>`, not a link to the page it is already on:
  * `aria-current` on a self-link still reads as somewhere to go.
+ *
+ * `scroll={false}`: the sibling's page has the same shape, so a pick swaps it
+ * in place. By default Next scrolls to the top whenever the new page's first
+ * element is off-screen — on a phone the chips sit below the photo, so every
+ * pick threw the shopper back to the top, which read as a page reload.
  */
 export function VariantChips({
   variants,
@@ -54,6 +59,7 @@ export function VariantChips({
             ) : (
               <Link
                 href={productPath(variant.slug)}
+                scroll={false}
                 className={cn(
                   'border-border text-muted-foreground hover:border-primary hover:text-foreground',
                   'inline-flex min-h-11 flex-col items-start justify-center rounded-xl border px-4 py-1 text-sm font-medium transition-colors',

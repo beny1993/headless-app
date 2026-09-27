@@ -78,7 +78,11 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   Storefront and admin are `lang="fa" dir="rtl"` — use logical properties
   (`ms-*`/`me-*`, `start`/`end`), never `left`/`right`.
 - **Persian UI copy** in components; identifiers, comments and commits in English.
-- Interactive elements carry `data-umami-event="<page>-<element>-<action>"`.
+- Interactive elements carry `data-umami-event="<page>-<element>-<action>"`,
+  sent by `src/components/umami-tracker.tsx`. Umami's auto-track stays off: it
+  cancels the click on every tracked `<a>` and reloads the page itself. The
+  name is read off the nearest link or button, else the element tapped — never
+  a container's — so it goes on what a tap lands on (`trackedEventOf`).
 - Conventional commits (commitlint enforces the type list).
 
 ## Non-negotiables (from the vault note — these affect code, not just docs)
