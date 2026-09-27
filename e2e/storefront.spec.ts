@@ -241,6 +241,13 @@ test('a product family is one card, and its page picks the member', async ({
     ),
   );
   const scrolled = await page.evaluate(() => window.scrollY);
+  // Next scrolls only when the new page's top is off-screen, so a taller
+  // header would skip the jump this checks for without failing anything.
+  expect(
+    await page
+      .locator('main')
+      .evaluate((element) => element.getBoundingClientRect().top),
+  ).toBeLessThan(0);
   await chip.click();
   await expect(page).toHaveURL(new RegExp(`${cheapest.slug}$`));
   await expect(

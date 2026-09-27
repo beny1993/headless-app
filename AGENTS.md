@@ -273,10 +273,10 @@ renders on from `.next/cache`) — repriced, found
 under both category filters and taken off the shop; a sub-category nested under
 a category the panel then refuses to delete until it is emptied; a category
 given a photo that its home-page tile then shows (the file probed with
-`request.get`), and a plain tile once the photo is removed; a photo picked
-through the button in the list's last row — below the fold, so `main` has
-scrolled — with the panel frame still filling the screen (read-only, so both
-widths); a product
+`request.get`), a new one picked in its edit row that the tile then follows,
+and a plain tile once the photo is removed; a photo picked through the button
+in the list's last row — below the fold, so `main` has scrolled — with the
+panel frame still filling the screen (read-only, so both widths); a product
 family's members each listed and named by their own label, the head's
 «زیرمجموعه‌ی» select disabled because it has members and a member's live
 (read-only, so it runs at both widths and leaves nothing behind); a discount
@@ -339,7 +339,7 @@ visual (RTL layout, Persian font rendering).
   province with the customer's address on it — those three specs run at 1280px
   only, since none of those rows can be deleted. The sub-category spec deletes
   both rows it creates, so it runs at both widths, and so does the category-photo
-  spec — whose photo file stays under `uploads/`, one per width per run, since
+  spec — whose two photo files stay under `uploads/`, per width per run, since
   nothing deletes a category's replaced or removed photo. The card-to-card spec leaves a
   `checkout.payment` content row equal to the default (it puts the old values
   back in a `finally`). The shipping-rate and headline
@@ -354,8 +354,11 @@ visual (RTL layout, Persian font rendering).
   first six by sort order, then title, and a killed integration run leaves its
   «دسته آزمایشی …» category at sort order 0 with nothing to switch it off. The
   category-photo spec survives them because its «آزمون عکس …» title sorts first
-  under the dev database's `en_US.utf8` collation. Six leaked «آزمون عکس …»
-  rows (from killed runs of that spec) would crowd it out too: delete them.
+  under the dev database's `en_US.utf8` collation. Its own leftovers can still
+  crowd it out: a run killed or timed out mid-spec leaves its «آزمون عکس …»
+  row, and with six of those beside it the new tile misses the strip whenever
+  its random id sorts last among them — one run in seven, more with every
+  further leftover. Delete them.
 - **Uploaded images never count as failed requests.** A dev database keeps the
   uploads it was given while `.env` pointed at object storage, and this run's
   local driver has no file for them. The catalog spec proves the upload path

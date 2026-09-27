@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { z } from 'zod';
 import { SEED_CATEGORIES, SEED_PRODUCTS } from '@/db/seed/catalog-data';
 import {
@@ -11,6 +11,7 @@ import { formatNumber } from '@/lib/format';
 import {
   ADMIN_STATE,
   PRODUCT_PHOTO,
+  SECOND_PRODUCT_PHOTO,
   apiCall,
   expect,
   expectFailedRequest,
@@ -63,6 +64,28 @@ async function createCategory(
     .parse(await created.json()).data.id;
 }
 
+/**
+ * Opens a row's edit mode, lets `change` work on the editing row, and saves.
+ * Returns when the PUT answers, which can be before the row leaves edit mode.
+ */
+async function editCategory(
+  page: Page,
+  slug: string,
+  change: (editing: Locator) => Promise<void>,
+) {
+  await rowFor(page, slug)
+    .locator('[data-umami-event="admin-panel-categories-edit"]')
+    .click();
+  const editing = page.locator('tr', {
+    has: page.locator('[data-umami-event="admin-panel-categories-row-title"]'),
+  });
+  await change(editing);
+  await Promise.all([
+    page.waitForResponse(categoryCall('PUT')),
+    editing.locator('[data-umami-event="admin-panel-categories-save"]').click(),
+  ]);
+}
+
 /** Deletes a category through its row, past the confirm dialog. */
 async function deleteCategory(page: Page, slug: string) {
   page.once('dialog', (dialog) => dialog.accept());
@@ -100,23 +123,11 @@ test('an admin creates a category, renames it and deletes it', async ({
     await createCategory(page, title, slug);
 
     // Renamed in place: the row turns into its own fields, then saves.
-    await rowFor(page, slug)
-      .locator('[data-umami-event="admin-panel-categories-edit"]')
-      .click();
-    const editing = page.locator('tr', {
-      has: page.locator(
-        '[data-umami-event="admin-panel-categories-row-title"]',
-      ),
-    });
-    await editing
-      .locator('[data-umami-event="admin-panel-categories-row-title"]')
-      .fill(renamed);
-    await Promise.all([
-      page.waitForResponse(categoryCall('PUT')),
+    await editCategory(page, slug, (editing) =>
       editing
-        .locator('[data-umami-event="admin-panel-categories-save"]')
-        .click(),
-    ]);
+        .locator('[data-umami-event="admin-panel-categories-row-title"]')
+        .fill(renamed),
+    );
     await expect(rowFor(page, slug)).toContainText(renamed);
 
     // No product uses it, so it deletes outright.
@@ -129,7 +140,7 @@ test('an admin creates a category, renames it and deletes it', async ({
   }
 });
 
-test('a category photo reaches its home tile, and removing it leaves a plain tile', async ({
+test('a category photo reaches its home tile, a replaced one follows, and removing it leaves a plain tile', async ({
   page,
 }) => {
   const id = runId();
@@ -151,52 +162,50 @@ test('a category photo reaches its home tile, and removing it leaves a plain til
       .locator('[data-umami-event="admin-panel-categories-image"]')
       .setInputFiles(PRODUCT_PHOTO);
     await createCategory(page, title, slug);
-    // Counted first: reading a missing image's `src` would wait out the whole
-    // test, leaving no time for the cleanup below.
     const thumbnail = rowFor(page, slug).locator('img');
-    await expect(thumbnail).toHaveCount(1);
     const key = await renderedKey(thumbnail);
     expect(key).toMatch(/^uploads\//);
 
-    // The home tile shows that very file, and the file really serves. Counted
-    // before the scroll: `scrollIntoViewIfNeeded` has no timeout of its own, so
-    // a tile crowded out of the strip would wait out the test instead of
-    // failing here. Then scrolled into view, since next/image lazy-loads.
+    // The home tile shows that very file, and the file really serves.
+    // Scrolled into view first, since next/image lazy-loads.
     await page.goto(PATHS.HOME);
     const photo = tile.locator('img');
-    await expect(photo).toHaveCount(1);
     expect(await renderedKey(photo)).toBe(key);
     await tile.scrollIntoViewIfNeeded();
     await expectRendered(photo);
     expect((await page.request.get(`/${key}`)).status()).toBe(200);
 
+    // Replaced in the row's edit mode — how a category made before photos
+    // existed gets its first one — and the tile follows to the new upload.
+    await page.goto(PROTECTED_PATHS.CATEGORIES);
+    await editCategory(page, slug, (editing) =>
+      editing
+        .locator('[data-umami-event="admin-panel-categories-row-image"]')
+        .setInputFiles(SECOND_PRODUCT_PHOTO),
+    );
+    await page.goto(PATHS.HOME);
+    const replaced = await renderedKey(photo);
+    expect(replaced).toMatch(/^uploads\//);
+    expect(replaced).not.toBe(key);
+
     // Removed in the row's edit mode, the photo leaves the tile plain.
     await page.goto(PROTECTED_PATHS.CATEGORIES);
-    await rowFor(page, slug)
-      .locator('[data-umami-event="admin-panel-categories-edit"]')
-      .click();
-    const editing = page.locator('tr', {
-      has: page.locator(
-        '[data-umami-event="admin-panel-categories-row-title"]',
-      ),
-    });
-    await editing
-      .locator('[data-umami-event="admin-panel-categories-row-image-remove"]')
-      .click();
-    await Promise.all([
-      page.waitForResponse(categoryCall('PUT')),
+    await editCategory(page, slug, (editing) =>
       editing
-        .locator('[data-umami-event="admin-panel-categories-save"]')
+        .locator('[data-umami-event="admin-panel-categories-row-image-remove"]')
         .click(),
-    ]);
-    await expect(rowFor(page, slug).locator('img')).toHaveCount(0);
+    );
+    // The saved row first: a row still in edit mode has a labelled field for
+    // its slug cell, which `rowFor` does not match, so it would count no image.
+    await expect(rowFor(page, slug)).toContainText('بدون تصویر');
+    await expect(thumbnail).toHaveCount(0);
 
     await page.goto(PATHS.HOME);
     await expect(tile).toBeVisible();
-    await expect(tile.locator('img')).toHaveCount(0);
+    await expect(photo).toHaveCount(0);
   } finally {
     // Deleted like the other categories this spec makes, so it runs at both
-    // widths. The uploaded file stays under `uploads/` — nothing deletes a
+    // widths. Both uploaded files stay under `uploads/` — nothing deletes a
     // category's replaced or removed photo.
     await removeIfPresent(page, slug);
   }
