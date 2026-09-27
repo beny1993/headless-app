@@ -1,13 +1,21 @@
 import type { Page } from '@playwright/test';
 import { z } from 'zod';
 import { SEED_CATEGORIES, SEED_PRODUCTS } from '@/db/seed/catalog-data';
-import { API_PATHS, PROTECTED_PATHS } from '@/lib/constant/paths';
+import {
+  API_PATHS,
+  PATHS,
+  PROTECTED_PATHS,
+  shopPath,
+} from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import {
   ADMIN_STATE,
+  PRODUCT_PHOTO,
   apiCall,
   expect,
   expectFailedRequest,
+  expectRendered,
+  renderedKey,
   runId,
   test,
 } from './support';
@@ -117,6 +125,77 @@ test('an admin creates a category, renames it and deletes it', async ({
     // The delete above is the assertion; this is the safety net for a failure
     // anywhere before it, which would otherwise leave the row in the shared
     // dev database for the next run to trip over.
+    await removeIfPresent(page, slug);
+  }
+});
+
+test('a category photo reaches its home tile, and removing it leaves a plain tile', async ({
+  page,
+}) => {
+  const id = runId();
+  // Sort order 0 and a title that opens with «آ»: ahead of every seeded
+  // category (1–6) and, under the dev database's en_US collation, of every
+  // leaked «دسته آزمایشی …» row a killed integration run left at 0 — so the
+  // tile is among the strip's first six on a scratch database and on the
+  // shared one alike.
+  const title = `آزمون عکس ${id}`;
+  const slug = `e2e-photo-${id}`;
+  const tile = page.locator(
+    `a[data-umami-event="home-category-click"][href="${shopPath({ category: slug })}"]`,
+  );
+
+  await page.goto(PROTECTED_PATHS.CATEGORIES);
+  try {
+    // Picked before the create: the save uploads it, then sends its key.
+    await page
+      .locator('[data-umami-event="admin-panel-categories-image"]')
+      .setInputFiles(PRODUCT_PHOTO);
+    await createCategory(page, title, slug);
+    // Counted first: reading a missing image's `src` would wait out the whole
+    // test, leaving no time for the cleanup below.
+    const thumbnail = rowFor(page, slug).locator('img');
+    await expect(thumbnail).toHaveCount(1);
+    const key = await renderedKey(thumbnail);
+    expect(key).toMatch(/^uploads\//);
+
+    // The home tile shows that very file, and the file really serves — next/
+    // image lazy-loads, so the tile is brought into view before it is read.
+    await page.goto(PATHS.HOME);
+    await tile.scrollIntoViewIfNeeded();
+    const photo = tile.locator('img');
+    await expect(photo).toHaveCount(1);
+    expect(await renderedKey(photo)).toBe(key);
+    await expectRendered(photo);
+    expect((await page.request.get(`/${key}`)).status()).toBe(200);
+
+    // Removed in the row's edit mode, the photo leaves the tile plain.
+    await page.goto(PROTECTED_PATHS.CATEGORIES);
+    await rowFor(page, slug)
+      .locator('[data-umami-event="admin-panel-categories-edit"]')
+      .click();
+    const editing = page.locator('tr', {
+      has: page.locator(
+        '[data-umami-event="admin-panel-categories-row-title"]',
+      ),
+    });
+    await editing
+      .locator('[data-umami-event="admin-panel-categories-row-image-remove"]')
+      .click();
+    await Promise.all([
+      page.waitForResponse(categoryCall('PUT')),
+      editing
+        .locator('[data-umami-event="admin-panel-categories-save"]')
+        .click(),
+    ]);
+    await expect(rowFor(page, slug).locator('img')).toHaveCount(0);
+
+    await page.goto(PATHS.HOME);
+    await expect(tile).toBeVisible();
+    await expect(tile.locator('img')).toHaveCount(0);
+  } finally {
+    // Deleted like the other categories this spec makes, so it runs at both
+    // widths. The uploaded file stays under `uploads/` — nothing deletes a
+    // category's replaced or removed photo.
     await removeIfPresent(page, slug);
   }
 });

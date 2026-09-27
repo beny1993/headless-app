@@ -260,7 +260,9 @@ serving while the kept one goes on serving (all probed with `request.get`,
 never an `<img>`: `next/image` caches what it optimized, so a deleted file
 renders on from `.next/cache`) — repriced, found
 under both category filters and taken off the shop; a sub-category nested under
-a category the panel then refuses to delete until it is emptied; a product
+a category the panel then refuses to delete until it is emptied; a category
+given a photo that its home-page tile then shows (the file probed with
+`request.get`), and a plain tile once the photo is removed; a product
 family's members each listed and named by their own label, the head's
 «زیرمجموعه‌ی» select disabled because it has members and a member's live
 (read-only, so it runs at both widths and leaves nothing behind); a discount
@@ -318,7 +320,9 @@ suite pins it on; the disabled option is component-tested in
   inactive «استان آزمایشی …»
   province with the customer's address on it — those three specs run at 1280px
   only, since none of those rows can be deleted. The sub-category spec deletes
-  both rows it creates, so it runs at both widths. The card-to-card spec leaves a
+  both rows it creates, so it runs at both widths, and so does the category-photo
+  spec — whose photo file stays under `uploads/`, one per width per run, since
+  nothing deletes a category's replaced or removed photo. The card-to-card spec leaves a
   `checkout.payment` content row equal to the default (it puts the old values
   back in a `finally`). The shipping-rate and headline
   specs put the old value back, the one-fee-for-all spec puts every province's

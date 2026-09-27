@@ -1,6 +1,13 @@
 'use client';
 
-import { useId, useState } from 'react';
+import {
+  useEffect,
+  useId,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
+import Image from 'next/image';
 import {
   Check,
   CornerDownLeft,
@@ -26,9 +33,15 @@ import {
 import { API_PATHS, apiAdminCategoryPath } from '@/lib/constant/paths';
 import { formatNumber, parseDigits } from '@/lib/format';
 import type { CategoryView } from '@/lib/hono/routes/admin-categories';
+import { imageSrc } from '@/lib/storage/image-url';
 import { cn } from '@/lib/utils';
 import { AdminTable } from '@/features/admin-panel/shared/admin-table';
 import { CreateCard } from '@/features/admin-panel/shared/create-card';
+import {
+  ImagePicker,
+  uploadImage,
+  validateImageFile,
+} from '@/features/admin-panel/shared/image-picker';
 import {
   COMPACT_CONTROL,
   controlClass,
@@ -54,6 +67,11 @@ type Draft = {
   sortOrder: string;
   /** The select's value — `''` is «no parent», which the schema reads as null. */
   parentId: string;
+  /**
+   * The saved photo's key, `null` for none or once removed. A fresh pick waits
+   * beside the draft (`usePhotoPick`) until the save uploads it.
+   */
+  imageKey: string | null;
 };
 
 type SaveResult =
@@ -65,6 +83,7 @@ const EMPTY_DRAFT: Draft = {
   slug: '',
   sortOrder: '0',
   parentId: '',
+  imageKey: null,
 };
 
 const GENERIC_ERROR = 'ذخیره دسته‌بندی ناموفق بود. دوباره تلاش کن.';
@@ -77,9 +96,16 @@ const byStorefrontOrder = (a: CategoryView, b: CategoryView) =>
 /**
  * Validate a draft against the shared contract, send it, and map any refusal
  * back onto fields — the one save path for both create and edit.
+ *
+ * A picked `photo` uploads only once the rest of the draft is valid, and its
+ * key goes to `adopt` before the category is sent — so a refused save retries
+ * with that key rather than uploading the file again (the content editor's
+ * order).
  */
 async function saveCategory(
   draft: Draft,
+  photo: File | null,
+  adopt: (imageKey: string) => void,
   send: (body: CategoryInputBody) => Promise<CategoryView>,
 ): Promise<SaveResult> {
   const parsed = categoryInputSchema.safeParse({
@@ -88,17 +114,65 @@ async function saveCategory(
     sortOrder: parseDigits(draft.sortOrder) ?? Number.NaN,
     // `z.uuid()` refuses `''`; the empty option means top-level.
     parentId: draft.parentId === '' ? null : draft.parentId,
+    imageKey: draft.imageKey,
   });
   if (!parsed.success) {
     return { ok: false, fields: zodFieldErrors(parsed.error) };
   }
 
   try {
-    return { ok: true, category: await send(parsed.data) };
+    let body = parsed.data;
+    if (photo) {
+      const imageKey = await uploadImage(photo);
+      adopt(imageKey);
+      body = { ...body, imageKey };
+    }
+    return { ok: true, category: await send(body) };
   } catch (error) {
     return { ok: false, ...requestFieldErrors(error, GENERIC_ERROR) };
   }
 }
+
+/**
+ * The photo a form has picked but not yet saved, with its `blob:` preview. The
+ * effect's cleanup revokes the blob exactly when it is replaced, dropped or
+ * unmounted — a pick is never displayed from a revoked URL, and none leaks.
+ */
+function usePhotoPick() {
+  const [pick, setPick] = useState<{ file: File; preview: string } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!pick) return;
+    return () => URL.revokeObjectURL(pick.preview);
+  }, [pick]);
+
+  const choose = (file: File | null) =>
+    setPick(file && { file, preview: URL.createObjectURL(file) });
+  return [pick, choose] as const;
+}
+
+/**
+ * The picker's `onPick`: an acceptable file becomes the pick, a refused one
+ * stays off the form with its Persian reason on the field — the server
+ * re-sniffs the bytes regardless.
+ */
+function pickPhoto(
+  file: File | undefined,
+  choose: (file: File) => void,
+  setErrors: Dispatch<SetStateAction<Record<string, string>>>,
+) {
+  if (!file) return;
+  const invalid = validateImageFile(file);
+  setErrors((current) => ({ ...current, imageKey: invalid ?? '' }));
+  if (!invalid) choose(file);
+}
+
+/** What the photo slot shows: a fresh pick, else the saved photo, else none. */
+const previewOf = (
+  pick: { preview: string } | null,
+  imageKey: string | null,
+): string | null => pick?.preview ?? (imageKey ? imageSrc(imageKey) : null);
 
 export function CategoryManager({
   initialCategories,
@@ -145,14 +219,21 @@ function CreateForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [justCreated, setJustCreated] = useState<string | null>(null);
+  const [pick, choosePhoto] = usePhotoPick();
 
   const submit = async () => {
     if (busy) return;
     setBusy(true);
     setErrors({});
     setJustCreated(null);
-    const result = await saveCategory(draft, (body) =>
-      postData<CategoryView>(API_PATHS.ADMIN_CATEGORIES, body),
+    const result = await saveCategory(
+      draft,
+      pick?.file ?? null,
+      (imageKey) => {
+        setDraft((d) => ({ ...d, imageKey }));
+        choosePhoto(null);
+      },
+      (body) => postData<CategoryView>(API_PATHS.ADMIN_CATEGORIES, body),
     );
     setBusy(false);
     if (!result.ok) {
@@ -215,6 +296,18 @@ function CreateForm({
         error={errors.parentId}
         umami="admin-panel-categories-parent"
       />
+      <PhotoField
+        id={`${id}-image`}
+        preview={previewOf(pick, draft.imageKey)}
+        error={errors.imageKey}
+        // Ignored mid-save: what uploads is what was on screen at the click.
+        onPick={(file) => !busy && pickPhoto(file, choosePhoto, setErrors)}
+        onRemove={() => {
+          choosePhoto(null);
+          setDraft((d) => ({ ...d, imageKey: null }));
+        }}
+        umami="admin-panel-categories-image"
+      />
     </CreateCard>
   );
 }
@@ -241,7 +334,7 @@ function CategoryTable({
 
   return (
     <AdminTable
-      headings={['عنوان', 'نشانی (slug)', 'ترتیب نمایش']}
+      headings={['تصویر', 'عنوان', 'نشانی (slug)', 'ترتیب نمایش']}
       actions="عملیات"
     >
       {/* Sub-rows sit directly under their parent — the nesting *is* the
@@ -286,6 +379,7 @@ function CategoryRow({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [pick, choosePhoto] = usePhotoPick();
 
   const clearErrors = () => setErrors({});
 
@@ -296,20 +390,28 @@ function CategoryRow({
       slug: category.slug,
       sortOrder: String(category.sortOrder),
       parentId: category.parentId ?? '',
+      imageKey: category.imageKey,
     });
   };
 
   const cancel = () => {
     clearErrors();
     setDraft(null);
+    choosePhoto(null);
   };
 
   const save = async () => {
     if (!draft || busy) return;
     setBusy(true);
     clearErrors();
-    const result = await saveCategory(draft, (body) =>
-      putData<CategoryView>(apiAdminCategoryPath(category.id), body),
+    const result = await saveCategory(
+      draft,
+      pick?.file ?? null,
+      (imageKey) => {
+        setDraft((d) => d && { ...d, imageKey });
+        choosePhoto(null);
+      },
+      (body) => putData<CategoryView>(apiAdminCategoryPath(category.id), body),
     );
     setBusy(false);
     if (!result.ok) {
@@ -349,6 +451,23 @@ function CategoryRow({
 
   return (
     <tr className="border-border border-t align-top">
+      <td className="px-4 py-3">
+        {/* The saved photo, in both modes — the products list's thumbnail, so
+            a category still missing its home-tile photo shows at a glance. */}
+        <div className="bg-muted relative h-10 w-10 overflow-hidden rounded-lg">
+          {category.imageKey ? (
+            <Image
+              src={imageSrc(category.imageKey)}
+              alt=""
+              fill
+              sizes="40px"
+              className="object-cover"
+            />
+          ) : (
+            <span className="sr-only">بدون تصویر</span>
+          )}
+        </div>
+      </td>
       {draft ? (
         <>
           <td className={titleCell}>
@@ -380,6 +499,23 @@ function CategoryRow({
               error={errors.parentId}
               umami="admin-panel-categories-row-parent"
             />
+            {/* Here too, not in the thumbnail's column: a picker there takes
+                the width the parent select needs, even at 1280px. */}
+            <div className="mt-3">
+              <PhotoField
+                id={`${id}-image`}
+                preview={previewOf(pick, draft.imageKey)}
+                error={errors.imageKey}
+                onPick={(file) =>
+                  !busy && pickPhoto(file, choosePhoto, setErrors)
+                }
+                onRemove={() => {
+                  choosePhoto(null);
+                  setDraft({ ...draft, imageKey: null });
+                }}
+                umami="admin-panel-categories-row-image"
+              />
+            </div>
           </td>
           <td className="px-4 py-3">
             <TextField
@@ -507,6 +643,56 @@ function CategoryRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+/**
+ * The «تصویر دسته‌بندی» slot, in the create form and every edit row: the shared
+ * picker, where the photo shows, and a remove button while there is a photo to
+ * remove — the saved one or a fresh pick. Removing is local until the save, as
+ * every other field here is.
+ */
+function PhotoField({
+  id,
+  preview,
+  error,
+  onPick,
+  onRemove,
+  umami,
+}: {
+  id: string;
+  preview: string | null;
+  error?: string;
+  onPick: (file: File | undefined) => void;
+  onRemove: () => void;
+  umami: string;
+}) {
+  return (
+    <div className="flex min-w-60 flex-col items-start gap-2">
+      <ImagePicker
+        id={id}
+        label="تصویر دسته‌بندی"
+        preview={preview}
+        error={error}
+        buttonLabel={preview ? 'تغییر تصویر' : 'انتخاب تصویر'}
+        onPick={onPick}
+        umami={umami}
+      />
+      <p className="text-muted-foreground text-xs">
+        روی کاشی دسته‌بندی در صفحه‌ی اصلی دیده می‌شود (فقط دسته‌بندی‌های اصلی).
+      </p>
+      {preview && (
+        <button
+          type="button"
+          onClick={onRemove}
+          data-umami-event={`${umami}-remove`}
+          className="text-destructive hover:bg-destructive-soft inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition-colors"
+        >
+          <X size={12} aria-hidden="true" />
+          حذف تصویر
+        </button>
+      )}
+    </div>
   );
 }
 

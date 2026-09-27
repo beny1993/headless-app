@@ -185,6 +185,18 @@ describe('catalog seed data', () => {
     }
   });
 
+  it('gives every top-level category a committed photo for its home tile', async () => {
+    // The home strip draws each tile from `categories.image_key`, so a demo
+    // category without a key is a plain tile in every fresh checkout — and a
+    // typo would only surface as a broken image in the browser.
+    for (const { slug, imageKey } of SEED_CATEGORIES) {
+      expect(imageKeySchema.safeParse(imageKey).success, slug).toBe(true);
+      await expect(
+        access(join(process.cwd(), 'public', imageKey)),
+      ).resolves.toBeUndefined();
+    }
+  });
+
   it('includes the zero-stock and low-stock products the design needs', () => {
     // The prototype has an "out of stock" panel and a "only N left" warning;
     // without these two rows neither state is reachable in development.

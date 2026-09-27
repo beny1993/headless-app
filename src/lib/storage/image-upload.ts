@@ -107,23 +107,28 @@ const BUNDLED_IMAGE_KEY = /^(site|products)\/[a-z0-9-]+\.(jpe?g|png|webp)$/;
 /** The longest key anything here can produce, with room to spare. */
 export const MAX_OBJECT_KEY_LENGTH = 200;
 
+/** The refusal for a stored key that is not one, whatever made it wrong. */
+export const IMAGE_KEY_ERROR = 'کلید تصویر نامعتبر است.';
+
 /**
  * What a valid stored image key looks like, for every caller that takes one
  * from a client. Anchored to exactly the two shapes a key can have and derived
  * from the uploader's own constants above — so adding an accepted type widens
  * this for free, and no second answer to «is this a key» can drift from it.
+ * The message sits on the base type and the cap too, or a wrong type or an
+ * overlong key would answer in zod's English.
  *
  * Client-safe, like everything else in this module.
  */
 export const imageKeySchema = z
-  .string()
-  .max(MAX_OBJECT_KEY_LENGTH)
+  .string({ error: IMAGE_KEY_ERROR })
+  .max(MAX_OBJECT_KEY_LENGTH, IMAGE_KEY_ERROR)
   .refine(
     (key) =>
       BUNDLED_IMAGE_KEY.test(key) ||
       (key.startsWith(`${UPLOAD_KEY_PREFIX}/`) &&
         UPLOAD_FILENAME_PATTERN.test(key.slice(UPLOAD_KEY_PREFIX.length + 1))),
-    { error: 'کلید تصویر نامعتبر است.' },
+    { error: IMAGE_KEY_ERROR },
   );
 
 /**

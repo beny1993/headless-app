@@ -1,24 +1,28 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
-import { CATEGORY_IMAGES } from './content';
 import type { ContentValue } from '@/lib/content/site-content';
 import { shopPath } from '@/lib/constant/paths';
+import { imageSrc } from '@/lib/storage/image-url';
 import { ContentLink } from '@/features/storefront/content-link';
 import { resolveLink, type LinkTargets } from '@/lib/content/link';
 
-export type CategoryTile = { id: string; title: string; slug: string };
+export type CategoryTile = {
+  id: string;
+  title: string;
+  slug: string;
+  /** `categories.image_key` — the tile's photo, or `null` for a plain tile. */
+  imageKey: string | null;
+};
 
 /**
  * The category strip. The section heading and the «همه دسته‌بندی‌ها» label are
  * admin content (`home.categories`), and so is where that label goes (unset: the
- * bare shop); the tiles themselves —
- * titles and slugs from the database, photos from `CATEGORY_IMAGES[slug]` — stay
- * in code (a `categories.image_key` catalog story would move the photos later). A
- * category added in the admin panel appears here without a code change — the
- * first six of them, since the mosaic is built for exactly that many and the
- * rest are one «همه دسته‌بندی‌ها» click away. One with no photo falls back to a
- * plain surface rather than a broken image.
+ * bare shop); the tiles themselves are catalog rows — title, slug and photo, all
+ * set in the admin panel. A category added there appears here without a code
+ * change — the first six of them, since the mosaic is built for exactly that
+ * many and the rest are one «همه دسته‌بندی‌ها» click away. One with no photo
+ * falls back to a plain surface rather than a broken image.
  *
  * Real `<Link>`s, not clickable `<div>`s (design review) — keyboard-reachable,
  * cmd-clickable, and crawlable.
@@ -52,7 +56,7 @@ export function CategoriesSection({
 
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           {categories.slice(0, 6).map((category, index) => {
-            const image = CATEGORY_IMAGES[category.slug];
+            const image = category.imageKey && imageSrc(category.imageKey);
             // The first and fourth tiles run tall, as in the design's mosaic.
             const tall = index === 0 || index === 3;
 

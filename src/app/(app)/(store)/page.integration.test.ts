@@ -178,6 +178,31 @@ describe.skipIf(!databaseReachable)('the home page', () => {
     }
   });
 
+  it('hands each tile the photo key its category row carries', async () => {
+    const imageKey = 'uploads/123e4567-e89b-42d3-a456-426614174000.jpg';
+    const [category] = await testDb
+      .insert(categories)
+      .values({
+        title: 'دسته عکس‌دار',
+        slug: `home-${faker.string.alphanumeric(10).toLowerCase()}`,
+        imageKey,
+      })
+      .returning();
+    try {
+      const tree = await page.default();
+      const tiles = findSection(tree, CategoriesSection)?.props.categories as {
+        id: string;
+        imageKey: string | null;
+      }[];
+
+      expect(tiles.find((tile) => tile.id === category.id)?.imageKey).toBe(
+        imageKey,
+      );
+    } finally {
+      await testDb.delete(categories).where(eq(categories.id, category.id));
+    }
+  });
+
   it('shows a saved block on the very next load (no cache to go stale)', async () => {
     await SiteContentDao.set('home.hero', {
       ...DEFAULT_CONTENT['home.hero'],

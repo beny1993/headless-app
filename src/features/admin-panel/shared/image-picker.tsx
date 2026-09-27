@@ -2,20 +2,41 @@
 
 import Image from 'next/image';
 import { AlertCircle, Camera } from 'lucide-react';
+import { z } from 'zod';
+import { postForm } from '@/lib/api-client';
+import { API_PATHS } from '@/lib/constant/paths';
 import {
   ACCEPTED_IMAGE_TYPES,
+  IMAGE_FIELD_NAME,
   IMAGE_FORMAT_HINT,
   IMAGE_SIZE_ERROR,
   IMAGE_TYPE_ERROR,
   MAX_UPLOAD_BYTES,
 } from '@/lib/storage/image-upload';
 
-// The admin image slot the content editor renders. Presentational: it shows
-// the current preview (a bundled/upload URL, or a `blob:` URL for a just-picked
-// file), a file input, the accept/size hint, and an error — and calls `onPick`
-// with the chosen file. The upload itself stays with the form. `validateImageFile`
-// below is shared with the product gallery field, so the Persian refusals — which
-// come from the module that owns the cap they quote — live in one place.
+// The admin image slot the content editor and the category manager render.
+// Presentational: it shows the current preview (a bundled/upload URL, or a
+// `blob:` URL for a just-picked file), a file input, the accept/size hint, and
+// an error — and calls `onPick` with the chosen file. The upload itself stays
+// with the form, through `uploadImage` below. `validateImageFile` is shared with
+// the product gallery field, so the Persian refusals — which come from the
+// module that owns the cap they quote — live in one place.
+
+/**
+ * Upload one picked file to the shared admin image route and return its storage
+ * key, for the form to save into its own body. The route writes no row: the
+ * key means nothing until that save stores it.
+ */
+export async function uploadImage(file: File): Promise<string> {
+  const form = new FormData();
+  form.set(IMAGE_FIELD_NAME, file);
+  const { key } = await postForm(
+    API_PATHS.ADMIN_CONTENT_IMAGES,
+    form,
+    z.object({ key: z.string().min(1) }),
+  );
+  return key;
+}
 
 /**
  * The client-side accept/size check, matching the server's trust boundary so a
@@ -40,6 +61,7 @@ export function ImagePicker({
   error,
   buttonLabel,
   onPick,
+  umami,
 }: {
   id: string;
   label: string;
@@ -48,6 +70,8 @@ export function ImagePicker({
   error?: string;
   buttonLabel: string;
   onPick: (file: File | undefined) => void;
+  /** The input's `data-umami-event`. */
+  umami?: string;
 }) {
   const labelId = `${id}-label`;
   const errorId = `${id}-error`;
@@ -101,7 +125,13 @@ export function ImagePicker({
               // reader following the input.
               aria-describedby={error ? errorId : undefined}
               aria-invalid={error ? true : undefined}
-              onChange={(e) => onPick(e.target.files?.[0])}
+              data-umami-event={umami}
+              onChange={(e) => {
+                onPick(e.target.files?.[0]);
+                // Emptied, so picking the same file again — after the form
+                // dropped it — is a change the input still reports.
+                e.target.value = '';
+              }}
             />
           </label>
           <p className="text-muted-foreground mt-1.5 text-xs">

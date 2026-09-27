@@ -7,12 +7,17 @@ import {
   MAX_TITLE_LENGTH,
 } from './category-input';
 import { MAX_SLUG_LENGTH } from './sku';
+import {
+  IMAGE_KEY_ERROR,
+  MAX_OBJECT_KEY_LENGTH,
+} from '@/lib/storage/image-upload';
 
 const valid = {
   title: 'غذای خشک',
   slug: 'dry-food',
   sortOrder: 1,
   parentId: null,
+  imageKey: null,
 };
 
 /** The message zod attached to `field`, or undefined when the field passed. */
@@ -184,6 +189,41 @@ describe('categoryInputSchema', () => {
         );
       },
     );
+  });
+
+  describe('imageKey', () => {
+    it.each([
+      'uploads/123e4567-e89b-42d3-a456-426614174000.jpg',
+      'products/cat-dry-food.jpg',
+      'site/cat-hygiene.jpg',
+    ])('accepts the stored key %s', (imageKey) => {
+      expect(categoryInputSchema.parse({ ...valid, imageKey }).imageKey).toBe(
+        imageKey,
+      );
+    });
+
+    it('reads an omitted photo as none, since PUT replaces the whole category', () => {
+      const { imageKey, ...withoutPhoto } = valid;
+      void imageKey;
+
+      expect(categoryInputSchema.parse(withoutPhoto).imageKey).toBeNull();
+    });
+
+    // A key is a storage key, never a URL or a path: whatever the admin form
+    // sends, only the two shapes the uploader and the seed produce get stored.
+    it.each([
+      '',
+      'https://example.com/cat.jpg',
+      '/products/cat-dry-food.jpg',
+      'uploads/../../.env',
+      'uploads/not-a-uuid.jpg',
+      `uploads/${'a'.repeat(MAX_OBJECT_KEY_LENGTH)}.jpg`,
+      12,
+    ])('rejects %j with the Persian message', (imageKey) => {
+      expect(messageFor({ ...valid, imageKey }, 'imageKey')).toBe(
+        IMAGE_KEY_ERROR,
+      );
+    });
   });
 });
 

@@ -22,6 +22,8 @@ export const categoryViewSchema = z.object({
   sortOrder: z.number().int().nonnegative(),
   /** The category this one sits under; `null` for a top-level one. */
   parentId: z.uuid().nullable(),
+  /** The tile photo's storage key — render it through `imageSrc`. */
+  imageKey: z.string().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -35,6 +37,7 @@ export const toCategoryView = (c: Category): CategoryView => ({
   slug: c.slug,
   sortOrder: c.sortOrder,
   parentId: c.parentId,
+  imageKey: c.imageKey,
   createdAt: c.createdAt.toISOString(),
   updatedAt: c.updatedAt.toISOString(),
 });

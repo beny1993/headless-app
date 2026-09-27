@@ -9,6 +9,7 @@
 // a body carrying them has them stripped rather than applied.
 import { z } from 'zod';
 import { toPersianDigits } from '@/lib/format';
+import { imageKeySchema } from '@/lib/storage/image-upload';
 import { FORBIDDEN_TEXT_CHARS, VISIBLE_CHAR } from '@/lib/validation/text';
 import { SLUG_PATTERN } from './product-input';
 import { MAX_SLUG_LENGTH } from './sku';
@@ -87,6 +88,14 @@ export const categoryInputSchema = z.object({
   // that category may be a parent, is `CategoryDao`'s call: a schema cannot see
   // another row.
   parentId: z.uuid(CATEGORY_MESSAGES.parent).nullable().default(null),
+  // The tile photo's storage key: the manager uploads the file through the
+  // shared content-image route first and sends back the key it was given, the
+  // content editor's flow. Omitted means «no photo», by the same full-replace
+  // rule as `parentId`. A replaced key's file stays in storage: deleting it
+  // would first need proof the key is this category's own — a body can name any
+  // well-formed key — and category photos change too rarely to leave anything
+  // worth collecting.
+  imageKey: imageKeySchema.nullable().default(null),
 });
 
 /** The validated body — assignable to `CategoryDao`'s `CategoryInput`. */

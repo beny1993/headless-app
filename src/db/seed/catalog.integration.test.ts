@@ -7,7 +7,11 @@ import {
   productImages,
   products,
 } from '@/db/schema/catalog';
-import { SEED_PRODUCTS, SEED_SUBCATEGORIES } from '@/db/seed/catalog-data';
+import {
+  SEED_CATEGORIES,
+  SEED_PRODUCTS,
+  SEED_SUBCATEGORIES,
+} from '@/db/seed/catalog-data';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 
 const { CategoryDao } = await importWithDb(
@@ -136,6 +140,16 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
 
     expect(wet?.stock).toBe(0);
     expect(toy?.stock).toBe(3);
+  });
+
+  it('gives every seeded top-level category its photo', async () => {
+    const bySlug = new Map(
+      (await CategoryDao.list()).map((row) => [row.slug, row]),
+    );
+
+    for (const { slug, imageKey } of SEED_CATEGORIES) {
+      expect(bySlug.get(slug)?.imageKey, slug).toBe(imageKey);
+    }
   });
 
   it('hangs every sub-category under the parent it names', async () => {

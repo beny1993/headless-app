@@ -25,11 +25,12 @@ import {
   completeCheckout,
   expect,
   expectFailedRequest,
+  expectRendered,
   openCheckout,
+  renderedKey,
   resultOrderId,
   runId,
   test,
-  unwrapImageSrc,
 } from './support';
 
 test.use({ storageState: ADMIN_STATE });
@@ -47,12 +48,6 @@ if (!EXTRA_CATEGORY) {
   throw new Error('The catalog seed has no category outside the sub’s parent.');
 }
 
-/** The storage key an `<img>` is actually showing. */
-async function renderedKey(img: Locator): Promise<string> {
-  const src = await img.getAttribute('src');
-  return unwrapImageSrc(new URL(src ?? '', 'http://localhost'));
-}
-
 /**
  * The `<img>` in the admin form's nth photo tile — a list item that holds a
  * remove button is a photo tile and nothing else is.
@@ -66,13 +61,6 @@ function tileImage(page: Page, index: number): Locator {
     })
     .nth(index)
     .locator('img');
-}
-
-/** An image the browser managed to decode — a broken one has no natural width. */
-async function expectRendered(img: Locator) {
-  await expect
-    .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
-    .toBeGreaterThan(0);
 }
 
 test('an admin adds a product with photos, reorders them, reprices it and takes it off the shop', async ({
