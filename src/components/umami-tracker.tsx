@@ -57,11 +57,7 @@ export function UmamiTracker({
     // on, before any navigation it starts.
     const onClick = (event: MouseEvent) => {
       if (!(event.target instanceof Element)) return;
-      // The tracker's own rule, so the dashboards read as they did: the
-      // nearest link or button, else the element itself — never a container.
-      const name = (
-        event.target.closest('a,button') ?? event.target
-      ).getAttribute('data-umami-event');
+      const name = trackedEventOf(event.target);
       if (name) {
         const url = window.location.href;
         window.umami?.track((props) => ({ ...props, url, name }));
@@ -79,6 +75,18 @@ export function UmamiTracker({
       // The landing pageview, if the effect's came due before the script did.
       onLoad={() => trackPageview(lastUrl)}
     />
+  );
+}
+
+/**
+ * The event a click on `target` sends, if any. The tracker's own rule, so the
+ * dashboards read as they did under auto-track: the name on the nearest link
+ * or button, else on the element clicked — never a container's. So a tracked
+ * non-link has to carry its name on what a tap actually lands on.
+ */
+export function trackedEventOf(target: Element): string | null {
+  return (target.closest('a,button') ?? target).getAttribute(
+    'data-umami-event',
   );
 }
 

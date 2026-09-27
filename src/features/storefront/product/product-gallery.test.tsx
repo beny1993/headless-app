@@ -22,6 +22,7 @@ import {
   screen,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { trackedEventOf } from '@/components/umami-tracker';
 import { ProductGallery, type GalleryImage } from './product-gallery';
 
 const IMAGES: GalleryImage[] = [
@@ -280,6 +281,28 @@ describe('what the gallery renders', () => {
     ).toBeTruthy();
     expect(screen.queryAllByRole('button', { name: /^نمایش تصویر/ })).toEqual(
       [],
+    );
+  });
+
+  it('names a tap on any photo for analytics, and a thumb as a thumb', () => {
+    render(<ProductGallery images={IMAGES} title="غذای گربه" />);
+
+    // A tap lands on the `<img>` filling its slide, never on the track around
+    // it, and the tracker reads the name off what was tapped. Carried by the
+    // track instead, this event was never sent at all.
+    for (const alt of [
+      'غذای گربه',
+      'تصویر ۲ از غذای گربه',
+      'تصویر ۳ از غذای گربه',
+    ]) {
+      expect(trackedEventOf(screen.getByAltText(alt))).toBe(
+        'product-gallery-photo-tap',
+      );
+    }
+    // A thumb's photo is inside its button, whose name still wins.
+    const thumb = screen.getByRole('button', { name: 'نمایش تصویر ۲' });
+    expect(trackedEventOf(thumb.querySelector('img')!)).toBe(
+      'product-gallery-thumb-select',
     );
   });
 
