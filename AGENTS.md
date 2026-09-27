@@ -266,7 +266,10 @@ renders on from `.next/cache`) — repriced, found
 under both category filters and taken off the shop; a sub-category nested under
 a category the panel then refuses to delete until it is emptied; a category
 given a photo that its home-page tile then shows (the file probed with
-`request.get`), and a plain tile once the photo is removed; a product
+`request.get`), and a plain tile once the photo is removed; a photo picked
+through the button in the list's last row — below the fold, so `main` has
+scrolled — with the panel frame still filling the screen (read-only, so both
+widths); a product
 family's members each listed and named by their own label, the head's
 «زیرمجموعه‌ی» select disabled because it has members and a member's live
 (read-only, so it runs at both widths and leaves nothing behind); a discount

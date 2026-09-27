@@ -202,6 +202,45 @@ test('a category photo reaches its home tile, and removing it leaves a plain til
   }
 });
 
+test('picking a photo in a row far down the list leaves the panel in place', async ({
+  page,
+}) => {
+  await page.goto(PROTECTED_PATHS.CATEGORIES);
+  // Off screen when the page opens: the admin scrolls `main` to reach it, and
+  // that scroll is what leaves the picker's `sr-only` input below the frame.
+  const edit = page
+    .locator('[data-umami-event="admin-panel-categories-edit"]')
+    .last();
+  await expect(edit).not.toBeInViewport();
+  await edit.click();
+
+  // The button the admin clicks, never `setInputFiles`: only the click focuses
+  // the input, and that focus scrolled the whole frame up over a blank band.
+  // Nothing is saved, so nothing is left behind and this runs at both widths.
+  const input = page.locator(
+    '[data-umami-event="admin-panel-categories-row-image"]',
+  );
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.locator('label', { has: input }).click(),
+  ]);
+  await chooser.setFiles(PRODUCT_PHOTO);
+  await expect(
+    page.locator('tr', { has: input }).locator('img'),
+  ).toHaveAttribute('src', /^blob:/);
+
+  // The frame still reaches the bottom of the screen, and the page is no wider
+  // than the screen — the same clip keeps the tables' `sr-only` text from
+  // panning a phone sideways.
+  const viewport = page.viewportSize();
+  expect(
+    await page.getByRole('main').evaluate((main) => ({
+      bottom: main.getBoundingClientRect().bottom,
+      width: document.documentElement.scrollWidth,
+    })),
+  ).toEqual({ bottom: viewport?.height, width: viewport?.width });
+});
+
 test('an admin nests a sub-category, and the parent waits for it to go first', async ({
   page,
 }) => {
