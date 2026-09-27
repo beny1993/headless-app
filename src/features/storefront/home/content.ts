@@ -2,16 +2,14 @@
 //
 // Under the v2 CMS rule the editorial *labels* (the moment cards' title/desc/photo,
 // the routine tabs' label/sub) moved into `DEFAULT_CONTENT` (`src/lib/content/`);
-// what stays here is everything catalog-coupled or destination-bearing: the
-// category photography, and the link TARGETS the sections zip with their editable
-// labels by index (since destinations became content too, the fallbacks for a
-// card or tab with no saved destination). Kept in one module so the checks that matter run
-// without a browser: every category photo is a committed local file (the design
-// review's blocker 1), and every deep link names a category that really exists
-// (its "no dead navigation" rule) — `content.test.ts` asserts both on these arrays.
+// what stays here is everything destination-bearing: the link TARGETS the
+// sections zip with their editable labels by index (since destinations became
+// content too, the fallbacks for a card or tab with no saved destination). Kept in
+// one module so the check that matters runs without a browser: every deep link
+// names a category that really exists (the design review's "no dead navigation"
+// rule) — `content.test.ts` asserts it on these arrays. The category photos that
+// used to live here are catalog data now (`categories.image_key`).
 //
-// Paths are public/ URLs, the same convention `product_images.object_key` follows:
-// `/products/cat-toy.jpg` is `public/products/cat-toy.jpg`.
 // Type-only: this module is imported by client components, and a *value* import of
 // the schema ships `pgTable`/`pg-core` to the browser. The pet literals below are
 // checked against `PetType` by the `satisfies` on `LIFE_MOMENT_TARGETS`, so a
@@ -19,24 +17,6 @@
 import type { PetType } from '@/db/schema/catalog';
 import { PET_EMOJI } from '@/lib/catalog/product-query';
 import { LINK_TYPES, type Link } from '@/lib/content/link';
-
-/**
- * The category strip's photography, by category slug.
- *
- * Categories are database rows and can be added in the admin panel, so this is
- * a lookup with a miss — an unmapped category still renders, on a plain
- * surface instead of a photo. Nothing here is a source of category *titles*;
- * those come from `CategoryDao`. (A `categories.image_key` catalog story would
- * move these into the database later — flagged to the PM, out of scope here.)
- */
-export const CATEGORY_IMAGES: Record<string, string> = {
-  'dry-food': '/products/cat-dry-food.jpg',
-  'wet-food': '/products/cat-wet-food.jpg',
-  treats: '/products/cat-treats.jpg',
-  supplements: '/products/cat-supplement.jpg',
-  toys: '/products/cat-toy.jpg',
-  hygiene: '/site/cat-hygiene.jpg',
-};
 
 type LifeMomentTarget = {
   /** Rendered as decoration next to the card title, not as a functional icon. */

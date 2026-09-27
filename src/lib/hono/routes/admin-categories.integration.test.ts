@@ -17,6 +17,7 @@ import { API_PATHS, apiAdminCategoryPath } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import type { ApiResponse } from '@/lib/hono/envelope';
 import type { CategoryView } from '@/lib/hono/routes/admin-categories';
+import { IMAGE_KEY_ERROR } from '@/lib/storage/image-upload';
 
 const mocks = vi.hoisted(() => ({ getSession: vi.fn() }));
 vi.mock('@/lib/auth', () => ({ isAuthenticatedUser: mocks.getSession }));
@@ -576,5 +577,95 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
         `parentId: ${CATEGORY_MESSAGES.parent}`,
       ]);
     });
+  });
+
+  // ── imageKey ────────────────────────────────────────────────────────────────
+
+  describe('imageKey', () => {
+    // Keys only — the manager uploads the file through the content-image route
+    // first, so nothing here needs a file behind the key.
+    const UPLOAD_KEY = 'uploads/123e4567-e89b-42d3-a456-426614174000.jpg';
+    const OTHER_KEY = 'uploads/223e4567-e89b-42d3-a456-426614174000.webp';
+
+    it('round-trips a photo through create, replace and remove', async () => {
+      const created = await create({ imageKey: UPLOAD_KEY });
+      expect(created.imageKey).toBe(UPLOAD_KEY);
+
+      asAdmin();
+      const replaced = await parse<CategoryView>(
+        await json(
+          apiAdminCategoryPath(created.id),
+          'PUT',
+          body({ slug: created.slug, imageKey: OTHER_KEY }),
+        ),
+      );
+      expect(replaced.status).toBe(200);
+      if (replaced.body.status !== 'success') throw new Error('replace failed');
+      expect(replaced.body.data.imageKey).toBe(OTHER_KEY);
+
+      // A body that says nothing of the photo — what an admin tab opened
+      // before photos shipped sends — keeps it.
+      const kept = await parse<CategoryView>(
+        await json(
+          apiAdminCategoryPath(created.id),
+          'PUT',
+          body({ slug: created.slug, title: 'غذای خشک گربه' }),
+        ),
+      );
+      if (kept.body.status !== 'success') throw new Error('rename failed');
+      expect(kept.body.data).toMatchObject({
+        title: 'غذای خشک گربه',
+        imageKey: OTHER_KEY,
+      });
+
+      // Only an explicit null removes it.
+      const removed = await parse<CategoryView>(
+        await json(
+          apiAdminCategoryPath(created.id),
+          'PUT',
+          body({ slug: created.slug, imageKey: null }),
+        ),
+      );
+      if (removed.body.status !== 'success') throw new Error('remove failed');
+      expect(removed.body.data.imageKey).toBeNull();
+      expect((await rowsFor(created.id))[0]?.imageKey).toBeNull();
+    });
+
+    it.each(['https://example.com/cat.jpg', 'uploads/../../.env', 42])(
+      'refuses the key %j with the shared Persian message and writes nothing',
+      async (imageKey) => {
+        const existing = await create({ imageKey: UPLOAD_KEY });
+        const slug = `cat-${faker.string.alphanumeric(10).toLowerCase()}`;
+        asAdmin();
+
+        const refusedCreate = await parse(
+          await json(
+            API_PATHS.ADMIN_CATEGORIES,
+            'POST',
+            body({ slug, imageKey }),
+          ),
+        );
+        const refusedUpdate = await parse(
+          await json(
+            apiAdminCategoryPath(existing.id),
+            'PUT',
+            body({ slug: existing.slug, imageKey }),
+          ),
+        );
+
+        for (const res of [refusedCreate, refusedUpdate]) {
+          expect(res.status).toBe(400);
+          if (res.body.status !== 'error') throw new Error('expected an error');
+          expect(res.body.errors).toContain(`imageKey: ${IMAGE_KEY_ERROR}`);
+        }
+        expect(
+          await testDb
+            .select()
+            .from(categories)
+            .where(eq(categories.slug, slug)),
+        ).toHaveLength(0);
+        expect((await rowsFor(existing.id))[0]?.imageKey).toBe(UPLOAD_KEY);
+      },
+    );
   });
 });

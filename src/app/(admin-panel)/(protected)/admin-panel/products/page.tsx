@@ -12,6 +12,7 @@ import {
   PET_TYPE_VALUES,
 } from '@/lib/catalog/product-query';
 import { adminNewProductPath } from '@/lib/constant/paths';
+import { formatNumber } from '@/lib/format';
 import { ADMIN_PAGE_SIZE } from '@/lib/pagination';
 import { AdminTable } from '@/features/admin-panel/shared/admin-table';
 import { ProductRow } from '@/features/admin-panel/products/product-row';
@@ -52,7 +53,13 @@ export default async function AdminProductsPage({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-black">محصولات</h1>
+        <div className="flex items-baseline gap-3">
+          <h1 className="text-2xl font-black">محصولات</h1>
+          {/* Everything the filters match, across all pages. */}
+          <span className="text-muted-foreground nums text-sm">
+            {formatNumber(total)} محصول
+          </span>
+        </div>
         <Link
           href={adminNewProductPath()}
           data-umami-event="admin-panel-products-new"
@@ -143,6 +150,7 @@ export default async function AdminProductsPage({
 
       <AdminTable
         headings={[
+          'ردیف',
           'تصویر',
           'نام محصول',
           'برند',
@@ -156,7 +164,7 @@ export default async function AdminProductsPage({
         {items.length === 0 ? (
           <tr>
             <td
-              colSpan={8}
+              colSpan={9}
               className="text-muted-foreground px-4 py-10 text-center"
             >
               {/* Past the last page is not the same as nothing matching:
@@ -167,11 +175,13 @@ export default async function AdminProductsPage({
             </td>
           </tr>
         ) : (
-          items.map((product) => (
+          items.map((product, index) => (
             <ProductRow
               key={product.id}
               product={product}
               categoryTitle={categoryTitle.get(product.categoryId) ?? '—'}
+              // The DAO's own offset, so numbering carries on across pages.
+              rowNumber={(filters.page - 1) * ADMIN_PAGE_SIZE + index + 1}
             />
           ))
         )}

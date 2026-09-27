@@ -20,6 +20,12 @@ export type CategoryInput = {
   sortOrder: number;
   /** `null` for a top-level category. */
   parentId: string | null;
+  /**
+   * The tile photo's storage key, `null` for none. Omitted means none on
+   * `create` and «leave it as it is» on `update`, where only an explicit null
+   * removes a photo.
+   */
+  imageKey?: string | null;
 };
 
 /**
@@ -49,20 +55,26 @@ export class CategoryDao {
    * `parentId` is set on the **insert only** — it is deliberately absent from
    * the conflict `set`, so re-running the seed can neither undo a move an admin
    * made in the panel nor build a third level out of one. That is also why this
-   * one write skips the guard below: the seed is its only caller.
+   * one write skips the guard below: the seed is its only caller. The photo is
+   * demo state like the title and the order, so a re-run puts it back.
    */
   static async upsertBySlug(input: {
     title: string;
     slug: string;
     sortOrder?: number;
     parentId?: string | null;
+    imageKey?: string | null;
   }): Promise<Category> {
     const [row] = await db
       .insert(categories)
       .values(input)
       .onConflictDoUpdate({
         target: categories.slug,
-        set: { title: input.title, sortOrder: input.sortOrder ?? 0 },
+        set: {
+          title: input.title,
+          sortOrder: input.sortOrder ?? 0,
+          imageKey: input.imageKey ?? null,
+        },
       })
       .returning();
     return row;
@@ -79,31 +91,33 @@ export class CategoryDao {
     slug,
     sortOrder,
     parentId,
+    imageKey = null,
   }: CategoryInput): Promise<Category> {
     return db.transaction(async (tx) => {
       await CategoryDao.assertParent(tx, null, parentId);
       const [row] = await tx
         .insert(categories)
-        .values({ title, slug, sortOrder, parentId })
+        .values({ title, slug, sortOrder, parentId, imageKey })
         .returning();
       return row;
     });
   }
 
   /**
-   * Replaces title, slug, sort order and parent. `null` for an unknown id. A
-   * parent the one-level rule refuses throws {@link CategoryParentError} and
-   * writes nothing.
+   * Replaces title, slug, sort order and parent, and the photo when the input
+   * names one (`undefined` is skipped by `.set`, so the stored key stays).
+   * `null` for an unknown id. A parent the one-level rule refuses throws
+   * {@link CategoryParentError} and writes nothing.
    */
   static async update(
     id: string,
-    { title, slug, sortOrder, parentId }: CategoryInput,
+    { title, slug, sortOrder, parentId, imageKey }: CategoryInput,
   ): Promise<Category | null> {
     return db.transaction(async (tx) => {
       await CategoryDao.assertParent(tx, id, parentId);
       const [row] = await tx
         .update(categories)
-        .set({ title, slug, sortOrder, parentId })
+        .set({ title, slug, sortOrder, parentId, imageKey })
         .where(eq(categories.id, id))
         .returning();
       return row ?? null;

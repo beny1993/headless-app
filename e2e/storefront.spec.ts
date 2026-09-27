@@ -228,8 +228,19 @@ test('a product family is one card, and its page picks the member', async ({
   const chips = page.locator('[data-umami-event="product-variant-open"]');
   await expect(chips).toHaveCount(familyMembers.length);
 
-  // Picking a sibling is ordinary navigation to that member's own slug.
-  await chips.filter({ hasText: cheapest.variantLabel! }).click();
+  // Picking a sibling is ordinary navigation to that member's own slug — swapped
+  // in place, from where the shopper was. Scrolled past the page's top first:
+  // only then does Next's default throw the page back up, which is what read as
+  // a reload (a real reload lands at the top as well).
+  const chip = chips.filter({ hasText: cheapest.variantLabel! });
+  await chip.evaluate((element) =>
+    window.scrollTo(
+      0,
+      Math.max(120, element.getBoundingClientRect().top + window.scrollY - 300),
+    ),
+  );
+  const scrolled = await page.evaluate(() => window.scrollY);
+  await chip.click();
   await expect(page).toHaveURL(new RegExp(`${cheapest.slug}$`));
   await expect(
     page.getByRole('heading', {
@@ -237,6 +248,8 @@ test('a product family is one card, and its page picks the member', async ({
       name: `${cheapest.title} — ${cheapest.variantLabel}`,
     }),
   ).toBeVisible();
+  const after = await page.evaluate(() => window.scrollY);
+  expect(Math.abs(after - scrolled)).toBeLessThanOrEqual(40);
   // Its own price, not the family's «از …» — this is a single product now.
   await expect(page.locator('main')).toContainText(
     formatNumber(cheapest.price),

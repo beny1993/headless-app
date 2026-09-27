@@ -4,19 +4,19 @@ import { useId, useRef, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { DEFAULT_ERROR_MESSAGE, postForm, putData } from '@/lib/api-client';
+import { DEFAULT_ERROR_MESSAGE, putData } from '@/lib/api-client';
 import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
-import { API_PATHS, apiAdminContentPath } from '@/lib/constant/paths';
+import { apiAdminContentPath } from '@/lib/constant/paths';
 import {
   CONTENT_SCHEMAS,
   type ContentKey,
   type ContentValues,
 } from '@/lib/content/site-content';
-import { IMAGE_FIELD_NAME } from '@/lib/storage/image-upload';
 import type { Link, LinkTargets } from '@/lib/content/link';
 import { imageSrc } from '@/lib/storage/image-url';
 import {
   ImagePicker,
+  uploadImage,
   validateImageFile,
 } from '@/features/admin-panel/shared/image-picker';
 import { controlClass, fieldAria, FieldShell } from '@/components/ui/field';
@@ -77,18 +77,6 @@ function hasVisibleToggle(key: ContentKey): boolean {
   return (
     'visible' in (CONTENT_SCHEMAS[key] as unknown as { shape: object }).shape
   );
-}
-
-/** Upload one picked image to the shared content-image endpoint; returns its key. */
-async function uploadContentImage(file: File): Promise<string> {
-  const form = new FormData();
-  form.set(IMAGE_FIELD_NAME, file);
-  const { key } = await postForm(
-    API_PATHS.ADMIN_CONTENT_IMAGES,
-    form,
-    z.object({ key: z.string().min(1) }),
-  );
-  return key;
 }
 
 function BlockForm({
@@ -199,7 +187,7 @@ function BlockForm({
     try {
       try {
         for (const [path, file] of Object.entries(files)) {
-          const key = await uploadContentImage(file);
+          const key = await uploadImage(file);
           next = setPath(next, path, key);
           delete remainingFiles[path];
           delete remainingPreviews[path];

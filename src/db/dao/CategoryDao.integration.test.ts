@@ -13,6 +13,9 @@ const { CategoryDao, CategoryParentError } = await importWithDb(
 type CategoryParentError = InstanceType<typeof CategoryParentError>;
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
 
+/** A well-formed upload key; no file behind it — the DAO stores keys, not files. */
+const UPLOAD_KEY = 'uploads/123e4567-e89b-42d3-a456-426614174000.jpg';
+
 describe.skipIf(!databaseReachable)('CategoryDao', () => {
   const createdSlugs: string[] = [];
 
@@ -116,6 +119,37 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
     expect(reseeded.parentId).toBeNull();
   });
 
+  it('writes the photo on insert and puts it back on a re-run, like the title', async () => {
+    // A re-seed restores the demo state: an admin's photo on a seeded category
+    // gives way, and a row seeded without one is left with none.
+    const value = slug();
+    const inserted = await CategoryDao.upsertBySlug({
+      title: 'غذای خشک',
+      slug: value,
+      imageKey: 'products/cat-dry-food.jpg',
+    });
+    await CategoryDao.update(inserted.id, {
+      title: inserted.title,
+      slug: value,
+      sortOrder: 0,
+      parentId: null,
+      imageKey: UPLOAD_KEY,
+    });
+    const reseeded = await CategoryDao.upsertBySlug({
+      title: 'غذای خشک',
+      slug: value,
+      imageKey: 'products/cat-dry-food.jpg',
+    });
+    const plain = await CategoryDao.upsertBySlug({
+      title: 'مالت',
+      slug: slug(),
+    });
+
+    expect(inserted.imageKey).toBe('products/cat-dry-food.jpg');
+    expect(reseeded.imageKey).toBe('products/cat-dry-food.jpg');
+    expect(plain.imageKey).toBeNull();
+  });
+
   it('defaults sort order to zero', async () => {
     const created = await CategoryDao.upsertBySlug({
       title: 'بهداشت',
@@ -145,6 +179,20 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
   });
 
   describe('create', () => {
+    it('stores the photo’s key, and none when the input names none', async () => {
+      const withPhoto = await CategoryDao.create({
+        title: 'غذای تر',
+        slug: slug(),
+        sortOrder: 0,
+        parentId: null,
+        imageKey: UPLOAD_KEY,
+      });
+      const withoutPhoto = await makeCategory();
+
+      expect(withPhoto.imageKey).toBe(UPLOAD_KEY);
+      expect(withoutPhoto.imageKey).toBeNull();
+    });
+
     it('inserts a new category and returns the stored row', async () => {
       const value = slug();
 
@@ -206,6 +254,38 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
         slug: nextSlug,
         sortOrder: 7,
       });
+    });
+
+    it('replaces the photo, keeps it when the input omits one, and removes it on null', async () => {
+      // Omitted is not «none»: an update from a client that knows nothing of
+      // photos leaves the photo alone. Only an explicit null removes it.
+      const created = await CategoryDao.create({
+        title: 'غذای تر',
+        slug: slug(),
+        sortOrder: 0,
+        parentId: null,
+        imageKey: 'products/cat-wet-food.jpg',
+      });
+      const fields = {
+        title: created.title,
+        slug: created.slug,
+        sortOrder: 0,
+        parentId: null,
+      };
+
+      const replaced = await CategoryDao.update(created.id, {
+        ...fields,
+        imageKey: UPLOAD_KEY,
+      });
+      const kept = await CategoryDao.update(created.id, fields);
+      const removed = await CategoryDao.update(created.id, {
+        ...fields,
+        imageKey: null,
+      });
+
+      expect(replaced?.imageKey).toBe(UPLOAD_KEY);
+      expect(kept?.imageKey).toBe(UPLOAD_KEY);
+      expect(removed?.imageKey).toBeNull();
     });
 
     it('returns null for an unknown id', async () => {

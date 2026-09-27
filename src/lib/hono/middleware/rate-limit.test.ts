@@ -13,6 +13,11 @@ import {
   rateLimitGroupFor,
 } from './rate-limit';
 
+// Sentry at the module edge: the shared-bucket shout is asserted on below, and
+// the real SDK is a second of module loading this suite has no use for.
+const sentry = vi.hoisted(() => ({ captureMessage: vi.fn() }));
+vi.mock('@sentry/nextjs', () => ({ captureMessage: sentry.captureMessage }));
+
 /** A throwaway app with the limiter mounted exactly as the real one mounts it. */
 const makeApp = () => {
   const app = new Hono();
@@ -33,6 +38,7 @@ const freshIp = () =>
 beforeEach(() => {
   vi.stubEnv('APP_CONFIG_TRUST_CF_HEADER', 'true');
   resetRateLimitBuckets();
+  sentry.captureMessage.mockClear();
 });
 
 afterEach(() => {
@@ -261,6 +267,24 @@ describe('the bucket map is bounded', () => {
     }
 
     expect(bucketCount()).toBeLessThanOrEqual(MAX_RATE_LIMIT_BUCKETS);
+  });
+
+  it('tells Sentry once when the map fills', async () => {
+    const app = makeApp();
+
+    for (let i = 0; i < MAX_RATE_LIMIT_BUCKETS; i++) {
+      await hit(
+        app,
+        API_PATHS.PRODUCTS,
+        `10.${i >> 16}.${(i >> 8) & 255}.${i & 255}`,
+      );
+    }
+
+    expect(sentry.captureMessage).toHaveBeenCalledOnce();
+    expect(sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('at its cap'),
+      'warning',
+    );
   });
 
   it('throttles callers arriving past the cap rather than handing them a free pass', async () => {

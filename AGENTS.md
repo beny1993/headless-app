@@ -78,7 +78,11 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   Storefront and admin are `lang="fa" dir="rtl"` — use logical properties
   (`ms-*`/`me-*`, `start`/`end`), never `left`/`right`.
 - **Persian UI copy** in components; identifiers, comments and commits in English.
-- Interactive elements carry `data-umami-event="<page>-<element>-<action>"`.
+- Interactive elements carry `data-umami-event="<page>-<element>-<action>"`,
+  sent by `src/components/umami-tracker.tsx`. Umami's auto-track stays off: it
+  cancels the click on every tracked `<a>` and reloads the page itself. The
+  name is read off the nearest link or button, else the element tapped — never
+  a container's — so it goes on what a tap lands on (`trackedEventOf`).
 - Conventional commits (commitlint enforces the type list).
 
 ## Non-negotiables (from the vault note — these affect code, not just docs)
@@ -260,7 +264,9 @@ serving while the kept one goes on serving (all probed with `request.get`,
 never an `<img>`: `next/image` caches what it optimized, so a deleted file
 renders on from `.next/cache`) — repriced, found
 under both category filters and taken off the shop; a sub-category nested under
-a category the panel then refuses to delete until it is emptied; a product
+a category the panel then refuses to delete until it is emptied; a category
+given a photo that its home-page tile then shows (the file probed with
+`request.get`), and a plain tile once the photo is removed; a product
 family's members each listed and named by their own label, the head's
 «زیرمجموعه‌ی» select disabled because it has members and a member's live
 (read-only, so it runs at both widths and leaves nothing behind); a discount
@@ -318,7 +324,9 @@ suite pins it on; the disabled option is component-tested in
   inactive «استان آزمایشی …»
   province with the customer's address on it — those three specs run at 1280px
   only, since none of those rows can be deleted. The sub-category spec deletes
-  both rows it creates, so it runs at both widths. The card-to-card spec leaves a
+  both rows it creates, so it runs at both widths, and so does the category-photo
+  spec — whose photo file stays under `uploads/`, one per width per run, since
+  nothing deletes a category's replaced or removed photo. The card-to-card spec leaves a
   `checkout.payment` content row equal to the default (it puts the old values
   back in a `finally`). The shipping-rate and headline
   specs put the old value back, the one-fee-for-all spec puts every province's
@@ -328,6 +336,12 @@ suite pins it on; the disabled option is component-tested in
   newest-first, 12 a page, so a stray active `test-…`/`e2e-…` product pushes a
   seeded one to a later page and a spec that looks for it on page one fails.
   The seed's sweep switches off any not updated for an hour.
+- **Leaked top-level test categories crowd the home strip.** It shows the
+  first six by sort order, then title, and a killed integration run leaves its
+  «دسته آزمایشی …» category at sort order 0 with nothing to switch it off. The
+  category-photo spec survives them because its «آزمون عکس …» title sorts first
+  under the dev database's `en_US.utf8` collation. Six leaked «آزمون عکس …»
+  rows (from killed runs of that spec) would crowd it out too: delete them.
 - **Uploaded images never count as failed requests.** A dev database keeps the
   uploads it was given while `.env` pointed at object storage, and this run's
   local driver has no file for them. The catalog spec proves the upload path
