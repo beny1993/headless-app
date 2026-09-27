@@ -70,8 +70,12 @@ export default async function AdminProductsPage({
       </div>
 
       {/* Native GET form — no client JS. Submitting reloads with the filters in
-          the URL, which the server reads back above. */}
+          the URL, which the server reads back above. Keyed by those filters for
+          the reason the orders list gives: a client-side move back here keeps
+          the page mounted, and a mounted <select> ignores a new
+          `defaultValue`. */}
       <form
+        key={productsHref(filters, 1)}
         method="get"
         className="border-border grid grid-cols-1 gap-3 rounded-2xl border bg-white p-4 sm:grid-cols-2 lg:grid-cols-5"
       >
