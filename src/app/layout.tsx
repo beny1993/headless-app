@@ -1,5 +1,6 @@
+import { Suspense } from 'react';
 import type { Metadata } from 'next';
-import Script from 'next/script';
+import { UmamiTracker } from '@/components/umami-tracker';
 import { vazirmatn } from '@/lib/fonts';
 import { SITE_METADATA } from '@/lib/seo';
 import { getEnvVariable, VARS } from '@/lib/utils/env';
@@ -33,7 +34,11 @@ export default function RootLayout({
       <body className={`${vazirmatn.variable} font-sans antialiased`}>
         {children}
         {umamiScriptUrl && umamiWebsiteId ? (
-          <Script src={umamiScriptUrl} data-website-id={umamiWebsiteId} />
+          // Suspense: `useSearchParams` outside one fails `next build` for any
+          // static page — and only the production image sets these vars.
+          <Suspense fallback={null}>
+            <UmamiTracker src={umamiScriptUrl} websiteId={umamiWebsiteId} />
+          </Suspense>
         ) : null}
       </body>
     </html>
