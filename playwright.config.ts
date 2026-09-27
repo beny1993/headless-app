@@ -28,6 +28,11 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   use: {
     baseURL,
+    // Bounds every click, `getAttribute` and `waitForResponse`, which otherwise
+    // wait for as long as the test has left: one that ran the test out would
+    // leave its `finally` no page to clean up with, and its rows in the shared
+    // dev database.
+    actionTimeout: 20_000,
     // ponytail: the installed Google Chrome, so no browser download. Switch to
     // `playwright install chromium` when CI needs a pinned browser.
     channel: 'chrome',

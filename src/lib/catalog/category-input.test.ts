@@ -6,18 +6,21 @@ import {
   MAX_SORT_ORDER,
   MAX_TITLE_LENGTH,
 } from './category-input';
+import { MIN_SLUG_LENGTH } from './product-input';
 import { MAX_SLUG_LENGTH } from './sku';
+import { toPersianDigits } from '@/lib/format';
 import {
   IMAGE_KEY_ERROR,
   MAX_OBJECT_KEY_LENGTH,
 } from '@/lib/storage/image-upload';
 
+// No `imageKey`: an omitted photo is its own case below, and the explicit null
+// case spreads its own.
 const valid = {
   title: 'غذای خشک',
   slug: 'dry-food',
   sortOrder: 1,
   parentId: null,
-  imageKey: null,
 };
 
 /** The message zod attached to `field`, or undefined when the field passed. */
@@ -205,12 +208,7 @@ describe('categoryInputSchema', () => {
     it('leaves an omitted photo out, so an update keeps the one it has', () => {
       // A client that knows nothing of photos — an admin tab opened before
       // they shipped — must not remove one by saving a title.
-      const { imageKey, ...withoutPhoto } = valid;
-      void imageKey;
-
-      expect(categoryInputSchema.parse(withoutPhoto)).not.toHaveProperty(
-        'imageKey',
-      );
+      expect(categoryInputSchema.parse(valid)).not.toHaveProperty('imageKey');
     });
 
     it('keeps an explicit null, which is how a photo is removed', () => {
@@ -227,13 +225,25 @@ describe('categoryInputSchema', () => {
       '/products/cat-dry-food.jpg',
       'uploads/../../.env',
       'uploads/not-a-uuid.jpg',
-      `uploads/${'a'.repeat(MAX_OBJECT_KEY_LENGTH)}.jpg`,
+      // A bundled shape, so only the length cap refuses it.
+      `products/${'a'.repeat(MAX_OBJECT_KEY_LENGTH)}.jpg`,
       12,
     ])('rejects %j with the Persian message', (imageKey) => {
       expect(messageFor({ ...valid, imageKey }, 'imageKey')).toBe(
         IMAGE_KEY_ERROR,
       );
     });
+  });
+
+  it('quotes the slug minimum the pattern enforces', () => {
+    expect(CATEGORY_MESSAGES.slug).toContain(toPersianDigits(MIN_SLUG_LENGTH));
+    const slug = (length: number) => 'a'.repeat(length);
+    expect(
+      messageFor({ ...valid, slug: slug(MIN_SLUG_LENGTH - 1) }, 'slug'),
+    ).toBe(CATEGORY_MESSAGES.slug);
+    expect(
+      messageFor({ ...valid, slug: slug(MIN_SLUG_LENGTH) }, 'slug'),
+    ).toBeUndefined();
   });
 });
 

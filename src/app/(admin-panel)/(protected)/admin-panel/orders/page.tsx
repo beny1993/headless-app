@@ -66,8 +66,16 @@ export default async function AdminOrdersPage({
         <h1 className="text-2xl font-black">سفارش‌ها</h1>
 
         {/* Native GET form — no client JS. Submitting reloads with the filter in
-            the URL, which the server reads back above. */}
-        <form method="get" className="flex items-center gap-2">
+            the URL, which the server reads back above. Keyed by that filter: a
+            client-side move back to this list (the sidebar link) updates the
+            page in place, and React never re-applies a mounted <select>'s
+            changed `defaultValue`, so the form would keep showing — and
+            re-submit — a filter the list no longer applies. */}
+        <form
+          key={ordersHref(filters.status, 1)}
+          method="get"
+          className="flex items-center gap-2"
+        >
           <label htmlFor="filter-status" className="sr-only">
             فیلتر وضعیت سفارش
           </label>

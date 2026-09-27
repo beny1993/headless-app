@@ -91,7 +91,7 @@ export class CategoryDao {
     slug,
     sortOrder,
     parentId,
-    imageKey = null,
+    imageKey,
   }: CategoryInput): Promise<Category> {
     return db.transaction(async (tx) => {
       await CategoryDao.assertParent(tx, null, parentId);

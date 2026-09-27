@@ -19,7 +19,10 @@ import {
   type ContentValue,
 } from '@/lib/content/site-content';
 import { getStorageDriver } from '@/lib/storage';
-import { objectKeyFor } from '@/lib/storage/image-upload';
+import {
+  objectKeyFor,
+  type ImageUploadResult,
+} from '@/lib/storage/image-upload';
 import { findBrokenLinks } from '@/logic/content/link-targets';
 import { INVALID_INPUT_MESSAGE } from '../create-router';
 import {
@@ -125,12 +128,15 @@ export const contentUpdateHandler: RouteHandler<
 // ── Image upload (multipart) ──────────────────────────────────────────────────
 
 /**
- * Store one uploaded content image and return its key + URL. Plain handler (like
- * the product upload), behind the same admin guard and a `bodyLimit` mounted on
- * this path; it shares the product route's trust boundary via `readImageUpload`
- * (parse → sniff → size), differing only in that it records NO database row —
- * the key travels back to the form, which then saves it into a block via the PUT
- * above, where `imageKeySchema` re-validates its shape regardless.
+ * Store one uploaded image and return its key + URL: the admin panel's shared
+ * image upload, for the content editor and the category manager alike. Plain
+ * handler (like the product upload), behind the same admin guard and a
+ * `bodyLimit` mounted on this path; it shares the product route's trust
+ * boundary via `readImageUpload` (parse → sniff → size), differing only in that
+ * it records NO database row. The key travels back to the form, which saves it
+ * itself — into a content block via the PUT above, or into
+ * `categories.image_key` through the category create/update — and
+ * `imageKeySchema` re-validates its shape there regardless.
  */
 export const contentImageUploadHandler = async (
   c: Context<Env & AuthedEnv>,
@@ -141,20 +147,21 @@ export const contentImageUploadHandler = async (
   const key = objectKeyFor(type);
   await driver.put(key, bytes, type);
 
-  // ponytail: no orphan sweep — an upload whose block is never saved, or a
-  // replaced uploads/ key, is left on disk. Keys are uuids used by at most one
-  // slot (the form cannot copy a key), so a sweep would be safe.
+  // ponytail: no orphan sweep — an upload that is never saved, or a replaced
+  // uploads/ key, is left on disk. Keys are uuids used by at most one slot (a
+  // form cannot copy a key), so a sweep would be safe — provided it first
+  // collects EVERY place an uploads/ key is kept: `site_content` values (every
+  // area, every block), `categories.image_key` and `product_images.object_key`.
+  // A sweep that walks only the content blocks deletes every category photo and
+  // product image. Collecting them spans SiteContentDao, CategoryDao and
+  // ProductDao, so the sweep belongs in src/logic/, not in this handler.
   //
-  // The product gallery's `setProductImageOrder` is the nearest worked example,
-  // but only half of it transfers. Its shape: delete exactly what the write
-  // itself removed (`previous − kept`, as `ProductDao.setImages` reports it),
-  // restricted to `uploads/` so a bundled `products/…` asset is never handed to
-  // the driver, each failure swallowed and reported to Sentry rather than
-  // failing a write the database has already taken. What does not transfer is
-  // where that set comes from: a gallery has `product_images` rows to diff, and
-  // content images are keys inside `site_content` JSON with no row of their
-  // own. A sweep here has to collect the referenced keys by walking the saved
-  // values — every area, every block — and delete the `uploads/` objects no
-  // value names. Until disk fills, it is not worth that walk.
-  return c.json(apiSuccess({ key, url: driver.url(key) }), 201);
+  // The product gallery's `setProductImageOrder` is the nearest worked example
+  // of the delete half: delete exactly what the write itself removed
+  // (`previous − kept`, as `ProductDao.setImages` reports it), restricted to
+  // `uploads/` so a bundled `products/…` asset is never handed to the driver,
+  // each failure swallowed and reported to Sentry rather than failing a write
+  // the database has already taken. Until disk fills, the walk is not worth it.
+  const result: ImageUploadResult = { key, url: driver.url(key) };
+  return c.json(apiSuccess(result), 201);
 };

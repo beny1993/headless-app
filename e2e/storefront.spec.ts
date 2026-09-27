@@ -231,7 +231,8 @@ test('a product family is one card, and its page picks the member', async ({
   // Picking a sibling is ordinary navigation to that member's own slug — swapped
   // in place, from where the shopper was. Scrolled past the page's top first:
   // only then does Next's default throw the page back up, which is what read as
-  // a reload (a real reload lands at the top as well).
+  // a reload. (This run blanks Umami, so its full reload on a tracked link is
+  // pinned by src/app/layout.test.ts and umami-tracker.test.tsx, not here.)
   const chip = chips.filter({ hasText: cheapest.variantLabel! });
   await chip.evaluate((element) =>
     window.scrollTo(
@@ -240,6 +241,13 @@ test('a product family is one card, and its page picks the member', async ({
     ),
   );
   const scrolled = await page.evaluate(() => window.scrollY);
+  // Next scrolls only when the new page's top is off-screen, so a taller
+  // header would skip the jump this checks for without failing anything.
+  expect(
+    await page
+      .locator('main')
+      .evaluate((element) => element.getBoundingClientRect().top),
+  ).toBeLessThan(0);
   await chip.click();
   await expect(page).toHaveURL(new RegExp(`${cheapest.slug}$`));
   await expect(

@@ -29,7 +29,7 @@ describe('bundled photos', () => {
     // These are licensed stock photos. The licence is only honoured if the
     // record exists, and the record is exactly the thing that gets forgotten
     // when someone drops a new .jpg into public/ — so the check is on the
-    // directory, not on the list above.
+    // directory.
     const attributions = await readFile(
       join(process.cwd(), 'public', 'ATTRIBUTIONS.md'),
       'utf8',

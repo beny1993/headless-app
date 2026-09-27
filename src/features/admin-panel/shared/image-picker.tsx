@@ -2,7 +2,6 @@
 
 import Image from 'next/image';
 import { AlertCircle, Camera } from 'lucide-react';
-import { z } from 'zod';
 import { postForm } from '@/lib/api-client';
 import { API_PATHS } from '@/lib/constant/paths';
 import {
@@ -12,6 +11,7 @@ import {
   IMAGE_SIZE_ERROR,
   IMAGE_TYPE_ERROR,
   MAX_UPLOAD_BYTES,
+  imageUploadResultSchema,
 } from '@/lib/storage/image-upload';
 
 // The admin image slot the content editor and the category manager render.
@@ -33,7 +33,7 @@ export async function uploadImage(file: File): Promise<string> {
   const { key } = await postForm(
     API_PATHS.ADMIN_CONTENT_IMAGES,
     form,
-    z.object({ key: z.string().min(1) }),
+    imageUploadResultSchema,
   );
   return key;
 }
@@ -62,6 +62,7 @@ export function ImagePicker({
   buttonLabel,
   onPick,
   umami,
+  hint,
 }: {
   id: string;
   label: string;
@@ -70,11 +71,17 @@ export function ImagePicker({
   error?: string;
   buttonLabel: string;
   onPick: (file: File | undefined) => void;
-  /** The input's `data-umami-event`. */
-  umami?: string;
+  /** The input's `data-umami-event` — required, as every tracked control's is. */
+  umami: string;
+  /** What the photo is for, announced with the input rather than only shown. */
+  hint?: string;
 }) {
   const labelId = `${id}-label`;
   const errorId = `${id}-error`;
+  const hintId = `${id}-hint`;
+  // Error first, as the field kit's `fieldAria` orders them.
+  const describedBy =
+    [error && errorId, hint && hintId].filter(Boolean).join(' ') || undefined;
   return (
     <div>
       {/* Identified, and pointed at from the input below. On its own this is
@@ -123,7 +130,7 @@ export function ImagePicker({
               // Announced rather than only shown: without these a refused file
               // leaves a red line on screen and nothing at all for a screen
               // reader following the input.
-              aria-describedby={error ? errorId : undefined}
+              aria-describedby={describedBy}
               aria-invalid={error ? true : undefined}
               data-umami-event={umami}
               onChange={(e) => {
@@ -137,6 +144,11 @@ export function ImagePicker({
           <p className="text-muted-foreground mt-1.5 text-xs">
             {IMAGE_FORMAT_HINT}
           </p>
+          {hint && (
+            <p id={hintId} className="text-muted-foreground mt-1.5 text-xs">
+              {hint}
+            </p>
+          )}
           {error && (
             <p
               id={errorId}

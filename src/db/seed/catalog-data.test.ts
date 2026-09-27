@@ -125,7 +125,7 @@ describe('catalog seed data', () => {
     // change what the storefront renders and what the search story indexes.
     expect(SEED_CATEGORIES.map((c) => c.title)).toContain('اسباب‌بازی');
     expect(SEED_PRODUCTS[7].title).toBe('اسباب‌بازی تعاملی پر و زنگوله');
-    expect(SEED_PRODUCTS[7].title).toContain('‌');
+    expect(SEED_PRODUCTS[7].title).toContain('\u200C');
   });
 
   it('seeds one product with a gallery, so the strip is reachable without building one', () => {

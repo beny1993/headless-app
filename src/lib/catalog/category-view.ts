@@ -31,13 +31,13 @@ export const categoryViewSchema = z.object({
 export type CategoryView = z.infer<typeof categoryViewSchema>;
 
 /** Project a DAO row to the admin response — ISO the dates. */
-export const toCategoryView = (c: Category): CategoryView => ({
-  id: c.id,
-  title: c.title,
-  slug: c.slug,
-  sortOrder: c.sortOrder,
-  parentId: c.parentId,
-  imageKey: c.imageKey,
-  createdAt: c.createdAt.toISOString(),
-  updatedAt: c.updatedAt.toISOString(),
+export const toCategoryView = (row: Category): CategoryView => ({
+  id: row.id,
+  title: row.title,
+  slug: row.slug,
+  sortOrder: row.sortOrder,
+  parentId: row.parentId,
+  imageKey: row.imageKey,
+  createdAt: row.createdAt.toISOString(),
+  updatedAt: row.updatedAt.toISOString(),
 });
