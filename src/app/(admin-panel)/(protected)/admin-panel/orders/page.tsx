@@ -6,7 +6,12 @@ import { z } from 'zod';
 import { Pagination } from '@/components/ui/pagination';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { adminOrderPath, PROTECTED_PATHS } from '@/lib/constant/paths';
-import { formatJalali, formatToman, toPersianDigits } from '@/lib/format';
+import {
+  formatJalali,
+  formatNumber,
+  formatToman,
+  toPersianDigits,
+} from '@/lib/format';
 import {
   ORDER_STATUS_VALUES,
   orderStatusSchema,
@@ -91,6 +96,7 @@ export default async function AdminOrdersPage({
 
       <AdminTable
         headings={[
+          'ردیف',
           'شناسه',
           'مشتری',
           'تاریخ',
@@ -104,7 +110,7 @@ export default async function AdminOrdersPage({
         {orders.length === 0 ? (
           <tr>
             <td
-              colSpan={8}
+              colSpan={9}
               className="text-muted-foreground px-4 py-10 text-center"
             >
               {/* Past the last page is not the same as nothing matching:
@@ -115,13 +121,19 @@ export default async function AdminOrdersPage({
             </td>
           </tr>
         ) : (
-          orders.map((order) => {
+          orders.map((order, index) => {
             const badge = orderStatusBadge(order.status);
             return (
               <tr
                 key={order.id}
                 className="border-border hover:bg-secondary/20 border-t transition-colors"
               >
+                <td className="text-muted-foreground nums px-4 py-3.5 text-xs">
+                  {/* The DAO's own offset, so numbering carries on across pages. */}
+                  {formatNumber(
+                    (filters.page - 1) * ADMIN_PAGE_SIZE + index + 1,
+                  )}
+                </td>
                 <td className="nums px-4 py-3.5 text-xs">
                   #{toPersianDigits(order.orderNo)}
                 </td>

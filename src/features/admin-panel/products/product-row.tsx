@@ -4,7 +4,7 @@ import { Edit, Eye } from 'lucide-react';
 import type { ProductWithImages } from '@/db/schema/catalog';
 import { displayTitle } from '@/lib/catalog/variant';
 import { adminEditProductPath, productPath } from '@/lib/constant/paths';
-import { formatToman } from '@/lib/format';
+import { formatNumber, formatToman } from '@/lib/format';
 import { imageSrc } from '@/lib/storage/image-url';
 import { Pill } from '@/features/admin-panel/shared/pill';
 import { DeleteProductButton } from './delete-product-button';
@@ -14,13 +14,19 @@ import { StockBadge } from './stock-badge';
 export function ProductRow({
   product,
   categoryTitle,
+  rowNumber,
 }: {
   product: ProductWithImages;
   categoryTitle: string;
+  /** The row's place in the whole filtered list, counting from one. */
+  rowNumber: number;
 }) {
   const imageKey = product.images[0]?.objectKey;
   return (
     <tr className="border-border hover:bg-secondary/20 border-t transition-colors">
+      <td className="text-muted-foreground nums px-4 py-3 text-xs">
+        {formatNumber(rowNumber)}
+      </td>
       <td className="px-4 py-3">
         <div className="bg-muted relative h-10 w-10 overflow-hidden rounded-lg">
           {imageKey && (

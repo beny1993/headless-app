@@ -1,4 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
+import * as Sentry from '@sentry/nextjs';
 
 import { clientIpFrom } from '@/lib/auth/client-ip';
 import { API_PATHS, API_ROOT, checkoutFailurePath } from '@/lib/constant/paths';
@@ -151,12 +152,11 @@ const warnSharedBucket = (reason: string) => {
     'Every affected caller now spends one budget between them. If this is a ' +
     'Cloudflare-fronted deploy, set APP_CONFIG_TRUST_CF_HEADER=true.';
   console.warn(message);
-  // Imported lazily, not at module scope: `src/test-setup.ts` loads this module
-  // into all 154 test files to reset the counter, and a static Sentry import
-  // there cost the suite ~45s of setup. This path runs at most once per process.
-  void import('@sentry/nextjs').then((Sentry) =>
-    Sentry.captureMessage(message, 'warning'),
-  );
+  // A static import, never a lazy `import()` again: that one was still loading
+  // when rate-limit.test.ts ended, and vitest's teardown failed the whole run
+  // with an EnvironmentTeardownError. Its reason — `src/test-setup.ts` loading
+  // this module into every file — went when setup moved to `rate-limit-store`.
+  Sentry.captureMessage(message, 'warning');
 };
 
 /**
