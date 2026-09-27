@@ -1,10 +1,10 @@
-// Pins the admin product list: which row actions it offers, and how it pages.
-// Deactivating is a soft delete, so an inactive product must not offer it again:
-// clicking it there changed nothing, which read as a broken button. The page
-// number lives in the URL next to the filters, and every page link keeps them.
-// The page renders for real with its DAOs and the admin guard mocked at the
-// module edge.
-import { cleanup, render, screen } from '@testing-library/react';
+// Pins the admin product list: which row actions it offers, how it pages, and
+// how it counts. Deactivating is a soft delete, so an inactive product must not
+// offer it again: clicking it there changed nothing, which read as a broken
+// button. The page number lives in the URL next to the filters, and every page
+// link keeps them. The page renders for real with its DAOs and the admin guard
+// mocked at the module edge.
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductWithImages } from '@/db/schema/catalog';
 import { SUBCATEGORY_PREFIX } from '@/lib/catalog/category-tree';
@@ -177,6 +177,45 @@ describe('paging', () => {
       expect.objectContaining({ page: 1, limit: ADMIN_PAGE_SIZE }),
     );
     expect(screen.queryByRole('link', { name: 'صفحه بعد' })).toBeNull();
+  });
+
+  it('numbers rows on from the pages before', async () => {
+    pageForAdmin.mockResolvedValue({
+      items: [
+        ACTIVE,
+        product({
+          id: '44444444-4444-4444-8444-444444444444',
+          title: 'محصول دوم',
+          slug: 'second-product',
+          sku: 'SECOND-1',
+        }),
+      ],
+      total: ADMIN_PAGE_SIZE + 2,
+    });
+
+    await renderPage({ page: '2' });
+
+    // Page two starts after one full page, as the DAO's offset does.
+    const [, ...rows] = screen.getAllByRole('row');
+    expect(
+      rows.map((row) => within(row).getAllByRole('cell')[0].textContent),
+    ).toEqual([
+      formatNumber(ADMIN_PAGE_SIZE + 1),
+      formatNumber(ADMIN_PAGE_SIZE + 2),
+    ]);
+  });
+
+  it('counts the whole filtered result, not the page', async () => {
+    pageForAdmin.mockResolvedValue({
+      items: [ACTIVE],
+      total: ADMIN_PAGE_SIZE * 2 + 5,
+    });
+
+    await renderPage({ q: 'غذا' });
+
+    expect(
+      screen.getByText(`${formatNumber(ADMIN_PAGE_SIZE * 2 + 5)} محصول`),
+    ).toBeTruthy();
   });
 
   it('says a page past the end is empty, and still links back', async () => {

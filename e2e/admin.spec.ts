@@ -161,6 +161,22 @@ test.describe('a product family in the admin panel', () => {
       page.getByText(`${member.title} — ${member.variantLabel}`),
     ).toBeVisible();
 
+    // Counted and numbered from the filtered result, not the whole catalog:
+    // the family fits on one page, so the count is exactly the rows listed.
+    const rows = page.getByRole('row').filter({
+      has: page.locator('[data-umami-event="admin-panel-products-edit"]'),
+    });
+    const listed = await rows.count();
+    await expect(
+      page.getByText(`${formatNumber(listed)} محصول`, { exact: true }),
+    ).toBeVisible();
+    await expect(rows.first().getByRole('cell').first()).toHaveText(
+      formatNumber(1),
+    );
+    await expect(rows.last().getByRole('cell').first()).toHaveText(
+      formatNumber(listed),
+    );
+
     // The head already has members, so it cannot itself become one: one level
     // only, and moving it would orphan them. The select is disabled with the
     // reason rather than silently accepting a save the DAO would refuse.
