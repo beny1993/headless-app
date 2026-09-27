@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import { HOME_CATEGORY_TILES } from '@/lib/catalog/category-tree';
 import type { ContentValue } from '@/lib/content/site-content';
 import { shopPath } from '@/lib/constant/paths';
 import { imageSrc } from '@/lib/storage/image-url';
@@ -55,7 +56,7 @@ export function CategoriesSection({
         </div>
 
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-          {categories.slice(0, 6).map((category, index) => {
+          {categories.slice(0, HOME_CATEGORY_TILES).map((category, index) => {
             const image = category.imageKey && imageSrc(category.imageKey);
             // The first and fourth tiles run tall, as in the design's mosaic.
             const tall = index === 0 || index === 3;
