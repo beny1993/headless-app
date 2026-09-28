@@ -1,5 +1,6 @@
 'use client';
 
+import { GripVertical } from 'lucide-react';
 import {
   PET_LABELS,
   PET_TYPE_VALUES,
@@ -16,6 +17,8 @@ import {
 } from '@/lib/content/link';
 import { FEATURED_COUNT } from '@/lib/content/site-content';
 import { toPersianDigits } from '@/lib/format';
+import { cn } from '@/lib/utils';
+import { DRAG_HINT, useDragReorder } from '@/hooks/use-drag-reorder';
 import { controlClass, fieldAria, FieldMessage } from '@/components/ui/field';
 
 /** A category or active product a destination can point at. */
@@ -73,6 +76,11 @@ const MISSING_CATEGORY = 'دسته‌بندی حذف‌شده';
 const MISSING_PRODUCT = 'محصول حذف‌شده یا غیرفعال';
 /** A featured pick the shop no longer lists as a card — gone, hidden, or now a family member. */
 const MISSING_CARD = 'محصول حذف‌شده، غیرفعال یا زیرمجموعه';
+/**
+ * A place the admin left to the storefront: a featured box nothing is picked
+ * for, or a home tile the display order fills.
+ */
+const AUTO = 'خودکار';
 
 /** A shop link carrying only the filters actually chosen — an empty select is "all". */
 const shopLink = (categoryId: string | undefined, pet: string): Link => ({
@@ -278,14 +286,19 @@ export function LinkPicker({
 
 /**
  * A section's picked categories — a routine tab's, or the home strip's — up to
- * `max`, kept in the order they were ticked: the order its tiles show. None
- * ticked is `undefined`, so the section falls back to its code categories
- * (`fallback`) instead of storing an empty list the schema would refuse. A saved
- * category deleted since stays listed, ticked, so it can be removed.
+ * `max`. Under the boxes, the picks form a numbered list in the order the
+ * section shows them, each with a grip to drag it or arrow it into place
+ * (`useDragReorder`, the product gallery's). What is saved is that list's
+ * order; a newly ticked category joins at its end. None ticked is `undefined`,
+ * so the section falls back to its code categories (`fallback`) instead of
+ * storing an empty list the schema would refuse. A saved category deleted since
+ * stays among the boxes, ticked, so it can be removed — but not in the list,
+ * which shows only what the section will render.
  *
- * `shows` is for a section that fills the places left unticked (the home strip):
- * given the picks, every category it will show, so the line under the boxes
- * names each tile rather than only the ticked ones.
+ * `shows` is for a section that fills the places left unticked (the home
+ * strip): given the picks, every category it will show. Those filled places
+ * follow the picks in the list, greyed and marked «خودکار», with no grip: they
+ * are the display order's, not the admin's to move.
  */
 export function CategoryPicker({
   id,
@@ -306,27 +319,56 @@ export function CategoryPicker({
   categories: LinkOption[];
   /** How many may be ticked — the schema's own `.max()`. */
   max: number;
-  /** Every checkbox's `data-umami-event`. */
-  umami: string;
+  /** The `data-umami-event` of every checkbox, and of every grip. */
+  umami: { toggle: string; reorder: string };
   shows?: (picked: readonly string[]) => LinkOption[];
   error?: string;
   onChange: (next: string[] | undefined) => void;
 }) {
   const labelId = `${id}-label`;
+  const dragHintId = `${id}-drag-hint`;
   const selected = value ?? [];
+  const missing = selected.filter(
+    (picked) => !categories.some((c) => c.id === picked),
+  );
   const shown = [
     ...categories,
-    ...selected
-      .filter((picked) => !categories.some((c) => c.id === picked))
-      .map((picked) => ({ id: picked, title: MISSING_CATEGORY, slug: '' })),
+    ...missing.map((picked) => ({
+      id: picked,
+      title: MISSING_CATEGORY,
+      slug: '',
+    })),
   ];
-  const titleOf = (picked: string) =>
-    shown.find((category) => category.id === picked)?.title;
+  // The rows that move: the picks the section can show, in the saved order.
+  const picked = selected.flatMap((pick) =>
+    categories.filter((category) => category.id === pick),
+  );
+  // The places the section fills behind them, by display order.
+  const filled = shows
+    ? shows(selected).filter((category) => !selected.includes(category.id))
+    : [];
+
+  const {
+    slotRefs,
+    draggingId,
+    onHandleKeyDown,
+    onHandlePointerDown,
+    liveRegionProps,
+  } = useDragReorder({
+    items: picked,
+    // A deleted pick rides along behind the list, still ticked: a reorder is
+    // not the place to drop it from the save without the admin seeing.
+    onChange: (next) =>
+      onChange([...next.map((category) => category.id), ...missing]),
+    movedMessage: (from, to) =>
+      `${picked[from].title} به جایگاه ${toPersianDigits(to + 1)} منتقل شد.`,
+    handleSelector: '[data-category-handle]',
+  });
 
   const toggle = (categoryId: string, checked: boolean) => {
     const next = checked
       ? [...selected, categoryId]
-      : selected.filter((picked) => picked !== categoryId);
+      : selected.filter((pick) => pick !== categoryId);
     onChange(next.length > 0 ? next : undefined);
   };
 
@@ -349,7 +391,7 @@ export function CategoryPicker({
                 checked={checked}
                 disabled={!checked && selected.length >= max}
                 onChange={(e) => toggle(category.id, e.target.checked)}
-                data-umami-event={umami}
+                data-umami-event={umami.toggle}
                 className="size-4 shrink-0"
               />
               {category.title}
@@ -358,38 +400,89 @@ export function CategoryPicker({
         })}
       </div>
       {shows ? (
-        <>
-          <p className="text-muted-foreground mt-1.5 text-xs">
-            تا {toPersianDigits(max)} دسته‌بندی، به ترتیب انتخاب؛ جای خالی را
-            بقیه به ترتیب نمایش پر می‌کنند.
-          </p>
-          <p className="text-muted-foreground mt-1 text-xs">
-            {`به این ترتیب نمایش داده می‌شوند: ${shows(selected)
-              .map((category) => category.title)
-              .join('، ')}`}
-          </p>
-        </>
-      ) : (
         <p className="text-muted-foreground mt-1.5 text-xs">
-          {selected.length > 0 ? (
-            `به این ترتیب نمایش داده می‌شوند: ${selected.map(titleOf).join('، ')}`
-          ) : (
-            <>
-              تا {toPersianDigits(max)} دسته‌بندی، به ترتیب انتخاب. پیش‌فرض:{' '}
-              <span dir="ltr" className="inline-block align-middle">
-                {fallback}
+          تا {toPersianDigits(max)} دسته‌بندی، به ترتیب انتخاب؛ جای خالی را بقیه
+          به ترتیب نمایش پر می‌کنند.
+        </p>
+      ) : (
+        selected.length === 0 && (
+          <p className="text-muted-foreground mt-1.5 text-xs">
+            تا {toPersianDigits(max)} دسته‌بندی، به ترتیب انتخاب. پیش‌فرض:{' '}
+            <span dir="ltr" className="inline-block align-middle">
+              {fallback}
+            </span>
+          </p>
+        )
+      )}
+      {picked.length + filled.length > 0 && (
+        <ol className="border-border mt-3 divide-y overflow-hidden rounded-xl border">
+          {picked.map((category, index) => (
+            <li
+              key={category.id}
+              ref={(slot) => {
+                slotRefs.current[index] = slot;
+              }}
+              // The E2E spec's hook — asserting on the Tailwind class pins nothing.
+              data-category-dragging={
+                category.id === draggingId ? '' : undefined
+              }
+              className={cn(
+                'flex items-center gap-3 ps-4 text-sm',
+                category.id === draggingId && 'bg-secondary opacity-60',
+              )}
+            >
+              <span className="text-muted-foreground w-4 shrink-0 text-center">
+                {toPersianDigits(index + 1)}
               </span>
-            </>
-          )}
+              <span className="min-w-0 flex-1 font-medium">
+                {category.title}
+              </span>
+              {/* A 44px touch target, and `touch-none` so a finger on it drags
+                  the row instead of scrolling the page. Focus management finds
+                  it by its own attribute, never by the event name. */}
+              <button
+                type="button"
+                onKeyDown={(event) => onHandleKeyDown(event, index)}
+                onPointerDown={(event) => onHandlePointerDown(event, index)}
+                aria-label={`جابه‌جایی ${category.title}`}
+                aria-describedby={dragHintId}
+                data-category-handle=""
+                data-umami-event={umami.reorder}
+                className="text-muted-foreground flex size-11 shrink-0 cursor-grab touch-none items-center justify-center"
+              >
+                <GripVertical size={16} aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+          {filled.map((category, index) => (
+            <li
+              key={category.id}
+              // A slot to hit as well, so a pick dragged onto it stops at the
+              // last pick's place instead of waiting where it was.
+              ref={(slot) => {
+                slotRefs.current[picked.length + index] = slot;
+              }}
+              className="bg-secondary/60 text-muted-foreground flex min-h-11 items-center gap-3 px-4 text-sm"
+            >
+              <span className="w-4 shrink-0 text-center">
+                {toPersianDigits(picked.length + index + 1)}
+              </span>
+              <span className="min-w-0 flex-1">{category.title}</span>
+              <span className="text-xs">{AUTO}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {picked.length > 0 && (
+        <p id={dragHintId} className="sr-only">
+          {DRAG_HINT}
         </p>
       )}
+      <p {...liveRegionProps} />
       <FieldMessage id={id} error={error} />
     </div>
   );
 }
-
-/** What a featured box holds while no product is picked for it. */
-const AUTO = 'خودکار';
 
 /**
  * The «انتخاب‌های اسموکی» boxes: one select per card, in grid order, each holding

@@ -9,9 +9,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 // through it, so every trap documented below is fixed once, for both.
 //
 // The caller renders everything. Each item's slot registers in `slotRefs` at
-// its index, each handle takes `onHandleKeyDown`/`onHandlePointerDown`, the
-// item whose id is `draggingId` is marked, and `liveRegionProps` is spread on
-// one `<p>` — the `dialogProps` pattern from `use-modal-dialog.ts`.
+// its index — and a fixed row after the list, like the home strip's «خودکار»
+// tiles, at the indices after it, so a drag onto one stops at the last item.
+// Each handle takes `onHandleKeyDown`/`onHandlePointerDown`, the item whose id
+// is `draggingId` is marked, and `liveRegionProps` is spread on one `<p>` —
+// the `dialogProps` pattern from `use-modal-dialog.ts`.
 
 /** What every drag handle is described by: both ways to move it. */
 export const DRAG_HINT =
@@ -201,10 +203,10 @@ export function useDragReorder<T extends { id: string }>({
     // Read per move, not snapshotted: rects are viewport-relative, and a
     // mid-drag scroll or breakpoint change moves every cell. A `null` keeps its
     // index so positions stay aligned.
-    const rects = slotRefs.current
-      .slice(0, current.length)
-      .map((slot) => slot?.getBoundingClientRect() ?? null);
-    const target = rects.findIndex(
+    const rects = slotRefs.current.map(
+      (slot) => slot?.getBoundingClientRect() ?? null,
+    );
+    const hit = rects.findIndex(
       (rect) =>
         rect !== null &&
         event.clientX >= rect.left &&
@@ -212,8 +214,15 @@ export function useDragReorder<T extends { id: string }>({
         event.clientY >= rect.top &&
         event.clientY <= rect.bottom,
     );
-    // Outside every cell, or already there: the drag waits.
-    if (target === -1 || target === from) return;
+    // Outside every cell: the drag waits.
+    if (hit === -1) return;
+    // A slot past the last item — a fixed row after the list, the home
+    // strip's «خودکار» tiles — holds the drag at the last item's place: those
+    // rows never move and never take an item's place, however fast the
+    // pointer crossed the last item to get there.
+    const target = Math.min(hit, current.length - 1);
+    // Already there: the drag waits.
+    if (target === from) return;
     moveTo(from, target);
   };
 

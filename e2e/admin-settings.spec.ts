@@ -189,20 +189,84 @@ test('a headline an admin edits is what the home page shows', async ({
   }
 });
 
+/** The home content's «دسته‌بندی‌ها» block, in whichever tab holds it. */
+const homeCategories = (tab: Page) =>
+  tab.locator('form', {
+    has: tab.getByRole('heading', { name: 'دسته‌بندی‌ها', exact: true }),
+  });
+
+const saveHomeCategories = async (tab: Page) => {
+  await homeCategories(tab)
+    .locator('[data-umami-event="admin-panel-content-save"]')
+    .click();
+  await expect(homeCategories(tab).getByText('ذخیره شد')).toBeVisible();
+};
+
+/** Unticks every home pick the block holds, whatever this database had. */
+const untickHomeCategories = async (tab: Page) => {
+  const ticked = homeCategories(tab).locator(
+    '[data-umami-event="admin-panel-content-home-category-toggle"]:checked',
+  );
+  while ((await ticked.count()) > 0) await ticked.first().uncheck();
+};
+
+type Point = { x: number; y: number };
+
+/** The middle of a box `boundingBox()` returned. */
+const centre = (box: Point & { width: number; height: number }): Point => ({
+  x: box.x + box.width / 2,
+  y: box.y + box.height / 2,
+});
+
+/**
+ * Presses at `from`, slides onto `onto` in twelve steps and lets go, running
+ * `midway` while still pressed. With `finger`, a touch through Chrome's own
+ * input — Playwright's touchscreen only taps — so the browser, not the spec,
+ * decides whether the slide drags the row or scrolls the page. Otherwise the
+ * mouse.
+ */
+async function slide(
+  page: Page,
+  from: Point,
+  onto: Point,
+  finger: boolean,
+  midway: () => Promise<void>,
+) {
+  const steps = 12;
+  if (!finger) {
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(onto.x, onto.y, { steps });
+    await midway();
+    await page.mouse.up();
+    return;
+  }
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (
+    type: 'touchStart' | 'touchMove' | 'touchEnd',
+    touchPoints: Point[],
+  ) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
+  try {
+    await touch('touchStart', [from]);
+    for (let step = 1; step <= steps; step++) {
+      await touch('touchMove', [
+        {
+          x: from.x + ((onto.x - from.x) * step) / steps,
+          y: from.y + ((onto.y - from.y) * step) / steps,
+        },
+      ]);
+    }
+    await midway();
+    await touch('touchEnd', []);
+  } finally {
+    await cdp.detach();
+  }
+}
+
 test('the home categories an admin picks lead the strip, in the order picked', async ({
   page,
   shopper,
 }) => {
-  const block = (tab: Page) =>
-    tab.locator('form', {
-      has: tab.getByRole('heading', { name: 'دسته‌بندی‌ها', exact: true }),
-    });
-  const save = async (tab: Page) => {
-    await block(tab)
-      .locator('[data-umami-event="admin-panel-content-save"]')
-      .click();
-    await expect(block(tab).getByText('ذخیره شد')).toBeVisible();
-  };
   // Two seeded main categories, picked last one first: the strip must follow
   // the picking order, not the display order.
   const [first, second] = [...SEED_CATEGORIES].reverse();
@@ -211,19 +275,19 @@ test('the home categories an admin picks lead the strip, in the order picked', a
   // back exactly what was there, picks and their order included — the API has
   // no read to take a copy from.
   await page.goto(adminContentAreaPath('home'));
-  await expect(block(page)).toBeVisible();
+  await expect(homeCategories(page)).toBeVisible();
 
   const editor = await page.context().newPage();
   try {
     await editor.goto(adminContentAreaPath('home'));
-    const ticked = block(editor).locator(
-      '[data-umami-event="admin-panel-content-home-category-toggle"]:checked',
-    );
-    // From nothing picked, whatever this database had.
-    while ((await ticked.count()) > 0) await ticked.first().uncheck();
-    await block(editor).getByLabel(first.title, { exact: true }).check();
-    await block(editor).getByLabel(second.title, { exact: true }).check();
-    await save(editor);
+    await untickHomeCategories(editor);
+    await homeCategories(editor)
+      .getByLabel(first.title, { exact: true })
+      .check();
+    await homeCategories(editor)
+      .getByLabel(second.title, { exact: true })
+      .check();
+    await saveHomeCategories(editor);
 
     await shopper.goto(PATHS.HOME);
     const tiles = shopper.locator('[data-umami-event="home-category-click"]');
@@ -237,7 +301,85 @@ test('the home categories an admin picks lead the strip, in the order picked', a
     );
   } finally {
     await editor.close();
-    await save(page);
+    await saveHomeCategories(page);
+  }
+});
+
+test('the home categories an admin drags into order lead the strip in that order', async ({
+  page,
+  shopper,
+  isMobile,
+}) => {
+  // Ticked in display order, then the second dragged above the first. Tick
+  // order and display order both lead with `first`, so only the drag — saved —
+  // puts `second` in front.
+  const [first, second] = SEED_CATEGORIES;
+  const gripOf = (category: { title: string }) => `جابه‌جایی ${category.title}`;
+
+  // The saved value, untouched, to save again at the end — the API has no
+  // read. A tab of its own, so the drag runs in `page`, which the fixture
+  // watches for console errors and failed requests.
+  const snapshot = await page.context().newPage();
+  await snapshot.goto(adminContentAreaPath('home'));
+  await expect(homeCategories(snapshot)).toBeVisible();
+
+  try {
+    await page.goto(adminContentAreaPath('home'));
+    const block = homeCategories(page);
+    await untickHomeCategories(page);
+    await block.getByLabel(first.title, { exact: true }).check();
+    await block.getByLabel(second.title, { exact: true }).check();
+    const grips = block.locator(
+      '[data-umami-event="admin-panel-content-home-category-reorder"]',
+    );
+    await expect(grips).toHaveCount(2);
+    await expect(grips.nth(0)).toHaveAccessibleName(gripOf(first));
+
+    // A real pointer: the second grip dragged onto the first row — a finger at
+    // phone width, where only the grip's `touch-none` stops the slide becoming
+    // a scroll that cancels the drag, and a mouse on the desktop.
+    // `scrollIntoViewIfNeeded` because `boundingBox()` does not scroll.
+    await grips.nth(1).scrollIntoViewIfNeeded();
+    const from = await grips.nth(1).boundingBox();
+    const onto = await grips.nth(0).boundingBox();
+    if (!from || !onto) throw new Error('a category grip has no box to drag');
+    await slide(page, centre(from), centre(onto), isMobile, async () => {
+      // Marked mid-drag, so the count of zero after the release means something.
+      await expect(block.locator('[data-category-dragging]')).toHaveCount(1);
+    });
+    await expect(block.locator('[data-category-dragging]')).toHaveCount(0);
+    await expect(grips.nth(0)).toHaveAccessibleName(gripOf(second));
+
+    // The arrow keys, in Chrome. ArrowDown moves the focused grip's own row,
+    // the move that drops focus in a browser; the grip that moved has to hold
+    // it afterwards. ArrowUp then restores the dragged order.
+    await grips.nth(0).focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(grips.nth(1)).toHaveAccessibleName(gripOf(second));
+    await expect(grips.nth(1)).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(grips.nth(0)).toHaveAccessibleName(gripOf(second));
+    await expect(grips.nth(0)).toBeFocused();
+
+    await saveHomeCategories(page);
+    // Reopened, the editor lists the saved order.
+    await page.reload();
+    await expect(grips.nth(0)).toHaveAccessibleName(gripOf(second));
+    await expect(grips.nth(1)).toHaveAccessibleName(gripOf(first));
+
+    await shopper.goto(PATHS.HOME);
+    const tiles = shopper.locator('[data-umami-event="home-category-click"]');
+    await expect(tiles.nth(0)).toHaveAttribute(
+      'href',
+      shopPath({ category: second.slug }),
+    );
+    await expect(tiles.nth(1)).toHaveAttribute(
+      'href',
+      shopPath({ category: first.slug }),
+    );
+  } finally {
+    await saveHomeCategories(snapshot);
+    await snapshot.close();
   }
 });
 

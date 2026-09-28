@@ -525,7 +525,7 @@ describe('content editor destinations', () => {
     ]);
   });
 
-  it('picks the home strip from the main categories, previewing the six it shows', async () => {
+  it('picks the home strip from the main categories, listing the six tiles it shows', async () => {
     // Seven main categories in display order, and a sub-category.
     const main = [
       DRY,
@@ -581,29 +581,41 @@ describe('content editor destinations', () => {
       picker.getByRole('checkbox', {
         name: category.title,
       }) as HTMLInputElement;
-    const preview = (titles: string[]) =>
-      picker.getByText(`به این ترتیب نمایش داده می‌شوند: ${titles.join('، ')}`);
+    // Each tile the list shows, as its number and title, and «خودکار» for a
+    // slot the display order fills.
+    const tiles = () =>
+      within(picker.getByRole('list'))
+        .getAllByRole('listitem')
+        .map((row) =>
+          [...row.children]
+            .map((part) => part.textContent)
+            .filter(Boolean)
+            .join(' '),
+        );
 
     // A sub-category never reaches the strip, so it is not offered.
     expect(picker.queryByRole('checkbox', { name: shampoo.title })).toBeNull();
     // Nothing picked: the first six in display order.
-    expect(
-      preview([
-        'غذای خشک',
-        'اسباب‌بازی',
-        'تشویقی',
-        'مکمل',
-        'بهداشت',
-        'غذای تر',
-      ]),
-    ).toBeTruthy();
+    expect(tiles()).toEqual([
+      '۱ غذای خشک خودکار',
+      '۲ اسباب‌بازی خودکار',
+      '۳ تشویقی خودکار',
+      '۴ مکمل خودکار',
+      '۵ بهداشت خودکار',
+      '۶ غذای تر خودکار',
+    ]);
 
     // Picked out of order: those first, in picking order, the rest behind.
     fireEvent.click(box(main[6]));
     fireEvent.click(box(main[2]));
-    expect(
-      preview(['قلاده', 'تشویقی', 'غذای خشک', 'اسباب‌بازی', 'مکمل', 'بهداشت']),
-    ).toBeTruthy();
+    expect(tiles()).toEqual([
+      '۱ قلاده',
+      '۲ تشویقی',
+      '۳ غذای خشک خودکار',
+      '۴ اسباب‌بازی خودکار',
+      '۵ مکمل خودکار',
+      '۶ بهداشت خودکار',
+    ]);
 
     // Six at most — the strip's own count, not a routine tab's four.
     for (const category of [main[0], main[1], main[3], main[4]]) {
@@ -620,6 +632,61 @@ describe('content editor destinations', () => {
       main[3].id,
       main[4].id,
     ]);
+  });
+
+  // What is saved is the list, whatever order the boxes were ticked in. The
+  // grips are found by their event names — the E2E suite selects them so too.
+  const reorderGrips = (event: string) =>
+    document.querySelectorAll(`[data-umami-event="${event}"]`);
+
+  it('saves the home picks in the list’s order, not the order they were ticked', async () => {
+    putData.mockResolvedValue({
+      key: 'home.categories',
+      value: DEFAULT_CONTENT['home.categories'],
+    });
+    render(
+      <ContentEditor
+        options={OPTIONS}
+        keys={['home.categories']}
+        values={{ 'home.categories': DEFAULT_CONTENT['home.categories'] }}
+      />,
+    );
+    const picker = pickerFor('home.categories', 'categoryIds');
+    fireEvent.click(picker.getByRole('checkbox', { name: DRY.title }));
+    fireEvent.click(picker.getByRole('checkbox', { name: TOYS.title }));
+    const grips = reorderGrips('admin-panel-content-home-category-reorder');
+    expect(grips).toHaveLength(2);
+
+    // Ticked second, moved above the first.
+    fireEvent.keyDown(grips[1], { key: 'ArrowUp' });
+
+    await save();
+    expect(sentBody().categoryIds).toEqual([TOYS.id, DRY.id]);
+  });
+
+  it('saves a routine tab’s picks in the list’s order, not the order they were ticked', async () => {
+    putData.mockResolvedValue({
+      key: 'home.routine',
+      value: DEFAULT_CONTENT['home.routine'],
+    });
+    render(
+      <ContentEditor
+        options={OPTIONS}
+        keys={['home.routine']}
+        values={{ 'home.routine': DEFAULT_CONTENT['home.routine'] }}
+      />,
+    );
+    const picker = pickerFor('home.routine', 'slots.0.categoryIds');
+    fireEvent.click(picker.getByRole('checkbox', { name: DRY.title }));
+    fireEvent.click(picker.getByRole('checkbox', { name: TOYS.title }));
+    const grips = reorderGrips('admin-panel-content-routine-category-reorder');
+    expect(grips).toHaveLength(2);
+
+    fireEvent.keyDown(grips[1], { key: 'ArrowUp' });
+
+    await save();
+    const slots = sentBody().slots as { categoryIds?: string[] }[];
+    expect(slots[0].categoryIds).toEqual([TOYS.id, DRY.id]);
   });
 
   it('clears a routine tab back to its code categories when every pick is removed', async () => {

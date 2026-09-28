@@ -286,7 +286,10 @@ function BlockForm({
                 fallback={field.fallback ?? ''}
                 categories={options.mainCategories}
                 max={HOME_CATEGORY_TILES}
-                umami="admin-panel-content-home-category-toggle"
+                umami={{
+                  toggle: 'admin-panel-content-home-category-toggle',
+                  reorder: 'admin-panel-content-home-category-reorder',
+                }}
                 shows={(picked) => homeTiles(options.mainCategories, picked)}
                 error={errorUnder(fieldErrors, field.path)}
                 onChange={(next) => setDestination(field.path, next)}
@@ -300,7 +303,10 @@ function BlockForm({
                 fallback={field.fallback ?? ''}
                 categories={options.categories}
                 max={MAX_ROUTINE_CATEGORIES}
-                umami="admin-panel-content-routine-category-toggle"
+                umami={{
+                  toggle: 'admin-panel-content-routine-category-toggle',
+                  reorder: 'admin-panel-content-routine-category-reorder',
+                }}
                 error={errorUnder(fieldErrors, field.path)}
                 onChange={(next) => setDestination(field.path, next)}
               />
