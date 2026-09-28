@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   SUBCATEGORY_PREFIX,
   categoryOptions,
+  homeTiles,
   orderAsTree,
 } from './category-tree';
 
@@ -91,5 +92,49 @@ describe('categoryOptions', () => {
 
   it('answers an empty list with an empty list', () => {
     expect(categoryOptions([])).toEqual([]);
+  });
+});
+
+describe('homeTiles', () => {
+  // Eight main categories, already in display order.
+  const MAIN = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((id) => row(id));
+  const ids = (tiles: { id: string }[]) => tiles.map((tile) => tile.id);
+
+  it('shows the first six in display order while nothing is picked', () => {
+    expect(ids(homeTiles(MAIN, undefined))).toEqual([
+      'a',
+      'b',
+      'c',
+      'd',
+      'e',
+      'f',
+    ]);
+  });
+
+  it('puts the picks first, in the order picked, and fills the rest in display order', () => {
+    expect(ids(homeTiles(MAIN, ['g', 'b']))).toEqual([
+      'g',
+      'b',
+      'a',
+      'c',
+      'd',
+      'e',
+    ]);
+  });
+
+  it('drops a pick the list no longer holds, and the next category takes its place', () => {
+    // Deleted since, or made a sub-category: either way not a main category.
+    expect(ids(homeTiles(MAIN, ['gone', 'c']))).toEqual([
+      'c',
+      'a',
+      'b',
+      'd',
+      'e',
+      'f',
+    ]);
+  });
+
+  it('shows every category when the shop has fewer than six', () => {
+    expect(ids(homeTiles(MAIN.slice(0, 3), ['c']))).toEqual(['c', 'a', 'b']);
   });
 });

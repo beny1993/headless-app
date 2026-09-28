@@ -148,6 +148,29 @@ describe('CategoriesSection all-categories link', () => {
       many.slice(0, 6).map((tile) => shopPath({ category: tile.slug })),
     );
   });
+
+  it('puts the categories picked in the content first, in picking order, then the rest', () => {
+    const many = Array.from({ length: 9 }, (_, index) => ({
+      id: `${index}`,
+      title: `دسته ${index}`,
+      slug: `category-${index}`,
+      imageKey: null,
+    }));
+    const { container } = render(
+      <CategoriesSection
+        content={{ ...content, categoryIds: ['7', '2'] }}
+        categories={many}
+        targets={targets}
+      />,
+    );
+
+    const links = container.querySelectorAll(
+      '[data-umami-event="home-category-click"]',
+    );
+    expect([...links].map((link) => link.getAttribute('href'))).toEqual(
+      [7, 2, 0, 1, 3, 4].map((n) => shopPath({ category: `category-${n}` })),
+    );
+  });
 });
 
 describe('CategoriesSection photos', () => {

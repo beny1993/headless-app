@@ -1,4 +1,4 @@
-import type { Dialog } from '@playwright/test';
+import type { Dialog, Page } from '@playwright/test';
 import { SEED_CATEGORIES } from '@/db/seed/catalog-data';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
 import {
@@ -184,6 +184,58 @@ test('a headline an admin edits is what the home page shows', async ({
     );
   } finally {
     await saveHeadline(original);
+  }
+});
+
+test('the home categories an admin picks lead the strip, in the order picked', async ({
+  page,
+  shopper,
+}) => {
+  const block = (tab: Page) =>
+    tab.locator('form', {
+      has: tab.getByRole('heading', { name: 'دسته‌بندی‌ها', exact: true }),
+    });
+  const save = async (tab: Page) => {
+    await block(tab)
+      .locator('[data-umami-event="admin-panel-content-save"]')
+      .click();
+    await expect(block(tab).getByText('ذخیره شد')).toBeVisible();
+  };
+  // Two seeded main categories, picked last one first: the strip must follow
+  // the picking order, not the display order.
+  const [first, second] = [...SEED_CATEGORIES].reverse();
+
+  // This tab holds the saved value untouched. Saving it again at the end puts
+  // back exactly what was there, picks and their order included — the API has
+  // no read to take a copy from.
+  await page.goto(adminContentAreaPath('home'));
+  await expect(block(page)).toBeVisible();
+
+  const editor = await page.context().newPage();
+  try {
+    await editor.goto(adminContentAreaPath('home'));
+    const ticked = block(editor).locator(
+      '[data-umami-event="admin-panel-content-home-category-toggle"]:checked',
+    );
+    // From nothing picked, whatever this database had.
+    while ((await ticked.count()) > 0) await ticked.first().uncheck();
+    await block(editor).getByLabel(first.title, { exact: true }).check();
+    await block(editor).getByLabel(second.title, { exact: true }).check();
+    await save(editor);
+
+    await shopper.goto(PATHS.HOME);
+    const tiles = shopper.locator('[data-umami-event="home-category-click"]');
+    await expect(tiles.nth(0)).toHaveAttribute(
+      'href',
+      shopPath({ category: first.slug }),
+    );
+    await expect(tiles.nth(1)).toHaveAttribute(
+      'href',
+      shopPath({ category: second.slug }),
+    );
+  } finally {
+    await editor.close();
+    await save(page);
   }
 });
 

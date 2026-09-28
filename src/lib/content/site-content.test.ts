@@ -634,6 +634,28 @@ describe('CONTENT_SCHEMAS link fields (every one optional: compat)', () => {
       expect(parse(bad).success, JSON.stringify(bad)).toBe(false);
     }
   });
+
+  it('lets the home strip pick one to six distinct categories, or none', () => {
+    const six = [...IDS, '4a5b6c7d-8e9f-4a0b-9c1d-2e3f4a5b6c7d'];
+    const seven = [...six, '9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a'];
+    const categories = d['home.categories'];
+    const parse = (categoryIds: unknown) =>
+      CONTENT_SCHEMAS['home.categories'].safeParse({
+        ...categories,
+        categoryIds,
+      });
+
+    // Unset is the default rule — the first six by display order.
+    expect(parse(undefined).success).toBe(true);
+    expect(parse([IDS[0]]).data).toEqual({
+      ...categories,
+      categoryIds: [IDS[0]],
+    });
+    expect(parse(six).success).toBe(true);
+    for (const bad of [[], seven, [IDS[0], IDS[0]], ['dry-food']]) {
+      expect(parse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
 });
 
 describe('CONTENT_SCHEMAS footer.social (a shipped key: defaulted, not required)', () => {

@@ -109,12 +109,16 @@ describe('BLOCK_FIELDS', () => {
     }
   });
 
-  it('offers a picker for each of the 21 links and the 4 routine tabs', () => {
+  it('offers a picker for each of the 21 links, the 4 routine tabs and the home strip', () => {
     const fields = CONTENT_KEYS.flatMap((key) => BLOCK_FIELDS[key].fields);
     expect(fields.filter((field) => field.kind === 'link')).toHaveLength(21);
     expect(fields.filter((field) => field.kind === 'categories')).toHaveLength(
-      4,
+      5,
     );
+    // The home strip's is the one that fills its tiles, and nothing else does.
+    expect(
+      fields.filter((field) => field.homeTiles).map((field) => field.path),
+    ).toEqual(['categoryIds']);
   });
 
   it('saves a destination at every picker path (setPath, then the schema)', () => {

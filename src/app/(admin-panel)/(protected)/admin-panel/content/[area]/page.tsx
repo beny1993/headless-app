@@ -80,6 +80,11 @@ export default async function AdminContentAreaPage({
           // sentence use — those were rendering the indent as «— شامپو و
           // نظافت», a dash with nothing before it.
           categories: categoryOptions(categories),
+          // The home strip's candidates: top-level only, in the DAO's display
+          // order — the list `homeTiles` fills from on the page.
+          mainCategories: categories
+            .filter((category) => category.parentId === null)
+            .map(({ id, title, slug }) => ({ id, title, slug })),
           products: products.map(productOption),
         }}
       />

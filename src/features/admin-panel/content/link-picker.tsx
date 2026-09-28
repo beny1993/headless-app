@@ -14,7 +14,6 @@ import {
   type LinkTargets,
   type LinkType,
 } from '@/lib/content/link';
-import { MAX_ROUTINE_CATEGORIES } from '@/lib/content/site-content';
 import { toPersianDigits } from '@/lib/format';
 import { controlClass, FieldMessage } from '@/components/ui/field';
 
@@ -32,7 +31,12 @@ export type LinkOption = {
    */
   label?: string;
 };
-export type LinkOptions = { categories: LinkOption[]; products: LinkOption[] };
+export type LinkOptions = {
+  categories: LinkOption[];
+  /** The top-level categories in display order — the home strip's candidates. */
+  mainCategories: LinkOption[];
+  products: LinkOption[];
+};
 
 /** The pickers' Persian control names — exported so tests find controls by name. */
 export const LINK_PICKER_LABELS = {
@@ -258,11 +262,15 @@ export function LinkPicker({
 }
 
 /**
- * A routine tab's categories: up to `MAX_ROUTINE_CATEGORIES`, kept in the order
- * they were ticked — the order its tiles show. None ticked is `undefined`, so the
- * tab falls back to its code categories (`fallback`) instead of storing an empty
- * list the schema would refuse. A saved category deleted since stays listed,
- * ticked, so it can be removed.
+ * A section's picked categories — a routine tab's, or the home strip's — up to
+ * `max`, kept in the order they were ticked: the order its tiles show. None
+ * ticked is `undefined`, so the section falls back to its code categories
+ * (`fallback`) instead of storing an empty list the schema would refuse. A saved
+ * category deleted since stays listed, ticked, so it can be removed.
+ *
+ * `shows` is for a section that fills the places left unticked (the home strip):
+ * given the picks, every category it will show, so the line under the boxes
+ * names each tile rather than only the ticked ones.
  */
 export function CategoryPicker({
   id,
@@ -270,6 +278,9 @@ export function CategoryPicker({
   value,
   fallback,
   categories,
+  max,
+  umami,
+  shows,
   error,
   onChange,
 }: {
@@ -278,6 +289,11 @@ export function CategoryPicker({
   value: readonly string[] | undefined;
   fallback: string;
   categories: LinkOption[];
+  /** How many may be ticked — the schema's own `.max()`. */
+  max: number;
+  /** Every checkbox's `data-umami-event`. */
+  umami: string;
+  shows?: (picked: readonly string[]) => LinkOption[];
   error?: string;
   onChange: (next: string[] | undefined) => void;
 }) {
@@ -315,9 +331,9 @@ export function CategoryPicker({
               <input
                 type="checkbox"
                 checked={checked}
-                disabled={!checked && selected.length >= MAX_ROUTINE_CATEGORIES}
+                disabled={!checked && selected.length >= max}
                 onChange={(e) => toggle(category.id, e.target.checked)}
-                data-umami-event="admin-panel-content-routine-category-toggle"
+                data-umami-event={umami}
                 className="size-4 shrink-0"
               />
               {category.title}
@@ -325,19 +341,32 @@ export function CategoryPicker({
           );
         })}
       </div>
-      <p className="text-muted-foreground mt-1.5 text-xs">
-        {selected.length > 0 ? (
-          `به این ترتیب نمایش داده می‌شوند: ${selected.map(titleOf).join('، ')}`
-        ) : (
-          <>
-            تا {toPersianDigits(MAX_ROUTINE_CATEGORIES)} دسته‌بندی، به ترتیب
-            انتخاب. پیش‌فرض:{' '}
-            <span dir="ltr" className="inline-block align-middle">
-              {fallback}
-            </span>
-          </>
-        )}
-      </p>
+      {shows ? (
+        <>
+          <p className="text-muted-foreground mt-1.5 text-xs">
+            تا {toPersianDigits(max)} دسته‌بندی، به ترتیب انتخاب؛ جای خالی را
+            بقیه به ترتیب نمایش پر می‌کنند.
+          </p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            {`به این ترتیب نمایش داده می‌شوند: ${shows(selected)
+              .map((category) => category.title)
+              .join('، ')}`}
+          </p>
+        </>
+      ) : (
+        <p className="text-muted-foreground mt-1.5 text-xs">
+          {selected.length > 0 ? (
+            `به این ترتیب نمایش داده می‌شوند: ${selected.map(titleOf).join('، ')}`
+          ) : (
+            <>
+              تا {toPersianDigits(max)} دسته‌بندی، به ترتیب انتخاب. پیش‌فرض:{' '}
+              <span dir="ltr" className="inline-block align-middle">
+                {fallback}
+              </span>
+            </>
+          )}
+        </p>
+      )}
       <FieldMessage id={id} error={error} />
     </div>
   );

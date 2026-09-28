@@ -289,7 +289,8 @@ charges, and one fee applied to every province at once (a dot-grouped
 confirm, then confirmed) that checkout then charges; a province an admin adds, that checkout and the address book then
 offer and, once it is switched off, no longer offer — a saved address on it
 flagged in both — until it is switched back on; a home headline that the
-storefront then shows. Every page a spec opens is also checked for console
+storefront then shows; home categories an admin picks in the content editor,
+leading the strip in the order picked. Every page a spec opens is also checked for console
 errors, failed requests and requests to any host but the app's own (the `test`
 fixture in `e2e/support.ts`). QA runs it instead of re-walking those flows and
 drives the browser only for a story's new behaviour.
@@ -345,7 +346,10 @@ visual (RTL layout, Persian font rendering).
   nothing deletes a category's replaced or removed photo. The card-to-card spec leaves a
   `checkout.payment` content row equal to the default (it puts the old values
   back in a `finally`). The shipping-rate and headline
-  specs put the old value back, the one-fee-for-all spec puts every province's
+  specs put the old value back, the home-categories spec saves the block again
+  from a tab it left untouched (the API has no read, and this restores the
+  picks' order too — on a fresh database it leaves a `home.categories` row
+  equal to the default), the one-fee-for-all spec puts every province's
   own fee back (through the API, all attempted before any failure is reported), the province spec switches its province
   off, and the catalog spec switches its product off (through the API), even when they fail.
 - **Leaked active test products break shelf pagination.** Shelves list
