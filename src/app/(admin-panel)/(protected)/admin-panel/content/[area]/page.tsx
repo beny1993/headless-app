@@ -76,9 +76,9 @@ export default async function AdminContentAreaPage({
         values={values}
         options={{
           // Tree order, carrying both forms: `label` is the indented line the
-          // select shows, `title` the bare name a chip and the «به این ترتیب»
-          // sentence use — those were rendering the indent as «— شامپو و
-          // نظافت», a dash with nothing before it.
+          // select shows, `title` the bare name a chip and a row of the picked
+          // categories' list use — those were rendering the indent as
+          // «— شامپو و نظافت», a dash with nothing before it.
           categories: categoryOptions(categories),
           // The home strip's candidates: top-level only, in the DAO's display
           // order — the list `homeTiles` fills from on the page.

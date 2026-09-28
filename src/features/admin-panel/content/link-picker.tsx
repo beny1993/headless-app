@@ -401,13 +401,13 @@ export function CategoryPicker({
       </div>
       {shows ? (
         <p className="text-muted-foreground mt-1.5 text-xs">
-          تا {toPersianDigits(max)} دسته‌بندی، به ترتیب انتخاب؛ جای خالی را بقیه
-          به ترتیب نمایش پر می‌کنند.
+          تا {toPersianDigits(max)} دسته‌بندی، به ترتیب فهرست زیر؛ جای خالی را
+          بقیه به ترتیب نمایش پر می‌کنند.
         </p>
       ) : (
         selected.length === 0 && (
           <p className="text-muted-foreground mt-1.5 text-xs">
-            تا {toPersianDigits(max)} دسته‌بندی، به ترتیب انتخاب. پیش‌فرض:{' '}
+            تا {toPersianDigits(max)} دسته‌بندی. پیش‌فرض:{' '}
             <span dir="ltr" className="inline-block align-middle">
               {fallback}
             </span>
@@ -473,8 +473,11 @@ export function CategoryPicker({
           ))}
         </ol>
       )}
+      {/* Shown, not screen-reader-only as the gallery's is: a grip icon alone
+          does not tell a sighted admin that the rows drag, and the order the
+          section shows is this list's, whatever order the boxes were ticked. */}
       {picked.length > 0 && (
-        <p id={dragHintId} className="sr-only">
+        <p id={dragHintId} className="text-muted-foreground mt-1.5 text-xs">
           {DRAG_HINT}
         </p>
       )}

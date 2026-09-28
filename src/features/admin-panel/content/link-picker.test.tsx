@@ -188,7 +188,10 @@ describe('the home tile list', () => {
       'جابه‌جایی قلاده',
       'جابه‌جایی تشویقی',
     ]);
+    // The row itself as well as what it holds: `querySelector` never matches
+    // the element it is called on.
     for (const row of rows().slice(2)) {
+      expect(row.matches('[tabindex]')).toBe(false);
       expect(row.querySelector('button, [tabindex]')).toBeNull();
     }
   });
