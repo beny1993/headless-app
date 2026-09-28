@@ -6,10 +6,37 @@ import {
   absoluteUrl,
   breadcrumbJsonLd,
   jsonLdHtml,
+  purchaseSentence,
   rialForStructuredData,
   SITE_JSON_LD,
+  SITE_OPEN_GRAPH,
+  SITE_TAGLINE,
+  SITE_TWITTER,
   sitemapEntries,
 } from './seo';
+
+describe('the site share cards', () => {
+  it('leave the title and description to each page', () => {
+    // Next fills a card's empty fields from the page's own title and
+    // description; a card that carried the site's would put the home page's
+    // on every shelf and on /about.
+    for (const card of [SITE_OPEN_GRAPH, SITE_TWITTER]) {
+      expect(card).not.toHaveProperty('title');
+      expect(card).not.toHaveProperty('description');
+    }
+  });
+});
+
+describe('purchaseSentence', () => {
+  it('offers the thing named, from the shop', () => {
+    const sentence = purchaseSentence('غذای خشک');
+
+    expect(sentence.startsWith('خرید غذای خشک از ')).toBe(true);
+    expect(sentence).toContain(DEFAULT_SITE_NAME);
+    expect(sentence).toContain(SITE_TAGLINE);
+    expect(sentence.endsWith('.')).toBe(true);
+  });
+});
 
 describe('absoluteUrl', () => {
   it('puts a path on the shop origin', () => {
@@ -111,52 +138,52 @@ describe('SITE_JSON_LD', () => {
 
 describe('sitemapEntries', () => {
   const updatedAt = new Date('2026-09-20T10:00:00Z');
-  const entries = sitemapEntries(
-    [
-      { slug: 'royal-canin-adult-cat-dry-food', updatedAt },
-      { slug: 'catsan-litter-deodorizer-ocean', updatedAt },
-    ],
-    [{ slug: 'dry-food' }, { slug: 'malt' }],
-  );
+  const products = [
+    { slug: 'royal-canin-adult-cat-dry-food', updatedAt },
+    { slug: 'catsan-litter-deodorizer-ocean', updatedAt },
+  ];
+  const shelves = [
+    ...Object.values(PET_TYPES).map((pet) => shopPath({ pet })),
+    shopPath({ category: 'dry-food' }),
+  ];
+  const entries = sitemapEntries(products, shelves);
   const urls = entries.map((entry) => entry.url);
 
-  it('lists every page by the URL its own canonical names', () => {
+  it('lists the fixed pages, the shelves and the products, each by the URL its canonical names', () => {
     expect(urls).toEqual(
       expect.arrayContaining([
         absoluteUrl(PATHS.HOME),
         absoluteUrl(PATHS.SHOP),
         absoluteUrl(PATHS.ABOUT),
-        absoluteUrl(productPath('royal-canin-adult-cat-dry-food')),
-        absoluteUrl(productPath('catsan-litter-deodorizer-ocean')),
-        absoluteUrl(shopPath({ category: 'dry-food' })),
-        absoluteUrl(shopPath({ category: 'malt' })),
-        ...Object.values(PET_TYPES).map((pet) =>
-          absoluteUrl(shopPath({ pet })),
-        ),
+        ...shelves.map(absoluteUrl),
+        ...products.map((product) => absoluteUrl(productPath(product.slug))),
       ]),
     );
     expect(new Set(urls).size).toBe(urls.length);
-    expect(urls).toHaveLength(3 + 2 + 2 + Object.values(PET_TYPES).length);
+    expect(urls).toHaveLength(3 + shelves.length + products.length);
     for (const url of urls)
       expect(url.startsWith(DEFAULT_SITE_ORIGIN)).toBe(true);
   });
 
-  it('dates each product by its last change', () => {
-    const product = entries.find(
-      (entry) =>
-        entry.url ===
-        absoluteUrl(productPath('catsan-litter-deodorizer-ocean')),
+  it('dates the products by their last change, and nothing else', () => {
+    // Google trusts <lastmod> only while it is accurate: a shelf or a fixed
+    // page has no last change to report, and "now" would teach Google to
+    // distrust the product dates too.
+    const dated = entries.filter((entry) => entry.lastModified);
+
+    expect(dated.map((entry) => entry.url)).toEqual(
+      products.map((product) => absoluteUrl(productPath(product.slug))),
     );
-    expect(product?.lastModified).toEqual(updatedAt);
+    expect(dated.map((entry) => entry.lastModified)).toEqual(
+      products.map((product) => product.updatedAt),
+    );
   });
 
-  it('still lists the fixed pages for an empty catalogue', () => {
-    expect(sitemapEntries([], []).map((entry) => entry.url)).toEqual(
-      expect.arrayContaining([
-        absoluteUrl(PATHS.HOME),
-        absoluteUrl(PATHS.SHOP),
-        absoluteUrl(PATHS.ABOUT),
-      ]),
-    );
+  it('lists only the fixed pages when given nothing else', () => {
+    expect(sitemapEntries([], []).map((entry) => entry.url)).toEqual([
+      absoluteUrl(PATHS.HOME),
+      absoluteUrl(PATHS.SHOP),
+      absoluteUrl(PATHS.ABOUT),
+    ]);
   });
 });

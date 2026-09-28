@@ -47,4 +47,19 @@ describe.skipIf(!databaseReachable)('ProductDao.listForSitemap', () => {
     }
     expect(listed.has(inactive.slug)).toBe(false);
   });
+
+  it('tells a shelf that lists something from one that lists nothing', async () => {
+    const stocked = await fx.category();
+    await fx.product(stocked);
+    // Every product in it switched off: the category stays (its foreign key
+    // restricts), and its shelf shows the empty state.
+    const emptied = await fx.category();
+    await fx.product(emptied, { isActive: false });
+
+    expect(await ProductDao.hasShelfProducts(stocked.slug)).toBe(true);
+    expect(await ProductDao.hasShelfProducts(emptied.slug)).toBe(false);
+    expect(await ProductDao.hasShelfProducts('test-no-such-category')).toBe(
+      false,
+    );
+  });
 });

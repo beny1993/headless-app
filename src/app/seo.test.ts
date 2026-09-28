@@ -4,8 +4,9 @@ import { API_ROOT, PATHS, PROTECTED_PATHS } from '@/lib/constant/paths';
 import { SITE_METADATA } from '@/lib/seo';
 import robots from './robots';
 
-// The sitemap reads the catalogue now: its entries are pinned in
-// src/lib/seo.test.ts (`sitemapEntries`), and the served route by e2e/seo.spec.ts.
+// The sitemap reads the catalogue now: its URLs and dates are pinned in
+// src/lib/seo.test.ts (`sitemapEntries`), what it lists while open or closed
+// in src/app/sitemap.test.ts, and the served route by e2e/seo.spec.ts.
 
 describe('storefront SEO metadata', () => {
   it('publishes Persian discovery and social-sharing metadata', () => {

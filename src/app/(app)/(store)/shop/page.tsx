@@ -13,11 +13,16 @@ import { ShopPagination } from '@/features/storefront/shop/shop-pagination';
 import { ShopResults } from '@/features/storefront/shop/shop-results';
 import { ShopSearch } from '@/features/storefront/shop/shop-search';
 import { ShopEmptyState } from '@/features/storefront/shop/shop-empty-state';
-import { shopMetadata } from '@/features/storefront/shop/shop-metadata';
+import {
+  SHOP_TITLE,
+  shelfTitle,
+  shopMetadata,
+} from '@/features/storefront/shop/shop-metadata';
 import {
   buildShopHref,
   parseShopQuery,
   updateShopQuery,
+  type ShopQuery,
 } from '@/features/storefront/shop/shop-query';
 import { PATHS } from '@/lib/constant/paths';
 
@@ -29,15 +34,43 @@ type PageSearchParams = Promise<Record<string, string | string[] | undefined>>;
  */
 const listCategories = cache(() => CategoryDao.list());
 
+type ListOptions = NonNullable<Parameters<typeof ProductDao.list>[0]>;
+
+/**
+ * This URL's page of the listing, read once per request: the page renders it,
+ * and `generateMetadata` keeps a page that lists nothing out of the index.
+ * Keyed by a string because `cache` compares arguments by identity, and every
+ * parse of the query is a fresh object.
+ */
+const listShelf = cache((options: string) =>
+  ProductDao.list(JSON.parse(options) as ListOptions),
+);
+
+const shelfListing = (query: ShopQuery) =>
+  listShelf(
+    JSON.stringify({
+      categorySlug: query.category,
+      petType: query.pet,
+      minPrice: query.minPrice,
+      maxPrice: query.maxPrice,
+      search: query.q,
+      sort: query.sort,
+      page: query.page,
+      limit: query.limit,
+    } satisfies ListOptions),
+  );
+
 export async function generateMetadata({
   searchParams,
 }: {
   searchParams: PageSearchParams;
 }): Promise<Metadata> {
-  return shopMetadata(
-    parseShopQuery(await searchParams),
-    await listCategories(),
-  );
+  const query = parseShopQuery(await searchParams);
+  const [{ items }, categories] = await Promise.all([
+    shelfListing(query),
+    listCategories(),
+  ]);
+  return shopMetadata(query, categories, items.length > 0);
 }
 
 /**
@@ -74,16 +107,7 @@ export default async function ShopPage({
   const query = parseShopQuery(await searchParams);
 
   const [{ items, total }, categories, priceBounds] = await Promise.all([
-    ProductDao.list({
-      categorySlug: query.category,
-      petType: query.pet,
-      minPrice: query.minPrice,
-      maxPrice: query.maxPrice,
-      search: query.q,
-      sort: query.sort,
-      page: query.page,
-      limit: query.limit,
-    }),
+    shelfListing(query),
     listCategories(),
     // The slider's ends. Catalogue-wide on purpose: bounds that narrowed with
     // the current category would move the handles under the shopper's hand
@@ -103,6 +127,9 @@ export default async function ShopPage({
   // and the two need different ways out. Neither is clamped: the URL asked for
   // page 9, so page 9 is what gets answered — honestly.
   const pastLastPage = items.length === 0 && total > 0;
+  // The heading names the shelf, as the tab title does: a shelf the sitemap
+  // lists is a page of its own, and its visible title has to say so.
+  const shelf = shelfTitle(query, categories);
 
   return (
     <main className="min-h-screen">
@@ -116,11 +143,23 @@ export default async function ShopPage({
               خانه
             </Link>
             <span className="mx-1">/</span>
+            {shelf && (
+              <>
+                <Link
+                  href={PATHS.SHOP}
+                  className="hover:text-foreground"
+                  data-umami-event="shop-breadcrumb-shop"
+                >
+                  {SHOP_TITLE}
+                </Link>
+                <span className="mx-1">/</span>
+              </>
+            )}
             <span className="text-foreground" aria-current="page">
-              فروشگاه
+              {shelf ?? SHOP_TITLE}
             </span>
           </nav>
-          <h1 className="mb-2 text-4xl font-black">فروشگاه</h1>
+          <h1 className="mb-2 text-4xl font-black">{shelf ?? SHOP_TITLE}</h1>
           <p className="text-muted-foreground">
             بهترین محصولات برای حیوان خانگی شما
           </p>

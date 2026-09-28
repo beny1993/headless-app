@@ -8,10 +8,12 @@
 // inherit it and tell Google it is a copy of that one page.
 import type { Metadata, MetadataRoute } from 'next';
 import { DEFAULT_SITE_NAME, DEFAULT_SITE_ORIGIN } from '@/constants';
-import { PET_TYPES } from '@/lib/catalog/product-query';
-import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
+import { PATHS, productPath } from '@/lib/constant/paths';
 
-const SITE_TITLE = `${DEFAULT_SITE_NAME} | فروشگاه آنلاین حیوانات خانگی`;
+/** What the shop is, in the words its title and generated copy share. */
+export const SITE_TAGLINE = 'فروشگاه آنلاین حیوانات خانگی';
+
+const SITE_TITLE = `${DEFAULT_SITE_NAME} | ${SITE_TAGLINE}`;
 const SITE_DESCRIPTION =
   'فروشگاه آنلاین اسموکی؛ خرید غذا، تشویقی، مکمل، لوازم بازی و بهداشت گربه و سگ در ایران.';
 const SOCIAL_IMAGE = {
@@ -25,25 +27,28 @@ const SOCIAL_IMAGE = {
 const LATIN_NAME = 'Smokey Pet Shop';
 
 /**
- * The share cards every page starts from. Exported because Next *replaces* a
- * nested metadata object instead of merging it: a page that sets its own
- * `openGraph` spreads this back in, or loses the site name and locale.
+ * The share cards every page starts from. No title or description: Next fills
+ * a card's empty fields from the page's own, so a shelf or /about shared on
+ * Telegram names itself (the home page's are the site's). Exported because
+ * Next *replaces* a nested metadata object instead of merging it: a page that
+ * sets its own `openGraph` or `twitter` spreads these back in, or loses the
+ * site name, locale and image.
  */
 export const SITE_OPEN_GRAPH = {
   type: 'website',
   locale: 'fa_IR',
   siteName: DEFAULT_SITE_NAME,
-  title: SITE_TITLE,
-  description: SITE_DESCRIPTION,
   images: [SOCIAL_IMAGE],
 } satisfies Metadata['openGraph'];
 
 export const SITE_TWITTER = {
   card: 'summary',
-  title: SITE_TITLE,
-  description: SITE_DESCRIPTION,
   images: [{ url: SOCIAL_IMAGE.url, alt: SOCIAL_IMAGE.alt }],
 } satisfies Metadata['twitter'];
+
+/** The generated meta description for a product or shelf with none of its own. */
+export const purchaseSentence = (name: string): string =>
+  `خرید ${name} از ${DEFAULT_SITE_NAME}، ${SITE_TAGLINE}.`;
 
 export const SITE_METADATA: Metadata = {
   metadataBase: new URL(DEFAULT_SITE_ORIGIN),
@@ -158,26 +163,23 @@ export const SITE_JSON_LD = {
 } as const;
 
 /**
- * `sitemap.xml`: the fixed pages, the pet shelves, every category shelf and
- * every active product page, family members included, since each is a page of
- * its own. A product is dated by its last change; nothing else has a date.
+ * `sitemap.xml` entries: the fixed pages, the shelves given (as paths) and the
+ * product pages given. Which shelves and products that is, is the route's call
+ * (`src/app/sitemap.ts`). A product is dated by its last change; nothing else
+ * has a date, since Google trusts `<lastmod>` only while it is accurate.
  */
 export function sitemapEntries(
   products: { slug: string; updatedAt: Date }[],
-  categories: { slug: string }[],
+  shelves: string[],
 ): MetadataRoute.Sitemap {
-  const shelf = (path: string) => ({
-    url: absoluteUrl(path),
-    changeFrequency: 'daily' as const,
-    priority: 0.8,
-  });
   return [
     { url: absoluteUrl(PATHS.HOME), changeFrequency: 'daily', priority: 1 },
     { url: absoluteUrl(PATHS.SHOP), changeFrequency: 'daily', priority: 0.9 },
-    ...Object.values(PET_TYPES).map((pet) => shelf(shopPath({ pet }))),
-    ...categories.map((category) =>
-      shelf(shopPath({ category: category.slug })),
-    ),
+    ...shelves.map((path) => ({
+      url: absoluteUrl(path),
+      changeFrequency: 'daily' as const,
+      priority: 0.8,
+    })),
     ...products.map((product) => ({
       url: absoluteUrl(productPath(product.slug)),
       lastModified: product.updatedAt,

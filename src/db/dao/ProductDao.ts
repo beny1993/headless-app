@@ -514,6 +514,20 @@ export class ProductDao {
   }
 
   /**
+   * Whether a category's shelf lists anything, by the storefront listing's own
+   * clause (active heads, the category with its sub-categories and extra
+   * filings), so `sitemap.xml` names no shelf that answers with the empty state.
+   */
+  static async hasShelfProducts(categorySlug: string): Promise<boolean> {
+    const [row] = await db
+      .select({ id: products.id })
+      .from(products)
+      .where(and(...ProductDao.storefrontWhere({ categorySlug })))
+      .limit(1);
+    return row !== undefined;
+  }
+
+  /**
    * The cheapest and dearest active product, for the shop's price slider.
    *
    * Over **every** active row, members included: a family's card prints its

@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { DEFAULT_SITE_NAME, DEFAULT_SITE_ORIGIN } from '@/constants';
+import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_SITE_ORIGIN } from '@/constants';
 import { productPath } from '@/lib/constant/paths';
-import { absoluteUrl, rialForStructuredData, SITE_OPEN_GRAPH } from '@/lib/seo';
+import {
+  absoluteUrl,
+  purchaseSentence,
+  rialForStructuredData,
+  SITE_OPEN_GRAPH,
+} from '@/lib/seo';
 import { imageSrc } from '@/lib/storage/image-url';
 import {
   DESCRIPTION_MAX_LENGTH,
@@ -11,8 +16,23 @@ import {
   type ProductForSeo,
 } from './product-seo';
 
+// A site-wide Twitter field for the product card to carry: Next replaces a
+// nested metadata object, so a card built from scratch would drop it on
+// exactly the products with a photo. `site` stands in for any field the site
+// card gains later.
+vi.mock('@/lib/seo', async (importOriginal) => {
+  const seo = await importOriginal<typeof import('@/lib/seo')>();
+  return {
+    ...seo,
+    SITE_TWITTER: { ...seo.SITE_TWITTER, site: '@smokeypetshop' },
+  };
+});
+
 /** Constructed, never typed — the repo's control-character rule. */
 const ZWNJ = String.fromCharCode(0x200c);
+const NBSP = String.fromCharCode(0xa0);
+/** One emoji: two UTF-16 units, which a cut must not separate. */
+const CAT = String.fromCodePoint(0x1f431);
 
 const product = (overrides: Partial<ProductForSeo> = {}): ProductForSeo => ({
   slug: 'royal-canin-adult-cat-dry-food',
@@ -54,6 +74,27 @@ describe('productDescription', () => {
     expect(text[kept.length]).toBe(' ');
   });
 
+  it('keeps every whole word that fits, up to a space at the very limit', () => {
+    // A space at index 154: the first 154 characters are whole words, and
+    // with the ellipsis they fill the limit exactly.
+    const fits = `${'ب'.repeat(100)} ${'پ'.repeat(53)}`;
+    const description = productDescription(
+      product({ description: `${fits} ${'ت'.repeat(20)}` }),
+    );
+
+    expect(description).toBe(`${fits}…`);
+    expect(description).toHaveLength(DESCRIPTION_MAX_LENGTH);
+  });
+
+  it('never splits an emoji in two when it has to cut inside a word', () => {
+    // 'a' and 76 emoji are 153 units; a cut at 154 would keep half of the next.
+    const description = productDescription(
+      product({ description: `a${CAT.repeat(100)}` }),
+    );
+
+    expect(description).toBe(`a${CAT.repeat(76)}…`);
+  });
+
   it('hard-cuts one word too long for the limit', () => {
     const description = productDescription(
       product({ description: 'ب'.repeat(400) }),
@@ -74,8 +115,20 @@ describe('productDescription', () => {
     const generated = productDescription(
       product({ description: null, benefit: null, variantLabel: '۲ کیلوگرم' }),
     );
-    expect(generated).toContain('غذای خشک گربه بالغ — ۲ کیلوگرم');
-    expect(generated).toContain(DEFAULT_SITE_NAME);
+    expect(generated).toBe(purchaseSentence('غذای خشک گربه بالغ — ۲ کیلوگرم'));
+  });
+
+  it('reads the benefit on one line too, so no-break spaces still cut at a word', () => {
+    const words = Array.from({ length: 40 }, (_, i) => `واژه${i}`);
+
+    expect(
+      productDescription(product({ benefit: `مناسب${NBSP}گوارش${NBSP}حساس` })),
+    ).toBe('مناسب گوارش حساس');
+    // A long benefit joined by no-break spaces reads exactly as the same
+    // words would as a description.
+    expect(productDescription(product({ benefit: words.join(NBSP) }))).toBe(
+      productDescription(product({ description: words.join(' ') })),
+    );
   });
 });
 
@@ -107,6 +160,13 @@ describe('productMetadata', () => {
     expect(metadata.twitter).toMatchObject({
       card: 'summary_large_image',
       images: [{ url: firstPhoto }],
+    });
+  });
+
+  it('keeps the site-wide Twitter fields on the large card too', () => {
+    expect(productMetadata(product()).twitter).toMatchObject({
+      card: 'summary_large_image',
+      site: '@smokeypetshop',
     });
   });
 

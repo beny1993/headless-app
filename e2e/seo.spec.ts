@@ -36,6 +36,9 @@ const structuredData = async (page: Page) =>
   ).map((text) => JSON.parse(text) as Record<string, unknown>);
 
 const canonical = (page: Page) => page.locator('link[rel="canonical"]');
+const robots = (page: Page) => page.locator('meta[name="robots"]');
+/** The share card's title, what Telegram and WhatsApp print for a link. */
+const shareTitle = (page: Page) => page.locator('meta[property="og:title"]');
 
 test('the sitemap lists products, family members and shelves, each by its canonical URL', async ({
   page,
@@ -116,6 +119,7 @@ test('the home page names the shop for Google', async ({ page }) => {
   // with it, and those are one URL (an empty path is `/`).
   const href = await canonical(page).getAttribute('href');
   expect(new URL(href ?? '').toString()).toBe(absoluteUrl(PATHS.HOME));
+  await expect(shareTitle(page)).toHaveAttribute('content', await page.title());
   expect(await structuredData(page)).toContainEqual(
     expect.objectContaining({
       '@graph': expect.arrayContaining([
@@ -129,7 +133,24 @@ test('the home page names the shop for Google', async ({ page }) => {
   );
 });
 
-test('a category shelf is titled by its category, and every sort order points at the shelf', async ({
+test('a category shelf names its category in the tab, the heading and the share card', async ({
+  page,
+}) => {
+  await page.goto(shopPath({ category: shelf.slug }));
+  const title = `${shelf.title} | ${DEFAULT_SITE_NAME}`;
+
+  await expect(page).toHaveTitle(title);
+  await expect(
+    page.getByRole('heading', { level: 1, name: shelf.title }),
+  ).toBeVisible();
+  await expect(shareTitle(page)).toHaveAttribute('content', title);
+  await expect(canonical(page)).toHaveAttribute(
+    'href',
+    absoluteUrl(shopPath({ category: shelf.slug })),
+  );
+});
+
+test('a sorted view of a shelf stays out of the index, still titled by its shelf', async ({
   page,
 }) => {
   const sorted = new URLSearchParams({
@@ -139,20 +160,33 @@ test('a category shelf is titled by its category, and every sort order points at
   await page.goto(`${PATHS.SHOP}?${sorted}`);
 
   await expect(page).toHaveTitle(`${shelf.title} | ${DEFAULT_SITE_NAME}`);
-  await expect(canonical(page)).toHaveAttribute(
-    'href',
-    absoluteUrl(shopPath({ category: shelf.slug })),
-  );
+  await expect(robots(page)).toHaveAttribute('content', /noindex/);
+  await expect(canonical(page)).toHaveCount(0);
 });
 
-test('a search result page stays out of the index, with no canonical', async ({
+test('a search, and a page past the end, stay out of the index with no canonical', async ({
   page,
 }) => {
-  await page.goto(`${PATHS.SHOP}?${new URLSearchParams({ q: product.title })}`);
+  const unlisted: Record<string, string>[] = [
+    { q: product.title },
+    { category: shelf.slug, page: '999' },
+  ];
+  for (const params of unlisted) {
+    await page.goto(`${PATHS.SHOP}?${new URLSearchParams(params)}`);
 
-  await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
-    'content',
-    /noindex/,
+    await expect(robots(page)).toHaveAttribute('content', /noindex/);
+    await expect(canonical(page)).toHaveCount(0);
+  }
+});
+
+test('the about page names itself, to Google and in its share card', async ({
+  page,
+}) => {
+  await page.goto(PATHS.ABOUT);
+
+  await expect(canonical(page)).toHaveAttribute(
+    'href',
+    absoluteUrl(PATHS.ABOUT),
   );
-  await expect(canonical(page)).toHaveCount(0);
+  await expect(shareTitle(page)).toHaveAttribute('content', await page.title());
 });
