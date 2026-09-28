@@ -14,9 +14,12 @@ import {
   type LinkTargets,
   type LinkType,
 } from '@/lib/content/link';
-import { MAX_ROUTINE_CATEGORIES } from '@/lib/content/site-content';
+import {
+  FEATURED_COUNT,
+  MAX_ROUTINE_CATEGORIES,
+} from '@/lib/content/site-content';
 import { toPersianDigits } from '@/lib/format';
-import { controlClass, FieldMessage } from '@/components/ui/field';
+import { controlClass, fieldAria, FieldMessage } from '@/components/ui/field';
 
 /** A category or active product a destination can point at. */
 export type LinkOption = {
@@ -32,7 +35,16 @@ export type LinkOption = {
    */
   label?: string;
 };
-export type LinkOptions = { categories: LinkOption[]; products: LinkOption[] };
+export type LinkOptions = {
+  categories: LinkOption[];
+  products: LinkOption[];
+  /**
+   * The products the shop lists as a card — family heads and standalone
+   * products, never a member — for the «انتخاب‌های اسموکی» boxes. A member
+   * picked there would be dropped by the listing and its box silently refilled.
+   */
+  cards: LinkOption[];
+};
 
 /** The pickers' Persian control names — exported so tests find controls by name. */
 export const LINK_PICKER_LABELS = {
@@ -60,6 +72,8 @@ const PAGE_LABELS: Record<LinkPage, string> = {
 
 const MISSING_CATEGORY = 'دسته‌بندی حذف‌شده';
 const MISSING_PRODUCT = 'محصول حذف‌شده یا غیرفعال';
+/** A featured pick the shop no longer lists as a card — gone, hidden, or now a family member. */
+const MISSING_CARD = 'محصول حذف‌شده، غیرفعال یا زیرمجموعه';
 
 /** A shop link carrying only the filters actually chosen — an empty select is "all". */
 const shopLink = (categoryId: string | undefined, pet: string): Link => ({
@@ -127,6 +141,7 @@ export function LinkPicker({
           aria-label={LINK_PICKER_LABELS.type}
           value={value?.type ?? ''}
           onChange={(e) => changeType(e.target.value)}
+          {...fieldAria(id, error)}
           className={controlClass(Boolean(error))}
           data-umami-event="admin-panel-content-link-type-change"
         >
@@ -154,6 +169,7 @@ export function LinkPicker({
                 page: e.target.value as LinkPage,
               })
             }
+            {...fieldAria(id, error)}
             className={controlClass(Boolean(error))}
             data-umami-event="admin-panel-content-link-page-change"
           >
@@ -173,6 +189,7 @@ export function LinkPicker({
               onChange={(e) =>
                 onChange(shopLink(e.target.value, value.pet ?? ''))
               }
+              {...fieldAria(id, error)}
               className={controlClass(Boolean(error))}
               data-umami-event="admin-panel-content-link-category-change"
             >
@@ -193,6 +210,7 @@ export function LinkPicker({
               onChange={(e) =>
                 onChange(shopLink(value.categoryId, e.target.value))
               }
+              {...fieldAria(id, error)}
               className={controlClass(Boolean(error))}
               data-umami-event="admin-panel-content-link-pet-change"
             >
@@ -213,6 +231,7 @@ export function LinkPicker({
             onChange={(e) =>
               onChange({ type: LINK_TYPES.PRODUCT, productId: e.target.value })
             }
+            {...fieldAria(id, error)}
             className={controlClass(Boolean(error))}
             data-umami-event="admin-panel-content-link-product-change"
           >
@@ -239,6 +258,7 @@ export function LinkPicker({
             onChange={(e) =>
               onChange({ type: LINK_TYPES.EXTERNAL, url: e.target.value })
             }
+            {...fieldAria(id, error)}
             className={controlClass(Boolean(error))}
           />
         )}
@@ -314,6 +334,7 @@ export function CategoryPicker({
             >
               <input
                 type="checkbox"
+                {...fieldAria(id, error)}
                 checked={checked}
                 disabled={!checked && selected.length >= MAX_ROUTINE_CATEGORIES}
                 onChange={(e) => toggle(category.id, e.target.checked)}
@@ -337,6 +358,90 @@ export function CategoryPicker({
             </span>
           </>
         )}
+      </p>
+      <FieldMessage id={id} error={error} />
+    </div>
+  );
+}
+
+/** What a featured box holds while no product is picked for it. */
+const AUTO = 'خودکار';
+
+/**
+ * The «انتخاب‌های اسموکی» boxes: one select per card, in grid order, each holding
+ * a product the shop lists as a card, or «خودکار» (`null`) — the storefront then
+ * fills that box by the automatic rule (`fallback`). A product picked in one box
+ * is disabled in the others. Every box on «خودکار» is `undefined`, never four
+ * nulls, so a cleared picker stores nothing. A saved pick no longer offered —
+ * gone, hidden, or since filed under a family — stays selected under an option
+ * saying so, and the save check refuses it with the same reason, so the admin
+ * sees why a save is refused and can re-point it.
+ */
+export function ProductPicker({
+  id,
+  label,
+  value,
+  fallback,
+  products,
+  error,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: readonly (string | null)[] | undefined;
+  fallback: string;
+  products: LinkOption[];
+  error?: string;
+  onChange: (next: (string | null)[] | undefined) => void;
+}) {
+  const labelId = `${id}-label`;
+  const boxes = Array.from(
+    { length: FEATURED_COUNT },
+    (_, box) => value?.[box] ?? null,
+  );
+
+  const pick = (box: number, productId: string) => {
+    const next = boxes.map((current, i) =>
+      i === box ? productId || null : current,
+    );
+    onChange(next.some((picked) => picked !== null) ? next : undefined);
+  };
+
+  return (
+    <div role="group" aria-labelledby={labelId}>
+      <p id={labelId} className="mb-1.5 text-sm font-medium">
+        {label}
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {boxes.map((picked, box) => (
+          <select
+            key={box}
+            aria-label={`کارت ${toPersianDigits(box + 1)}`}
+            value={picked ?? ''}
+            onChange={(e) => pick(box, e.target.value)}
+            {...fieldAria(id, error)}
+            className={controlClass(Boolean(error))}
+            data-umami-event="admin-panel-content-featured-product-change"
+          >
+            <option value="">{AUTO}</option>
+            {picked && !products.some((p) => p.id === picked) && (
+              <option value={picked}>{MISSING_CARD}</option>
+            )}
+            {products.map((product) => (
+              <option
+                key={product.id}
+                value={product.id}
+                disabled={product.id !== picked && boxes.includes(product.id)}
+              >
+                {product.title}
+              </option>
+            ))}
+          </select>
+        ))}
+      </div>
+      <p className="text-muted-foreground mt-1.5 text-xs">
+        کارتی که «{AUTO}» باشد، یا محصولش ناموجود شود، با پیشنهاد فروشگاه پر
+        می‌شود: {fallback}.
       </p>
       <FieldMessage id={id} error={error} />
     </div>

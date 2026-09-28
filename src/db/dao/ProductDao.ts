@@ -243,19 +243,7 @@ export class ProductDao {
     const where = and(...ProductDao.storefrontWhere({ ...filters, search }));
 
     const pageQuery = (on: Executor): Promise<ProductCardRow[]> =>
-      on
-        // The row plus the three family scalars. `.select()` with no argument
-        // would take the columns only, and the card needs what the *family*
-        // costs and whether any of it is in stock.
-        .select({
-          ...getTableColumns(products),
-          familyMinPrice,
-          familyPricesVary,
-          familyInStock,
-          familyHasMembers,
-        })
-        .from(products)
-        .where(where)
+      ProductDao.cardQuery(on, where)
         .orderBy(...ORDER_BY[sort])
         .limit(limit)
         .offset((page - 1) * limit);
@@ -273,18 +261,54 @@ export class ProductDao {
         })
       : await Promise.all([pageQuery(db), countQuery(db)]);
 
-    const attached = await ProductDao.withRelations<ProductCardRow>(rows);
+    return { items: await ProductDao.toCards(rows), total };
+  }
 
-    return {
-      // `min(bigint)` arrives from `pg` as a string — drizzle's `mode: 'number'`
-      // maps the column, not an aggregate over it. Coerced here, once, so no
-      // component ever renders «از 250000» as text or adds a price to a string.
-      items: attached.map((row) => ({
-        ...row,
-        familyMinPrice: Number(row.familyMinPrice),
-      })),
-      total,
-    };
+  /**
+   * The storefront cards for these ids, in no particular order — callers key by
+   * id. The listing's own row and where clause, so an inactive product or a
+   * family member does not come back; no page and no count. What the home
+   * page's «انتخاب‌های اسموکی» boxes show and what the content save check
+   * accepts as a pick both come from here, so the two cannot disagree about what
+   * a card is.
+   */
+  static async cardsByIds(ids: readonly string[]): Promise<ProductCard[]> {
+    if (ids.length === 0) return [];
+    const rows: ProductCardRow[] = await ProductDao.cardQuery(
+      db,
+      and(...ProductDao.storefrontWhere({}), inArray(products.id, [...ids])),
+    );
+    return ProductDao.toCards(rows);
+  }
+
+  /**
+   * The listing row: the columns plus the family scalars. `.select()` with no
+   * argument would take the columns only, and the card needs what the *family*
+   * costs and whether any of it is in stock.
+   */
+  private static cardQuery(on: Executor, where: SQL | undefined) {
+    return on
+      .select({
+        ...getTableColumns(products),
+        familyMinPrice,
+        familyPricesVary,
+        familyInStock,
+        familyHasMembers,
+      })
+      .from(products)
+      .where(where);
+  }
+
+  /** Listing rows as cards: images and extra categories attached. */
+  private static async toCards(rows: ProductCardRow[]): Promise<ProductCard[]> {
+    const attached = await ProductDao.withRelations<ProductCardRow>(rows);
+    // `min(bigint)` arrives from `pg` as a string — drizzle's `mode: 'number'`
+    // maps the column, not an aggregate over it. Coerced here, once, so no
+    // component ever renders «از 250000» as text or adds a price to a string.
+    return attached.map((row) => ({
+      ...row,
+      familyMinPrice: Number(row.familyMinPrice),
+    }));
   }
 
   /**

@@ -282,8 +282,22 @@ describe('collectLinkRefs', () => {
     ]);
   });
 
+  it('lists the «انتخاب‌های اسموکی» picks as cards, skipping the «خودکار» boxes', () => {
+    // Not `product`: a link may point at any active product, a family member's
+    // own page included, while a pick must be a card the shop lists.
+    const value = {
+      ...DEFAULT_CONTENT['home.recommends'],
+      productIds: [null, PRODUCT_ID, null, UNKNOWN_ID],
+    };
+    expect(collectLinkRefs(value)).toEqual([
+      { path: 'productIds', kind: 'card', id: PRODUCT_ID },
+      { path: 'productIds', kind: 'card', id: UNKNOWN_ID },
+    ]);
+  });
+
   it('finds nothing in a block saved before links were editable', () => {
     expect(collectLinkRefs(DEFAULT_CONTENT['home.moments'])).toEqual([]);
     expect(collectLinkRefs(DEFAULT_CONTENT.footer)).toEqual([]);
+    expect(collectLinkRefs(DEFAULT_CONTENT['home.recommends'])).toEqual([]);
   });
 });

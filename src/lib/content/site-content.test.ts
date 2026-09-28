@@ -7,6 +7,7 @@ import {
   CONTENT_AREAS,
   CONTENT_KEYS,
   CONTENT_SCHEMAS,
+  FEATURED_COUNT,
   FOOTER_SOCIAL_DEFAULT,
   HANDLE_MESSAGES,
   contentAreaSchema,
@@ -633,6 +634,37 @@ describe('CONTENT_SCHEMAS link fields (every one optional: compat)', () => {
     for (const bad of [[], IDS, [IDS[0], IDS[0]], ['dry-food']]) {
       expect(parse(bad).success, JSON.stringify(bad)).toBe(false);
     }
+  });
+
+  it('lets each «انتخاب‌های اسموکی» box hold a product, or null for «خودکار»', () => {
+    const recommends = d['home.recommends'];
+    const parse = (productIds: unknown) =>
+      CONTENT_SCHEMAS['home.recommends'].safeParse({
+        ...recommends,
+        productIds,
+      });
+
+    const picks = [IDS[0], null, IDS[1], null];
+    expect(parse(picks).data).toEqual({ ...recommends, productIds: picks });
+    expect(parse([null, null, null, null]).success).toBe(true);
+    // A shorter list leaves the later boxes on «خودکار», so a grid that grows
+    // never turns a saved row invalid — which would reset the whole block.
+    expect(parse([IDS[0]]).success).toBe(true);
+    expect(parse([]).success).toBe(true);
+    // No more boxes than the grid lays out, and product ids only.
+    for (const bad of [
+      IDS.slice(0, FEATURED_COUNT + 1),
+      [IDS[0], 'royal-canin'],
+      [null, undefined],
+    ]) {
+      expect(parse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+    // One product fills one box, refused on the picker's own path.
+    expect(
+      parse([IDS[0], null, IDS[0], null]).error?.issues.map((issue) =>
+        issue.path.join('.'),
+      ),
+    ).toEqual(['productIds']);
   });
 });
 

@@ -1,10 +1,11 @@
 // The editor's field map: for each content block, its Persian heading and the
 // ordered list of editable fields — each with a label and how it renders: a text
 // leaf (`input`, `textarea`), an `image`, or a destination picker, for a link
-// (`link`) or for a routine tab's categories (`categories`). A picker sits right
-// after the label it sends somewhere and carries the code destination it previews
-// while nothing is saved (`fallback`), so an editable label never hides where it
-// goes. This is the ONE place the schemas' fields are spelled out for the UI —
+// (`link`), a routine tab's categories (`categories`) or the featured boxes'
+// products (`products`). A picker sits right after the label it sends somewhere
+// and carries the code destination it previews while nothing is saved
+// (`fallback`), so an editable label never hides where it goes. This is the ONE
+// place the schemas' fields are spelled out for the UI —
 // `block-fields.test.ts` checks the text and image fields against each key's
 // default and the pickers against the schema itself, so neither can drift.
 //
@@ -25,7 +26,8 @@ import {
   NAV_TARGETS,
 } from '@/features/storefront/layout/nav-links';
 
-type FieldKind = 'input' | 'textarea' | 'image' | 'link' | 'categories';
+type FieldKind =
+  'input' | 'textarea' | 'image' | 'link' | 'categories' | 'products';
 
 export type FieldDescriptor = {
   /** Dotted path into the block value, e.g. `image.key`, `slots.0.quote`, `navLinks.0`. */
@@ -35,7 +37,8 @@ export type FieldDescriptor = {
   /**
    * A picker's code destination: what the storefront uses while nothing is saved
    * at `path` — the href for a `link` (a `*_TARGETS` entry or a section's inline
-   * path), the category slugs for `categories`. Only pickers carry one.
+   * path), the category slugs for `categories`, the automatic rule for
+   * `products`. Only pickers carry one.
    */
   fallback?: string;
 };
@@ -198,6 +201,15 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
       { path: 'eyebrow', label: 'عنوان کوچک', kind: 'input' },
       { path: 'headline', label: 'سرتیتر', kind: 'input' },
       { path: 'body', label: 'متن', kind: 'textarea' },
+      {
+        path: 'productIds',
+        label: 'محصول هر کارت',
+        kind: 'products',
+        // `selectFeatured`'s own order, in the admin's words — and its reach:
+        // it draws from the home page's listing page, the newest products,
+        // so an older discounted product is never promised the lead.
+        fallback: 'از میان جدیدترین محصولات، اول تخفیف‌دارها',
+      },
     ],
   },
   'home.journey': {
