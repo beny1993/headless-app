@@ -501,6 +501,19 @@ export class ProductDao {
   }
 
   /**
+   * Every active product page for `sitemap.xml`: its slug and when it last
+   * changed. Members included, unlike the storefront listing: each member is a
+   * page of its own, with its own price and photo.
+   */
+  static async listForSitemap(): Promise<{ slug: string; updatedAt: Date }[]> {
+    return db
+      .select({ slug: products.slug, updatedAt: products.updatedAt })
+      .from(products)
+      .where(eq(products.isActive, true))
+      .orderBy(asc(products.slug));
+  }
+
+  /**
    * The cheapest and dearest active product, for the shop's price slider.
    *
    * Over **every** active row, members included: a family's card prints its

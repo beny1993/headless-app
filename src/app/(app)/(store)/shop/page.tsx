@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { CategoryDao } from '@/db/dao/CategoryDao';
@@ -12,6 +13,7 @@ import { ShopPagination } from '@/features/storefront/shop/shop-pagination';
 import { ShopResults } from '@/features/storefront/shop/shop-results';
 import { ShopSearch } from '@/features/storefront/shop/shop-search';
 import { ShopEmptyState } from '@/features/storefront/shop/shop-empty-state';
+import { shopMetadata } from '@/features/storefront/shop/shop-metadata';
 import {
   buildShopHref,
   parseShopQuery,
@@ -19,7 +21,24 @@ import {
 } from '@/features/storefront/shop/shop-query';
 import { PATHS } from '@/lib/constant/paths';
 
-export const metadata: Metadata = { title: 'فروشگاه' };
+type PageSearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+/**
+ * The categories, read once per request: `generateMetadata` titles a shelf by
+ * its category, and the page lists them in the filters.
+ */
+const listCategories = cache(() => CategoryDao.list());
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: PageSearchParams;
+}): Promise<Metadata> {
+  return shopMetadata(
+    parseShopQuery(await searchParams),
+    await listCategories(),
+  );
+}
 
 /**
  * Rendered per request, for the same two reasons the home page is: the catalog
@@ -50,7 +69,7 @@ export const dynamic = 'force-dynamic';
 export default async function ShopPage({
   searchParams,
 }: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams: PageSearchParams;
 }) {
   const query = parseShopQuery(await searchParams);
 
@@ -65,7 +84,7 @@ export default async function ShopPage({
       page: query.page,
       limit: query.limit,
     }),
-    CategoryDao.list(),
+    listCategories(),
     // The slider's ends. Catalogue-wide on purpose: bounds that narrowed with
     // the current category would move the handles under the shopper's hand
     // every time they picked a shelf.

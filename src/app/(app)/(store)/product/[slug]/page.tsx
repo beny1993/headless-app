@@ -3,11 +3,16 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Check } from 'lucide-react';
+import { JsonLd } from '@/components/json-ld';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { availability } from '@/features/storefront/product/availability';
 import { ProductGallery } from '@/features/storefront/product/product-gallery';
 import { ProductPurchase } from '@/features/storefront/product/product-purchase';
+import {
+  productJsonLd,
+  productMetadata,
+} from '@/features/storefront/product/product-seo';
 import { ProductTabs } from '@/features/storefront/product/product-tabs';
 import { Spec } from '@/features/storefront/product/spec-row';
 import { StockNotice } from '@/features/storefront/product/stock-notice';
@@ -15,8 +20,9 @@ import { VariantChips } from '@/features/storefront/product/variant-chips';
 import { formatPetTypes, productSlugSchema } from '@/lib/catalog/product-query';
 import { displayTitle } from '@/lib/catalog/variant';
 import type { ProductDetail } from '@/db/schema/catalog';
-import { PATHS, shopPath } from '@/lib/constant/paths';
+import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
 import { formatToman } from '@/lib/format';
+import { breadcrumbJsonLd } from '@/lib/seo';
 
 /**
  * The product detail page, ported from `design/src/app/App.tsx`.
@@ -64,7 +70,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
   const product = await findProduct(slug);
 
-  return product ? { title: displayTitle(product) } : {};
+  return product ? productMetadata(product) : {};
 }
 
 export default async function ProductDetailPage({ params }: Params) {
@@ -100,6 +106,21 @@ export default async function ProductDetailPage({ params }: Params) {
 
   return (
     <main className="min-h-screen">
+      <JsonLd data={productJsonLd(product, category?.title)} />
+      {/* The trail the nav below shows, crumb for crumb: Google wants the
+          markup to match the page. */}
+      <JsonLd
+        data={breadcrumbJsonLd([
+          { name: 'خانه', path: PATHS.HOME },
+          { name: 'فروشگاه', path: PATHS.SHOP },
+          ...[parentCategory, category].flatMap((row) =>
+            row
+              ? [{ name: row.title, path: shopPath({ category: row.slug }) }]
+              : [],
+          ),
+          { name: displayTitle(product), path: productPath(product.slug) },
+        ])}
+      />
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-8">
         <nav
           aria-label="مسیر صفحه"

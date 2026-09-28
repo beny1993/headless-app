@@ -30,6 +30,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/lib/hono/` | API app, router factory, response envelope, routes |
 | `src/lib/hono/middleware/` | Cross-cutting middleware: the `requireAdmin`/`requireAuth` guards, and the `/api/*` rate limiter (the one deliberate `app.use('*')` — see its mount comment) |
 | `src/lib/auth/`, `src/lib/utils/env.ts` | Better Auth, env accessor |
+| `src/lib/seo.ts` | What search engines read: the root metadata, `absoluteUrl` (every canonical, sitemap `<loc>` and JSON-LD link goes through it, so a page's canonical and its sitemap entry match; the root aside, which Next writes without its slash, and the two are one URL), the site's JSON-LD, the breadcrumb builder and the `sitemap.xml` entries (`src/app/sitemap.ts`). A product's metadata and `Product` JSON-LD live in `src/features/storefront/product/product-seo.ts`, a shop shelf's title and canonical in `src/features/storefront/shop/shop-metadata.ts`, and `<JsonLd>` (`src/components/json-ld.tsx`) renders them escaped. Next *replaces* a nested metadata object rather than merging it, so a page's `openGraph` spreads `SITE_OPEN_GRAPH` back in; and never put `alternates.canonical` in a layout, or every page without its own claims to be that one |
 | `src/lib/sentry.ts` | The one `Sentry.init` options object, shared by all three runtimes (`register()` in `src/instrumentation.ts` for Node and edge, `src/instrumentation-client.ts` for the browser). Owns the privacy contract: explicit `dataCollection` opt-outs and the removal of the console-breadcrumb integration, without which every OTP in the server log rides along on the next event |
 | `src/lib/content/` | Storefront editorial content: the client-safe zod schemas + key enum + area map + `isVisible` (`site-content.ts`), the saved-link contract + `resolveLink` (`link.ts`; its id → slug targets load in `src/logic/content/link-targets.ts`), the typed defaults + `resolveContent` fallback (`defaults.ts`), and the header/footer request-time read `readSiteChrome` (`chrome.ts`, `await connection()`). Values live in the `site_content` table; the page-organized admin editor is `/admin-panel/content/[area]` |
 | `src/features/<area>/<feature>/` | Feature components; route files stay thin |
@@ -95,7 +96,9 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 ## Non-negotiables (from the vault note — these affect code, not just docs)
 
 - **Money is integer Toman** stored as `bigint`. No floats, no decimals; convert
-  only at the payment-gateway boundary.
+  only at the payment-gateway boundary — and in Google's structured data, which
+  needs ISO 4217 `IRR` because Toman has no code: `rialForStructuredData` in
+  `src/lib/seo.ts`, display-only and never a gateway amount.
 - **Timestamps are UTC `timestamptz`**; render Jalali with
   `Intl.DateTimeFormat('fa-IR', { calendar: 'persian' })` — no date dependency.
 - **Products soft-delete** (`is_active`), never hard-delete.
@@ -287,7 +290,12 @@ charges, and one fee applied to every province at once (a dot-grouped
 confirm, then confirmed) that checkout then charges; a province an admin adds, that checkout and the address book then
 offer and, once it is switched off, no longer offer — a saved address on it
 flagged in both — until it is switched back on; a home headline that the
-storefront then shows. Every page a spec opens is also checked for console
+storefront then shows. For search engines: `sitemap.xml` listing a seeded
+product, a family member and their shelves by the URL each page names as its
+canonical; a product page's `Product` JSON-LD priced in Rial and its
+breadcrumb; the home page's canonical and `Organization`; a category shelf
+titled by its category whatever its sort order; and a search result page kept
+out of the index with no canonical. Every page a spec opens is also checked for console
 errors, failed requests and requests to any host but the app's own (the `test`
 fixture in `e2e/support.ts`). QA runs it instead of re-walking those flows and
 drives the browser only for a story's new behaviour.

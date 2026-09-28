@@ -1,3 +1,5 @@
+import type { Metadata } from 'next';
+import { JsonLd } from '@/components/json-ld';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { SiteContentDao } from '@/db/dao/SiteContentDao';
@@ -13,6 +15,13 @@ import { LifeMomentsSection } from '@/features/storefront/home/life-moments';
 import { PhilosophySection } from '@/features/storefront/home/philosophy';
 import { RecommendsSection } from '@/features/storefront/home/recommends';
 import { RoutineSection } from '@/features/storefront/home/routine';
+import { PATHS } from '@/lib/constant/paths';
+import { absoluteUrl, SITE_JSON_LD } from '@/lib/seo';
+
+/** Title and description are the site's own, from the root layout. */
+export const metadata: Metadata = {
+  alternates: { canonical: absoluteUrl(PATHS.HOME) },
+};
 
 /**
  * The storefront home page, ported from `design/src/app/App.tsx`.
@@ -58,6 +67,7 @@ export default async function HomePage() {
   // *data* still comes from the DAOs above — only the sections' chrome is content.
   return (
     <main>
+      <JsonLd data={SITE_JSON_LD} />
       {isVisible(content['home.hero']) && (
         <HeroSection content={content['home.hero']} targets={targets} />
       )}

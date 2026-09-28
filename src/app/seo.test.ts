@@ -3,7 +3,9 @@ import { DEFAULT_SITE_ORIGIN } from '@/constants';
 import { API_ROOT, PATHS, PROTECTED_PATHS } from '@/lib/constant/paths';
 import { SITE_METADATA } from '@/lib/seo';
 import robots from './robots';
-import sitemap from './sitemap';
+
+// The sitemap reads the catalogue now: its entries are pinned in
+// src/lib/seo.test.ts (`sitemapEntries`), and the served route by e2e/seo.spec.ts.
 
 describe('storefront SEO metadata', () => {
   it('publishes Persian discovery and social-sharing metadata', () => {
@@ -54,25 +56,5 @@ describe('storefront SEO metadata', () => {
       },
       sitemap: `${DEFAULT_SITE_ORIGIN}/sitemap.xml`,
     });
-  });
-
-  it('lists the public storefront entry points in the sitemap', () => {
-    expect(sitemap()).toEqual([
-      {
-        url: `${DEFAULT_SITE_ORIGIN}/`,
-        changeFrequency: 'daily',
-        priority: 1,
-      },
-      {
-        url: `${DEFAULT_SITE_ORIGIN}${PATHS.SHOP}`,
-        changeFrequency: 'daily',
-        priority: 0.9,
-      },
-      {
-        url: `${DEFAULT_SITE_ORIGIN}${PATHS.ABOUT}`,
-        changeFrequency: 'monthly',
-        priority: 0.6,
-      },
-    ]);
   });
 });

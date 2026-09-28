@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { SiteContentDao } from '@/db/dao/SiteContentDao';
 import { CONTENT_AREAS, isVisible } from '@/lib/content/site-content';
 import { loadLinkTargets } from '@/logic/content/link-targets';
+import { PATHS } from '@/lib/constant/paths';
+import { absoluteUrl } from '@/lib/seo';
 import {
   AboutCta,
   AboutHero,
@@ -14,6 +16,7 @@ export const metadata: Metadata = {
   title: 'درباره ما',
   description:
     'داستان اسموکی و فرآیندی که هر محصول پیش از رسیدن به فروشگاه از آن می‌گذرد.',
+  alternates: { canonical: absoluteUrl(PATHS.ABOUT) },
 };
 
 /**
