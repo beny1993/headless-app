@@ -241,7 +241,9 @@ covered by their pure modules' unit tests plus browser verification.
 `pnpm test:e2e` (Playwright, `e2e/`) is the regression walk QA used to do by
 hand, run at 1280px and again at 375px. Storefront: phone-OTP sign-in for a
 customer and an admin; home → shop → product → cart drawer (quantity, removal,
-empty state) and a sold-out product; a both-pets product under either pet
+empty state) and a sold-out product; the home page's category mosaic with no
+empty cell and its tall tiles two rows tall (three at 1280px, two at 375px); a
+both-pets product under either pet
 filter and under its sub-category's parent, reading «گربه و سگ» on its page —
 each of those shelves also checked for a product it must *not* list; the one
 seeded product with a gallery walked at both widths, its last thumbnail — two

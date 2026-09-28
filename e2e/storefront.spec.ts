@@ -1,6 +1,7 @@
 import { formatPetTypes } from '@/lib/catalog/product-query';
 import type { Page } from '@playwright/test';
 import { PET_TYPES } from '@/db/schema/catalog';
+import { HOME_CATEGORY_TILES } from '@/lib/catalog/category-tree';
 import {
   SEED_CATEGORIES,
   SEED_PRODUCTS,
@@ -107,6 +108,46 @@ test('a shopper browses from home to a product and into the cart', async ({
   expect((await remove.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
   await remove.click();
   await expect(drawer).toContainText('سبد خرید شما خالی است');
+});
+
+test('the home category mosaic fills its grid, tall tiles and all', async ({
+  page,
+  isMobile,
+}) => {
+  await page.goto(PATHS.HOME);
+  const tiles = page.locator('[data-umami-event="home-category-click"]');
+  await expect(tiles).toHaveCount(HOME_CATEGORY_TILES);
+  // Rounded, so a subpixel never splits one column into two.
+  const boxes = await tiles.evaluateAll((links) =>
+    links.map((link) => {
+      const { left, bottom, height } = link.getBoundingClientRect();
+      return {
+        left: Math.round(left),
+        bottom: Math.round(bottom),
+        height: Math.round(height),
+      };
+    }),
+  );
+
+  // No empty cell: every column runs down to the grid's bottom edge. Six tiles
+  // with only two tall ones fill 8 of a desktop grid's 9 cells.
+  const gridBottom = Math.max(...boxes.map((box) => box.bottom));
+  const columns = new Set(boxes.map((box) => box.left));
+  expect(columns.size).toBe(isMobile ? 2 : 3);
+  for (const left of columns) {
+    const column = boxes.filter((box) => box.left === left);
+    expect(Math.max(...column.map((box) => box.bottom))).toBe(gridBottom);
+  }
+
+  // And the tall tiles are two rows tall — not a row that collapsed because
+  // nothing short sits in it: three of them at desktop width, two on a phone.
+  // The tiles' content is all absolutely positioned, so without the grid's
+  // own row height every one of them collapses to nothing.
+  const shortest = Math.min(...boxes.map((box) => box.height));
+  expect(shortest).toBeGreaterThan(0);
+  expect(boxes.filter((box) => box.height > 1.5 * shortest)).toHaveLength(
+    isMobile ? 2 : 3,
+  );
 });
 
 test('a product for both pets is on both shelves', async ({ page }) => {
