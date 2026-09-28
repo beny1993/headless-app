@@ -171,11 +171,21 @@ type LinkRef = {
 };
 
 /**
+ * The fields that store a list of bare ids rather than links — a routine tab's
+ * categories, the «انتخاب‌های اسموکی» boxes (whose `null` entries are «خودکار»)
+ * — and what each id names.
+ */
+const ID_LISTS = new Map<string, LinkRef['kind']>([
+  ['categoryIds', 'category'],
+  ['productIds', 'product'],
+]);
+
+/**
  * Every category and product id in a parsed content value, with its dotted field
- * path (`cards.2.link`, `slots.0.categoryIds`) — a zod issue path's shape, so a
- * save-side error lands on the editor field holding the link. It walks the whole
- * value instead of a per-key list, so a link field added to a block later is
- * covered without touching this.
+ * path (`cards.2.link`, `slots.0.categoryIds`, `productIds`) — a zod issue path's
+ * shape, so a save-side error lands on the editor field holding the link. It
+ * walks the whole value instead of a per-key list, so a link field added to a
+ * block later is covered without touching this.
  */
 export function collectLinkRefs(
   value: unknown,
@@ -195,15 +205,12 @@ export function collectLinkRefs(
   if (node.type === LINK_TYPES.PRODUCT && typeof node.productId === 'string') {
     return [{ path: path.join('.'), kind: 'product', id: node.productId }];
   }
-  return Object.entries(node).flatMap(([key, child]) =>
-    key === 'categoryIds' && Array.isArray(child)
+  return Object.entries(node).flatMap(([key, child]) => {
+    const kind = ID_LISTS.get(key);
+    return kind && Array.isArray(child)
       ? child
           .filter((id): id is string => typeof id === 'string')
-          .map((id) => ({
-            path: [...path, key].join('.'),
-            kind: 'category' as const,
-            id,
-          }))
-      : collectLinkRefs(child, [...path, key]),
-  );
+          .map((id) => ({ path: [...path, key].join('.'), kind, id }))
+      : collectLinkRefs(child, [...path, key]);
+  });
 }

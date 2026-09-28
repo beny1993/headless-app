@@ -33,17 +33,22 @@ const TOYS = {
   title: 'اسباب‌بازی',
   slug: 'toys',
 };
+const BALL = {
+  id: '9d8c7b6a-5f4e-4d3c-8b2a-0f1e2d3c4b5a',
+  title: 'توپ گربه',
+  slug: 'cat-ball',
+};
+const FOOD = {
+  id: '3a4b5c6d-7e8f-4a0b-9c1d-2e3f4a5b6c7d',
+  title: 'غذای خشک گربه',
+  slug: 'cat-dry-food',
+};
 /** A category or product id the catalog no longer has. */
 const DELETED_ID = '11111111-2222-4333-8444-555555555555';
 const OPTIONS: LinkOptions = {
   categories: [DRY, TOYS],
-  products: [
-    {
-      id: '9d8c7b6a-5f4e-4d3c-8b2a-0f1e2d3c4b5a',
-      title: 'توپ گربه',
-      slug: 'cat-ball',
-    },
-  ],
+  products: [BALL],
+  cards: [BALL, FOOD],
 };
 
 const { putData, toast } = vi.hoisted(() => ({
@@ -589,6 +594,72 @@ describe('content editor destinations', () => {
     fireEvent.click(tab(0).getByRole('checkbox', { checked: true }));
     expect(tab(0).queryByText(LINK_MESSAGES.missingCategory)).toBeNull();
     expect(tab(1).getByText(LINK_MESSAGES.missingCategory)).toBeTruthy();
+  });
+
+  describe('the «انتخاب‌های اسموکی» boxes', () => {
+    const recommends = DEFAULT_CONTENT['home.recommends'];
+    const renderBoxes = (value: typeof recommends = recommends) => {
+      render(
+        <ContentEditor
+          options={OPTIONS}
+          keys={['home.recommends']}
+          values={{ 'home.recommends': value }}
+        />,
+      );
+      return pickerFor('home.recommends', 'productIds');
+    };
+    const box = (picker: ReturnType<typeof within>, n: string) =>
+      picker.getByRole('combobox', { name: `کارت ${n}` }) as HTMLSelectElement;
+    const optionIn = (select: HTMLSelectElement, id: string) =>
+      [...select.options].find((option) => option.value === id);
+
+    it('saves each pick in its own box, «خودکار» ones as null, a product in one box only', async () => {
+      putData.mockResolvedValue({ key: 'home.recommends', value: recommends });
+      const picker = renderBoxes();
+      choose(picker, 'کارت ۲', FOOD.id);
+      choose(picker, 'کارت ۴', BALL.id);
+
+      // A product already in a box cannot be picked into another one…
+      expect(optionIn(box(picker, '۱'), FOOD.id)?.disabled).toBe(true);
+      // …and stays picked, and pickable, in its own.
+      expect(optionIn(box(picker, '۲'), FOOD.id)?.disabled).toBe(false);
+
+      await save();
+      expect(sentBody().productIds).toEqual([null, FOOD.id, null, BALL.id]);
+    });
+
+    it('stores nothing once every box is back on «خودکار»', async () => {
+      putData.mockResolvedValue({ key: 'home.recommends', value: recommends });
+      const picker = renderBoxes({
+        ...recommends,
+        productIds: [FOOD.id, null, null, null],
+      });
+      expect(box(picker, '۱').value).toBe(FOOD.id);
+      choose(picker, 'کارت ۱', '');
+
+      await save();
+      // Unset, not four nulls: the block reads as it did before any pick.
+      expect(sentBody().productIds).toBeUndefined();
+    });
+
+    it('keeps a saved pick the shop no longer offers selected, and shows its refusal until re-pointed', async () => {
+      putData.mockRejectedValue(
+        new ApiRequestError(400, 'ورودی نامعتبر است.', [
+          `productIds: ${LINK_MESSAGES.missingProduct}`,
+        ]),
+      );
+      const picker = renderBoxes({
+        ...recommends,
+        productIds: [null, DELETED_ID, null, null],
+      });
+      // Selected under an option of its own, not silently shown as «خودکار».
+      expect(box(picker, '۲').value).toBe(DELETED_ID);
+
+      await save();
+      expect(picker.getByText(LINK_MESSAGES.missingProduct)).toBeTruthy();
+      choose(picker, 'کارت ۲', FOOD.id);
+      expect(picker.queryByText(LINK_MESSAGES.missingProduct)).toBeNull();
+    });
   });
 
   it('clears a saved destination back to its code default', async () => {

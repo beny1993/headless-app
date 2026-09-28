@@ -161,6 +161,13 @@ type ProductFilters = {
    * all, the same way an empty `categorySlug` is.
    */
   search?: string;
+  /**
+   * Only these products — the home page's picked «انتخاب‌های اسموکی» boxes.
+   * Still the storefront read: an inactive product or a family member among
+   * them does not come back. Never taken from a request: the catalog route and
+   * the shop page pass their filters field by field.
+   */
+  ids?: string[];
 };
 
 type ProductListOptions = ProductFilters & {
@@ -302,6 +309,9 @@ export class ProductDao {
       // the home strips — inherits it, and `total` cannot disagree with the page.
       isNull(products.variantOf),
     ];
+    if (filters.ids) {
+      where.push(inArray(products.id, filters.ids));
+    }
     if (filters.categorySlug) {
       where.push(inCategoryScope(filters.categorySlug));
     }

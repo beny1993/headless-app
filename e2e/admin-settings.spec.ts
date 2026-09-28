@@ -1,6 +1,7 @@
 import type { Dialog } from '@playwright/test';
-import { SEED_CATEGORIES } from '@/db/seed/catalog-data';
+import { SEED_CATEGORIES, SEED_PRODUCTS } from '@/db/seed/catalog-data';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
+import { FEATURED_COUNT } from '@/features/storefront/home/featured';
 import {
   PATHS,
   PROTECTED_PATHS,
@@ -184,6 +185,66 @@ test('a headline an admin edits is what the home page shows', async ({
     );
   } finally {
     await saveHeadline(original);
+  }
+});
+
+test('a product an admin picks for the first «انتخاب‌های اسموکی» box is what the home page shows there', async ({
+  page,
+  shopper,
+}) => {
+  await page.goto(adminContentAreaPath('home'));
+  const block = page.locator('form', {
+    has: page.getByRole('heading', { name: 'انتخاب‌های اسموکی', exact: true }),
+  });
+  const headline = await block
+    .getByLabel('سرتیتر', { exact: true })
+    .inputValue();
+  const first = block
+    .locator('[data-umami-event="admin-panel-content-featured-product-change"]')
+    .first();
+  const original = await first.inputValue();
+
+  // A family is offered once, by its head: its members share its title.
+  const family = SEED_PRODUCTS.find((product) => product.variantOfSku)!;
+  await expect(first.locator('option', { hasText: family.title })).toHaveCount(
+    1,
+  );
+
+  // The grid as it stands, so the pick is a product it is not showing yet.
+  await shopper.goto(PATHS.HOME);
+  const grid = shopper.locator('section', {
+    has: shopper.getByRole('heading', { name: headline, exact: true }),
+  });
+  const cards = grid.locator('[data-umami-event="product-card-open"]');
+  await expect(cards.first()).toBeVisible();
+  const shown = await cards.allTextContents();
+  const pick = SEED_PRODUCTS.find(
+    (product) =>
+      product.stock > 0 &&
+      !product.variantLabel &&
+      !shown.includes(product.title),
+  )!;
+
+  const save = async (option: string | { label: string }) => {
+    await first.selectOption(option);
+    await block
+      .locator('[data-umami-event="admin-panel-content-save"]')
+      .click();
+    await expect(block.getByText('ذخیره شد')).toBeVisible();
+  };
+
+  await save({ label: pick.title });
+  try {
+    await shopper.reload();
+    await expect(cards.first()).toHaveText(pick.title);
+    // Only box one changed hands: every other box is still filled, and the
+    // pick is not offered a second time by the automatic rule.
+    await expect(cards).toHaveCount(FEATURED_COUNT);
+    expect(
+      (await cards.allTextContents()).filter((title) => title === pick.title),
+    ).toHaveLength(1);
+  } finally {
+    await save(original);
   }
 });
 

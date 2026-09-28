@@ -80,6 +80,12 @@ describe.skipIf(!databaseReachable)('content link targets', () => {
     };
   };
 
+  /** `home.recommends` with its four boxes holding `picks` (null: «خودکار»). */
+  const recommends = (picks: (string | null)[]) => ({
+    ...DEFAULT_CONTENT['home.recommends'],
+    productIds: picks,
+  });
+
   describe('loadLinkTargets', () => {
     it('maps category ids to slugs, and only active referenced products', async () => {
       const targets = await loadLinkTargets([
@@ -178,6 +184,20 @@ describe.skipIf(!databaseReachable)('content link targets', () => {
       expect(await findBrokenLinks(routine([category.id, UNKNOWN_ID]))).toEqual(
         [`slots.0.categoryIds: ${LINK_MESSAGES.missingCategory}`],
       );
+    });
+
+    it('reports a hidden or unknown product in a «انتخاب‌های اسموکی» box, and passes «خودکار» ones', async () => {
+      expect(
+        await findBrokenLinks(recommends([active.id, null, null, null])),
+      ).toEqual([]);
+      expect(
+        await findBrokenLinks(
+          recommends([active.id, hidden.id, null, UNKNOWN_ID]),
+        ),
+      ).toEqual([
+        `productIds: ${LINK_MESSAGES.missingProduct}`,
+        `productIds: ${LINK_MESSAGES.missingProduct}`,
+      ]);
     });
   });
 });

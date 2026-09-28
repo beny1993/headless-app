@@ -107,6 +107,22 @@ const routineSlot = z.object({
     })
     .optional(),
 });
+// A «انتخاب‌های اسموکی» box: the product the admin picked for it, stored by id
+// like a product link, or `null` for «خودکار» — the box then takes the next
+// product the automatic rule offers (`selectFeatured`). One entry per card the
+// grid lays out (`FEATURED_COUNT`; `block-fields.test.ts` pins the two together),
+// and one product fills one box.
+const featuredPick = z.uuid(LINK_MESSAGES.product).nullable();
+const FEATURED_PICKS_MESSAGE = 'هر محصول را فقط در یک کارت انتخاب کن.';
+const featuredPicks = z
+  .tuple([featuredPick, featuredPick, featuredPick, featuredPick])
+  .refine(
+    (ids) => {
+      const picked = ids.filter((id) => id !== null);
+      return new Set(picked).size === picked.length;
+    },
+    { error: FEATURED_PICKS_MESSAGE },
+  );
 // The header's three nav labels; `navLinks` holds their destinations.
 const nav = z.tuple([t(30), t(30), t(30)]);
 
@@ -224,6 +240,8 @@ export const CONTENT_SCHEMAS = {
     eyebrow: t(60),
     headline: t(120),
     body: t(200),
+    // The product in each box (unset: every box «خودکار»).
+    productIds: featuredPicks.optional(),
     visible,
   }),
   'home.journey': z.object({

@@ -16,6 +16,7 @@ import {
 } from '@/lib/content/link';
 import { MAX_ROUTINE_CATEGORIES } from '@/lib/content/site-content';
 import { toPersianDigits } from '@/lib/format';
+import { FEATURED_COUNT } from '@/features/storefront/home/featured';
 import { controlClass, FieldMessage } from '@/components/ui/field';
 
 /** A category or active product a destination can point at. */
@@ -32,7 +33,16 @@ export type LinkOption = {
    */
   label?: string;
 };
-export type LinkOptions = { categories: LinkOption[]; products: LinkOption[] };
+export type LinkOptions = {
+  categories: LinkOption[];
+  products: LinkOption[];
+  /**
+   * The products the shop lists as a card — family heads and standalone
+   * products, never a member — for the «انتخاب‌های اسموکی» boxes. A member
+   * picked there would be dropped by the listing and its box silently refilled.
+   */
+  cards: LinkOption[];
+};
 
 /** The pickers' Persian control names — exported so tests find controls by name. */
 export const LINK_PICKER_LABELS = {
@@ -337,6 +347,88 @@ export function CategoryPicker({
             </span>
           </>
         )}
+      </p>
+      <FieldMessage id={id} error={error} />
+    </div>
+  );
+}
+
+/** What a featured box holds while no product is picked for it. */
+const AUTO = 'خودکار';
+
+/**
+ * The «انتخاب‌های اسموکی» boxes: one select per card, in grid order, each holding
+ * a product the shop lists as a card, or «خودکار» (`null`) — the storefront then
+ * fills that box by the automatic rule (`fallback`). A product picked in one box
+ * is disabled in the others. Every box on «خودکار» is `undefined`, never four
+ * nulls, so a cleared picker stores nothing. A saved pick no longer offered
+ * stays selected under a «deleted» option, so the admin sees why a save is
+ * refused and can re-point it.
+ */
+export function ProductPicker({
+  id,
+  label,
+  value,
+  fallback,
+  products,
+  error,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: readonly (string | null)[] | undefined;
+  fallback: string;
+  products: LinkOption[];
+  error?: string;
+  onChange: (next: (string | null)[] | undefined) => void;
+}) {
+  const labelId = `${id}-label`;
+  const boxes = Array.from(
+    { length: FEATURED_COUNT },
+    (_, box) => value?.[box] ?? null,
+  );
+
+  const pick = (box: number, productId: string) => {
+    const next = boxes.map((current, i) =>
+      i === box ? productId || null : current,
+    );
+    onChange(next.some((picked) => picked !== null) ? next : undefined);
+  };
+
+  return (
+    <div role="group" aria-labelledby={labelId}>
+      <p id={labelId} className="mb-1.5 text-sm font-medium">
+        {label}
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {boxes.map((picked, box) => (
+          <select
+            key={box}
+            aria-label={`کارت ${toPersianDigits(box + 1)}`}
+            value={picked ?? ''}
+            onChange={(e) => pick(box, e.target.value)}
+            className={controlClass(Boolean(error))}
+            data-umami-event="admin-panel-content-featured-product-change"
+          >
+            <option value="">{AUTO}</option>
+            {picked && !products.some((p) => p.id === picked) && (
+              <option value={picked}>{MISSING_PRODUCT}</option>
+            )}
+            {products.map((product) => (
+              <option
+                key={product.id}
+                value={product.id}
+                disabled={product.id !== picked && boxes.includes(product.id)}
+              >
+                {product.title}
+              </option>
+            ))}
+          </select>
+        ))}
+      </div>
+      <p className="text-muted-foreground mt-1.5 text-xs">
+        کارتی که «{AUTO}» باشد، یا محصولش ناموجود شود، با پیشنهاد فروشگاه پر
+        می‌شود: {fallback}.
       </p>
       <FieldMessage id={id} error={error} />
     </div>

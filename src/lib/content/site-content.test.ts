@@ -634,6 +634,34 @@ describe('CONTENT_SCHEMAS link fields (every one optional: compat)', () => {
       expect(parse(bad).success, JSON.stringify(bad)).toBe(false);
     }
   });
+
+  it('lets each «انتخاب‌های اسموکی» box hold a product, or null for «خودکار»', () => {
+    const recommends = d['home.recommends'];
+    const parse = (productIds: unknown) =>
+      CONTENT_SCHEMAS['home.recommends'].safeParse({
+        ...recommends,
+        productIds,
+      });
+
+    const picks = [IDS[0], null, IDS[1], null];
+    expect(parse(picks).data).toEqual({ ...recommends, productIds: picks });
+    expect(parse([null, null, null, null]).success).toBe(true);
+    // One entry per card — not three, not five — and product ids only.
+    for (const bad of [
+      IDS.slice(0, 3),
+      IDS,
+      [...IDS.slice(0, 3), 'royal-canin'],
+      [null, null, null, undefined],
+    ]) {
+      expect(parse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+    // One product fills one box, refused on the picker's own path.
+    expect(
+      parse([IDS[0], null, IDS[0], null]).error?.issues.map((issue) =>
+        issue.path.join('.'),
+      ),
+    ).toEqual(['productIds']);
+  });
 });
 
 describe('CONTENT_SCHEMAS footer.social (a shipped key: defaulted, not required)', () => {

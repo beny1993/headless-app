@@ -282,8 +282,20 @@ describe('collectLinkRefs', () => {
     ]);
   });
 
+  it('lists the «انتخاب‌های اسموکی» picks as products, skipping the «خودکار» boxes', () => {
+    const value = {
+      ...DEFAULT_CONTENT['home.recommends'],
+      productIds: [null, PRODUCT_ID, null, UNKNOWN_ID],
+    };
+    expect(collectLinkRefs(value)).toEqual([
+      { path: 'productIds', kind: 'product', id: PRODUCT_ID },
+      { path: 'productIds', kind: 'product', id: UNKNOWN_ID },
+    ]);
+  });
+
   it('finds nothing in a block saved before links were editable', () => {
     expect(collectLinkRefs(DEFAULT_CONTENT['home.moments'])).toEqual([]);
     expect(collectLinkRefs(DEFAULT_CONTENT.footer)).toEqual([]);
+    expect(collectLinkRefs(DEFAULT_CONTENT['home.recommends'])).toEqual([]);
   });
 });

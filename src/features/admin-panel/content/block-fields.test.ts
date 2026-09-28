@@ -12,6 +12,7 @@ import {
   type ContentKey,
 } from '@/lib/content/site-content';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
+import { FEATURED_COUNT } from '@/features/storefront/home/featured';
 import {
   BLOCK_FIELDS,
   getPath,
@@ -35,10 +36,17 @@ function leafPaths(value: unknown, prefix = ''): string[] {
   return [];
 }
 
+/** The fields that hold a list of catalog ids, each edited by one picker. */
+const ID_LIST_KINDS: Record<string, FieldDescriptor['kind']> = {
+  categoryIds: 'categories',
+  productIds: 'products',
+};
+
 /**
- * Every dotted path where a schema can store a destination: a link, or a routine
- * tab's `categoryIds`. Read from the schema itself — the defaults carry none — and
- * a destination list (`navLinks`, `linkTargets`) holds up to its `.max()`.
+ * Every dotted path where a schema can store a destination: a link, a routine
+ * tab's `categoryIds`, or the featured boxes' `productIds`. Read from the schema
+ * itself — the defaults carry none — and a destination list (`navLinks`,
+ * `linkTargets`) holds up to its `.max()`.
  * `_zod.bag.maximum` is zod's internal check metadata: a zod upgrade that moves it
  * breaks this test, not the app.
  */
@@ -51,7 +59,7 @@ function destinationPaths(schema: z.ZodType, prefix = ''): string[] {
   if (schema === linkSchema) return [prefix];
   if (schema instanceof z.ZodObject) {
     return Object.entries(schema.shape).flatMap(([key, child]) =>
-      key === 'categoryIds'
+      Object.hasOwn(ID_LIST_KINDS, key)
         ? [at(key)]
         : destinationPaths(child as z.ZodType, at(key)),
     );
@@ -71,7 +79,13 @@ function destinationPaths(schema: z.ZodType, prefix = ''): string[] {
 }
 
 const isPicker = (field: FieldDescriptor) =>
-  field.kind === 'link' || field.kind === 'categories';
+  field.kind === 'link' ||
+  field.kind === 'categories' ||
+  field.kind === 'products';
+
+/** The kind a picker at `path` must be: its id list's, else a link. */
+const pickerKindAt = (path: string) =>
+  ID_LIST_KINDS[path.split('.').at(-1) ?? ''] ?? 'link';
 
 describe('BLOCK_FIELDS', () => {
   it('has a block descriptor for every content key', () => {
@@ -103,26 +117,35 @@ describe('BLOCK_FIELDS', () => {
       );
       for (const field of pickers) {
         expect(field.kind, `${key} ${field.path}`).toBe(
-          field.path.endsWith('categoryIds') ? 'categories' : 'link',
+          pickerKindAt(field.path),
         );
       }
     }
   });
 
-  it('offers a picker for each of the 21 links and the 4 routine tabs', () => {
+  it('offers a picker for each of the 21 links, the 4 routine tabs and the featured boxes', () => {
     const fields = CONTENT_KEYS.flatMap((key) => BLOCK_FIELDS[key].fields);
     expect(fields.filter((field) => field.kind === 'link')).toHaveLength(21);
     expect(fields.filter((field) => field.kind === 'categories')).toHaveLength(
       4,
     );
+    expect(fields.filter((field) => field.kind === 'products')).toHaveLength(1);
   });
 
   it('saves a destination at every picker path (setPath, then the schema)', () => {
-    const link = { type: 'page', page: 'about' };
-    const categoryIds = ['5f0c6a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f'];
+    const id = '5f0c6a8e-3b1d-4c2a-9e7f-1a2b3c4d5e6f';
+    const samples = {
+      link: { type: 'page', page: 'about' },
+      categories: [id],
+      // One entry per card the storefront grid lays out: a schema whose box
+      // count drifted from `FEATURED_COUNT` refuses this.
+      products: Array.from({ length: FEATURED_COUNT }, (_, i) =>
+        i === 0 ? id : null,
+      ),
+    };
     for (const key of CONTENT_KEYS as readonly ContentKey[]) {
       for (const field of BLOCK_FIELDS[key].fields.filter(isPicker)) {
-        const sample = field.kind === 'link' ? link : categoryIds;
+        const sample = samples[field.kind as keyof typeof samples];
         const parsed = CONTENT_SCHEMAS[key].safeParse(
           setPath(DEFAULT_CONTENT[key], field.path, sample),
         );
