@@ -525,6 +525,33 @@ export class ProductDao {
   }
 
   /**
+   * Every active product page for `sitemap.xml`: its slug and when it last
+   * changed. Members included, unlike the storefront listing: each member is a
+   * page of its own, with its own price and photo.
+   */
+  static async listForSitemap(): Promise<{ slug: string; updatedAt: Date }[]> {
+    return db
+      .select({ slug: products.slug, updatedAt: products.updatedAt })
+      .from(products)
+      .where(eq(products.isActive, true))
+      .orderBy(asc(products.slug));
+  }
+
+  /**
+   * Whether a category's shelf lists anything, by the storefront listing's own
+   * clause (active heads, the category with its sub-categories and extra
+   * filings), so `sitemap.xml` names no shelf that answers with the empty state.
+   */
+  static async hasShelfProducts(categorySlug: string): Promise<boolean> {
+    const [row] = await db
+      .select({ id: products.id })
+      .from(products)
+      .where(and(...ProductDao.storefrontWhere({ categorySlug })))
+      .limit(1);
+    return row !== undefined;
+  }
+
+  /**
    * The cheapest and dearest active product, for the shop's price slider.
    *
    * Over **every** active row, members included: a family's card prints its

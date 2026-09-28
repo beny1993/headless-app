@@ -23,6 +23,7 @@ import {
   type Category,
   type NewProduct,
 } from '@/db/schema/catalog';
+import { JsonLd } from '@/components/json-ld';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { formatToman } from '@/lib/format';
 import { shopPath } from '@/lib/constant/paths';
@@ -57,6 +58,9 @@ function collect(node: unknown, found: string[] = []): string[] {
     return found;
   }
   if (typeof node !== 'object' || node === null) return found;
+  // Structured data is not what the page shows: a crumb that only it names
+  // would satisfy a check meant for the visible trail.
+  if ((node as { type?: unknown }).type === JsonLd) return found;
 
   // An element's strings live under `props`; the tab descriptors the page
   // builds are plain objects whose `content` holds a whole element of its own,
