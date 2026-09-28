@@ -9,10 +9,10 @@ import { linkSchema } from '@/lib/content/link';
 import {
   CONTENT_KEYS,
   CONTENT_SCHEMAS,
+  FEATURED_COUNT,
   type ContentKey,
 } from '@/lib/content/site-content';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
-import { FEATURED_COUNT } from '@/features/storefront/home/featured';
 import {
   BLOCK_FIELDS,
   getPath,
@@ -137,8 +137,7 @@ describe('BLOCK_FIELDS', () => {
     const samples = {
       link: { type: 'page', page: 'about' },
       categories: [id],
-      // One entry per card the storefront grid lays out: a schema whose box
-      // count drifted from `FEATURED_COUNT` refuses this.
+      // A full grid: the first box picked, the rest on «خودکار».
       products: Array.from({ length: FEATURED_COUNT }, (_, i) =>
         i === 0 ? id : null,
       ),

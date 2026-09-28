@@ -3,7 +3,7 @@
 // drops out, so its link falls back to the shop), and the save check that refuses
 // an id naming nothing — each error on the field path the editor maps.
 import { faker } from '@faker-js/faker';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNotNull } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   categories,
@@ -26,8 +26,15 @@ describe.skipIf(!databaseReachable)('content link targets', () => {
   let category: Category;
   let active: Product;
   let hidden: Product;
+  // A family: the head is a card the shop lists, the member is reached only
+  // from the head's page.
+  let head: Product;
+  let member: Product;
 
-  const insertProduct = async (isActive: boolean): Promise<Product> => {
+  const insertProduct = async (
+    isActive: boolean,
+    family: Partial<Pick<Product, 'variantOf' | 'variantLabel'>> = {},
+  ): Promise<Product> => {
     const token = faker.string.alphanumeric(10).toLowerCase();
     const [row] = await testDb
       .insert(products)
@@ -39,6 +46,7 @@ describe.skipIf(!databaseReachable)('content link targets', () => {
         categoryId: category.id,
         petTypes: [PET_TYPES.CAT],
         isActive,
+        ...family,
       })
       .returning();
     return row;
@@ -54,10 +62,24 @@ describe.skipIf(!databaseReachable)('content link targets', () => {
       .returning();
     active = await insertProduct(true);
     hidden = await insertProduct(false);
+    head = await insertProduct(true, { variantLabel: '۲ کیلوگرم' });
+    member = await insertProduct(true, {
+      variantOf: head.id,
+      variantLabel: '۱۰ کیلوگرم',
+    });
   });
 
   afterAll(async () => {
     if (!category) return;
+    // Members first: `variant_of` restricts, so the head cannot go before them.
+    await testDb
+      .delete(products)
+      .where(
+        and(
+          eq(products.categoryId, category.id),
+          isNotNull(products.variantOf),
+        ),
+      );
     await testDb.delete(products).where(eq(products.categoryId, category.id));
     await testDb.delete(categories).where(eq(categories.id, category.id));
   });
@@ -147,6 +169,14 @@ describe.skipIf(!databaseReachable)('content link targets', () => {
         ]),
       ).toEqual({ categories: {}, products: {} });
     });
+
+    it('leaves the «انتخاب‌های اسموکی» picks out: they are cards, not links', async () => {
+      // The home page reads its picks as cards on its own; resolving them here
+      // too would fetch the same rows for slugs nothing renders.
+      expect(
+        await loadLinkTargets([recommends([active.id, head.id, null, null])]),
+      ).toEqual({ categories: {}, products: {} });
+    });
   });
 
   describe('findBrokenLinks', () => {
@@ -186,18 +216,32 @@ describe.skipIf(!databaseReachable)('content link targets', () => {
       );
     });
 
-    it('reports a hidden or unknown product in a «انتخاب‌های اسموکی» box, and passes «خودکار» ones', async () => {
+    it('passes a «انتخاب‌های اسموکی» box holding a card the shop lists — a family by its head — and «خودکار» ones', async () => {
       expect(
-        await findBrokenLinks(recommends([active.id, null, null, null])),
+        await findBrokenLinks(recommends([active.id, head.id, null, null])),
       ).toEqual([]);
+    });
+
+    it('refuses a box whose product the shop does not list as a card: hidden, unknown, or a family member', async () => {
+      // The member is active, so a link may point at its page — but the shop
+      // lists its family by the head, so a pick of it would never be shown.
       expect(
         await findBrokenLinks(
-          recommends([active.id, hidden.id, null, UNKNOWN_ID]),
+          recommends([hidden.id, UNKNOWN_ID, member.id, null]),
         ),
       ).toEqual([
-        `productIds: ${LINK_MESSAGES.missingProduct}`,
-        `productIds: ${LINK_MESSAGES.missingProduct}`,
+        `productIds: ${LINK_MESSAGES.missingCard}`,
+        `productIds: ${LINK_MESSAGES.missingCard}`,
+        `productIds: ${LINK_MESSAGES.missingCard}`,
       ]);
+    });
+
+    it('still lets a product link point at a family member’s own page', async () => {
+      expect(
+        await findBrokenLinks(
+          moments([{ type: 'product', productId: member.id }]),
+        ),
+      ).toEqual([]);
     });
   });
 });

@@ -16,8 +16,9 @@
 import { faker } from '@faker-js/faker';
 import { eq, inArray } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { categories, PET_TYPES, products } from '@/db/schema/catalog';
+import { categories } from '@/db/schema/catalog';
 import { siteContent } from '@/db/schema/site-content';
+import { OrderFixtures } from '@/db/order-test-fixtures';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import type { LinkTargets } from '@/lib/content/link';
@@ -203,37 +204,24 @@ describe.skipIf(!databaseReachable)('the home page', () => {
     }
   });
 
-  it('puts each picked product in its own «انتخاب‌های اسموکی» box, and refills a box whose pick is hidden', async () => {
-    const [category] = await testDb
-      .insert(categories)
-      .values({
-        title: 'دسته انتخاب‌ها',
-        slug: `home-${faker.string.alphanumeric(10).toLowerCase()}`,
-      })
-      .returning();
-    const insert = async (overrides: Partial<typeof products.$inferInsert>) => {
-      const token = faker.string.alphanumeric(10).toLowerCase();
-      const [row] = await testDb
-        .insert(products)
-        .values({
-          title: 'محصول انتخابی',
-          slug: `test-${token}`,
-          sku: `TEST-${token.toUpperCase()}`,
-          price: 100_000,
-          stock: 5,
-          categoryId: category.id,
-          petTypes: [PET_TYPES.CAT],
-          ...overrides,
-        })
-        .returning();
-      return row;
-    };
-    // The listing reads newest first, so boxes in the other order prove the
-    // grid follows the boxes and not the query.
-    const older = await insert({ createdAt: new Date(Date.now() - 60_000) });
-    const newer = await insert({});
-    const hidden = await insert({ isActive: false });
-    try {
+  describe('the «انتخاب‌های اسموکی» picks', () => {
+    // Records each row as it is created, so a throw between inserts still
+    // leaves nothing behind.
+    const fx = new OrderFixtures();
+    afterEach(() => fx.cleanup());
+
+    it('puts each picked product in its own box, and refills a box whose pick is hidden', async () => {
+      const category = await fx.category();
+      // The listing reads newest first, so boxes in the other order prove the
+      // grid follows the boxes and not the query.
+      const older = await fx.product(category, {
+        createdAt: new Date(Date.now() - 60_000),
+      });
+      const newer = await fx.product(category);
+      const hidden = await fx.product(category, { isActive: false });
+      // The newest deal is the automatic rule's first offer on any database —
+      // an empty one included — so it is what must fill the hidden pick's box.
+      const deal = await fx.product(category, { oldPrice: 150_000 });
       await SiteContentDao.set('home.recommends', {
         ...DEFAULT_CONTENT['home.recommends'],
         productIds: [older.id, newer.id, hidden.id, null],
@@ -244,15 +232,11 @@ describe.skipIf(!databaseReachable)('the home page', () => {
           .products as { id: string }[]
       ).map((product) => product.id);
 
-      expect(shown.slice(0, 2)).toEqual([older.id, newer.id]);
+      expect(shown.slice(0, 3)).toEqual([older.id, newer.id, deal.id]);
       expect(shown).not.toContain(hidden.id);
       expect(shown.length).toBeLessThanOrEqual(4);
       expect(new Set(shown).size).toBe(shown.length);
-    } finally {
-      await clear();
-      await testDb.delete(products).where(eq(products.categoryId, category.id));
-      await testDb.delete(categories).where(eq(categories.id, category.id));
-    }
+    });
   });
 
   it('shows a saved block on the very next load (no cache to go stale)', async () => {

@@ -52,6 +52,8 @@ export const LINK_MESSAGES = {
   url: 'لینک بیرونی باید یک آدرس کامل با https باشد.',
   missingCategory: 'این دسته‌بندی وجود ندارد.',
   missingProduct: 'این محصول وجود ندارد یا غیرفعال است.',
+  missingCard:
+    'این محصول وجود ندارد، غیرفعال است یا زیرمجموعه‌ی محصول دیگری است.',
 } as const;
 
 /** The longest stored external href — checked on the href, the stored value. */
@@ -163,10 +165,16 @@ export function resolveLink(
   }
 }
 
-/** A catalog id a content value references, at the field path it sits on. */
+/**
+ * A catalog id a content value references, at the field path it sits on. A
+ * `product` is a link target — any active product, a family member's own page
+ * included. A `card` is a product the shop lists as a card — active and never a
+ * member — which is what a «انتخاب‌های اسموکی» box shows; it is not a link, so
+ * `loadLinkTargets` never resolves it.
+ */
 type LinkRef = {
   path: string;
-  kind: 'category' | 'product';
+  kind: 'category' | 'product' | 'card';
   id: string;
 };
 
@@ -177,7 +185,7 @@ type LinkRef = {
  */
 const ID_LISTS = new Map<string, LinkRef['kind']>([
   ['categoryIds', 'category'],
-  ['productIds', 'product'],
+  ['productIds', 'card'],
 ]);
 
 /**

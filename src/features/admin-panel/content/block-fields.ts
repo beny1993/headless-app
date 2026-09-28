@@ -205,8 +205,10 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
         path: 'productIds',
         label: 'محصول هر کارت',
         kind: 'products',
-        // `selectFeatured`'s own order, in the admin's words.
-        fallback: 'اول محصولات تخفیف‌دار، بعد جدیدترین‌ها',
+        // `selectFeatured`'s own order, in the admin's words — and its reach:
+        // it draws from the home page's listing page, the newest products,
+        // so an older discounted product is never promised the lead.
+        fallback: 'از میان جدیدترین محصولات، اول تخفیف‌دارها',
       },
     ],
   },

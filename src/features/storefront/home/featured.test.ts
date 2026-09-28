@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import {
-  FEATURED_COUNT,
-  selectFeatured,
-} from '@/features/storefront/home/featured';
+import { selectFeatured } from '@/features/storefront/home/featured';
+import { FEATURED_COUNT } from '@/lib/content/site-content';
 
-/** The fields the selection reads; the id marks order and what counts as a repeat. */
+/**
+ * The fields the selection reads; the id marks order and what counts as a
+ * repeat. A standalone product's own stock is its family's.
+ */
 const product = (
   id: string,
   inStock = true,
   oldPrice: number | null = null,
 ) => ({
   id,
+  stock: inStock ? 5 : 0,
   familyInStock: inStock,
   oldPrice,
 });
@@ -45,6 +47,20 @@ describe('selectFeatured', () => {
     expect(ids(picked)).toEqual(['deal', 'plain-1', 'plain-2']);
   });
 
+  it('does not lead with a discount nobody can buy: a sold-out discounted head keeps its catalog place', () => {
+    // The family is on the shelf through its other size, so it features — but
+    // the discounted row itself is sold out, so it is no deal.
+    const head = { ...product('family', true, 200_000), stock: 0 };
+
+    const picked = selectFeatured([
+      product('plain-1'),
+      head,
+      product('plain-2'),
+    ]);
+
+    expect(ids(picked)).toEqual(['plain-1', 'family', 'plain-2']);
+  });
+
   it('keeps the incoming order inside each group', () => {
     // The DAO hands them over newest-first; the only reordering allowed is
     // pulling the discounts forward, so two deals stay in catalog order.
@@ -58,7 +74,7 @@ describe('selectFeatured', () => {
     expect(ids(picked)).toEqual(['deal-a', 'deal-b', 'plain-a', 'plain-b']);
   });
 
-  it('takes four by default', () => {
+  it('fills the grid’s boxes and no more', () => {
     const picked = selectFeatured(
       Array.from({ length: 10 }, (_, i) => product(`p${i}`)),
     );
@@ -67,19 +83,7 @@ describe('selectFeatured', () => {
     expect(FEATURED_COUNT).toBe(4);
   });
 
-  it('honours an explicit count, for the picks too', () => {
-    const rows = Array.from({ length: 10 }, (_, i) => product(`p${i}`));
-
-    expect(selectFeatured(rows, [], 2)).toHaveLength(2);
-    expect(selectFeatured(rows, [], 0)).toHaveLength(0);
-    // A negative count is a caller bug; it must not slice from the end.
-    expect(selectFeatured(rows, [], -3)).toHaveLength(0);
-    // Picks past the last box are not shown.
-    const picks = [product('a'), product('b'), product('c')];
-    expect(ids(selectFeatured(rows, picks, 2))).toEqual(['a', 'b']);
-  });
-
-  it('returns what it has when the catalog is smaller than the count', () => {
+  it('returns what it has when the catalog is smaller than the grid', () => {
     expect(ids(selectFeatured([product('only')]))).toEqual(['only']);
   });
 
@@ -135,6 +139,12 @@ describe('selectFeatured', () => {
 
       expect(ids(selectFeatured([], picks))).toEqual(['a', 'b', 'c', 'd']);
       expect(ids(selectFeatured([], [product('a')]))).toEqual(['a']);
+    });
+
+    it('shows no pick past the grid’s last box', () => {
+      const picks = ['a', 'b', 'c', 'd', 'e'].map((id) => product(id));
+
+      expect(ids(selectFeatured([], picks))).toEqual(['a', 'b', 'c', 'd']);
     });
   });
 

@@ -2,6 +2,7 @@ import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { SiteContentDao } from '@/db/dao/SiteContentDao';
 import { CONTENT_AREAS, isVisible } from '@/lib/content/site-content';
+import { loadFeaturedPicks } from '@/logic/content/featured-picks';
 import { loadLinkTargets } from '@/logic/content/link-targets';
 import { CategoriesSection } from '@/features/storefront/home/categories';
 import { CommunitySection } from '@/features/storefront/home/community';
@@ -39,20 +40,20 @@ export default async function HomePage() {
     SiteContentDao.getMany(CONTENT_AREAS.home.keys),
   ]);
 
-  // The «انتخاب‌های اسموکی» boxes the admin picked a product for, read as the
-  // listing's own cards — a hidden product or a family member does not come
-  // back, and `selectFeatured` refills its box. No pick, no query.
-  const picks: readonly (string | null)[] =
-    content['home.recommends'].productIds ?? [];
-  const pickedIds = picks.filter((id) => id !== null);
-
   // Saved destinations store catalog ids: resolve them once for every linked
   // section, reusing the categories just read (so only linked products query).
-  const [targets, picked] = await Promise.all([
+  // The «انتخاب‌های اسموکی» boxes the admin picked a product for resolve beside
+  // them, as cards — from the listing page just read where they are on it, so
+  // no query at all then — and only while the section is shown. A hidden
+  // product or a family member does not come back; `selectFeatured` refills
+  // its box.
+  const recommends = content['home.recommends'];
+  const [targets, picks] = await Promise.all([
     loadLinkTargets(Object.values(content), categories),
-    pickedIds.length > 0 ? ProductDao.list({ ids: pickedIds }) : { items: [] },
+    isVisible(recommends)
+      ? loadFeaturedPicks(recommends.productIds, items)
+      : [],
   ]);
-  const cardOf = new Map(picked.items.map((card) => [card.id, card]));
 
   // Narrow rows to what the sections render: `Category` also carries
   // timestamps, and several of these sections are client components.
@@ -66,7 +67,7 @@ export default async function HomePage() {
   // Every section is editable now, and each renders unless the admin has
   // explicitly hidden it (`isVisible` = "shown unless visible === false"); an
   // empty table and every pre-existing row render exactly as before. Catalog
-  // *data* still comes from the DAOs above — content holds the sections' chrome,
+  // *data* still comes from the catalog — content holds the sections' chrome,
   // and only the ids of the products the admin picked.
   return (
     <main>
@@ -79,13 +80,10 @@ export default async function HomePage() {
           targets={targets}
         />
       )}
-      {isVisible(content['home.recommends']) && (
+      {isVisible(recommends) && (
         <RecommendsSection
-          content={content['home.recommends']}
-          products={selectFeatured(
-            items,
-            picks.map((id) => (id ? cardOf.get(id) : undefined)),
-          )}
+          content={recommends}
+          products={selectFeatured(items, picks)}
         />
       )}
       {isVisible(content['home.journey']) && (

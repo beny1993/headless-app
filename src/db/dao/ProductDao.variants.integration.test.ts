@@ -183,9 +183,10 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       expect(total).toBe(0);
     });
 
-    it('narrows to the ids asked for — still active only, still one card per family', async () => {
-      // How the home page reads its picked boxes: whatever id a box holds, only
-      // a product the shop itself lists comes back, as the card the shop shows.
+    it('reads cards by id — still active only, still one card per family', async () => {
+      // How the home page reads its picked boxes and how the save check vets
+      // them: whatever id a box holds, only a product the shop itself lists
+      // comes back, as the card the shop shows.
       const category = await makeCategory();
       const picked = await insert(category);
       await insert(category);
@@ -196,19 +197,24 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
         variantLabel: 'آبی',
       });
 
-      const { items, total } = await ProductDao.list({
-        ids: [picked.id, hidden.id, head.id, member.id],
-      });
+      const cards = await ProductDao.cardsByIds([
+        picked.id,
+        hidden.id,
+        head.id,
+        member.id,
+      ]);
 
-      expect(items.map((item) => item.id).sort()).toEqual(
+      expect(cards.map((card) => card.id).sort()).toEqual(
         [picked.id, head.id].sort(),
       );
-      expect(total).toBe(2);
-      // The sold-out head still sells through its member.
-      expect(items.find((item) => item.id === head.id)).toMatchObject({
+      // The sold-out head still sells through its member, and the card's
+      // family price arrives as a number.
+      expect(cards.find((card) => card.id === head.id)).toMatchObject({
         familyHasMembers: true,
         familyInStock: true,
+        familyMinPrice: 100_000,
       });
+      expect(await ProductDao.cardsByIds([])).toEqual([]);
     });
   });
 

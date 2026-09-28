@@ -245,6 +245,10 @@ describe('content editor destinations', () => {
       fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }));
     });
   const sentBody = () => putData.mock.calls[0][1] as Record<string, unknown>;
+  /** The text a control's `aria-describedby` points at — what a screen reader hears. */
+  const describedBy = (control: HTMLElement) =>
+    document.getElementById(control.getAttribute('aria-describedby') ?? '')
+      ?.textContent;
 
   it('saves a picked destination with its block, previewing where it goes', async () => {
     putData.mockResolvedValue({
@@ -366,6 +370,9 @@ describe('content editor destinations', () => {
       name: LINK_PICKER_LABELS.category,
     }) as HTMLSelectElement;
     expect(category.value).toBe(DELETED_ID);
+    // …and a screen reader hears why, not just a red border.
+    expect(category.getAttribute('aria-invalid')).toBe('true');
+    expect(describedBy(category)).toContain(LINK_MESSAGES.missingCategory);
   });
 
   it('saves a product destination, starting from the first active product', async () => {
@@ -589,6 +596,9 @@ describe('content editor destinations', () => {
     await save();
     expect(tab(0).getByText(LINK_MESSAGES.missingCategory)).toBeTruthy();
     expect(tab(1).getByText(LINK_MESSAGES.missingCategory)).toBeTruthy();
+    expect(
+      describedBy(tab(0).getByRole('checkbox', { checked: true })),
+    ).toContain(LINK_MESSAGES.missingCategory);
 
     // Removing the deleted pick clears that tab's error and leaves the other's.
     fireEvent.click(tab(0).getByRole('checkbox', { checked: true }));
@@ -645,7 +655,7 @@ describe('content editor destinations', () => {
     it('keeps a saved pick the shop no longer offers selected, and shows its refusal until re-pointed', async () => {
       putData.mockRejectedValue(
         new ApiRequestError(400, 'ورودی نامعتبر است.', [
-          `productIds: ${LINK_MESSAGES.missingProduct}`,
+          `productIds: ${LINK_MESSAGES.missingCard}`,
         ]),
       );
       const picker = renderBoxes({
@@ -656,9 +666,17 @@ describe('content editor destinations', () => {
       expect(box(picker, '۲').value).toBe(DELETED_ID);
 
       await save();
-      expect(picker.getByText(LINK_MESSAGES.missingProduct)).toBeTruthy();
+      expect(picker.getByText(LINK_MESSAGES.missingCard)).toBeTruthy();
+      // Every box is marked, and a screen reader on any of them hears why.
+      for (const n of ['۱', '۲', '۳', '۴']) {
+        expect(box(picker, n).getAttribute('aria-invalid')).toBe('true');
+        expect(describedBy(box(picker, n))).toContain(
+          LINK_MESSAGES.missingCard,
+        );
+      }
       choose(picker, 'کارت ۲', FOOD.id);
-      expect(picker.queryByText(LINK_MESSAGES.missingProduct)).toBeNull();
+      expect(picker.queryByText(LINK_MESSAGES.missingCard)).toBeNull();
+      expect(box(picker, '۲').getAttribute('aria-invalid')).toBe('false');
     });
   });
 

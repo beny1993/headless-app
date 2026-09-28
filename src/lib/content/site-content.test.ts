@@ -7,6 +7,7 @@ import {
   CONTENT_AREAS,
   CONTENT_KEYS,
   CONTENT_SCHEMAS,
+  FEATURED_COUNT,
   FOOTER_SOCIAL_DEFAULT,
   HANDLE_MESSAGES,
   contentAreaSchema,
@@ -646,12 +647,15 @@ describe('CONTENT_SCHEMAS link fields (every one optional: compat)', () => {
     const picks = [IDS[0], null, IDS[1], null];
     expect(parse(picks).data).toEqual({ ...recommends, productIds: picks });
     expect(parse([null, null, null, null]).success).toBe(true);
-    // One entry per card — not three, not five — and product ids only.
+    // A shorter list leaves the later boxes on «خودکار», so a grid that grows
+    // never turns a saved row invalid — which would reset the whole block.
+    expect(parse([IDS[0]]).success).toBe(true);
+    expect(parse([]).success).toBe(true);
+    // No more boxes than the grid lays out, and product ids only.
     for (const bad of [
-      IDS.slice(0, 3),
-      IDS,
-      [...IDS.slice(0, 3), 'royal-canin'],
-      [null, null, null, undefined],
+      IDS.slice(0, FEATURED_COUNT + 1),
+      [IDS[0], 'royal-canin'],
+      [null, undefined],
     ]) {
       expect(parse(bad).success, JSON.stringify(bad)).toBe(false);
     }

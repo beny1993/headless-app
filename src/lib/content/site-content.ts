@@ -107,15 +107,24 @@ const routineSlot = z.object({
     })
     .optional(),
 });
-// A «انتخاب‌های اسموکی» box: the product the admin picked for it, stored by id
-// like a product link, or `null` for «خودکار» — the box then takes the next
-// product the automatic rule offers (`selectFeatured`). One entry per card the
-// grid lays out (`FEATURED_COUNT`; `block-fields.test.ts` pins the two together),
-// and one product fills one box.
+/**
+ * The «انتخاب‌های اسموکی» grid's cards — one row on desktop — and so the most
+ * boxes an admin can pick a product for. The storefront rule, the editor's
+ * picker and the schema below all read it from here.
+ */
+export const FEATURED_COUNT = 4;
+// A «انتخاب‌های اسموکی» box: the product the admin picked for it, stored by id,
+// or `null` for «خودکار» — the box then takes the next product the automatic
+// rule offers (`selectFeatured`). Up to FEATURED_COUNT entries, box by box: a
+// shorter list leaves the later boxes on «خودکار», so growing the grid never
+// turns a saved row invalid (which would reset the whole block to its default).
+// One product fills one box.
 const featuredPick = z.uuid(LINK_MESSAGES.product).nullable();
+const FEATURED_BOXES_MESSAGE = `حداکثر ${toPersianDigits(FEATURED_COUNT)} کارت قابل انتخاب است.`;
 const FEATURED_PICKS_MESSAGE = 'هر محصول را فقط در یک کارت انتخاب کن.';
 const featuredPicks = z
-  .tuple([featuredPick, featuredPick, featuredPick, featuredPick])
+  .array(featuredPick)
+  .max(FEATURED_COUNT, { error: FEATURED_BOXES_MESSAGE })
   .refine(
     (ids) => {
       const picked = ids.filter((id) => id !== null);

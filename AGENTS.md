@@ -287,9 +287,10 @@ charges, and one fee applied to every province at once (a dot-grouped
 confirm, then confirmed) that checkout then charges; a province an admin adds, that checkout and the address book then
 offer and, once it is switched off, no longer offer — a saved address on it
 flagged in both — until it is switched back on; a home headline that the
-storefront then shows; a product picked for the first «انتخاب‌های اسموکی» box —
-the seeded family offered once, by its head — that the home grid then shows
-first, every other box still filled and the pick shown once. Every page a spec opens is also checked for console
+storefront then shows; a product the home grid already shows, picked for the
+first «انتخاب‌های اسموکی» box — the seeded family offered by its head's row and
+never a member's (matched by id) — that the grid then shows first and only
+there, every other box still filled. Every page a spec opens is also checked for console
 errors, failed requests and requests to any host but the app's own (the `test`
 fixture in `e2e/support.ts`). QA runs it instead of re-walking those flows and
 drives the browser only for a story's new behaviour.
