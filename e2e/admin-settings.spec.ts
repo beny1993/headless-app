@@ -1,7 +1,9 @@
 import type { Dialog } from '@playwright/test';
-import { SEED_CATEGORIES } from '@/db/seed/catalog-data';
+import { SEED_CATEGORIES, SEED_PRODUCTS } from '@/db/seed/catalog-data';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
+import { FEATURED_COUNT } from '@/lib/content/site-content';
 import {
+  API_PATHS,
   PATHS,
   PROTECTED_PATHS,
   adminContentAreaPath,
@@ -184,6 +186,80 @@ test('a headline an admin edits is what the home page shows', async ({
     );
   } finally {
     await saveHeadline(original);
+  }
+});
+
+test('a product an admin picks for the first «انتخاب‌های اسموکی» box is what the home page shows there, and only there', async ({
+  page,
+  shopper,
+}) => {
+  await page.goto(adminContentAreaPath('home'));
+  const block = page.locator('form', {
+    has: page.getByRole('heading', { name: 'انتخاب‌های اسموکی', exact: true }),
+  });
+  const headline = await block
+    .getByLabel('سرتیتر', { exact: true })
+    .inputValue();
+  const first = block
+    .locator('[data-umami-event="admin-panel-content-featured-product-change"]')
+    .first();
+  const original = await first.inputValue();
+
+  // The seeded family is offered once, by its head's own row — never a
+  // member's, whose pick the storefront would silently drop. Matched by id,
+  // not by title: the members share the head's title.
+  const member = SEED_PRODUCTS.find((product) => product.variantOfSku)!;
+  const head = SEED_PRODUCTS.find(
+    (product) => product.sku === member.variantOfSku,
+  )!;
+  const family = (
+    (await (
+      await page.request.get(`${API_PATHS.PRODUCTS}/${head.slug}`)
+    ).json()) as { data: { id: string; variants: { id: string }[] } }
+  ).data;
+  const offered = await first
+    .locator('option')
+    .evaluateAll((options) =>
+      options.map((option) => (option as HTMLOptionElement).value),
+    );
+  expect(offered).toContain(family.id);
+  for (const variant of family.variants) {
+    if (variant.id !== family.id) expect(offered).not.toContain(variant.id);
+  }
+
+  // The grid as it stands. The pick is its SECOND card — a product the
+  // automatic rule already shows — so a rule that offered a pick again would
+  // show it twice.
+  await shopper.goto(PATHS.HOME);
+  const grid = shopper.locator('section', {
+    has: shopper.getByRole('heading', { name: headline, exact: true }),
+  });
+  const cards = grid.locator('[data-umami-event="product-card-open"]');
+  await expect(cards).toHaveCount(FEATURED_COUNT);
+  const pick = (await cards.allTextContents())[1];
+
+  const save = async (option: string | { label: string }) => {
+    await first.selectOption(option);
+    await block
+      .locator('[data-umami-event="admin-panel-content-save"]')
+      .click();
+    await expect(block.getByText('ذخیره شد')).toBeVisible();
+  };
+
+  // From the first write on: if the save lands but its confirmation does not,
+  // the `finally` still puts box one back.
+  try {
+    await save({ label: pick });
+    await shopper.reload();
+    await expect(cards.first()).toHaveText(pick);
+    // Only box one changed hands: every other box is still filled, and the
+    // pick is not offered a second time by the automatic rule.
+    await expect(cards).toHaveCount(FEATURED_COUNT);
+    expect(
+      (await cards.allTextContents()).filter((title) => title === pick),
+    ).toHaveLength(1);
+  } finally {
+    await save(original);
   }
 });
 

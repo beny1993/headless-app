@@ -26,7 +26,12 @@ import {
   setPath,
   type FieldDescriptor,
 } from './block-fields';
-import { CategoryPicker, LinkPicker, type LinkOptions } from './link-picker';
+import {
+  CategoryPicker,
+  LinkPicker,
+  ProductPicker,
+  type LinkOptions,
+} from './link-picker';
 
 /**
  * The storefront content editor for one area: one independent form per block in
@@ -35,7 +40,8 @@ import { CategoryPicker, LinkPicker, type LinkOptions } from './link-picker';
  * send + `putData` + the shared `requestFieldErrors` for server refusals — so there is
  * no form library and no new mechanism here; the block-specific part is entirely
  * data (BLOCK_FIELDS). The `[area]` page hands it just its own area's keys, and
- * the categories and active products its destination pickers offer.
+ * the categories and active products its destination pickers offer — plus the
+ * listed ones, for the featured boxes.
  */
 export function ContentEditor<K extends ContentKey>({
   keys,
@@ -277,6 +283,19 @@ function BlockForm({
                 value={getPath(value, field.path) as string[] | undefined}
                 fallback={field.fallback ?? ''}
                 categories={options.categories}
+                error={errorUnder(fieldErrors, field.path)}
+                onChange={(next) => setDestination(field.path, next)}
+              />
+            ) : field.kind === 'products' ? (
+              <ProductPicker
+                key={field.path}
+                id={fid(field.path)}
+                label={field.label}
+                value={
+                  getPath(value, field.path) as (string | null)[] | undefined
+                }
+                fallback={field.fallback ?? ''}
+                products={options.cards}
                 error={errorUnder(fieldErrors, field.path)}
                 onChange={(next) => setDestination(field.path, next)}
               />

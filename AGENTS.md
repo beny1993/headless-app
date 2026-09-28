@@ -289,7 +289,10 @@ charges, and one fee applied to every province at once (a dot-grouped
 confirm, then confirmed) that checkout then charges; a province an admin adds, that checkout and the address book then
 offer and, once it is switched off, no longer offer — a saved address on it
 flagged in both — until it is switched back on; a home headline that the
-storefront then shows. Every page a spec opens is also checked for console
+storefront then shows; a product the home grid already shows, picked for the
+first «انتخاب‌های اسموکی» box — the seeded family offered by its head's row and
+never a member's (matched by id) — that the grid then shows first and only
+there, every other box still filled. Every page a spec opens is also checked for console
 errors, failed requests and requests to any host but the app's own (the `test`
 fixture in `e2e/support.ts`). QA runs it instead of re-walking those flows and
 drives the browser only for a story's new behaviour.
@@ -303,7 +306,7 @@ fail, restore. Only a change with no user-facing flow (a helper, a migration,
 docs) is exempt.
 
 **Not covered — still walked by hand when a story touches them:** content
-areas other than the home headline, a wrong or resent login code, maintenance
+areas other than the home headline and the featured boxes, a wrong or resent login code, maintenance
 mode switched on (the suite pins it off; the gate is unit-tested in
 `src/app/(app)/(store)/layout.test.ts`), Zarinpal switched off at checkout (the
 suite pins it on; the disabled option is component-tested in
@@ -344,7 +347,7 @@ visual (RTL layout, Persian font rendering).
   spec — whose two photo files stay under `uploads/`, per width per run, since
   nothing deletes a category's replaced or removed photo. The card-to-card spec leaves a
   `checkout.payment` content row equal to the default (it puts the old values
-  back in a `finally`). The shipping-rate and headline
+  back in a `finally`). The shipping-rate, headline and featured-box
   specs put the old value back, the one-fee-for-all spec puts every province's
   own fee back (through the API, all attempted before any failure is reported), the province spec switches its province
   off, and the catalog spec switches its product off (through the API), even when they fail.

@@ -81,6 +81,11 @@ export default async function AdminContentAreaPage({
           // نظافت», a dash with nothing before it.
           categories: categoryOptions(categories),
           products: products.map(productOption),
+          // The featured boxes offer what the shop lists as a card — a family
+          // once, by the head — titled as the card titles it.
+          cards: products
+            .filter((product) => product.variantOf === null)
+            .map(({ id, title, slug }) => ({ id, title, slug })),
         }}
       />
     </div>
