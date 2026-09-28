@@ -9,6 +9,7 @@ import {
 import { ContentLink } from '@/features/storefront/content-link';
 import { resolveLink, type LinkTargets } from '@/lib/content/link';
 import { formatJalaliYear } from '@/lib/format';
+import { cn } from '@/lib/utils';
 
 /**
  * Storefront footer, ported from the prototype.
@@ -21,16 +22,23 @@ import { formatJalaliYear } from '@/lib/format';
  *
  * Trimmed to links with real destinations (the design review's "no dead
  * navigation"): the prototype's «پشتیبانی» column and the «ارسال رایگان» /
- * «ضمانت کیفیت» entries have no pages, so the grid is three columns, not four.
+ * «ضمانت کیفیت» entries have no pages, so there are two link columns, not three.
  *
- * The social pills sit under the tagline, not in a fourth column: at `md` a
- * four-column brand cell is 152px and the logo is a fixed 176px. Persian
- * labels, not handles — two Instagram accounts need telling apart, and
- * «dailies» says nothing to a Persian shopper. A pill renders only while its
- * handle (`footer.social`) is set; the row goes with the last one.
+ * Compact by design (Benyamin, 2026-09-28 — it had grown taller than a phone
+ * screen): the header's small mark beside the wordmark, not the 176px badge
+ * (which stays the OG image in `seo.ts`); the brand block and the link columns
+ * share one row from `md`; a column of more than three links folds into columns
+ * of three. The top hairline parts it from a dark section right above it — the
+ * home page's closing statement is the same `bg-ink`.
+ *
+ * The social pills sit under the tagline. Persian labels, not handles — two
+ * Instagram accounts need telling apart, and «dailies» says nothing to a Persian
+ * shopper. 40px tall: slimmer than the old 44px, still well over the 24px
+ * touch-target minimum. A pill renders only while its handle (`footer.social`)
+ * is set; the row goes with the last one.
  */
 const SOCIAL_PILL =
-  'hover:border-accent-on-dark/50 hover:text-accent-on-dark inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-white/15 px-3.5 py-2 text-sm transition-colors';
+  'hover:border-accent-on-dark/50 hover:text-accent-on-dark inline-flex min-h-10 max-w-full items-center gap-1.5 rounded-full border border-white/15 px-3.5 py-1.5 text-sm transition-colors';
 
 export function Footer({
   content,
@@ -72,24 +80,26 @@ export function Footer({
   }));
 
   return (
-    <footer className="bg-ink text-white/70">
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-8">
-        <div className="mb-12 grid grid-cols-2 gap-8 md:grid-cols-3">
-          <div className="col-span-2 md:col-span-1">
-            <Image
-              src="/brand/smokey-logo-primary.png"
-              width={176}
-              height={146}
-              alt={`لوگوی ${content.brand}، فروشگاه حیوانات خانگی`}
-              className="mb-4 h-auto w-44"
-            />
-            <p
-              aria-hidden="true"
-              className="mb-3 text-2xl font-black text-white"
-            >
-              {content.brand}
-            </p>
-            <p className="text-sm leading-relaxed whitespace-pre-line">
+    <footer className="bg-ink border-t border-white/10 text-white/70">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-8">
+        <div className="flex flex-col gap-8 md:flex-row md:justify-between">
+          <div className="md:max-w-lg">
+            <div className="flex items-center gap-2.5">
+              <Image
+                src="/brand/smokey-mark.png"
+                width={40}
+                height={40}
+                alt={`لوگوی ${content.brand}، فروشگاه حیوانات خانگی`}
+                className="size-10 shrink-0"
+              />
+              <p
+                aria-hidden="true"
+                className="text-xl font-black tracking-tight text-white"
+              >
+                {content.brand}
+              </p>
+            </div>
+            <p className="mt-3 text-sm leading-relaxed whitespace-pre-line">
               {content.tagline}
             </p>
             {socials.length > 0 && (
@@ -113,32 +123,41 @@ export function Footer({
               </ul>
             )}
           </div>
-          {columns.map((column, c) => (
-            // Index key: column titles are content and may repeat.
-            <div key={c}>
-              <p className="mb-4 font-bold text-white">{column.title}</p>
-              <ul className="space-y-2">
-                {column.links.map((link, l) => (
-                  <li key={l}>
-                    <ContentLink
-                      href={link.href}
-                      external={link.external}
-                      className="hover:text-accent-on-dark inline-block py-1 text-sm transition-colors"
-                      data-umami-event="footer-link-click"
-                    >
-                      {link.label}
-                    </ContentLink>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          <div className="flex gap-12 sm:gap-16">
+            {columns.map((column, c) => (
+              // Index key: column titles are content and may repeat.
+              <div key={c}>
+                <p className="mb-2 text-sm font-bold text-white">
+                  {column.title}
+                </p>
+                <ul
+                  className={cn(
+                    'grid gap-x-8',
+                    column.links.length > 3 && 'grid-flow-col grid-rows-3',
+                  )}
+                >
+                  {column.links.map((link, l) => (
+                    <li key={l}>
+                      <ContentLink
+                        href={link.href}
+                        external={link.external}
+                        className="hover:text-accent-on-dark inline-block py-1 text-sm transition-colors"
+                        data-umami-event="footer-link-click"
+                      >
+                        {link.label}
+                      </ContentLink>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-8 sm:flex-row">
-          <p className="text-sm">
+        <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t border-white/10 pt-6 text-xs sm:flex-row">
+          <p>
             © {formatJalaliYear()} {content.copyright}
           </p>
-          <p className="text-xs whitespace-pre-line">{content.credit}</p>
+          <p className="whitespace-pre-line">{content.credit}</p>
         </div>
       </div>
     </footer>
