@@ -182,6 +182,40 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       expect(items).toEqual([]);
       expect(total).toBe(0);
     });
+
+    it('reads cards by id — still active only, still one card per family', async () => {
+      // How the home page reads its picked boxes and how the save check vets
+      // them: whatever id a box holds, only a product the shop itself lists
+      // comes back, as the card the shop shows.
+      const category = await makeCategory();
+      const picked = await insert(category);
+      await insert(category);
+      const hidden = await insert(category, { isActive: false });
+      const head = await insert(category, { variantLabel: 'قرمز', stock: 0 });
+      const member = await insert(category, {
+        variantOf: head.id,
+        variantLabel: 'آبی',
+      });
+
+      const cards = await ProductDao.cardsByIds([
+        picked.id,
+        hidden.id,
+        head.id,
+        member.id,
+      ]);
+
+      expect(cards.map((card) => card.id).sort()).toEqual(
+        [picked.id, head.id].sort(),
+      );
+      // The sold-out head still sells through its member, and the card's
+      // family price arrives as a number.
+      expect(cards.find((card) => card.id === head.id)).toMatchObject({
+        familyHasMembers: true,
+        familyInStock: true,
+        familyMinPrice: 100_000,
+      });
+      expect(await ProductDao.cardsByIds([])).toEqual([]);
+    });
   });
 
   describe('the family scalars the card reads', () => {
