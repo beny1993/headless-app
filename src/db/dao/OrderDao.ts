@@ -225,11 +225,10 @@ export class OrderDao {
    * everything, go again). Only the clock lets the count fall.
    */
   static async countCreatedSince(userId: string, since: Date): Promise<number> {
-    const [row] = await db
-      .select({ value: count() })
-      .from(orders)
-      .where(and(eq(orders.userId, userId), gte(orders.createdAt, since)));
-    return row.value;
+    return db.$count(
+      orders,
+      and(eq(orders.userId, userId), gte(orders.createdAt, since)),
+    );
   }
 
   /**
