@@ -1,13 +1,23 @@
 import { accountOrderPath } from '@/lib/constant/paths';
+import type { Locator } from '@playwright/test';
 import {
+  completeCheckout,
   CUSTOMER_STATE,
   expect,
+  expectRendered,
+  IN_STOCK_PRODUCT,
   placeOrder,
   resultOrderId,
   test,
 } from './support';
 
 test.use({ storageState: CUSTOMER_STATE });
+
+/** A product photo served by `/_next/image`, and decoded. */
+async function expectOptimized(img: Locator) {
+  await expect(img).toHaveAttribute('src', /^\/_next\/image\?/);
+  await expectRendered(img);
+}
 
 /** The mock gateway's own buttons, by the action they post, not their copy. */
 const gatewayButton = (action: 'pay' | 'fail') =>
@@ -16,7 +26,30 @@ const gatewayButton = (action: 'pay' | 'fail') =>
 test('card to card: the order is confirmed and listed in the account', async ({
   page,
 }) => {
-  await placeOrder(page, 'cod');
+  await page.goto(IN_STOCK_PRODUCT);
+  await page.locator('[data-umami-event="product-add-to-cart"]').click();
+  // The drawer and the summary show the photo through the image optimizer,
+  // never the bucket URL: production's bucket 404s a browser loading it.
+  await expectOptimized(
+    page.getByRole('dialog', { name: 'سبد خرید' }).locator('img'),
+  );
+  await page.locator('[data-umami-event="cart-checkout-click"]').click();
+  await expectOptimized(
+    page
+      .getByRole('heading', { name: 'خلاصه سفارش' })
+      .locator('..')
+      .locator('img'),
+  );
+
+  // A new account's recipient name starts blank, never as its phone number;
+  // the phone itself is prefilled.
+  await expect(
+    page.locator('[data-umami-event="checkout-recipient-name"]'),
+  ).toHaveValue('');
+  await expect(
+    page.locator('[data-umami-event="checkout-recipient-phone"]'),
+  ).toHaveValue(/^09\d{9}$/);
+  await completeCheckout(page, 'cod');
   const orderId = await resultOrderId(page);
   await expect(
     page.getByRole('heading', { name: 'سفارش ثبت شد!' }),

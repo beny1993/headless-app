@@ -4,11 +4,7 @@
 // admin is for somebody with a shell to say so.
 import { UserDao } from '@/db/dao/UserDao';
 import { ROLES, type User } from '@/db/schema/auth';
-import {
-  normalizeIranPhone,
-  tempEmailForPhone,
-  toLocalIranPhone,
-} from './phone';
+import { normalizeIranPhone, tempEmailForPhone } from './phone';
 
 type AdminProvisionResult = {
   outcome: 'created' | 'promoted' | 'already-admin';
@@ -57,7 +53,8 @@ export async function provisionAdminByPhone(
     // The same derivation the OTP sign-up uses, so this account and the one a
     // first login would have made are the same account.
     email: tempEmailForPhone(phoneNumber),
-    name: name?.trim() || toLocalIranPhone(phoneNumber),
+    // Blank, like an OTP sign-up's, never the number (see `getTempName`).
+    name: name?.trim() ?? '',
     role: ROLES.ADMIN,
     phoneNumber,
     // The number is trusted because whoever ran this had shell access; making

@@ -21,7 +21,6 @@ import {
   INVALID_PHONE_MESSAGE,
   isCanonicalIranPhone,
   tempEmailForPhone,
-  toLocalIranPhone,
 } from './phone';
 
 const SEND_OTP_PATH = '/phone-number/send-otp';
@@ -252,9 +251,14 @@ export const auth = betterAuth({
       phoneNumberValidator: isCanonicalIranPhone,
       // First verified code creates the account. `role` is not settable here
       // (`input: false` above), so every account born this way is a customer.
+      //
+      // The name starts blank: checkout prefills the recipient name from it,
+      // and the number there reads as a name nobody typed. Omitting
+      // `getTempName` is no way to say so — the plugin then stores the raw
+      // `+989…` instead.
       signUpOnVerification: {
         getTempEmail: tempEmailForPhone,
-        getTempName: toLocalIranPhone,
+        getTempName: () => '',
       },
     }),
   ],

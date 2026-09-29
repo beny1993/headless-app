@@ -72,11 +72,27 @@ describe('provisionAdminByPhone', () => {
       );
     });
 
-    it('falls back to the readable number as a name', async () => {
+    it('leaves the name blank when none is given', async () => {
+      // Never the number: checkout prefills the recipient name from it.
       await provisionAdminByPhone(CANONICAL);
 
       expect(mocks.create).toHaveBeenCalledWith(
-        expect.objectContaining({ name: '09121234567' }),
+        expect.objectContaining({ name: '' }),
+      );
+    });
+
+    it('trims the name it is given, down to blank', async () => {
+      // `pnpm create-admin` joins its name words, so no words arrive as ''.
+      await provisionAdminByPhone(CANONICAL, '  بنیامین  ');
+      await provisionAdminByPhone(CANONICAL, '   ');
+
+      expect(mocks.create).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ name: 'بنیامین' }),
+      );
+      expect(mocks.create).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ name: '' }),
       );
     });
 
