@@ -11,7 +11,7 @@
  * Requires the database to be up (`docker compose --file docker-compose-dev.yaml up -d`)
  * and migrations applied (`pnpm migration:migrate`).
  */
-import 'dotenv/config';
+import './load-env';
 import { provisionAdminByPhone } from '@/lib/auth/admin-bootstrap';
 
 const [phone, ...nameParts] = process.argv.slice(2);

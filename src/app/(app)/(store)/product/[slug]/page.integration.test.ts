@@ -14,7 +14,7 @@
 // and is unit-tested there.
 import { faker } from '@faker-js/faker';
 import { inArray } from 'drizzle-orm';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   categories,
   PET_TYPES,
@@ -23,9 +23,21 @@ import {
   type Category,
   type NewProduct,
 } from '@/db/schema/catalog';
+import { JsonLd } from '@/components/json-ld';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { formatToman } from '@/lib/format';
-import { shopPath } from '@/lib/constant/paths';
+import { PATHS, shopPath } from '@/lib/constant/paths';
+import { ProductGallery } from '@/features/storefront/product/product-gallery';
+import { SHOP_TITLE } from '@/features/storefront/shop/shop-metadata';
+
+// The shop crumb reads whatever the shop page calls itself. A stand-in title
+// shows this page takes it from there rather than typing a copy of its own.
+vi.mock('@/features/storefront/shop/shop-metadata', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('@/features/storefront/shop/shop-metadata')
+  >()),
+  SHOP_TITLE: 'عنوان آزمایشی فروشگاه',
+}));
 
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
 const page = await importWithDb(() => import('./page'));
@@ -56,6 +68,9 @@ function collect(node: unknown, found: string[] = []): string[] {
     return found;
   }
   if (typeof node !== 'object' || node === null) return found;
+  // Structured data is not what the page shows: a crumb that only it names
+  // would satisfy a check meant for the visible trail.
+  if ((node as { type?: unknown }).type === JsonLd) return found;
 
   // An element's strings live under `props`; the tab descriptors the page
   // builds are plain objects whose `content` holds a whole element of its own,
@@ -68,15 +83,44 @@ function collect(node: unknown, found: string[] = []): string[] {
 
 const renderedText = async (slug: string) => collect(await render(slug));
 
+/**
+ * The first element of type `component` in a rendered tree, keys and all.
+ *
+ * `collect` above flattens everything to strings, which is fine for copy and
+ * useless for a `key` — and a key is exactly what the gallery needs pinned.
+ */
+function findElement(node: unknown, component: unknown): unknown {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const hit = findElement(child, component);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  if (typeof node !== 'object' || node === null) return null;
+  if ((node as { type?: unknown }).type === component) return node;
+  const props = (node as { props?: Record<string, unknown> }).props;
+  for (const value of Object.values(
+    props ?? (node as Record<string, unknown>),
+  )) {
+    const hit = findElement(value, component);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 describe.skipIf(!databaseReachable)('the product page', () => {
   const createdCategoryIds: string[] = [];
 
-  const makeCategory = async (): Promise<Category> => {
+  const makeCategory = async (
+    parentId: string | null = null,
+  ): Promise<Category> => {
     const [row] = await testDb
       .insert(categories)
       .values({
-        title: 'دسته آزمایشی',
+        title: parentId ? 'زیردسته آزمایشی' : 'دسته آزمایشی',
         slug: `test-${faker.string.alphanumeric(10).toLowerCase()}`,
+        parentId,
       })
       .returning();
     createdCategoryIds.push(row.id);
@@ -98,7 +142,7 @@ describe.skipIf(!databaseReachable)('the product page', () => {
       price: 285_000,
       stock: 24,
       categoryId: category.id,
-      petType: PET_TYPES.CAT,
+      petTypes: [PET_TYPES.CAT],
       ...overrides,
     };
   };
@@ -132,6 +176,35 @@ describe.skipIf(!databaseReachable)('the product page', () => {
       expect(text).toContain(product.title);
       expect(text).toContain('برند آزمایشی');
       expect(text).toContain('مناسب گوارش حساس');
+    });
+
+    it('keys the gallery by product so it resets between products', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+
+      const gallery = findElement(await render(product.slug), ProductGallery);
+
+      // Without this key React keeps the gallery's tree position across a
+      // client-side move from one product page to another, and `active` — the
+      // fourth photo, say — survives onto a product with a different gallery.
+      // Pinned here rather than in E2E on purpose: `page.goto` is a full
+      // document load, which resets the state with or without the fix, so a
+      // navigation check would pass against the very bug it is meant to catch.
+      expect(gallery).not.toBeNull();
+      expect((gallery as { key?: unknown }).key).toBe(product.id);
+    });
+
+    it('names both pets in one phrase for a product suited to both', async () => {
+      const category = await makeCategory();
+      const both = await ProductDao.create(
+        makeProduct(category, { petTypes: [PET_TYPES.CAT, PET_TYPES.DOG] }),
+      );
+      const catOnly = await ProductDao.create(makeProduct(category));
+
+      expect(await renderedText(both.slug)).toContain('گربه و سگ');
+      const single = await renderedText(catOnly.slug);
+      expect(single).toContain('گربه');
+      expect(single).not.toContain('گربه و سگ');
     });
 
     it('renders the price in Toman with Persian digits', async () => {
@@ -177,6 +250,77 @@ describe.skipIf(!databaseReachable)('the product page', () => {
 
       expect(text).toContain(shopPath({ category: category.slug }));
       expect(text).toContain(category.title);
+    });
+
+    it('names the shop crumb as the shop page names itself', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+
+      const text = await renderedText(product.slug);
+
+      // Nothing else on a product page prints the shop's title.
+      expect(text).toContain(SHOP_TITLE);
+      expect(text).toContain(PATHS.SHOP);
+    });
+
+    it('puts the parent crumb before the sub-category’s, both linked', async () => {
+      const parent = await makeCategory();
+      const sub = await makeCategory(parent.id);
+      const product = await ProductDao.create(makeProduct(sub));
+
+      const text = await renderedText(product.slug);
+      const crumbs = [
+        text.indexOf(shopPath({ category: parent.slug })),
+        text.indexOf(shopPath({ category: sub.slug })),
+      ];
+
+      expect(crumbs[0]).toBeGreaterThan(-1);
+      expect(crumbs[1]).toBeGreaterThan(crumbs[0]);
+      expect(text).toContain(parent.title);
+      // The spec row names the category it is filed under — the sub — and the
+      // breadcrumb above already carries the parent.
+      expect(text).toContain(sub.title);
+    });
+
+    it('lists every category it is filed under, main first, each linked', async () => {
+      const main = await makeCategory();
+      const malt = await makeCategory();
+      const multivitamin = await makeCategory();
+      const product = await ProductDao.create({
+        ...makeProduct(main),
+        extraCategoryIds: [malt.id, multivitamin.id],
+      });
+
+      const text = await renderedText(product.slug);
+      const paths = [main, malt, multivitamin].map((row) =>
+        shopPath({ category: row.slug }),
+      );
+
+      for (const [index, row] of [main, malt, multivitamin].entries()) {
+        expect(text).toContain(row.title);
+        expect(text).toContain(paths[index]);
+      }
+      // The spec row renders the main one first: its link is the last of the
+      // three to appear before them, since the breadcrumb already used it.
+      expect(text.lastIndexOf(paths[0])).toBeLessThan(text.indexOf(paths[1]));
+      expect(text.indexOf(paths[1])).toBeLessThan(text.indexOf(paths[2]));
+      expect(text.filter((entry) => entry === 'product-category-link')).toEqual(
+        Array(3).fill('product-category-link'),
+      );
+      expect(text).toContain('،');
+    });
+
+    it('leaves a single-category product’s row with one linked category', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+
+      const text = await renderedText(product.slug);
+
+      expect(text).toContain(category.title);
+      expect(text.filter((entry) => entry === 'product-category-link')).toEqual(
+        ['product-category-link'],
+      );
+      expect(text).not.toContain('،');
     });
 
     it('renders its description', async () => {

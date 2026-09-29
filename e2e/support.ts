@@ -1,6 +1,13 @@
 // Shared by the specs. Not a spec itself: Playwright only collects `*.spec.ts`
 // here, plus `*.setup.ts` for the setup project.
-import { expect, test as base, type Page } from '@playwright/test';
+import { randomInt } from 'node:crypto';
+import {
+  expect,
+  test as base,
+  type Locator,
+  type Page,
+  type Response,
+} from '@playwright/test';
 import { z } from 'zod';
 import { SEED_PRODUCTS } from '@/db/seed/catalog-data';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
@@ -14,6 +21,14 @@ export { expect };
 export const CUSTOMER_STATE = 'e2e/.auth/customer.json';
 export const ADMIN_STATE = 'e2e/.auth/admin.json';
 
+/** Unique per run, so a re-run never collides on a slug, SKU, code or name. */
+export const runId = () => randomInt(2 ** 40).toString(36);
+
+/** A `waitForResponse` matcher: a `method` request to `path` or below it. */
+export const apiCall = (method: string, path: string) => (response: Response) =>
+  response.request().method() === method &&
+  new URL(response.url()).pathname.startsWith(path);
+
 /** Failed requests a spec has said it expects, per page, as `<status> <url>`. */
 const expectedFailures = new WeakMap<Page, RegExp[]>();
 
@@ -26,6 +41,38 @@ export function expectFailedRequest(page: Page, pattern: RegExp) {
 }
 
 /**
+ * The storage key behind a rendered `src`. `next/image` wraps the real one as
+ * `/_next/image?url=%2Fuploads%2F…`, so nothing string-matches the raw src:
+ * the inner URL comes out of the query, `URLSearchParams` having decoded it
+ * already, and a plain one is the pathname as it stands. Either way the
+ * leading slash goes. The ONE place that knows this shape — a Next change to
+ * it breaks here and is fixed here.
+ *
+ * The pathname is NOT decoded: this runs inside the response listener below,
+ * and `decodeURIComponent` throws `URIError` on a stray `%` — which would
+ * raise inside an event handler and lose the failed request the watch exists
+ * to record, instead of reporting it.
+ */
+export const unwrapImageSrc = (url: URL): string =>
+  (url.pathname === '/_next/image'
+    ? (url.searchParams.get('url') ?? '')
+    : url.pathname
+  ).replace(/^\//, '');
+
+/** The storage key an `<img>` is actually showing. */
+export async function renderedKey(img: Locator): Promise<string> {
+  const src = await img.getAttribute('src');
+  return unwrapImageSrc(new URL(src ?? '', 'http://localhost'));
+}
+
+/** An image the browser managed to decode — a broken one has no natural width. */
+export async function expectRendered(img: Locator) {
+  await expect
+    .poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+}
+
+/**
  * An uploaded image, straight or through the image optimizer. A dev database
  * keeps the uploads it was given while `.env` pointed at object storage, and
  * this run serves `/uploads` from the local driver, which has no file for
@@ -34,9 +81,7 @@ export function expectFailedRequest(page: Page, pattern: RegExp) {
  * and checks that it renders.
  */
 const isUploadedImage = (url: URL) =>
-  url.pathname.startsWith('/uploads/') ||
-  (url.pathname === '/_next/image' &&
-    (url.searchParams.get('url') ?? '').startsWith('/uploads/'));
+  unwrapImageSrc(url).startsWith('uploads/');
 
 /**
  * Watches a page for what QA looked for on each page by hand: console errors,
@@ -122,7 +167,9 @@ export const test = base.extend<{ shopper: Page }>({
 const mostStocked = SEED_PRODUCTS.reduce((best, product) =>
   product.stock > best.stock ? product : best,
 );
-const soldOut = SEED_PRODUCTS.find((product) => product.stock === 0);
+const soldOut = SEED_PRODUCTS.find(
+  (product) => product.stock === 0 && !product.variantLabel,
+);
 const runningOut = SEED_PRODUCTS.find(
   (product) => product.stock > 1 && product.stock <= LOW_STOCK_THRESHOLD,
 );
@@ -139,8 +186,45 @@ export const LOW_STOCK_PRODUCT = {
   path: productPath(runningOut.slug),
   stock: runningOut.stock,
 };
+/**
+ * The one seeded product with more than one photo, and how many it has. The
+ * only multi-photo product a spec can reach without building one through the
+ * admin panel — which is what lets the gallery be walked at 375px, where the
+ * admin spec (desktop-only by suite policy) never goes.
+ */
+const gallery = SEED_PRODUCTS.find((product) => product.imageKeys.length > 1);
+if (!gallery) {
+  throw new Error('The catalog seed needs one product with a gallery.');
+}
+export const GALLERY_PRODUCT = {
+  path: productPath(gallery.slug),
+  photoCount: gallery.imageKeys.length,
+};
+
 /** A seeded product photo, bundled in public/, to upload as a new product's. */
 export const PRODUCT_PHOTO = `public/${mostStocked.imageKeys[0]}`;
+
+/**
+ * Two more visibly different bundled photos, so a gallery spec can tell which
+ * of a product's photos is on screen. Read from the seed rather than named
+ * here — they only have to be three different files.
+ *
+ * Three and not two: with two photos the only thumbnail a shopper can click is
+ * the adjacent one, and a jump of one slide is the single case that cannot
+ * catch `scroll-snap-stop: always` refusing to pass an intervening snap point.
+ * That is exactly how a two-photo spec went green over a gallery whose thumbs
+ * landed one photo short of wherever they were aimed.
+ */
+const otherPhotoKeys = [
+  ...new Set(SEED_PRODUCTS.map((product) => product.imageKeys[0])),
+].filter((key) => key && key !== mostStocked.imageKeys[0]);
+if (otherPhotoKeys.length < 2) {
+  throw new Error(
+    'The catalog seed needs three products with different photos.',
+  );
+}
+export const SECOND_PRODUCT_PHOTO = `public/${otherPhotoKeys[0]}`;
+export const THIRD_PRODUCT_PHOTO = `public/${otherPhotoKeys[1]}`;
 
 /** Puts one of `product` in the cart and opens checkout from the drawer. */
 export async function openCheckout(page: Page, product = IN_STOCK_PRODUCT) {
@@ -150,12 +234,22 @@ export async function openCheckout(page: Page, product = IN_STOCK_PRODUCT) {
 }
 
 /**
+ * Step 1 of the open checkout wizard, the recipient. The phone arrives
+ * prefilled from the account, the name does not — a new account has none.
+ */
+export async function passRecipientStep(page: Page) {
+  await page
+    .locator('[data-umami-event="checkout-recipient-name"]')
+    .fill('سارا محمدی');
+  await page.locator('[data-umami-event="checkout-step-next"]').click();
+}
+
+/**
  * Walks the open checkout wizard to its payment step, delivering to the first
  * seeded province — for a spec that reads that step before submitting.
  */
 export async function reachPayment(page: Page) {
-  // Step 1, the recipient, arrives prefilled from the account.
-  await page.locator('[data-umami-event="checkout-step-next"]').click();
+  await passRecipientStep(page);
 
   await page
     .locator('[data-umami-event="checkout-province-change"]')

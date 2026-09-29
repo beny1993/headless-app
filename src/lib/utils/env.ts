@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export enum VARS {
   APP_CONFIG_DATABASE_URL = 'APP_CONFIG_DATABASE_URL',
 
@@ -48,6 +50,23 @@ export enum VARS {
   // `true` offers online payment at checkout; anything else (the default) shows
   // the Zarinpal option disabled and preselects card to card. Runtime, no rebuild.
   APP_CONFIG_ZARINPAL_ENABLED = 'APP_CONFIG_ZARINPAL_ENABLED',
+  // `true` declares that this production build is MEANT to run on the simulated
+  // gateway — a staging deploy, which is a production build with no gateway
+  // account. Without it, `mock` in a production build refuses to serve at all
+  // (`assertMockGatewayAllowed`), because the alternative is a shopper clicking
+  // «پرداخت موفق» and the order settling `paid` for zero Toman. Runtime, never
+  // NEXT_PUBLIC_: nothing in the browser may decide this.
+  APP_CONFIG_ZARINPAL_ALLOW_MOCK = 'APP_CONFIG_ZARINPAL_ALLOW_MOCK',
+
+  // `true` declares that this deploy sits behind Cloudflare, so `CF-Connecting-IP`
+  // may be trusted as the client address. Default OFF, and deliberately so: the
+  // header is attacker-supplied on any origin reachable directly, and a forged
+  // value per request mints a fresh rate-limit bucket every time — which would
+  // make both the OTP limiter and the `/api/*` limiter no protection at all.
+  // Off, both fall back to `x-forwarded-for`, which Traefik overwrites. Turn this
+  // on only once 443 refuses non-Cloudflare traffic ([[Story - Cloudflare Origin
+  // Lockdown]] / docs/DEPLOY.md §6). Fail safe, never fail open.
+  APP_CONFIG_TRUST_CF_HEADER = 'APP_CONFIG_TRUST_CF_HEADER',
 
   // Which storage driver `src/lib/storage` dispatches through for product image
   // uploads. `local` (the default) writes files under APP_CONFIG_STORAGE_LOCAL_ROOT
@@ -76,13 +95,6 @@ export enum VARS {
   // resolves image URLs from this, so it must be set at *build* and must equal
   // `${LIARA_ENDPOINT}/${LIARA_BUCKET_NAME}`. Empty ⇒ local-relative `/uploads`.
   NEXT_PUBLIC_STORAGE_BASE_URL = 'NEXT_PUBLIC_STORAGE_BASE_URL',
-
-  APP_CONFIG_EMAIL_ENABLED = 'APP_CONFIG_EMAIL_ENABLED',
-  APP_CONFIG_SMTP_SERVER = 'APP_CONFIG_SMTP_SERVER',
-  APP_CONFIG_SMTP_PORT = 'APP_CONFIG_SMTP_PORT',
-  APP_CONFIG_SMTP_USER = 'APP_CONFIG_SMTP_USER',
-  APP_CONFIG_SMTP_PASSWORD = 'APP_CONFIG_SMTP_PASSWORD',
-  APP_CONFIG_SMTP_SENDER_EMAIL = 'APP_CONFIG_SMTP_SENDER_EMAIL',
 
   // ── Error monitoring (Sentry) ───────────────────────────────────────────────
   // Sentry DSN. Empty (the default) disables the SDK entirely, which is what a
@@ -146,8 +158,40 @@ export const getEnvVariable: Func = (
   return result ?? defaultValue!;
 };
 
+/** An on/off switch: exactly `true`, padding ignored, is on; anything else is off. */
+export const getEnvFlag = (key: VARS): boolean =>
+  getEnvVariable(key, false, '').trim() === 'true';
+
+/**
+ * A provider seam's driver name, trimmed, blank meaning `fallback`. An unknown
+ * name throws rather than falling back: a deploy naming a driver that does not
+ * exist must fail loudly, not run on the default.
+ */
+export const getEnvProvider = <const T extends readonly [string, ...string[]]>(
+  key: VARS,
+  providers: T,
+  fallback: T[number],
+): T[number] => {
+  const configured = getEnvVariable(key, false, '').trim() || fallback;
+  const parsed = z.enum(providers).safeParse(configured);
+  if (!parsed.success) {
+    throw new Error(
+      `${key}="${configured}" has no driver. Known providers: ${providers.join(', ')}.`,
+    );
+  }
+  return parsed.data;
+};
+
 export const isDevelopmentServer = () => {
   return getEnvVariable(VARS.NODE_ENV, false, '') === 'development';
+};
+
+/**
+ * Every deployed build, staging included — `Dockerfile` sets NODE_ENV=production.
+ * Not the negation of {@link isDevelopmentServer}: `test` is neither.
+ */
+export const isProductionServer = () => {
+  return getEnvVariable(VARS.NODE_ENV, false, '') === 'production';
 };
 
 export const getAppBaseUrl = () => {
@@ -159,7 +203,7 @@ export const getAppBaseUrl = () => {
   // cookie from this URL — an unset value there would ship admin sessions on a
   // non-secure cookie and reject the real origin. NEXT_PUBLIC_* is inlined at
   // build time, so this has to be set as a build arg, not at container start.
-  if (getEnvVariable(VARS.NODE_ENV, false, '') === 'production') {
+  if (isProductionServer()) {
     throw Error(
       `Environment variable ${VARS.NEXT_PUBLIC_APP_URL} is required in production`,
     );

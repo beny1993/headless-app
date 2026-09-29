@@ -8,27 +8,33 @@
 // live `province_id`; only an ORDER snapshots the province — this is editable data,
 // so a later province rename would show here, which is correct.
 //
-// `toAddressResponse` is exported so the account server page and the checkout
-// server page (which offers saved-address prefill) render from one type.
+// The resource's shape and its projector live in `@/lib/account/address`, which
+// is client-safe: the account server page and the checkout server page (which
+// offers saved-address prefill) render from one type without importing this file
+// — and with it `@hono/zod-openapi` — as a value.
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
-import { AddressDao, type AddressWithProvince } from '@/db/dao/AddressDao';
+import { AddressDao } from '@/db/dao/AddressDao';
 import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
-import { addressInputSchema } from '@/lib/account/address';
 import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+  addressInputSchema,
+  addressResponseSchema,
+  toAddressResponse,
+} from '@/lib/account/address';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import {
+  IdParamSchema,
+  errorResponse,
+  openapiObject,
+} from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
-export const ADDRESS_NOT_FOUND_MESSAGE = 'آدرس یافت نشد';
+const ADDRESS_NOT_FOUND_MESSAGE = 'آدرس یافت نشد';
 
 /** A soft per-user ceiling, refused (422) rather than stored unbounded — see me-pets.ts. */
-export const MAX_ADDRESSES_PER_USER = 20;
+const MAX_ADDRESSES_PER_USER = 20;
 const TOO_MANY_ADDRESSES_MESSAGE = 'به سقف تعداد آدرس‌ها رسیده‌ای.';
 
 /**
@@ -41,60 +47,22 @@ const TOO_MANY_ADDRESSES_MESSAGE = 'به سقف تعداد آدرس‌ها رس�
  */
 const INVALID_PROVINCE_MESSAGE = 'استان انتخاب‌شده نامعتبر است.';
 
-const AddressSchema = z
-  .object({
-    id: z.uuid(),
-    title: z.string().nullable(),
-    recipientName: z.string(),
-    recipientPhone: z.string(),
-    provinceId: z.number().int().positive(),
-    provinceName: z.string(),
-    city: z.string(),
-    postalCode: z.string(),
-    addressLine: z.string(),
-    createdAt: z.iso.datetime(),
-  })
-  .openapi('Address');
+/** The shape lives in `@/lib/account/address` — see `openapiObject`. */
+const AddressSchema = openapiObject(addressResponseSchema, 'Address');
 
-/** The saved-address shape the account book and the checkout picker render. */
-export type AddressResponse = z.infer<typeof AddressSchema>;
-
-/** AddressWithProvince → the wire projection: Date to ISO, internal columns dropped. */
-export const toAddressResponse = (
-  row: AddressWithProvince,
-): AddressResponse => ({
-  id: row.id,
-  title: row.title,
-  recipientName: row.recipientName,
-  recipientPhone: row.recipientPhone,
-  provinceId: row.provinceId,
-  provinceName: row.provinceName,
-  city: row.city,
-  postalCode: row.postalCode,
-  addressLine: row.addressLine,
-  createdAt: row.createdAt.toISOString(),
-});
-
-const AddressIdParamSchema = z.object({
-  id: z.uuid().meta({ param: { name: 'id', in: 'path' } }),
-});
+/** Re-exported for the client components that already import the type here. */
+export type { AddressResponse } from '@/lib/account/address';
 
 const jsonBody = {
   content: { 'application/json': { schema: addressInputSchema } },
   required: true,
 } as const;
 
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
-
 const addressResponse = (description: string) =>
   ({
     content: {
       'application/json': {
-        schema: apiSuccessSchema(AddressSchema, undefined),
+        schema: apiSuccessSchema(AddressSchema),
       },
     },
     description,
@@ -173,7 +141,7 @@ export const meAddressUpdateRoute = createRoute({
   path: '/me/addresses/{id}',
   tags: ['account'],
   summary: 'Update one of your own addresses (auth required, owner only)',
-  request: { params: AddressIdParamSchema, body: jsonBody },
+  request: { params: IdParamSchema, body: jsonBody },
   responses: {
     200: addressResponse('The updated address'),
     400: errorResponse('Invalid id or malformed body'),
@@ -208,12 +176,12 @@ export const meAddressDeleteRoute = createRoute({
   path: '/me/addresses/{id}',
   tags: ['account'],
   summary: 'Delete one of your own addresses (auth required, owner only)',
-  request: { params: AddressIdParamSchema },
+  request: { params: IdParamSchema },
   responses: {
     200: {
       content: {
         'application/json': {
-          schema: apiSuccessSchema(DeletedSchema, undefined),
+          schema: apiSuccessSchema(DeletedSchema),
         },
       },
       description: 'The id of the deleted address',

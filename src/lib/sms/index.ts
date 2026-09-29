@@ -11,9 +11,14 @@
 // line. Each template has its own panel id behind its own env var, so order data
 // is never stuffed into the `#OTP#` template.
 import { z } from 'zod';
-import * as Sentry from '@sentry/nextjs';
 import { toLocalIranPhone } from '@/lib/auth/phone';
-import { getEnvVariable, isDevelopmentServer, VARS } from '@/lib/utils/env';
+import {
+  getEnvProvider,
+  getEnvVariable,
+  isDevelopmentServer,
+  VARS,
+} from '@/lib/utils/env';
+import { warnOnce } from '@/lib/warn-once';
 
 /** The panel templates this app sends through. */
 export const SMS_TEMPLATES = {
@@ -108,16 +113,41 @@ const renderSms = (message: SmsMessage): string => {
 };
 
 /**
- * Writes the message to the server log instead of sending it.
+ * What the driver prints when it may not print the message: which kind went
+ * out, never its parameters and never the number. A `Record`, so a template
+ * added later cannot ship without choosing its own line.
+ */
+const REDACTED_LINES: Record<SmsTemplate, string> = {
+  [SMS_TEMPLATES.OTP]:
+    '[sms:console] a sign-in code was handed to the console driver; the code ' +
+    'and the number are redacted outside development. Set ' +
+    'APP_CONFIG_SHOW_OTP_IN_UI=true to read codes on the login page.',
+  [SMS_TEMPLATES.NEW_ORDER]:
+    '[sms:console] a new-order alert was handed to the console driver; the ' +
+    'order and the number are redacted outside development.',
+};
+
+/**
+ * Writes the message to the server log instead of sending it — but only under
+ * `next dev`, where that log is the developer's own terminal and reading the
+ * code off it is how local QA signs in.
  *
- * This is what makes local development and test deployments work: the OTP is
- * retrievable from `docker logs` / the `next dev` console, so QA and a browser
- * walkthrough need no SMS account. It also means **every OTP is in the server
- * log** — fine for a mock deployment, which is what this is, and the reason
- * `warnIfMocked` shouts when it is running outside development.
+ * Anywhere else the line carries neither the message nor the number. `console` is
+ * the shipped default, so a deploy that simply forgets APP_CONFIG_SMS_PROVIDER
+ * runs this driver on the PaaS, whose log is a platform-side store: every phone
+ * number and a valid ≤120 s code would land in it, readable by anyone with log
+ * access. A deployed test build reads codes through APP_CONFIG_SHOW_OTP_IN_UI
+ * instead (`src/lib/auth/otp-echo.ts`), which is gated and deliberate.
+ *
+ * It still logs *which* message went out: silence would read as a broken
+ * driver.
  */
 export const consoleSmsDriver: SmsSender = async (to, message) => {
-  console.log(`[sms:console] to ${to} :: ${renderSms(message)}`);
+  console.log(
+    isDevelopmentServer()
+      ? `[sms:console] to ${to} :: ${renderSms(message)}`
+      : REDACTED_LINES[message.template],
+  );
 };
 
 // ── The real SMS.ir driver ───────────────────────────────────────────────────
@@ -269,35 +299,22 @@ const DRIVERS: Record<SmsProvider, () => SmsSender> = {
   smsir: () => createSmsIrDriver(),
 };
 
-let mockWarningLogged = false;
-
 const warnIfMocked = () => {
-  if (isDevelopmentServer() || mockWarningLogged) return;
-  mockWarningLogged = true;
-  const message =
+  if (isDevelopmentServer()) return;
+  warnOnce(
+    'sms-console',
     '[sms] APP_CONFIG_SMS_PROVIDER is "console": one-time codes are being ' +
-    'written to the server log, not sent. Intended for mock deployments — ' +
-    'set APP_CONFIG_SMS_PROVIDER=smsir before taking real customers.';
-  console.warn(message);
-  // The message is a fixed string with no code and no phone number in it.
-  Sentry.captureMessage(message, 'warning');
+      'written to the server log, not sent. Intended for mock deployments — ' +
+      'set APP_CONFIG_SMS_PROVIDER=smsir before taking real customers.',
+  );
 };
 
 /**
- * What the environment names as the provider, defaulted and trimmed. Not
- * checked against `DRIVERS` — `getSmsSender` does that; this is also what
+ * The configured provider, validated: an unknown name throws. Also what
  * `src/lib/auth/otp-echo.ts` reads to answer "is anything real being sent?".
  */
-export function getConfiguredSmsProvider(): SmsProvider {
-  const configured = getEnvVariable(
-    VARS.APP_CONFIG_SMS_PROVIDER,
-    false,
-    DEFAULT_PROVIDER,
-  );
-  // `||` not `??`: an empty value (`APP_CONFIG_SMS_PROVIDER=` left in a `.env`)
-  // is an unset one, and `??` would hand `''` through as a provider name.
-  return (configured.trim() || DEFAULT_PROVIDER) as SmsProvider;
-}
+export const getConfiguredSmsProvider = (): SmsProvider =>
+  getEnvProvider(VARS.APP_CONFIG_SMS_PROVIDER, SMS_PROVIDERS, DEFAULT_PROVIDER);
 
 /**
  * The configured driver.
@@ -309,20 +326,8 @@ export function getConfiguredSmsProvider(): SmsProvider {
  */
 export function getSmsSender(): SmsSender {
   const provider = getConfiguredSmsProvider();
-
-  // `Object.hasOwn`, not a truthiness check on the lookup: `DRIVERS` is an
-  // object literal, so `constructor`/`toString`/`valueOf` would otherwise
-  // resolve to inherited functions, pass as drivers, and "send" every code
-  // into the void — the exact silent failure this throw exists to prevent.
-  const driver = Object.hasOwn(DRIVERS, provider) ? DRIVERS[provider] : null;
-  if (!driver) {
-    throw new Error(
-      `${VARS.APP_CONFIG_SMS_PROVIDER}="${provider}" has no driver. ` +
-        `Known providers: ${SMS_PROVIDERS.join(', ')}.`,
-    );
-  }
   if (provider === 'console') warnIfMocked();
-  return driver();
+  return DRIVERS[provider]();
 }
 
 /** Dispatch one message through the configured driver. Rejects if it does. */

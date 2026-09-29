@@ -14,7 +14,7 @@ import {
   PET_TYPES,
   PRODUCT_SORTS,
 } from '@/lib/catalog/product-query';
-import { API_PATHS, API_PRODUCT_DETAIL_TEMPLATE } from '@/lib/constant/paths';
+import { API_PATHS } from '@/lib/constant/paths';
 import type { ApiError } from '@/lib/hono/envelope';
 
 vi.mock('@/db', () => ({ db: {} }));
@@ -60,6 +60,10 @@ describe('GET /api/products — query validation', () => {
     // behind. The API is the strict side of the contract and says so; the shop
     // page drops a blank term before it ever gets here.
     ['an empty search term', 'q='],
+    // Not `z.coerce.boolean()`, which reads any non-empty string — «false»
+    // included — as true. Only the words that mean on or off are accepted.
+    ['an in-stock flag that is not a yes or a no', 'inStock=maybe'],
+    ['an empty in-stock flag', 'inStock='],
     // The cap is not politeness. Every extra character is more trigrams to
     // match against every row, and a search box is the cheapest place on the
     // site to hand a stranger that multiplier.
@@ -176,6 +180,7 @@ describe('GET /api/products — generated documentation', () => {
       'page',
       'limit',
       'q',
+      'inStock',
     ]) {
       expect(params.get(name)?.description ?? '').not.toBe('');
     }
@@ -218,7 +223,8 @@ describe('GET /api/products/{slug} — generated documentation', () => {
     };
 
     expect(
-      doc.paths[API_PRODUCT_DETAIL_TEMPLATE].get.parameters,
+      // Spelled out: the point is the path the route registers (see app.test.ts).
+      doc.paths['/api/products/{slug}'].get.parameters,
     ).toContainEqual(
       expect.objectContaining({
         name: 'slug',

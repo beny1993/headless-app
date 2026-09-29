@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import type { DiscountCode } from '@/db/schema/discounts';
 import {
   DISCOUNT_TYPES,
   computeDiscount,
   discountCodeInputSchema,
   normalizeCode,
+  toDiscountView,
 } from './discount-code';
 
 describe('normalizeCode', () => {
@@ -168,5 +170,86 @@ describe('discountCodeInputSchema (admin create body)', () => {
         value: 10,
       }).success,
     ).toBe(false);
+  });
+
+  // The admin form hands a number field `parseDigits`' NaN (or `undefined`) for
+  // text that is not a whole number, and shows the issue's message as-is — so a
+  // field needs its Persian copy on the base type, not only on `.int()`.
+  it.each([
+    [
+      'percent value',
+      { type: 'percent', value: Number.NaN },
+      { type: 'percent', value: 0 },
+      'value',
+    ],
+    [
+      'fixed value',
+      { type: 'fixed', value: undefined },
+      { type: 'fixed', value: 0 },
+      'value',
+    ],
+    [
+      'minimum order',
+      { type: 'percent', value: 10, minOrderAmount: Number.NaN },
+      { type: 'percent', value: 10, minOrderAmount: -1 },
+      'minOrderAmount',
+    ],
+    [
+      'usage limit',
+      { type: 'percent', value: 10, usageLimit: Number.NaN },
+      { type: 'percent', value: 10, usageLimit: 0 },
+      'usageLimit',
+    ],
+  ])(
+    'answers an unreadable %s with the field’s own Persian message',
+    (_label, unreadable, outOfRange, path) => {
+      const messageFor = (fields: object) =>
+        discountCodeInputSchema
+          .safeParse({ ...base, ...fields })
+          .error?.issues.find((issue) => issue.path[0] === path)?.message;
+
+      const persian = messageFor(outOfRange);
+      expect(persian).toMatch(/[؀-ۿ]/);
+      expect(messageFor(unreadable)).toBe(persian);
+    },
+  );
+});
+
+// The admin projection: what create and toggle return, and what the panel lists.
+// `expiresAt` is the one branch — a code with no expiry must reach the client as
+// `null`, not as the string "null" or a dropped key.
+describe('toDiscountView', () => {
+  const row = (expiresAt: Date | null): DiscountCode => ({
+    id: '33333333-3333-4333-8333-333333333333',
+    code: 'NOWRUZ1405',
+    type: DISCOUNT_TYPES.PERCENT,
+    value: 20,
+    expiresAt,
+    usageLimit: 100,
+    usageCount: 7,
+    minOrderAmount: 500_000,
+    isActive: true,
+    createdAt: new Date('2026-03-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-03-15T00:00:00.000Z'),
+  });
+
+  it('ISOs every date a code carries', () => {
+    expect(toDiscountView(row(new Date('2026-04-20T20:30:00.000Z')))).toEqual({
+      id: '33333333-3333-4333-8333-333333333333',
+      code: 'NOWRUZ1405',
+      type: DISCOUNT_TYPES.PERCENT,
+      value: 20,
+      expiresAt: '2026-04-20T20:30:00.000Z',
+      usageLimit: 100,
+      usageCount: 7,
+      minOrderAmount: 500_000,
+      isActive: true,
+      createdAt: '2026-03-01T00:00:00.000Z',
+      updatedAt: '2026-03-15T00:00:00.000Z',
+    });
+  });
+
+  it('keeps a code that never expires as an explicit null', () => {
+    expect(toDiscountView(row(null)).expiresAt).toBeNull();
   });
 });

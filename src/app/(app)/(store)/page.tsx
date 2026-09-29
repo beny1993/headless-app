@@ -1,7 +1,10 @@
+import type { Metadata } from 'next';
+import { JsonLd } from '@/components/json-ld';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { SiteContentDao } from '@/db/dao/SiteContentDao';
 import { CONTENT_AREAS, isVisible } from '@/lib/content/site-content';
+import { loadFeaturedPicks } from '@/logic/content/featured-picks';
 import { loadLinkTargets } from '@/logic/content/link-targets';
 import { CategoriesSection } from '@/features/storefront/home/categories';
 import { CommunitySection } from '@/features/storefront/home/community';
@@ -13,6 +16,13 @@ import { LifeMomentsSection } from '@/features/storefront/home/life-moments';
 import { PhilosophySection } from '@/features/storefront/home/philosophy';
 import { RecommendsSection } from '@/features/storefront/home/recommends';
 import { RoutineSection } from '@/features/storefront/home/routine';
+import { PATHS } from '@/lib/constant/paths';
+import { absoluteUrl, SITE_JSON_LD } from '@/lib/seo';
+
+/** Title and description are the site's own, from the root layout. */
+export const metadata: Metadata = {
+  alternates: { canonical: absoluteUrl(PATHS.HOME) },
+};
 
 /**
  * The storefront home page, ported from `design/src/app/App.tsx`.
@@ -41,18 +51,36 @@ export default async function HomePage() {
 
   // Saved destinations store catalog ids: resolve them once for every linked
   // section, reusing the categories just read (so only linked products query).
-  const targets = await loadLinkTargets(Object.values(content), categories);
+  // The «انتخاب‌های اسموکی» boxes the admin picked a product for resolve beside
+  // them, as cards — from the listing page just read where they are on it, so
+  // no query at all then — and only while the section is shown. A hidden
+  // product or a family member does not come back; `selectFeatured` refills
+  // its box.
+  const recommends = content['home.recommends'];
+  const [targets, picks] = await Promise.all([
+    loadLinkTargets(Object.values(content), categories),
+    isVisible(recommends)
+      ? loadFeaturedPicks(recommends.productIds, items)
+      : [],
+  ]);
 
   // Narrow rows to what the sections render: `Category` also carries
   // timestamps, and several of these sections are client components.
-  const tiles = categories.map(({ id, title, slug }) => ({ id, title, slug }));
+  // Top-level only — sub-categories would crowd the strip. `loadLinkTargets`
+  // above still sees every row, so a saved link to a sub-category keeps
+  // resolving.
+  const tiles = categories
+    .filter((category) => category.parentId === null)
+    .map(({ id, title, slug, imageKey }) => ({ id, title, slug, imageKey }));
 
   // Every section is editable now, and each renders unless the admin has
   // explicitly hidden it (`isVisible` = "shown unless visible === false"); an
   // empty table and every pre-existing row render exactly as before. Catalog
-  // *data* still comes from the DAOs above — only the sections' chrome is content.
+  // *data* still comes from the catalog — content holds the sections' chrome,
+  // and only the ids of the products the admin picked.
   return (
     <main>
+      <JsonLd data={SITE_JSON_LD} />
       {isVisible(content['home.hero']) && (
         <HeroSection content={content['home.hero']} targets={targets} />
       )}
@@ -62,10 +90,10 @@ export default async function HomePage() {
           targets={targets}
         />
       )}
-      {isVisible(content['home.recommends']) && (
+      {isVisible(recommends) && (
         <RecommendsSection
-          content={content['home.recommends']}
-          products={selectFeatured(items)}
+          content={recommends}
+          products={selectFeatured(items, picks)}
         />
       )}
       {isVisible(content['home.journey']) && (

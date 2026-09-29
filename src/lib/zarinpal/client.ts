@@ -8,14 +8,17 @@
 // ledger); persistence is the caller's job in `src/logic/payments`. Keeping the
 // database out also lets `client.test.ts` run on the DB-less path with 0 failures.
 import { z } from 'zod';
-import * as Sentry from '@sentry/nextjs';
 import { API_PATHS } from '@/lib/constant/paths';
 import {
   getAppBaseUrl,
+  getEnvFlag,
+  getEnvProvider,
   getEnvVariable,
   isDevelopmentServer,
+  isProductionServer,
   VARS,
 } from '@/lib/utils/env';
+import { warnOnce } from '@/lib/warn-once';
 
 /**
  * Zarinpal's amount unit. `IRT` = Toman, so the shop's internal integer-Toman
@@ -174,10 +177,9 @@ const readErrors = (errors: unknown): { code: number; message: string } => {
  */
 export const createZarinpalDriver = (): ZarinpalClient => {
   const merchantId = getEnvVariable(VARS.APP_CONFIG_ZARINPAL_MERCHANT_ID, true);
-  const sandbox =
-    getEnvVariable(VARS.APP_CONFIG_ZARINPAL_SANDBOX, false, 'false').trim() ===
-    'true';
-  const host = sandbox ? SANDBOX_HOST : LIVE_HOST;
+  const host = getEnvFlag(VARS.APP_CONFIG_ZARINPAL_SANDBOX)
+    ? SANDBOX_HOST
+    : LIVE_HOST;
 
   const post = async (path: string, body: unknown): Promise<unknown> => {
     const res = await fetch(`${host}${path}`, {
@@ -285,17 +287,90 @@ const DRIVERS: Record<ZarinpalProvider, () => ZarinpalClient> = {
   zarinpal: () => createZarinpalDriver(),
 };
 
-let mockWarningLogged = false;
+let mockRefusalLogged = false;
+
+/**
+ * Refuses the simulated gateway in a production build.
+ *
+ * `mock` is the shipped default, so two variables left unset — the provider and
+ * nothing else — put a production container on a gateway that reports every
+ * checkout as paid while charging nothing. That is silent success, the worst
+ * shape a money bug has, so it fails closed instead: a production build on
+ * `mock` serves nothing until `APP_CONFIG_ZARINPAL_ALLOW_MOCK=true` says the
+ * simulation is deliberate (a staging deploy, which has no gateway account).
+ *
+ * Reached from `GET /api/ready` through {@link assertReadyToServe}, which adds
+ * the one condition this function deliberately does not have — see there.
+ * `getZarinpalClient` calls this one directly and unconditionally: whatever any
+ * switch says, a production build must not hand out a driver that reports money
+ * as taken when none was.
+ *
+ * Deliberately NOT in `getZarinpalProvider`: `payments.ts` gates the mock-only
+ * endpoints on the provider and not on NODE_ENV, and that has to keep working.
+ */
+export function assertMockGatewayAllowed(): void {
+  if (getZarinpalProvider() !== 'mock') return;
+  if (!isProductionServer()) return;
+  // Only `true` (padding aside), so a typo, `1`, `yes` or a blank is no escape.
+  if (getEnvFlag(VARS.APP_CONFIG_ZARINPAL_ALLOW_MOCK)) return;
+
+  const message =
+    `[zarinpal] ${VARS.APP_CONFIG_ZARINPAL_PROVIDER} is "mock" in a production ` +
+    'build: every checkout would settle as paid for zero Toman. Set a real ' +
+    'provider and merchant id, or set ' +
+    `${VARS.APP_CONFIG_ZARINPAL_ALLOW_MOCK}=true if this deploy is meant to ` +
+    'run on the simulated gateway.';
+
+  // Once per process: the readiness probe runs on a fixed interval, and the
+  // operator needs the variable name in the log, not on every tick. The throw
+  // is what stops the traffic; this is what tells them why.
+  if (!mockRefusalLogged) {
+    mockRefusalLogged = true;
+    console.error(message);
+  }
+  throw new Error(message);
+}
+
+/** Whether online payment is switched on for this deploy. */
+export const isZarinpalEnabled = (): boolean =>
+  getEnvFlag(VARS.APP_CONFIG_ZARINPAL_ENABLED);
+
+/**
+ * The readiness half of {@link assertMockGatewayAllowed}: may this container
+ * take traffic at all?
+ *
+ * A container that cannot take an online payment cannot settle a zero-Toman one
+ * either, so with `APP_CONFIG_ZARINPAL_ENABLED` off the mock provider says
+ * nothing about whether this instance should serve. Refusing anyway takes a
+ * card-to-card-only shop off the air over a gateway it never calls — which is
+ * not theoretical: it rolled back a production deploy on 2026-09-22, for a
+ * subsystem that was switched off.
+ *
+ * What does NOT relax is the money path. `getZarinpalClient` still calls
+ * {@link assertMockGatewayAllowed} unconditionally, so if anything reaches the
+ * gateway in a production build on `mock` it throws there — and it can be
+ * reached with the switch off, because `APP_CONFIG_ZARINPAL_ENABLED` is read by
+ * the checkout page to hide the option, not by the API to refuse it. The
+ * shopper gets a failed request and the payment row stays `pending`; no order
+ * settles. That is the fail-closed half, and it is why relaxing this one is
+ * safe.
+ *
+ * And the moment online payment is switched on, readiness refuses again —
+ * which is precisely the deploy where a refusal is worth the outage.
+ */
+export function assertReadyToServe(): void {
+  if (!isZarinpalEnabled()) return;
+  assertMockGatewayAllowed();
+}
 
 const warnIfMocked = () => {
-  if (isDevelopmentServer() || mockWarningLogged) return;
-  mockWarningLogged = true;
-  const message =
+  if (isDevelopmentServer()) return;
+  warnOnce(
+    'zarinpal-mock',
     '[zarinpal] APP_CONFIG_ZARINPAL_PROVIDER is "mock": payments are simulated, ' +
-    'not charged. Intended for mock/test deployments — set a real provider and ' +
-    'merchant id before taking real payments.';
-  console.warn(message);
-  Sentry.captureMessage(message, 'warning');
+      'not charged. Intended for mock/test deployments — set a real provider ' +
+      'and merchant id before taking real payments.',
+  );
 };
 
 /**
@@ -304,31 +379,23 @@ const warnIfMocked = () => {
  * names the real gateway, has no driver yet, and reports every checkout as paid
  * while charging nothing. Routes also use this to gate the mock-only endpoints.
  */
-export function getZarinpalProvider(): ZarinpalProvider {
-  // `||` not `??`: an empty value (the var left blank in a `.env`) is an unset
-  // one, and `??` would hand `''` through as a provider name.
-  const configured =
-    getEnvVariable(
-      VARS.APP_CONFIG_ZARINPAL_PROVIDER,
-      false,
-      DEFAULT_PROVIDER,
-    ).trim() || DEFAULT_PROVIDER;
+export const getZarinpalProvider = (): ZarinpalProvider =>
+  getEnvProvider(
+    VARS.APP_CONFIG_ZARINPAL_PROVIDER,
+    ZARINPAL_PROVIDERS,
+    DEFAULT_PROVIDER,
+  );
 
-  // `Object.hasOwn`, not truthiness on the lookup: inherited members
-  // (`toString`, `constructor`) would otherwise resolve to functions and pass as
-  // drivers — the exact silent failure this guard exists to prevent.
-  if (!Object.hasOwn(DRIVERS, configured)) {
-    throw new Error(
-      `${VARS.APP_CONFIG_ZARINPAL_PROVIDER}="${configured}" has no driver. ` +
-        `Known providers: ${ZARINPAL_PROVIDERS.join(', ')}.`,
-    );
-  }
-  return configured as ZarinpalProvider;
-}
-
-/** The configured driver. Selecting `mock` outside development shouts once. */
+/**
+ * The configured driver. Selecting `mock` in a production build throws unless
+ * the escape is set (see {@link assertMockGatewayAllowed}); selecting it
+ * anywhere outside development shouts once.
+ */
 export function getZarinpalClient(): ZarinpalClient {
   const provider = getZarinpalProvider();
-  if (provider === 'mock') warnIfMocked();
+  if (provider === 'mock') {
+    assertMockGatewayAllowed();
+    warnIfMocked();
+  }
   return DRIVERS[provider]();
 }

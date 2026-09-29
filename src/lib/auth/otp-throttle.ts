@@ -32,7 +32,7 @@ export const OTP_HOURLY_SEND_LIMIT = 5;
 /** The rolling window the cap is counted over. */
 export const OTP_SEND_WINDOW_SECONDS = 3600;
 
-export type OtpThrottleDecision = {
+type OtpThrottleDecision = {
   allowed: boolean;
   /** Seconds until a send would be accepted. `0` only when allowed. */
   retryAfterSeconds: number;

@@ -1,7 +1,8 @@
-// Admin category CRUD — create, update (full body), delete. Mounted under
-// `/admin/*` behind `requireAdmin` in ../index.ts; the guard runs before every
-// handler here (401 without a session, 403 without the admin role), so nothing
-// below re-checks authorization.
+// Admin category CRUD — create, update (every field but the photo: an omitted
+// `imageKey` keeps it, see ../../catalog/category-input.ts), delete. Mounted
+// under `/admin/*` behind `requireAdmin` in ../index.ts; the guard runs before
+// every handler here (401 without a session, 403 without the admin role), so
+// nothing below re-checks authorization.
 //
 // Same shape as ./admin-discounts.ts: a `createRoute` definition plus a separate
 // typed `RouteHandler`, and the body is the shared, client-safe
@@ -10,81 +11,77 @@
 // public `GET /categories` is untouched.
 //
 // Unlike products and discount codes, a category is hard-deleted — nothing
-// snapshots one. What refuses a category still in use is the products foreign
-// key (`ON DELETE RESTRICT`), soft-deleted products included; delete turns that
-// refusal into a 409 naming how many products are attached.
+// snapshots one. What refuses a category still in use is a restricting foreign
+// key: the products one (soft-deleted products included) and, since
+// sub-categories, the self-referencing parent one. Delete turns either refusal
+// into a 409 naming how many products and sub-categories are attached.
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
-import { z } from 'zod';
-import { CategoryDao } from '@/db/dao/CategoryDao';
-import type { Category } from '@/db/schema/catalog';
-import { categoryInputSchema } from '@/lib/catalog/category-input';
-import { formatNumber } from '@/lib/format';
+import { CategoryDao, CategoryParentError } from '@/db/dao/CategoryDao';
 import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+  CATEGORY_PARENT_MESSAGES,
+  categoryInputSchema,
+} from '@/lib/catalog/category-input';
+import {
+  categoryViewSchema,
+  toCategoryView,
+} from '@/lib/catalog/category-view';
+import { formatNumber } from '@/lib/format';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import {
+  IdParamSchema,
+  errorResponse,
+  openapiObject,
+} from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
-import { pgErrorOf } from '../pg-error';
+import { pgErrorOf } from '@/db/pg-error';
 
 /** User-facing copy, so Persian. */
 export const CATEGORY_NOT_FOUND_MESSAGE = 'دسته‌بندی یافت نشد.';
 /** A save refused by the database (a duplicate slug). */
-export const CATEGORY_SAVE_FAILED_MESSAGE =
-  'دسته‌بندی ذخیره نشد؛ ورودی را بررسی کن.';
+const CATEGORY_SAVE_FAILED_MESSAGE = 'دسته‌بندی ذخیره نشد؛ ورودی را بررسی کن.';
 
 /**
  * The delete refusal. It names the count and says hidden products count too —
  * otherwise a category whose products were all soft-deleted looks empty in the
  * panel, and the refusal looks like a bug.
  */
-export const categoryInUseMessage = (productCount: number) =>
-  `${formatNumber(productCount)} محصول (شامل محصولات غیرفعال) هنوز در این دسته‌بندی است؛ اول آن‌ها را به دسته‌بندی دیگری منتقل کن.`;
+export const categoryInUseMessage = (productCount: number, childCount = 0) => {
+  if (childCount === 0) {
+    return `${formatNumber(productCount)} محصول (شامل محصولات غیرفعال) هنوز در این دسته‌بندی است؛ اول آن‌ها را به دسته‌بندی دیگری منتقل کن.`;
+  }
+  if (productCount === 0) {
+    return `${formatNumber(childCount)} زیردسته هنوز زیر این دسته‌بندی است؛ اول آن‌ها را حذف یا جابه‌جا کن.`;
+  }
+  return `${formatNumber(childCount)} زیردسته و ${formatNumber(productCount)} محصول (شامل محصولات غیرفعال) هنوز در این دسته‌بندی است؛ اول آن‌ها را جابه‌جا یا حذف کن.`;
+};
 
-const CategorySchema = z
-  .object({
-    id: z.uuid(),
-    title: z.string(),
-    slug: z.string(),
-    sortOrder: z.number().int().nonnegative(),
-    createdAt: z.iso.datetime(),
-    updatedAt: z.iso.datetime(),
-  })
-  .openapi('AdminCategory');
+/** The shape lives in `@/lib/catalog/category-view` — see `openapiObject`. */
+const CategorySchema = openapiObject(categoryViewSchema, 'AdminCategory');
 
-/** The category payload — what every route returns and the admin list renders. */
-export type CategoryView = z.infer<typeof CategorySchema>;
+/** Re-exported for the client components that already import the type here. */
+export type { CategoryView } from '@/lib/catalog/category-view';
 
-/** Project a DAO row to the admin response — ISO the dates. */
-export const toCategoryView = (c: Category): CategoryView => ({
-  id: c.id,
-  title: c.title,
-  slug: c.slug,
-  sortOrder: c.sortOrder,
-  createdAt: c.createdAt.toISOString(),
-  updatedAt: c.updatedAt.toISOString(),
-});
-
-const IdParamSchema = z.object({
-  id: z.uuid().meta({
-    param: { name: 'id', in: 'path' },
-    example: '123e4567-e89b-12d3-a456-426614174000',
-  }),
-});
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
-
-/** The field error for a taken slug (23505), or `null` to rethrow. */
-export const categoryWriteErrors = (error: unknown): string[] | null => {
+/**
+ * The field error for a refused parent or a taken slug (23505), or `null` to
+ * rethrow. Both create and update run a body through it, so the two cannot
+ * answer the same refusal differently.
+ */
+const categoryWriteErrors = (error: unknown): string[] | null => {
+  if (error instanceof CategoryParentError) {
+    return [`parentId: ${CATEGORY_PARENT_MESSAGES[error.reason]}`];
+  }
   const pg = pgErrorOf(error);
   if (pg?.code === '23505' && pg.constraint === 'categories_slug_unique') {
     return ['slug: این نشانی قبلاً برای دسته‌بندی دیگری ثبت شده است.'];
+  }
+  // A backstop the DAO's lock makes unreachable — but a 23503 from this key is
+  // «that parent is gone» either way, and it must not surface as a 500.
+  if (
+    pg?.code === '23503' &&
+    pg.constraint === 'categories_parent_id_categories_id_fk'
+  ) {
+    return [`parentId: ${CATEGORY_PARENT_MESSAGES.unknown}`];
   }
   return null;
 };
@@ -139,7 +136,8 @@ export const categoryUpdateRoute = createRoute({
   method: 'put',
   path: '/admin/categories/{id}',
   tags: ['admin'],
-  summary: 'Replace a category’s title, slug and sort order (admin only)',
+  summary:
+    'Replace a category’s title, slug, sort order and parent, and set or remove its photo (omit imageKey to keep the photo, null to remove it; admin only)',
   request: {
     params: IdParamSchema,
     body: {
@@ -202,7 +200,7 @@ export const categoryDeleteRoute = createRoute({
     403: errorResponse('Signed in, but not an admin'),
     404: errorResponse('No such category'),
     409: errorResponse(
-      'Products (active or soft-deleted) still reference the category',
+      'Products (active or soft-deleted) or sub-categories still reference the category',
     ),
   },
 });
@@ -219,8 +217,16 @@ export const categoryDeleteHandler: RouteHandler<
   } catch (error) {
     if (pgErrorOf(error)?.code !== '23503') throw error;
     // Counted after the foreign key refused, not as a pre-check: a product added
-    // between a count and the delete could not then slip past as a 500.
-    const productCount = await CategoryDao.countProducts(id);
-    return c.json(apiError(categoryInUseMessage(productCount)), 409);
+    // between a count and the delete could not then slip past as a 500. Both
+    // counts, never a branch on which key spoke — two of them can refuse, and a
+    // category blocked by both must say so in one message.
+    const [productCount, childCount] = await Promise.all([
+      CategoryDao.countProducts(id),
+      CategoryDao.countChildren(id),
+    ]);
+    return c.json(
+      apiError(categoryInUseMessage(productCount, childCount)),
+      409,
+    );
   }
 };

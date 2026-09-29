@@ -1,6 +1,12 @@
+import { PET_TYPES } from '@/db/schema/catalog';
 import { SEED_PRODUCTS } from '@/db/seed/catalog-data';
+import {
+  adminProductFilterSchema,
+  productsHref,
+} from '@/features/admin-panel/products/products-query';
 import { PATHS, PROTECTED_PATHS, adminOrderPath } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
+import { ORDER_STATUSES } from '@/lib/orders/order-status';
 import {
   ADMIN_STATE,
   CUSTOMER_STATE,
@@ -51,6 +57,17 @@ test.describe('an admin', () => {
     const orderId = await resultOrderId(shopper);
 
     await page.goto(PROTECTED_PATHS.ORDERS);
+    // Numbered from one down the first page, however many orders it holds.
+    const rows = page.getByRole('row').filter({
+      has: page.locator('[data-umami-event="admin-panel-orders-view"]'),
+    });
+    await expect(rows.first().getByRole('cell').first()).toHaveText(
+      formatNumber(1),
+    );
+    await expect(rows.last().getByRole('cell').first()).toHaveText(
+      formatNumber(await rows.count()),
+    );
+
     await page
       .locator(
         `[data-umami-event="admin-panel-orders-view"][href="${adminOrderPath(orderId)}"]`,
@@ -129,5 +146,152 @@ test.describe('an admin', () => {
         page.locator(`[data-umami-event="${row}"]`).first(),
       ).toBeVisible();
     }
+  });
+
+  test('a list reopened from the sidebar drops the filters it showed', async ({
+    page,
+  }) => {
+    // Filtered by a full page load, as the GET form's submit is. The sidebar
+    // link back to the same list is a client-side navigation, which updates the
+    // page in place: a form left mounted keeps showing, and re-submits, a
+    // filter the list no longer applies.
+    for (const { filtered, list, controls } of [
+      {
+        filtered: `${PROTECTED_PATHS.ORDERS}?${new URLSearchParams({
+          status: ORDER_STATUSES.PAID,
+        })}`,
+        list: PROTECTED_PATHS.ORDERS,
+        controls: [
+          {
+            name: 'فیلتر وضعیت سفارش',
+            applied: ORDER_STATUSES.PAID,
+            reset: '',
+          },
+        ],
+      },
+      {
+        filtered: productsHref(
+          adminProductFilterSchema.parse({
+            pet: PET_TYPES.CAT,
+            active: 'inactive',
+          }),
+          1,
+        ),
+        list: PROTECTED_PATHS.PRODUCTS,
+        controls: [
+          { name: 'نوع حیوان', applied: PET_TYPES.CAT, reset: '' },
+          { name: 'وضعیت نمایش', applied: 'inactive', reset: 'all' },
+        ],
+      },
+    ]) {
+      await page.goto(filtered);
+      for (const { name, applied } of controls) {
+        await expect(page.getByRole('combobox', { name })).toHaveValue(applied);
+      }
+
+      // The drawer hides the sidebar below `lg`.
+      const menu = page.locator(
+        '[data-umami-event="admin-panel-mobile-menu-open"]',
+      );
+      if (await menu.isVisible()) await menu.click();
+      await page
+        .locator(`[data-umami-event^="admin-panel-nav-"][href="${list}"]`)
+        .click();
+      await expect(page).toHaveURL(new RegExp(`${list}$`));
+
+      for (const { name, reset } of controls) {
+        await expect(page.getByRole('combobox', { name })).toHaveValue(reset);
+      }
+    }
+  });
+});
+
+test.describe('a product family in the admin panel', () => {
+  test.use({ storageState: ADMIN_STATE });
+
+  // Reads the seeded family and changes nothing, so it runs at both widths and
+  // leaves no row behind — unlike the catalog spec, which creates products.
+  const members = SEED_PRODUCTS.filter((product) => product.variantOfSku);
+  const head = SEED_PRODUCTS.find((product) =>
+    members.some((member) => member.variantOfSku === product.sku),
+  );
+  const member = members[0];
+
+  test('lists every member by name and refuses to nest one deeper', async ({
+    page,
+  }) => {
+    if (!head || !member) throw new Error('The seed needs a product family.');
+
+    // The panel shows the members the shop hides — otherwise the 10kg bag
+    // could never be repriced. Searched by title, which both rows share, so
+    // the label is the only thing telling them apart in the list.
+    await page.goto(
+      `${PROTECTED_PATHS.PRODUCTS}?${new URLSearchParams({ q: head.title })}`,
+    );
+    await expect(
+      page.getByText(`${head.title} — ${head.variantLabel}`),
+    ).toBeVisible();
+    await expect(
+      page.getByText(`${member.title} — ${member.variantLabel}`),
+    ).toBeVisible();
+
+    // Counted and numbered from the filtered result, not the whole catalog:
+    // the family fits on one page, so the count is exactly the rows listed.
+    const rows = page.getByRole('row').filter({
+      has: page.locator('[data-umami-event="admin-panel-products-edit"]'),
+    });
+    const listed = await rows.count();
+    await expect(
+      page.getByText(`${formatNumber(listed)} محصول`, { exact: true }),
+    ).toBeVisible();
+    await expect(rows.first().getByRole('cell').first()).toHaveText(
+      formatNumber(1),
+    );
+    await expect(rows.last().getByRole('cell').first()).toHaveText(
+      formatNumber(listed),
+    );
+
+    // The head already has members, so it cannot itself become one: one level
+    // only, and moving it would orphan them. The select is disabled with the
+    // reason rather than silently accepting a save the DAO would refuse.
+    // By the displayed name, not the bare title: all three rows share a title,
+    // and before the label fix these three links were indistinguishable.
+    await page
+      .getByRole('link', {
+        name: `ویرایش ${head.title} — ${head.variantLabel}`,
+      })
+      .click();
+    const headSelect = page.locator('select[id$="variantOf"]');
+    await expect(headSelect).toBeDisabled();
+
+    // A member, by contrast, may be re-pointed — its own select is live and
+    // already names the head it hangs off.
+    await page.goto(
+      `${PROTECTED_PATHS.PRODUCTS}?${new URLSearchParams({ q: head.title })}`,
+    );
+    await page
+      .getByRole('link', {
+        name: `ویرایش ${member.title} — ${member.variantLabel}`,
+      })
+      .click();
+    await expect(page.locator('select[id$="variantOf"]')).toBeEnabled();
+
+    // And it is offered no filing of its own: a family is filed once, on its
+    // head, because the shop lists heads and a member's own category could
+    // never reach a shelf. The head's form has all three.
+    await expect(page.locator('select[id$="categoryId"]')).toHaveCount(0);
+    // Exact: the note that replaces them reads «دسته‌بندی و نوع حیوان».
+    await expect(page.getByText('نوع حیوان', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('از محصول اصلی گرفته می‌شود')).toBeVisible();
+
+    await page.goto(
+      `${PROTECTED_PATHS.PRODUCTS}?${new URLSearchParams({ q: head.title })}`,
+    );
+    await page
+      .getByRole('link', {
+        name: `ویرایش ${head.title} — ${head.variantLabel}`,
+      })
+      .click();
+    await expect(page.locator('select[id$="categoryId"]')).toBeVisible();
   });
 });

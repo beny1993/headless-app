@@ -17,17 +17,18 @@ import { ProductDao } from '@/db/dao/ProductDao';
 import {
   MAX_PRODUCT_PAGE_SIZE,
   MAX_SEARCH_TERM_LENGTH,
-  PET_TYPES,
   productListQueryShape,
   productSlugSchema,
 } from '@/lib/catalog/product-query';
-import { type Category, type ProductWithImages } from '@/db/schema/catalog';
 import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+  type Category,
+  type ProductCard,
+  type ProductDetail,
+  type ProductWithImages,
+} from '@/db/schema/catalog';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
+import { ProductSchema } from '../product-schema';
 
 /** User-facing copy, so Persian. `errors` stays English developer detail. */
 export const PRODUCT_NOT_FOUND_MESSAGE = 'محصول یافت نشد';
@@ -38,44 +39,64 @@ const CategorySchema = z
     title: z.string(),
     slug: z.string(),
     sortOrder: z.number().int(),
+    /**
+     * The category this one sits under; `null` for a top-level one. The list
+     * stays flat — consumers nest it with `@/lib/catalog/category-tree`.
+     */
+    parentId: z.uuid().nullable(),
   })
   .openapi('Category');
 
-const ProductImageSchema = z
-  .object({
-    id: z.uuid(),
-    /**
-     * A storage key, not a URL — `products/cat-toy.jpg`. Resolving it to a URL
-     * is the storage interface's job, not this endpoint's.
-     */
-    objectKey: z.string(),
-    sortOrder: z.number().int(),
-  })
-  .openapi('ProductImage');
+/**
+ * A listing row: the product plus what its family can be bought for and whether any
+ * of it is in stock. A client rendering a grid needs these to print «از …» and
+ * to grey out a card; a standalone product reports its own price, no variation
+ * and its own stock, so a consumer that ignores families still reads the truth.
+ */
+const ProductCardSchema = ProductSchema.safeExtend({
+  familyMinPrice: z.number().int().positive().meta({
+    description:
+      'The price to print on the card, integer Toman: the cheapest member a shopper can buy, or the cheapest active member when nothing is in stock. Print this, not `price` — a sold-out head is not a price anyone can buy at.',
+  }),
+  familyPricesVary: z.boolean(),
+  familyInStock: z.boolean(),
+  familyHasMembers: z.boolean(),
+  familyOpenSlug: z.string().meta({
+    description:
+      'The slug the card opens: the head while it has stock, else the cheapest member in stock, else the head.',
+  }),
+}).openapi('ProductCard');
 
-const ProductSchema = z
+/**
+ * One chip on the product page: which sibling it is, what it costs and whether
+ * it can be bought. The price is on the chip because the card advertises the
+ * family's cheapest buyable price — «از ۱۴۹٬۰۰۰» — and the page it links to has
+ * to say which member that is.
+ */
+const VariantChipSchema = z
   .object({
     id: z.uuid(),
-    title: z.string(),
     slug: z.string(),
-    sku: z.string(),
-    brand: z.string().nullable(),
-    benefit: z.string().nullable(),
-    description: z.string().nullable(),
-    /** Integer Toman. Never a float, never a string. */
+    label: z.string(),
+    isCurrent: z.boolean(),
+    /** Integer Toman, this member's own. */
     price: z.number().int().positive(),
-    oldPrice: z.number().int().positive().nullable(),
-    stock: z.number().int().nonnegative(),
-    petType: z.enum([PET_TYPES.CAT, PET_TYPES.DOG]),
-    categoryId: z.uuid(),
-    createdAt: z.iso.datetime(),
-    images: z.array(ProductImageSchema),
+    inStock: z.boolean(),
   })
-  .openapi('Product');
+  .openapi('VariantChip');
+
+/**
+ * The detail payload: the product plus its family's members, head first, the
+ * viewed one marked. Empty when the product has no siblings — including when
+ * its only sibling is inactive, since one already-selected chip is no choice.
+ */
+const ProductDetailSchema = ProductSchema.safeExtend({
+  variants: z.array(VariantChipSchema),
+}).openapi('ProductDetail');
 
 const ProductListSchema = z
   .object({
-    items: z.array(ProductSchema),
+    items: z.array(ProductCardSchema),
     /** One-based, echoed back so a client can trust what it is rendering. */
     page: z.number().int().positive(),
     limit: z.number().int().positive(),
@@ -112,8 +133,13 @@ const ProductListQuerySchema = z.object({
   pet: productListQueryShape.pet.meta({
     description: 'Restrict to one pet type.',
   }),
+  inStock: productListQueryShape.inStock.meta({
+    description:
+      'Only products that can be bought: a family counts when a member has stock, and with a price bound that member must be inside it. Case-insensitive `true`, `1`, `yes`, `on`, `y`, `enabled` turn it on; `false`, `0`, `no`, `off`, `n`, `disabled` or absence leave it off; anything else is a 400.',
+  }),
   sort: productListQueryShape.sort.meta({
-    description: 'Ordering. Defaults to newest first.',
+    description:
+      'Ordering, applied within in-stock products first and sold-out ones after. Defaults to newest first.',
   }),
   minPrice: productListQueryShape.minPrice.meta({
     description: 'Inclusive lower bound, integer Toman.',
@@ -152,8 +178,9 @@ const ProductSlugParamSchema = z.object({
 
 /** The catalog payloads the storefront renders. Import these, don't restate them. */
 export type CategoryResponse = z.infer<typeof CategorySchema>;
-export type ProductImageResponse = z.infer<typeof ProductImageSchema>;
 export type ProductResponse = z.infer<typeof ProductSchema>;
+type ProductCardResponse = z.infer<typeof ProductCardSchema>;
+export type ProductDetailResponse = z.infer<typeof ProductDetailSchema>;
 export type ProductListResponse = z.infer<typeof ProductListSchema>;
 export type ProductListQuery = z.infer<typeof ProductListQuerySchema>;
 
@@ -162,6 +189,7 @@ const toCategoryResponse = (row: Category): CategoryResponse => ({
   title: row.title,
   slug: row.slug,
   sortOrder: row.sortOrder,
+  parentId: row.parentId,
 });
 
 /**
@@ -187,8 +215,11 @@ const toProductResponse = (row: ProductWithImages): ProductResponse => ({
   price: row.price,
   oldPrice: row.oldPrice,
   stock: row.stock,
-  petType: row.petType,
+  petTypes: row.petTypes,
   categoryId: row.categoryId,
+  extraCategoryIds: row.extraCategoryIds,
+  variantOf: row.variantOf,
+  variantLabel: row.variantLabel,
   createdAt: row.createdAt.toISOString(),
   images: row.images.map((image) => ({
     id: image.id,
@@ -197,10 +228,33 @@ const toProductResponse = (row: ProductWithImages): ProductResponse => ({
   })),
 });
 
-const invalidQueryResponse = {
-  content: { 'application/json': { schema: apiErrorSchema } },
-  description: 'Query parameters failed validation',
-} as const;
+/** A listing row: the product, plus the facts about its family. */
+const toProductCardResponse = (row: ProductCard): ProductCardResponse => ({
+  ...toProductResponse(row),
+  familyMinPrice: row.familyMinPrice,
+  familyPricesVary: row.familyPricesVary,
+  familyInStock: row.familyInStock,
+  familyHasMembers: row.familyHasMembers,
+  familyOpenSlug: row.familyOpenSlug,
+});
+
+/** The detail payload: the product, plus its family's chips. */
+const toProductDetailResponse = (
+  row: ProductDetail,
+): ProductDetailResponse => ({
+  ...toProductResponse(row),
+  // Field by field, like every other mapper here: handing the DAO's array out
+  // by reference is the one way a column added to `VariantChip` later would
+  // reach an anonymous visitor without appearing in the schema above.
+  variants: row.variants.map((variant) => ({
+    id: variant.id,
+    slug: variant.slug,
+    label: variant.label,
+    isCurrent: variant.isCurrent,
+    price: variant.price,
+    inStock: variant.inStock,
+  })),
+});
 
 export const categoryListRoute = createRoute({
   method: 'get',
@@ -242,19 +296,20 @@ export const productListRoute = createRoute({
       },
       description: 'One page of active products',
     },
-    400: invalidQueryResponse,
+    400: errorResponse('Query parameters failed validation'),
   },
 });
 
 export const productListHandler: RouteHandler<typeof productListRoute> = async (
   c,
 ) => {
-  const { category, pet, sort, minPrice, maxPrice, page, limit, q } =
+  const { category, pet, inStock, sort, minPrice, maxPrice, page, limit, q } =
     c.req.valid('query');
 
   const { items, total } = await ProductDao.list({
     categorySlug: category,
     petType: pet,
+    inStock,
     minPrice,
     maxPrice,
     search: q,
@@ -265,7 +320,7 @@ export const productListHandler: RouteHandler<typeof productListRoute> = async (
 
   return c.json(
     apiSuccess({
-      items: items.map(toProductResponse),
+      items: items.map(toProductCardResponse),
       page,
       limit,
       total,
@@ -285,18 +340,19 @@ export const productDetailRoute = createRoute({
     200: {
       content: {
         'application/json': {
-          schema: apiSuccessSchema(ProductSchema, 'ProductDetailResponse'),
+          schema: apiSuccessSchema(
+            ProductDetailSchema,
+            'ProductDetailResponse',
+          ),
         },
       },
       description: 'The product',
     },
-    400: invalidQueryResponse,
-    404: {
-      content: { 'application/json': { schema: apiErrorSchema } },
-      description:
-        'No such product — deliberately the same answer for a slug that never ' +
+    400: errorResponse('Query parameters failed validation'),
+    404: errorResponse(
+      'No such product — deliberately the same answer for a slug that never ' +
         'existed and one that was soft-deleted',
-    },
+    ),
   },
 });
 
@@ -310,5 +366,5 @@ export const productDetailHandler: RouteHandler<
   const product = await ProductDao.getBySlug(slug);
   if (!product) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
 
-  return c.json(apiSuccess(toProductResponse(product)), 200);
+  return c.json(apiSuccess(toProductDetailResponse(product)), 200);
 };

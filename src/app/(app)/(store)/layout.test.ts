@@ -36,9 +36,9 @@ describe('the storefront maintenance gate', () => {
       expect(getSession).not.toHaveBeenCalled();
     });
 
-    it('takes only the exact string `true`', async () => {
+    it('takes only the string `true`', async () => {
       signedInAs(null);
-      for (const value of ['1', 'yes', 'TRUE', 'true ', 'false']) {
+      for (const value of ['1', 'yes', 'TRUE', 'false']) {
         vi.stubEnv('APP_CONFIG_MAINTENANCE_MODE', value);
         expect(await render(), value).toBe(PAGE);
       }
@@ -49,6 +49,12 @@ describe('the storefront maintenance gate', () => {
     beforeEach(() => vi.stubEnv('APP_CONFIG_MAINTENANCE_MODE', 'true'));
 
     it('shows a signed-out visitor the maintenance page', async () => {
+      signedInAs(null);
+      expect(await render()).toMatchObject({ type: MaintenancePage });
+    });
+
+    it('reads a padded ` true ` as on', async () => {
+      vi.stubEnv('APP_CONFIG_MAINTENANCE_MODE', ' true ');
       signedInAs(null);
       expect(await render()).toMatchObject({ type: MaintenancePage });
     });

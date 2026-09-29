@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { PET_TYPES } from './product-query';
 import {
+  MAX_EXTRA_CATEGORIES,
+  MAX_PRODUCT_IMAGES,
   PRODUCT_MESSAGES,
   PRODUCT_TEXT_LIMITS,
+  productImagesOrderSchema,
   productInputSchema,
   productUpdateInputSchema,
 } from './product-input';
 import { MAX_SLUG_LENGTH } from './sku';
+import { VARIANT_LABEL_LIMIT, VARIANT_MESSAGES } from './variant';
 
 const valid = {
   title: 'غذای خشک گربه',
@@ -19,7 +23,7 @@ const valid = {
   oldPrice: 2_900_000,
   stock: 12,
   categoryId: '123e4567-e89b-12d3-a456-426614174000',
-  petType: PET_TYPES.CAT,
+  petTypes: [PET_TYPES.CAT],
   isActive: true,
 };
 
@@ -27,7 +31,7 @@ describe('productInputSchema', () => {
   it('accepts a well-formed product', () => {
     const parsed = productInputSchema.parse(valid);
     expect(parsed.price).toBe(2_450_000);
-    expect(parsed.petType).toBe('cat');
+    expect(parsed.petTypes).toEqual(['cat']);
   });
 
   describe('money is integer Toman', () => {
@@ -146,10 +150,115 @@ describe('productInputSchema', () => {
     });
   });
 
-  it('rejects an unknown pet type', () => {
-    expect(
-      productInputSchema.safeParse({ ...valid, petType: 'hamster' }).success,
-    ).toBe(false);
+  describe('the pet selection', () => {
+    const pets = (input: unknown) =>
+      productInputSchema.safeParse({ ...valid, petTypes: input });
+
+    it('accepts both pets and stores them in the canonical order', () => {
+      expect(pets([PET_TYPES.DOG, PET_TYPES.CAT]).data?.petTypes).toEqual([
+        'cat',
+        'dog',
+      ]);
+    });
+
+    it('dedupes a repeated pet rather than storing it twice', () => {
+      expect(pets([PET_TYPES.CAT, PET_TYPES.CAT]).data?.petTypes).toEqual([
+        'cat',
+      ]);
+    });
+
+    it('refuses an empty selection with the message the form shows', () => {
+      const parsed = pets([]);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0]).toMatchObject({
+        path: ['petTypes'],
+        message: PRODUCT_MESSAGES.petRequired,
+      });
+    });
+
+    it('refuses a missing key with the same message', () => {
+      const { petTypes: _omitted, ...withoutPets } = valid;
+      const parsed = productInputSchema.safeParse(withoutPets);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0].message).toBe(
+        PRODUCT_MESSAGES.petRequired,
+      );
+    });
+
+    it('rejects an unknown pet type', () => {
+      expect(pets(['hamster']).success).toBe(false);
+      expect(pets(PET_TYPES.CAT).success).toBe(false);
+    });
+
+    it('keys a bad pet value on the bare field, never on its index', () => {
+      // The form reads `fieldErrors.petTypes`, so an issue keyed `petTypes.0`
+      // is one no field ever shows: the admin would get a refused save with
+      // no message at all.
+      for (const bad of [['hamster'], [PET_TYPES.CAT, 7], [null], [['cat']]]) {
+        const parsed = pets(bad);
+        expect(parsed.success).toBe(false);
+        expect(parsed.error?.issues[0]).toMatchObject({
+          path: ['petTypes'],
+          message: PRODUCT_MESSAGES.pet,
+        });
+      }
+    });
+  });
+
+  describe('the additional categories', () => {
+    const extras = (input: unknown) =>
+      productInputSchema.safeParse({ ...valid, extraCategoryIds: input });
+
+    it('means «none» when the key is missing', () => {
+      expect(productInputSchema.parse(valid).extraCategoryIds).toEqual([]);
+    });
+
+    it('accepts an empty list and a list of ids', () => {
+      const id = '123e4567-e89b-12d3-a456-426614174111';
+      expect(extras([]).data?.extraCategoryIds).toEqual([]);
+      expect(extras([id]).data?.extraCategoryIds).toEqual([id]);
+    });
+
+    it('refuses more than the cap, with the message the form shows', () => {
+      const ids = Array.from(
+        { length: MAX_EXTRA_CATEGORIES + 1 },
+        () => '123e4567-e89b-12d3-a456-426614174111',
+      );
+      const parsed = extras(ids);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues[0]).toMatchObject({
+        path: ['extraCategoryIds'],
+        message: PRODUCT_MESSAGES.extraCategoriesMax,
+      });
+    });
+
+    it('keys a malformed id on the bare field, never on its index', () => {
+      // The form looks its errors up by exact key, so an issue keyed
+      // `extraCategoryIds.1` would be one no field ever shows. A value that is
+      // not even a string has to collapse the same way — it arrives through
+      // the same API field.
+      for (const bad of [
+        ['not-a-uuid'],
+        ['123e4567-e89b-12d3-a456-426614174111', 7],
+        [null],
+        [{}],
+      ]) {
+        const parsed = extras(bad);
+        expect(parsed.success).toBe(false);
+        expect(parsed.error?.issues[0]).toMatchObject({
+          path: ['extraCategoryIds'],
+          message: PRODUCT_MESSAGES.extraCategories,
+        });
+      }
+    });
+
+    it('rejects a value that is not a list at all', () => {
+      expect(extras('123e4567-e89b-12d3-a456-426614174111').success).toBe(
+        false,
+      );
+      expect(extras([42]).success).toBe(false);
+    });
   });
 
   describe('free-text hardening', () => {
@@ -161,6 +270,9 @@ describe('productInputSchema', () => {
     const ZWNJ = String.fromCharCode(0x200c);
     const RLO = String.fromCharCode(0x202e);
     const LRI = String.fromCharCode(0x2066);
+    const LRM = String.fromCharCode(0x200e);
+    const RLM = String.fromCharCode(0x200f);
+    const ALM = String.fromCharCode(0x061c);
 
     const TEXT_FIELDS = ['title', 'brand', 'benefit', 'description'] as const;
     type TextField = (typeof TEXT_FIELDS)[number];
@@ -214,6 +326,26 @@ describe('productInputSchema', () => {
 
     it.each(TEXT_FIELDS)('rejects a directional isolate in %s', (field) => {
       expect(messageFor(field, `abc${LRI}def`)).toBe(
+        PRODUCT_MESSAGES.textChars,
+      );
+    });
+
+    // The bidi *marks*: no embedding to pop, but a single one still flips the
+    // neutrals around it — a price or a SKU in a description renders reversed.
+    it.each(TEXT_FIELDS)('rejects a left-to-right mark in %s', (field) => {
+      expect(messageFor(field, `abc${LRM}def`)).toBe(
+        PRODUCT_MESSAGES.textChars,
+      );
+    });
+
+    it.each(TEXT_FIELDS)('rejects a right-to-left mark in %s', (field) => {
+      expect(messageFor(field, `abc${RLM}def`)).toBe(
+        PRODUCT_MESSAGES.textChars,
+      );
+    });
+
+    it.each(TEXT_FIELDS)('rejects an Arabic letter mark in %s', (field) => {
+      expect(messageFor(field, `abc${ALM}def`)).toBe(
         PRODUCT_MESSAGES.textChars,
       );
     });
@@ -306,5 +438,192 @@ describe('slug length', () => {
       .safeParse({ ...valid, slug: 'a'.repeat(MAX_SLUG_LENGTH + 1) })
       .error?.issues.find((i) => i.path[0] === 'slug');
     expect(issue?.message).toBe(PRODUCT_MESSAGES.slugLength);
+  });
+});
+
+describe('product families (variant_of / variant_label)', () => {
+  const HEAD = '11111111-1111-4111-8111-111111111111';
+
+  it('defaults both fields to null, so every body written before they existed stays valid', () => {
+    const parsed = productInputSchema.parse(valid);
+    expect(parsed.variantOf).toBeNull();
+    expect(parsed.variantLabel).toBeNull();
+  });
+
+  it('accepts a standalone product that carries a label but no head (a family head)', () => {
+    const parsed = productInputSchema.parse({
+      ...valid,
+      variantLabel: '۱۰ کیلوگرم',
+    });
+    expect(parsed.variantOf).toBeNull();
+    expect(parsed.variantLabel).toBe('۱۰ کیلوگرم');
+  });
+
+  it('accepts a member: a head plus a label', () => {
+    const parsed = productInputSchema.parse({
+      ...valid,
+      variantOf: HEAD,
+      variantLabel: '۵ کیلوگرم',
+    });
+    expect(parsed.variantOf).toBe(HEAD);
+    expect(parsed.variantLabel).toBe('۵ کیلوگرم');
+  });
+
+  it('refuses a member with no label — it would render an empty chip', () => {
+    const result = productInputSchema.safeParse({ ...valid, variantOf: HEAD });
+    expect(result.success).toBe(false);
+    const issue = result.error?.issues.find((i) =>
+      i.path.includes('variantLabel'),
+    );
+    expect(issue?.message).toBe(VARIANT_MESSAGES.label);
+  });
+
+  it('refuses a member whose label is only whitespace', () => {
+    expect(
+      productInputSchema.safeParse({
+        ...valid,
+        variantOf: HEAD,
+        variantLabel: '   ',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('keys the missing-label refusal on the field the form actually renders', () => {
+    const result = productInputSchema.safeParse({ ...valid, variantOf: HEAD });
+    expect(result.error?.issues.some((i) => i.path[0] === 'variantLabel')).toBe(
+      true,
+    );
+  });
+
+  it('refuses a head id that is not a uuid', () => {
+    expect(
+      productInputSchema.safeParse({
+        ...valid,
+        variantOf: 'not-a-uuid',
+        variantLabel: 'قرمز',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('trims a label and turns an empty one into null, like every other optional text', () => {
+    const parsed = productInputSchema.parse({
+      ...valid,
+      variantLabel: '  قرمز  ',
+    });
+    expect(parsed.variantLabel).toBe('قرمز');
+    expect(
+      productInputSchema.parse({ ...valid, variantLabel: '' }).variantLabel,
+    ).toBeNull();
+  });
+
+  it('caps the label length', () => {
+    expect(
+      productInputSchema.safeParse({
+        ...valid,
+        variantLabel: 'ا'.repeat(VARIANT_LABEL_LIMIT + 1),
+      }).success,
+    ).toBe(false);
+    expect(
+      productInputSchema.safeParse({
+        ...valid,
+        variantLabel: 'ا'.repeat(VARIANT_LABEL_LIMIT),
+      }).success,
+    ).toBe(true);
+  });
+
+  it('refuses a label carrying a control character', () => {
+    expect(
+      productInputSchema.safeParse({
+        ...valid,
+        variantLabel: `قرمز${String.fromCharCode(0)}`,
+      }).success,
+    ).toBe(false);
+  });
+
+  // ZWNJ, constructed rather than typed (the repo's control-character rule).
+  // It is deliberately allowed *inside* Persian words — `FORBIDDEN_TEXT_CHARS`
+  // lets it through for that reason — and `trim()` does not remove it, so a
+  // label made of nothing else survived as a string and rendered as a chip with
+  // no text on it.
+  const ZWNJ = String.fromCharCode(0x200c);
+
+  it('treats a label of nothing but ZWNJ as no label at all', () => {
+    const parsed = productInputSchema.parse({
+      ...valid,
+      variantLabel: ZWNJ + ZWNJ,
+    });
+    expect(parsed.variantLabel).toBeNull();
+  });
+
+  it('refuses a member whose label is only ZWNJ', () => {
+    // Follows from the rule above: the label is `null` by the time the
+    // cross-field rule runs, so it is refused as a missing one — and on the
+    // field the admin types in.
+    const result = productInputSchema.safeParse({
+      ...valid,
+      variantOf: HEAD,
+      variantLabel: ZWNJ,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.some((i) => i.path[0] === 'variantLabel')).toBe(
+      true,
+    );
+  });
+
+  it('keeps a ZWNJ that is doing its job inside a word', () => {
+    const parsed = productInputSchema.parse({
+      ...valid,
+      variantOf: HEAD,
+      variantLabel: `بی${ZWNJ}بو`,
+    });
+    expect(parsed.variantLabel).toBe(`بی${ZWNJ}بو`);
+  });
+});
+
+describe('the gallery-order body', () => {
+  const parse = (objectKeys: unknown) =>
+    productImagesOrderSchema.safeParse({ objectKeys });
+
+  it('takes this product\u2019s own keys, in order', () => {
+    const keys = [
+      'uploads/11111111-1111-4111-8111-111111111111.jpg',
+      'products/cat-dry-food.jpg',
+    ];
+
+    expect(parse(keys).success).toBe(true);
+  });
+
+  // The shape check is the boundary's job. It used to be a length bound, so
+  // anything short parsed clean and only the route's set-membership check
+  // stood between a crafted string and the write — a guarantee the schema is
+  // supposed to carry itself, and one the OpenAPI document published as
+  // «string» with no format at all.
+  it.each([
+    ['a traversal', '../../etc/passwd'],
+    ['a URL', 'http://example.com/x.jpg'],
+    ['someone else\u2019s namespace', 'secrets/key.jpg'],
+    [
+      'an extension we do not serve',
+      'uploads/11111111-1111-4111-8111-111111111111.svg',
+    ],
+    ['an upload key that is not a uuid', 'uploads/not-a-uuid.jpg'],
+    ['an empty key', ''],
+  ])('refuses %s', (_name, key) => {
+    expect(parse([key]).success).toBe(false);
+  });
+
+  it('refuses more than the cap, and a repeated key', () => {
+    const key = (n: number) =>
+      `uploads/1111111${n}-1111-4111-8111-111111111111.jpg`;
+
+    expect(
+      parse(Array.from({ length: MAX_PRODUCT_IMAGES + 1 }, (_, i) => key(i)))
+        .success,
+    ).toBe(false);
+    expect(parse([key(1), key(1)]).success).toBe(false);
+  });
+
+  it('accepts an empty list, which is how a gallery is cleared', () => {
+    expect(parse([]).success).toBe(true);
   });
 });

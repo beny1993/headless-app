@@ -42,7 +42,14 @@ FROM node:24-alpine AS build
 WORKDIR /app
 ENV HUSKY=0
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN corepack enable
+# node_modules arrives from `deps`, so this stage needs no package manager — and
+# deliberately has none. Enabling corepack used to sit here, and the first pnpm
+# call then downloaded pnpm-11.20.0.tgz from registry.npmjs.org; `COPY . .`
+# invalidates this layer on every commit, so EVERY deploy depended on that fetch.
+# From the Coolify box it periodically fails DNS (EAI_AGAIN) and takes the deploy
+# with it. The bin shims pnpm wrote are plain POSIX sh that resolve relative to
+# themselves, so PATH is all this stage needs to run them.
+ENV PATH="/app/node_modules/.bin:$PATH"
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -74,7 +81,14 @@ ARG NEXT_PUBLIC_UMAMI_WEBSITE_ID=
 # src/lib/utils/env.ts while Next imports the auth/db modules: `new Pool()` does
 # not connect, nothing here verifies the secret, and every data route is
 # force-dynamic so no DB-backed page is rendered at build.
-RUN NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
+# Invoked as `next build` rather than through the package manager — the same
+# command today (`build` is bare `next build`, with no prebuild/postbuild), but
+# reaching it without one is the point. Mirror any pre/post script added there
+# here. --network=none makes the offline claim enforceable: the day something in
+# the build reaches for the network it fails here, by name, instead of
+# intermittently on a name lookup.
+RUN --network=none \
+    NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
     NEXT_PUBLIC_STORAGE_BASE_URL="$NEXT_PUBLIC_STORAGE_BASE_URL" \
     NEXT_PUBLIC_SENTRY_DSN="$NEXT_PUBLIC_SENTRY_DSN" \
     NEXT_PUBLIC_SENTRY_ENVIRONMENT="$NEXT_PUBLIC_SENTRY_ENVIRONMENT" \
@@ -82,7 +96,7 @@ RUN NEXT_PUBLIC_APP_URL="$NEXT_PUBLIC_APP_URL" \
     NEXT_PUBLIC_UMAMI_WEBSITE_ID="$NEXT_PUBLIC_UMAMI_WEBSITE_ID" \
     APP_CONFIG_DATABASE_URL="postgres://build:build@127.0.0.1:5432/build" \
     APP_CONFIG_AUTH_SECRET="build-time-placeholder-not-used-at-runtime" \
-    pnpm build
+    next build
 
 # Next bundles drizzle-orm into the server chunks rather than tracing it as an
 # external, so .next/standalone/node_modules does NOT contain it — and the
@@ -116,9 +130,8 @@ COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
 
-# Migrations are applied by a deploy step, not by the server on boot — so the
-# SQL and a devDependency-free applier travel with the image.
-# Coolify pre-deployment command:  node scripts/migrate.mjs
+# Migrations are applied when the container starts (see CMD) — so the SQL and a
+# devDependency-free applier travel with the image.
 COPY --from=build --chown=node:node /app/src/db/migrations ./src/db/migrations
 COPY --from=build --chown=node:node /app/scripts/migrate.mjs ./scripts/migrate.mjs
 COPY --from=build --chown=node:node /migrator/drizzle-orm ./node_modules/drizzle-orm
@@ -126,4 +139,27 @@ COPY --from=build --chown=node:node /migrator/drizzle-orm ./node_modules/drizzle
 USER node
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+# Migrate, then serve — in that order, in the container that is about to serve.
+# Coolify's pre-deployment command could not do this: it is a `docker exec` into
+# the container that is ALREADY running, before the new commit is even cloned, so
+# it applied the previous image's migrations and a new one landed a deploy late —
+# new code on the old schema until somebody redeployed.
+#
+# `&&`: a failed migration exits non-zero and the server never starts. The new
+# container never turns healthy (it exits, and under a restart policy retries,
+# until the healthcheck window runs out), Coolify rolls back, the deploy fails,
+# and the old container keeps serving. A database
+# that is not up yet (a cold server boot) converges the same way, no retry loop.
+# A migration slower than that window fails the deploy too: raise the
+# healthcheck start period for it.
+#
+# `exec`: node must end up as PID 1, as it was with `CMD ["node", "server.js"]` —
+# a shell left at PID 1 drops SIGTERM, and every rolling update would SIGKILL the
+# old server, requests in flight, after the 10 s grace period. Measured on this
+# image, busybox `sh` already execs the last command of a `-c` string, so node is
+# PID 1 with or without the keyword (`docker stop` < 1 s both ways); `exec` makes
+# that a guarantee instead of one shell's optimization, should the base change.
+#
+# ponytail: no lock around the migrate — one replica, one new container at a
+# time. Take a `pg_advisory_lock` in scripts/migrate.mjs if replicas ever go > 1.
+CMD ["sh", "-c", "node scripts/migrate.mjs && exec node server.js"]

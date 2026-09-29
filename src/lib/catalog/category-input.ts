@@ -9,7 +9,9 @@
 // a body carrying them has them stripped rather than applied.
 import { z } from 'zod';
 import { toPersianDigits } from '@/lib/format';
-import { SLUG_PATTERN } from './product-input';
+import { imageKeySchema } from '@/lib/storage/image-upload';
+import { FORBIDDEN_TEXT_CHARS, VISIBLE_CHAR } from '@/lib/validation/text';
+import { MIN_SLUG_LENGTH, SLUG_PATTERN } from './product-input';
 import { MAX_SLUG_LENGTH } from './sku';
 
 /**
@@ -17,18 +19,6 @@ import { MAX_SLUG_LENGTH } from './sku';
  * in the product form's select, so it is capped rather than left to grow.
  */
 export const MAX_TITLE_LENGTH = 100;
-
-/**
- * Characters a title may not carry, as escapes (never typed): every control
- * character — NUL among them, which Postgres refuses as a 500 — and the bidi
- * embeddings, overrides and isolates (U+202A–U+202E, U+2066–U+2069), which
- * reorder the surrounding text wherever the title is shown. ZWNJ is deliberately
- * allowed: Persian words need it («دسته‌بندی»).
- */
-const FORBIDDEN_TITLE_CHARS = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/u;
-
-/** At least one letter, digit, punctuation mark or symbol — not just invisibles. */
-const VISIBLE_CHAR = /[\p{L}\p{N}\p{P}\p{S}]/u;
 
 /** `categories.sort_order` is a Postgres `integer`; past this the write would 500. */
 export const MAX_SORT_ORDER = 2_147_483_647;
@@ -38,10 +28,30 @@ export const CATEGORY_MESSAGES = {
   title: 'عنوان دسته‌بندی الزامی است.',
   titleLength: `عنوان دسته‌بندی حداکثر ${toPersianDigits(MAX_TITLE_LENGTH)} نویسه است.`,
   titleChars: 'عنوان دسته‌بندی نویسه‌های نامعتبر دارد.',
-  slug: 'نشانی فقط با حروف کوچک انگلیسی، عدد و خط تیره (حداقل ۳ نویسه).',
+  slug: `نشانی فقط با حروف کوچک انگلیسی، عدد و خط تیره (حداقل ${toPersianDigits(MIN_SLUG_LENGTH)} نویسه).`,
   slugLength: `نشانی حداکثر ${toPersianDigits(MAX_SLUG_LENGTH)} نویسه است.`,
   sortOrder: 'ترتیب نمایش باید عددی صحیح و صفر یا بیشتر باشد.',
+  parent: 'دسته‌بندی مادر نامعتبر است.',
 } as const;
+
+/**
+ * Why a parent was refused. The database cannot see another row, so these four
+ * are `CategoryDao`'s to decide — the schema only checks that the id is an id.
+ */
+export type CategoryParentReason =
+  'self' | 'unknown' | 'nested' | 'hasChildren';
+
+/**
+ * The refusals, in Persian. The routes send them as `parentId: <message>`, which
+ * `parseFieldErrors` drops under the manager's parent select; `hasChildren` is
+ * also that select's hint while it is disabled, so both say the same sentence.
+ */
+export const CATEGORY_PARENT_MESSAGES: Record<CategoryParentReason, string> = {
+  self: 'یک دسته‌بندی نمی‌تواند مادر خودش باشد.',
+  unknown: 'دسته‌بندی مادر یافت نشد؛ صفحه را تازه کن.',
+  nested: 'دسته‌بندی مادر خودش زیردسته است؛ بیش از یک سطح زیردسته نداریم.',
+  hasChildren: 'این دسته‌بندی زیردسته دارد و خودش نمی‌تواند زیردسته شود.',
+};
 
 // `{ error }` on each base type too, not only on the refinements: a missing or
 // wrong-typed field fails the base check, and without it zod falls back to its
@@ -52,7 +62,7 @@ export const categoryInputSchema = z.object({
     .trim()
     .min(1, CATEGORY_MESSAGES.title)
     .max(MAX_TITLE_LENGTH, CATEGORY_MESSAGES.titleLength)
-    .refine((value) => !FORBIDDEN_TITLE_CHARS.test(value), {
+    .refine((value) => !FORBIDDEN_TEXT_CHARS.test(value), {
       error: CATEGORY_MESSAGES.titleChars,
     })
     // `trim()` leaves ZWNJ and friends, so an all-invisible title reads as blank.
@@ -72,6 +82,23 @@ export const categoryInputSchema = z.object({
     .int(CATEGORY_MESSAGES.sortOrder)
     .nonnegative(CATEGORY_MESSAGES.sortOrder)
     .max(MAX_SORT_ORDER, CATEGORY_MESSAGES.sortOrder),
+  // PUT replaces every field but the photo (below), so an omitted parent
+  // means «top-level», not «leave it alone» — which is also what keeps every
+  // body written before sub-categories existed valid. Whether the id names a
+  // category, and whether that category may be a parent, is `CategoryDao`'s
+  // call: a schema cannot see another row.
+  parentId: z.uuid(CATEGORY_MESSAGES.parent).nullable().default(null),
+  // The tile photo's storage key: the manager uploads the file through the
+  // shared content-image route first and sends back the key it was given, the
+  // content editor's flow. On an update, unlike the fields above, omitted is
+  // not «none»: it leaves the photo as it is, and only an explicit null removes
+  // it — so a client that knows nothing of photos (an admin tab opened before
+  // they shipped) cannot wipe one by saving a title. A create has no photo to
+  // keep, so there omitted means none. A replaced key's file stays in
+  // storage: deleting it would first need proof the key is this category's own
+  // — a body can name any well-formed key — and category photos change too
+  // rarely to leave anything worth collecting.
+  imageKey: imageKeySchema.nullish(),
 });
 
 /** The validated body — assignable to `CategoryDao`'s `CategoryInput`. */

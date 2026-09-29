@@ -59,15 +59,30 @@ describe('otpMessage', () => {
 });
 
 describe('consoleSmsDriver', () => {
+  // NODE_ENV is snapshotted at import time (`STATIC_INLINED_VARS` in env.ts),
+  // so a case that depends on it stubs the environment and then re-imports the
+  // module — the pattern in `env.test.ts`.
+  const load = async (nodeEnv: string) => {
+    vi.stubEnv('NODE_ENV', nodeEnv);
+    vi.resetModules();
+    return import('./index');
+  };
+
   let log: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     log = vi.spyOn(console, 'log').mockImplementation(() => {});
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    vi.restoreAllMocks();
+  });
 
   it('prints the recipient and the message so a local QA run can read it', async () => {
-    await consoleSmsDriver(PHONE, otpSms('482913'));
+    const sms = await load('development');
+
+    await sms.consoleSmsDriver(PHONE, otpSms('482913'));
 
     expect(log).toHaveBeenCalledTimes(1);
     const printed = log.mock.calls[0]!.join(' ');
@@ -76,13 +91,17 @@ describe('consoleSmsDriver', () => {
   });
 
   it('renders the Persian message itself — the seam carries only the code', async () => {
-    await consoleSmsDriver(PHONE, otpSms('482913'));
+    const sms = await load('development');
+
+    await sms.consoleSmsDriver(PHONE, otpSms('482913'));
 
     expect(log.mock.calls[0]!.join(' ')).toContain(otpMessage('482913'));
   });
 
   it('renders the new-order alert from its parameters', async () => {
-    await consoleSmsDriver(PHONE, newOrderSms(ORDER_PARAMS));
+    const sms = await load('development');
+
+    await sms.consoleSmsDriver(PHONE, newOrderSms(ORDER_PARAMS));
 
     expect(log.mock.calls[0]!.join(' ')).toContain(
       newOrderMessage(ORDER_PARAMS),
@@ -93,6 +112,89 @@ describe('consoleSmsDriver', () => {
     await expect(
       consoleSmsDriver(PHONE, otpSms('482913')),
     ).resolves.toBeUndefined();
+  });
+
+  // A deploy that forgets APP_CONFIG_SMS_PROVIDER runs this driver on the PaaS,
+  // where the server log is the platform's log store. Printing the number and a
+  // live code there hands every account away to whoever can read it.
+  describe('outside development', () => {
+    it.each(['production', 'test'])(
+      'writes neither the code nor the number under NODE_ENV=%s',
+      async (nodeEnv) => {
+        const sms = await load(nodeEnv);
+
+        await sms.consoleSmsDriver(PHONE, otpSms('482913'));
+
+        const printed = log.mock.calls[0]!.join(' ');
+        expect(printed).not.toContain('482913');
+        expect(printed).not.toContain(PHONE);
+        // Not one digit of either: no last-four tail, no partial number.
+        expect(printed).not.toMatch(/[0-9]/);
+      },
+    );
+
+    it('still says a code went out — silence would look like a broken driver', async () => {
+      const sms = await load('production');
+
+      await sms.consoleSmsDriver(PHONE, otpSms('482913'));
+
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log.mock.calls[0]!.join(' ')).toContain('[sms:console]');
+    });
+
+    it('points at the sanctioned way to read a code on a test deploy', async () => {
+      // `docker logs` no longer carries it, so the staging escape hatch is
+      // APP_CONFIG_SHOW_OTP_IN_UI (src/lib/auth/otp-echo.ts).
+      const sms = await load('production');
+
+      await sms.consoleSmsDriver(PHONE, otpSms('482913'));
+
+      expect(log.mock.calls[0]!.join(' ')).toContain(
+        'APP_CONFIG_SHOW_OTP_IN_UI',
+      );
+    });
+
+    it.each(['production', 'test'])(
+      'writes neither the order nor the number of a new-order alert under NODE_ENV=%s',
+      async (nodeEnv) => {
+        // The admin's number is as personal as a shopper's, and the payload has
+        // no business in a platform-side log either.
+        const sms = await load(nodeEnv);
+
+        await sms.consoleSmsDriver(PHONE, newOrderSms(ORDER_PARAMS));
+
+        const printed = log.mock.calls[0]!.join(' ');
+        expect(printed).not.toContain(PHONE);
+        for (const value of Object.values(ORDER_PARAMS)) {
+          expect(printed).not.toContain(value);
+        }
+        // Not one digit in either script: no order number, no amount, no tail
+        // of the admin's number.
+        expect(printed).not.toMatch(/[0-9۰-۹]/);
+      },
+    );
+
+    it('says which message went out — an order alert never reads as a sign-in code', async () => {
+      // A staging log that reported every alert as a sign-in code would send
+      // whoever reads it looking for a login that never happened.
+      const sms = await load('production');
+
+      await sms.consoleSmsDriver(PHONE, otpSms('482913'));
+      await sms.consoleSmsDriver(PHONE, newOrderSms(ORDER_PARAMS));
+
+      const otpLine = log.mock.calls[0]!.join(' ');
+      const orderLine = log.mock.calls[1]!.join(' ');
+      expect(orderLine).toContain('[sms:console]');
+      expect(orderLine).not.toBe(otpLine);
+    });
+
+    it('resolves all the same — redaction must not fail the login', async () => {
+      const sms = await load('production');
+
+      await expect(
+        sms.consoleSmsDriver(PHONE, otpSms('482913')),
+      ).resolves.toBeUndefined();
+    });
   });
 });
 
@@ -117,7 +219,9 @@ describe('getSmsSender', () => {
     // provider that was finally chosen, no adapter exists yet, and every login
     // silently succeeds while sending nothing.
     vi.stubEnv('APP_CONFIG_SMS_PROVIDER', 'kavenegar');
-    expect(() => getSmsSender()).toThrow(/kavenegar/);
+    expect(() => getSmsSender()).toThrow(
+      'APP_CONFIG_SMS_PROVIDER="kavenegar" has no driver. Known providers: console, smsir.',
+    );
   });
 
   it('refuses an unknown provider rather than falling back to console', () => {
@@ -185,11 +289,19 @@ describe('sendOtpSms', () => {
   });
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.resetModules();
     vi.restoreAllMocks();
   });
 
   it('sends the OTP message to the number that asked for it', async () => {
-    await sendOtpSms(PHONE, '482913');
+    // Read under development, the one mode where the console driver still
+    // prints the payload — which is what makes the number and the code
+    // observable at all. The redaction has its own cases above.
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.resetModules();
+    const sms = await import('./index');
+
+    await sms.sendOtpSms(PHONE, '482913');
 
     const printed = log.mock.calls[0]!.join(' ');
     expect(printed).toContain(PHONE);

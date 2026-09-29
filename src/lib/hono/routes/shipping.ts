@@ -21,12 +21,8 @@ import {
   provinceIdParamSchema,
   shippingFeeSchema,
 } from '@/lib/shipping/shipping-query';
-import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 
 /**
  * A well-formed province id with no matching province. User-facing, so Persian;
@@ -35,7 +31,7 @@ import {
  */
 export const INVALID_PROVINCE_MESSAGE = 'استان نامعتبر است';
 
-export const ShippingRateSchema = z
+const ShippingRateSchema = z
   .object({
     provinceId: z.number().int().positive(),
     /** Canonical Persian province name — what the <select> renders. */
@@ -74,7 +70,8 @@ const ProvinceIdParamSchema = z.object({
   }),
 });
 
-const RateUpdateBodySchema = z
+/** `{ fee }` — the body of the per-province PUT and of the admin bulk PUT. */
+export const RateUpdateBodySchema = z
   .object({
     fee: shippingFeeSchema.meta({
       description: "The province's new shipping fee, integer Toman (0 = free).",
@@ -82,12 +79,6 @@ const RateUpdateBodySchema = z
     }),
   })
   .openapi('ShippingRateUpdate');
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 export const shippingRatesRoute = createRoute({
   method: 'get',

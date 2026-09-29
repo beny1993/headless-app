@@ -9,6 +9,10 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // vitest.config.ts imports `./scripts/load-env.ts` with its extension: Vite's
+    // native config loader (its planned default) cannot resolve an extensionless
+    // relative import, and warns about it on every run.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

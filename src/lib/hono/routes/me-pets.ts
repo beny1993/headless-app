@@ -4,33 +4,35 @@
 // by `PetDao`, which ANDs the session id into every read and write. The `{id}` in
 // the path is the RESOURCE, never the owner — the owner is always `c.get('user')`.
 //
-// "Not found" and "not yours" are the same 404 (a null from `getOwned`/`update`,
-// a false from `delete`), so the API never confirms another user's pet exists.
+// "Not found" and "not yours" are the same 404 (a null from `update`, a
+// false from `delete`), so the API never confirms another user's pet exists.
 // The `{id}` param is `z.uuid()`: a non-uuid against a uuid column is a Postgres
 // 22P02 the driver throws as a 500, rejected as a 400 here first.
 //
-// `toPetResponse` is exported so the account server page renders from the exact
-// shape a fetch returns — one type for the resource.
+// The resource's shape and its projector live in `@/lib/account/pet`, which is
+// client-safe: the account server page renders from the exact shape a fetch
+// returns without importing this file (and with it `@hono/zod-openapi`) as a
+// value. The `PetResponse` type is re-exported below for the consumers that
+// already import it from here.
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
 import { PetDao } from '@/db/dao/PetDao';
-import type { Pet } from '@/db/schema/account';
 import {
-  petGenderSchema,
   petInputSchema,
-  petKindSchema,
+  petResponseSchema,
+  toPetResponse,
 } from '@/lib/account/pet';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
 import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+  IdParamSchema,
+  errorResponse,
+  openapiObject,
+} from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
-export const PET_NOT_FOUND_MESSAGE = 'حیوان یافت نشد';
+const PET_NOT_FOUND_MESSAGE = 'حیوان یافت نشد';
 
 /**
  * A soft per-user ceiling. A real account holds a handful of pets; a request past
@@ -41,57 +43,21 @@ export const PET_NOT_FOUND_MESSAGE = 'حیوان یافت نشد';
 export const MAX_PETS_PER_USER = 20;
 const TOO_MANY_PETS_MESSAGE = 'به سقف تعداد حیوانات خانگی رسیده‌ای.';
 
-const PetSchema = z
-  .object({
-    id: z.uuid(),
-    name: z.string(),
-    type: petKindSchema,
-    gender: petGenderSchema,
-    neutered: z.boolean(),
-    breed: z.string().nullable(),
-    age: z.string().nullable(),
-    weight: z.string().nullable(),
-    photoUrl: z.string().nullable(),
-    createdAt: z.iso.datetime(),
-  })
-  .openapi('Pet');
+/** The shape lives in `@/lib/account/pet` — see `openapiObject`. */
+const PetSchema = openapiObject(petResponseSchema, 'Pet');
 
-/** The pet shape the account UI renders. Import, don't restate. */
-export type PetResponse = z.infer<typeof PetSchema>;
-
-/** Pet row → the wire projection: Date to ISO, internal `userId`/`updatedAt` dropped. */
-export const toPetResponse = (row: Pet): PetResponse => ({
-  id: row.id,
-  name: row.name,
-  type: row.type,
-  gender: row.gender,
-  neutered: row.neutered,
-  breed: row.breed,
-  age: row.age,
-  weight: row.weight,
-  photoUrl: row.photoUrl,
-  createdAt: row.createdAt.toISOString(),
-});
-
-const PetIdParamSchema = z.object({
-  id: z.uuid().meta({ param: { name: 'id', in: 'path' } }),
-});
+/** Re-exported for the client components that already import the type here. */
+export type { PetResponse } from '@/lib/account/pet';
 
 const jsonBody = {
   content: { 'application/json': { schema: petInputSchema } },
   required: true,
 } as const;
 
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
-
 const petResponse = (description: string) =>
   ({
     content: {
-      'application/json': { schema: apiSuccessSchema(PetSchema, undefined) },
+      'application/json': { schema: apiSuccessSchema(PetSchema) },
     },
     description,
   }) as const;
@@ -160,7 +126,7 @@ export const mePetUpdateRoute = createRoute({
   path: '/me/pets/{id}',
   tags: ['account'],
   summary: 'Update one of your own pets (auth required, owner only)',
-  request: { params: PetIdParamSchema, body: jsonBody },
+  request: { params: IdParamSchema, body: jsonBody },
   responses: {
     200: petResponse('The updated pet'),
     400: errorResponse('Invalid id or malformed body'),
@@ -190,12 +156,12 @@ export const mePetDeleteRoute = createRoute({
   path: '/me/pets/{id}',
   tags: ['account'],
   summary: 'Delete one of your own pets (auth required, owner only)',
-  request: { params: PetIdParamSchema },
+  request: { params: IdParamSchema },
   responses: {
     200: {
       content: {
         'application/json': {
-          schema: apiSuccessSchema(DeletedSchema, undefined),
+          schema: apiSuccessSchema(DeletedSchema),
         },
       },
       description: 'The id of the deleted pet',

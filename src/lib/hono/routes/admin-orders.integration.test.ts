@@ -24,10 +24,7 @@ import { PET_TYPES, categories, products } from '@/db/schema/catalog';
 import { users } from '@/db/schema/auth';
 import { orders } from '@/db/schema/orders';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
-import {
-  apiAdminOrderPath,
-  apiAdminOrderTransitionsPath,
-} from '@/lib/constant/paths';
+import { API_PATHS, apiAdminOrderTransitionsPath } from '@/lib/constant/paths';
 import type { ApiResponse } from '@/lib/hono/envelope';
 import {
   adminNextStatuses,
@@ -56,6 +53,8 @@ const asCustomer = () =>
     session: { id: 's2' },
   });
 const anon = () => mocks.getSession.mockResolvedValue(null);
+
+const adminOrderPath = (id: string) => `${API_PATHS.ADMIN_ORDERS}/${id}`;
 
 describe.skipIf(!databaseReachable)('admin order API', () => {
   // Shared setup — one user/category/product backs every seeded order, so the
@@ -90,7 +89,7 @@ describe.skipIf(!databaseReachable)('admin order API', () => {
         price: 100_000,
         stock: 1000,
         categoryId: category.id,
-        petType: PET_TYPES.CAT,
+        petTypes: [PET_TYPES.CAT],
       })
       .returning();
     createdProductIds.push(product.id);
@@ -167,7 +166,7 @@ describe.skipIf(!databaseReachable)('admin order API', () => {
       anon();
       const id = crypto.randomUUID();
       const calls = await Promise.all([
-        json(apiAdminOrderPath(id), 'GET'),
+        json(adminOrderPath(id), 'GET'),
         json(apiAdminOrderTransitionsPath(id), 'POST', {
           to: ORDER_STATUSES.PROCESSING,
         }),
@@ -179,7 +178,7 @@ describe.skipIf(!databaseReachable)('admin order API', () => {
       asCustomer();
       const id = crypto.randomUUID();
       const calls = await Promise.all([
-        json(apiAdminOrderPath(id), 'GET'),
+        json(adminOrderPath(id), 'GET'),
         json(apiAdminOrderTransitionsPath(id), 'POST', {
           to: ORDER_STATUSES.PROCESSING,
         }),
@@ -240,7 +239,7 @@ describe.skipIf(!databaseReachable)('admin order API', () => {
             cardPan: string | null;
             needsManualRefund: boolean;
           }[];
-        }>(await json(apiAdminOrderPath(order.id), 'GET'));
+        }>(await json(adminOrderPath(order.id), 'GET'));
 
         expect(status).toBe(200);
         if (body.status !== 'success') throw new Error(body.message);
@@ -262,7 +261,7 @@ describe.skipIf(!databaseReachable)('admin order API', () => {
 
     it('404s an unknown id and 400s a malformed id', async () => {
       asAdmin();
-      const missing = await json(apiAdminOrderPath(crypto.randomUUID()), 'GET');
+      const missing = await json(adminOrderPath(crypto.randomUUID()), 'GET');
       expect(missing.status).toBe(404);
       const malformed = await json(`/api/admin/orders/not-a-uuid`, 'GET');
       expect(malformed.status).toBe(400);

@@ -10,7 +10,7 @@ import {
 } from '@/lib/orders/order-status';
 import { databaseReachable, importWithDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
-import { apiOrderPath } from '@/lib/constant/paths';
+import { API_PATHS } from '@/lib/constant/paths';
 import type { ApiResponse } from '@/lib/hono/envelope';
 
 const mocks = vi.hoisted(() => ({ getSession: vi.fn() }));
@@ -47,7 +47,7 @@ describe.skipIf(!databaseReachable)('GET /api/orders/:id', () => {
     return { user, order, product };
   };
 
-  const get = (id: string) => app.request(apiOrderPath(id));
+  const get = (id: string) => app.request(`${API_PATHS.ORDERS}/${id}`);
 
   it('rejects an unauthenticated request with 401', async () => {
     const { order } = await seedOrder();

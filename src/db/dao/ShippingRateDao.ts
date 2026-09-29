@@ -12,12 +12,13 @@
 // the name through `normalizeProvinceName`, so the unique constraint on
 // `provinces.name` is the real duplicate backstop.
 import { and, asc, eq } from 'drizzle-orm';
-import { db } from '@/db';
+import { db, type Executor } from '@/db';
+
 import { provinces, shippingRates } from '@/db/schema/shipping';
 import { normalizeProvinceName } from '@/lib/shipping/province-input';
 
 /** A province and its current fee, the joined shape the storefront API serves. */
-export type ShippingRateRow = { provinceId: number; name: string; fee: number };
+type ShippingRateRow = { provinceId: number; name: string; fee: number };
 
 /** The admin view: the storefront row plus whether the province is active. */
 export type AdminProvinceRow = ShippingRateRow & { isActive: boolean };
@@ -31,6 +32,12 @@ const rateColumns = {
 const adminColumns = { ...rateColumns, isActive: provinces.isActive };
 
 const hasRate = eq(shippingRates.provinceId, provinces.id);
+
+/** Every province joined to its rate (1:1, so an inner join loses nothing). */
+const selectRates = () =>
+  db.select(rateColumns).from(provinces).innerJoin(shippingRates, hasRate);
+const selectAdminRows = (on: Executor = db) =>
+  on.select(adminColumns).from(provinces).innerJoin(shippingRates, hasRate);
 
 export class ShippingRateDao {
   /**
@@ -110,20 +117,13 @@ export class ShippingRateDao {
    * (Tehran first), and a new province simply appends. Not by name: Postgres
    * Persian collation is unreliable.
    */
-  static async list(): Promise<AdminProvinceRow[]> {
-    return db
-      .select(adminColumns)
-      .from(provinces)
-      .innerJoin(shippingRates, hasRate)
-      .orderBy(asc(provinces.id));
+  static async list(executor: Executor = db): Promise<AdminProvinceRow[]> {
+    return selectAdminRows(executor).orderBy(asc(provinces.id));
   }
 
   /** The active provinces with their fees, id order — the storefront selects and public list. */
   static async listActive(): Promise<ShippingRateRow[]> {
-    return db
-      .select(rateColumns)
-      .from(provinces)
-      .innerJoin(shippingRates, hasRate)
+    return selectRates()
       .where(eq(provinces.isActive, true))
       .orderBy(asc(provinces.id));
   }
@@ -136,10 +136,7 @@ export class ShippingRateDao {
   static async getByProvinceId(
     provinceId: number,
   ): Promise<ShippingRateRow | null> {
-    const [row] = await db
-      .select(rateColumns)
-      .from(provinces)
-      .innerJoin(shippingRates, hasRate)
+    const [row] = await selectRates()
       .where(and(eq(provinces.id, provinceId), eq(provinces.isActive, true)))
       .limit(1);
     return row ?? null;
@@ -149,10 +146,7 @@ export class ShippingRateDao {
   static async getByProvinceIdForAdmin(
     provinceId: number,
   ): Promise<AdminProvinceRow | null> {
-    const [row] = await db
-      .select(adminColumns)
-      .from(provinces)
-      .innerJoin(shippingRates, hasRate)
+    const [row] = await selectAdminRows()
       .where(eq(provinces.id, provinceId))
       .limit(1);
     return row ?? null;
@@ -160,10 +154,7 @@ export class ShippingRateDao {
 
   /** A province by name (normalized first), active or not — the duplicate classifier. */
   static async findByName(name: string): Promise<AdminProvinceRow | null> {
-    const [row] = await db
-      .select(adminColumns)
-      .from(provinces)
-      .innerJoin(shippingRates, hasRate)
+    const [row] = await selectAdminRows()
       .where(eq(provinces.name, normalizeProvinceName(name)))
       .limit(1);
     return row ?? null;
@@ -202,5 +193,22 @@ export class ShippingRateDao {
       .returning({ provinceId: shippingRates.provinceId });
     if (!updated) return null;
     return ShippingRateDao.getByProvinceIdForAdmin(provinceId);
+  }
+
+  /**
+   * Admin bulk update: set EVERY province's fee — inactive ones too, since the
+   * editor lists and edits them all — and return the admin list. One `UPDATE`
+   * with no `WHERE`, deliberately: a single statement is atomic, so the fees
+   * never sit half-changed the way 31 per-row writes could, and a negative fee
+   * is refused for all of them by the `shipping_rates_fee_non_negative` CHECK.
+   * `executor` lets the integration test run it inside a transaction it rolls
+   * back, because this is the one write that touches the seeded rows.
+   */
+  static async setAllFees(
+    fee: number,
+    executor: Executor = db,
+  ): Promise<AdminProvinceRow[]> {
+    await executor.update(shippingRates).set({ fee });
+    return ShippingRateDao.list(executor);
   }
 }

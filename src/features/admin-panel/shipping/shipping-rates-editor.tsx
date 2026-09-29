@@ -1,39 +1,45 @@
 'use client';
 
 import { useId, useState } from 'react';
-import { Check, Loader2, Plus } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AdminProvinceRow } from '@/db/dao/ShippingRateDao';
-import { TextField } from '@/features/account/account-fields';
+import { controlClass, TextField } from '@/components/ui/field';
+import { patchData, postData, putData } from '@/lib/api-client';
 import {
-  ApiRequestError,
-  patchData,
-  postData,
-  putData,
-} from '@/lib/api-client';
-import { parseFieldErrors } from '@/lib/checkout/field-errors';
+  reasonFrom,
+  requestFieldErrors,
+  zodFieldErrors,
+} from '@/lib/checkout/field-errors';
 import {
   API_PATHS,
   apiAdminProvincePath,
   apiShippingRatePath,
 } from '@/lib/constant/paths';
-import { formatToman, toAsciiDigits } from '@/lib/format';
-import { provinceCreateSchema } from '@/lib/shipping/province-input';
+import { formatNumber, formatToman, parseDigits } from '@/lib/format';
+import {
+  PROVINCE_MESSAGES,
+  provinceCreateSchema,
+} from '@/lib/shipping/province-input';
 import { shippingFeeSchema } from '@/lib/shipping/shipping-query';
 import { cn } from '@/lib/utils';
+import { AdminTable } from '@/features/admin-panel/shared/admin-table';
+import { CreateCard } from '@/features/admin-panel/shared/create-card';
+import { Pill } from '@/features/admin-panel/shared/pill';
 
 const DEACTIVATE_LABEL = 'غیرفعال\u200Cسازی';
 const ACTIVATE_LABEL = 'فعال\u200Cسازی';
+const BULK_FEE_LABEL = 'هزینه ارسال همه استان\u200Cها (تومان)';
+const APPLY_ALL_LABEL = 'اعمال روی همه استان\u200Cها';
+const PREVIEW_LABEL = 'پیش\u200Cنمایش';
 
 /**
  * A fee as typed — Persian or ASCII digits — to integer Toman, or `null` when it
- * is not one. At least one digit first (rejects empty, negative, decimal), then
- * the shared `shippingFeeSchema`, which allows 0 (free shipping).
+ * is not one: blank, negative and fractional all fail the shared
+ * `shippingFeeSchema`, which allows 0 (free shipping).
  */
 const parseFee = (raw: string): number | null => {
-  const ascii = toAsciiDigits(raw.trim());
-  if (!/^\d+$/.test(ascii)) return null;
-  const parsed = shippingFeeSchema.safeParse(Number(ascii));
+  const parsed = shippingFeeSchema.safeParse(parseDigits(raw));
   return parsed.success ? parsed.data : null;
 };
 
@@ -44,16 +50,25 @@ const parseFee = (raw: string): number | null => {
  * exact contract the province-shipping security pass fixed in place: no
  * POST/form alias and no permissive CORS, because the CSRF defences — the JSON
  * preflight and SameSite=Lax — both depend on it), and `POST`/`PATCH` under
- * `/api/admin/provinces`. Client-side gating here is cosmetic; the real boundary
- * is `requireAdmin` on those endpoints.
+ * `/api/admin/provinces`, plus the one-fee-for-all `PUT /api/admin/provinces/fee`.
+ * Client-side gating here is cosmetic; the real boundary is `requireAdmin` on
+ * those endpoints.
  *
  * Validation reuses the shared contracts (`shippingFeeSchema`,
  * `provinceCreateSchema`), so the form and the API cannot drift. Rows live in
  * local state: a create appends (ids ascend, so id order holds), a toggle maps
  * in place — an inactive province stays where it was, muted, fee still editable.
+ *
+ * A bulk apply replaces the rows with the server's list AND bumps `generation`,
+ * which is part of every row's key. Each `RateRow` seeds its input and its
+ * "saved" fee from props once, so only a remount makes the table show what the
+ * database now holds. Keyed on a counter rather than the fee: a per-row save
+ * never reaches `rows`, so after 25,000 → 30,000 (saved in the row) → everything
+ * back to 25,000, the fee in `rows` has not changed and would remount nothing.
  */
 export function ShippingRatesEditor({ rates }: { rates: AdminProvinceRow[] }) {
   const [rows, setRows] = useState(rates);
+  const [generation, setGeneration] = useState(0);
 
   const onCreated = (created: AdminProvinceRow) =>
     setRows((prev) => [...prev, created]);
@@ -63,52 +78,123 @@ export function ShippingRatesEditor({ rates }: { rates: AdminProvinceRow[] }) {
         row.provinceId === updated.provinceId ? updated : row,
       ),
     );
+  const onAppliedToAll = (updated: AdminProvinceRow[]) => {
+    setRows(updated);
+    setGeneration((current) => current + 1);
+  };
 
   return (
     // `min-w-0`: a flex item holding a wide table (see the discount manager).
     <div className="flex min-w-0 flex-col gap-6">
       <CreateProvinceForm onCreated={onCreated} />
+      {rows.length > 0 && (
+        <BulkFeeForm count={rows.length} onApplied={onAppliedToAll} />
+      )}
       {rows.length === 0 ? (
         <div className="border-border bg-secondary/40 text-muted-foreground rounded-2xl border py-16 text-center text-sm">
           هنوز استانی ثبت نشده است. اولین استان را با فرم بالا اضافه کن.
         </div>
       ) : (
-        <div className="border-border overflow-hidden rounded-2xl border bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-secondary/50">
-                <tr>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    استان
-                  </th>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    وضعیت
-                  </th>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    هزینه ارسال (تومان)
-                  </th>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    {'پیش\u200Cنمایش'}
-                  </th>
-                  <th className="text-muted-foreground px-4 py-3 text-start font-semibold">
-                    <span className="sr-only">ذخیره و تغییر وضعیت</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((rate) => (
-                  <RateRow
-                    key={rate.provinceId}
-                    rate={rate}
-                    onToggled={onToggled}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <AdminTable
+          headings={['استان', 'وضعیت', 'هزینه ارسال (تومان)', PREVIEW_LABEL]}
+          actions="ذخیره و تغییر وضعیت"
+        >
+          {rows.map((rate) => (
+            <RateRow
+              key={`${rate.provinceId}:${generation}`}
+              rate={rate}
+              onToggled={onToggled}
+            />
+          ))}
+        </AdminTable>
       )}
     </div>
+  );
+}
+
+/**
+ * One fee for every province — what makes 31 rows tunable: set them all, then
+ * adjust the few that differ. It overwrites every rate (inactive provinces too),
+ * so the confirm says how many and to what before anything is sent; a cancelled
+ * confirm keeps what was typed. The write is a single atomic server-side
+ * `UPDATE`, never a loop of per-row PUTs from here that could stop half way.
+ */
+function BulkFeeForm({
+  count,
+  onApplied,
+}: {
+  count: number;
+  onApplied: (updated: AdminProvinceRow[]) => void;
+}) {
+  const fieldId = useId();
+  const [fee, setFee] = useState('');
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const [justApplied, setJustApplied] = useState(false);
+
+  const submit = async () => {
+    if (busy) return;
+    setError(undefined);
+    setJustApplied(false);
+
+    const value = parseFee(fee);
+    if (value === null) {
+      setError(PROVINCE_MESSAGES.fee);
+      return;
+    }
+    if (
+      !window.confirm(
+        `هزینه ارسال هر ${formatNumber(count)} استان روی ${formatToman(value)} تنظیم می\u200Cشود و جای نرخ\u200Cهای فعلی را می\u200Cگیرد. ادامه؟`,
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      onApplied(
+        await putData<AdminProvinceRow[]>(API_PATHS.ADMIN_PROVINCES_FEE, {
+          fee: value,
+        }),
+      );
+      setFee('');
+      setJustApplied(true);
+    } catch (requestError) {
+      toast.error(
+        reasonFrom(requestError) ?? 'اعمال هزینه ناموفق بود. دوباره تلاش کن.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <CreateCard
+      title={'یک هزینه برای همه استان\u200Cها'}
+      onSubmit={submit}
+      busy={busy}
+      done={justApplied && 'روی همه اعمال شد'}
+      submitLabel={APPLY_ALL_LABEL}
+      submitIcon={null}
+      umami="admin-panel-shipping-bulk-apply"
+    >
+      <TextField
+        id={`${fieldId}-bulk-fee`}
+        label={BULK_FEE_LABEL}
+        value={fee}
+        onChange={(next) => {
+          setFee(next);
+          setJustApplied(false);
+        }}
+        error={error}
+        hint={
+          'بعد از اعمال، استان\u200Cهای متفاوت را در جدول تک\u200Cتک تنظیم کن'
+        }
+        dir="ltr"
+        inputMode="numeric"
+        umami="admin-panel-shipping-bulk-fee"
+      />
+    </CreateCard>
   );
 }
 
@@ -132,11 +218,7 @@ function CreateProvinceForm({
     const feeValue = parseFee(fee);
     const parsed = provinceCreateSchema.safeParse({ name, fee: feeValue });
     if (!parsed.success) {
-      const next: Record<string, string> = {};
-      for (const issue of parsed.error.issues) {
-        next[String(issue.path[0])] ??= issue.message;
-      }
-      setErrors(next);
+      setErrors(zodFieldErrors(parsed.error));
       return;
     }
 
@@ -151,81 +233,50 @@ function CreateProvinceForm({
       setName('');
       setFee('');
     } catch (error) {
-      // A 400 carries `field: message` errors, shown by their fields; any other
-      // failure (a 409 duplicate, 401/403, the network) is a request failure and
-      // goes to a toast, like the rest of the admin panel.
-      if (error instanceof ApiRequestError && error.status === 400) {
-        const { fields, unmapped } = parseFieldErrors(error.errors);
-        setErrors(fields);
-        if (Object.keys(fields).length === 0) toast.error(error.message);
-        else if (unmapped.length > 0) toast.error(unmapped.join(' '));
-      } else {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : 'افزودن استان ناموفق بود. دوباره تلاش کن.',
-        );
-      }
+      // `field: message` errors are shown by their fields; a refusal no field
+      // can show (a 409 duplicate, 401/403, the network) goes to a toast, like
+      // the rest of the admin panel.
+      const { fields, message } = requestFieldErrors(
+        error,
+        'افزودن استان ناموفق بود. دوباره تلاش کن.',
+      );
+      setErrors(fields);
+      if (message) toast.error(message);
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
-      className="border-border bg-card flex flex-col gap-4 rounded-2xl border p-6"
+    <CreateCard
+      title="استان جدید"
+      onSubmit={submit}
+      busy={busy}
+      done={justCreated && <>استان «{justCreated}» اضافه شد</>}
+      submitLabel="افزودن استان"
+      umami="admin-panel-shipping-province-create"
     >
-      <h2 className="font-bold">استان جدید</h2>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <TextField
-          id={`${fieldId}-name`}
-          label="نام استان"
-          value={name}
-          onChange={setName}
-          error={errors.name}
-          dir="rtl"
-          umami="admin-panel-shipping-province-name"
-        />
-        <TextField
-          id={`${fieldId}-fee`}
-          label="هزینه ارسال (تومان)"
-          value={fee}
-          onChange={setFee}
-          error={errors.fee}
-          hint="صفر یعنی ارسال رایگان"
-          dir="ltr"
-          inputMode="numeric"
-          umami="admin-panel-shipping-province-fee"
-        />
-      </div>
-
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={busy}
-          data-umami-event="admin-panel-shipping-province-create"
-          className="bg-accent-strong hover:bg-accent-hover inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? (
-            <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-          ) : (
-            <Plus size={14} aria-hidden="true" />
-          )}
-          افزودن استان
-        </button>
-        {justCreated && (
-          <span className="text-success-strong flex items-center gap-1 text-sm">
-            <Check size={16} aria-hidden="true" /> استان «{justCreated}» اضافه
-            شد
-          </span>
-        )}
-      </div>
-    </form>
+      <TextField
+        id={`${fieldId}-name`}
+        label="نام استان"
+        value={name}
+        onChange={setName}
+        error={errors.name}
+        dir="rtl"
+        umami="admin-panel-shipping-province-name"
+      />
+      <TextField
+        id={`${fieldId}-fee`}
+        label="هزینه ارسال (تومان)"
+        value={fee}
+        onChange={setFee}
+        error={errors.fee}
+        hint="صفر یعنی ارسال رایگان"
+        dir="ltr"
+        inputMode="numeric"
+        umami="admin-panel-shipping-province-fee"
+      />
+    </CreateCard>
   );
 }
 
@@ -260,9 +311,7 @@ function RateRow({
       setJustSaved(true);
     } catch (requestError) {
       toast.error(
-        requestError instanceof Error
-          ? requestError.message
-          : 'ذخیره نرخ ناموفق بود. دوباره تلاش کن.',
+        reasonFrom(requestError) ?? 'ذخیره نرخ ناموفق بود. دوباره تلاش کن.',
       );
     } finally {
       setBusy(false);
@@ -282,11 +331,7 @@ function RateRow({
         ),
       );
     } catch (requestError) {
-      toast.error(
-        requestError instanceof Error
-          ? requestError.message
-          : 'تغییر وضعیت ناموفق بود.',
-      );
+      toast.error(reasonFrom(requestError) ?? 'تغییر وضعیت ناموفق بود.');
     } finally {
       setToggling(false);
     }
@@ -299,15 +344,9 @@ function RateRow({
     >
       <td className="px-4 py-2.5 font-medium">{rate.name}</td>
       <td className="px-4 py-2.5">
-        {rate.isActive ? (
-          <span className="text-success-strong bg-success-soft inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
-            فعال
-          </span>
-        ) : (
-          <span className="text-muted-foreground bg-muted inline-flex rounded-full px-2.5 py-1 text-xs font-medium">
-            غیرفعال
-          </span>
-        )}
+        <Pill tone={rate.isActive ? 'success' : 'muted'}>
+          {rate.isActive ? 'فعال' : 'غیرفعال'}
+        </Pill>
       </td>
       <td className="px-4 py-2.5">
         <label htmlFor={inputId} className="sr-only">
@@ -324,10 +363,8 @@ function RateRow({
             setJustSaved(false);
           }}
           className={cn(
-            'nums bg-secondary w-36 rounded-lg border px-3 py-2 text-start transition-colors outline-none focus-visible:ring-2',
-            invalid
-              ? 'border-destructive bg-destructive-soft/40'
-              : 'border-border focus-visible:border-accent-strong',
+            controlClass(invalid),
+            'nums w-36 rounded-lg px-3 py-2',
           )}
         />
       </td>

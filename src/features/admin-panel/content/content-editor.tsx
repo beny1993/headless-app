@@ -1,43 +1,49 @@
 'use client';
 
 import { useId, useRef, useState } from 'react';
-import { AlertCircle, Check, Loader2 } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { ApiRequestError, putData } from '@/lib/api-client';
-import { parseFieldErrors } from '@/lib/checkout/field-errors';
-import { API_PATHS, apiAdminContentPath } from '@/lib/constant/paths';
+import { DEFAULT_ERROR_MESSAGE, putData } from '@/lib/api-client';
+import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
+import { apiAdminContentPath } from '@/lib/constant/paths';
+import { HOME_CATEGORY_TILES, homeTiles } from '@/lib/catalog/category-tree';
 import {
   CONTENT_SCHEMAS,
+  MAX_ROUTINE_CATEGORIES,
   type ContentKey,
   type ContentValues,
 } from '@/lib/content/site-content';
-import { IMAGE_FIELD_NAME } from '@/lib/storage/image-upload';
 import type { Link, LinkTargets } from '@/lib/content/link';
 import { imageSrc } from '@/lib/storage/image-url';
 import {
   ImagePicker,
+  uploadImage,
   validateImageFile,
 } from '@/features/admin-panel/shared/image-picker';
+import { controlClass, fieldAria, FieldShell } from '@/components/ui/field';
 import {
   BLOCK_FIELDS,
   getPath,
   setPath,
   type FieldDescriptor,
 } from './block-fields';
-import { CategoryPicker, LinkPicker, type LinkOptions } from './link-picker';
-
-const GENERIC_ERROR = 'خطای غیرمنتظره رخ داد. دوباره تلاش کن.';
-const IMAGE_UPLOAD_FAILED = 'بارگذاری تصویر ناموفق بود. دوباره تلاش کن.';
+import {
+  CategoryPicker,
+  LinkPicker,
+  ProductPicker,
+  type LinkOptions,
+} from './link-picker';
 
 /**
  * The storefront content editor for one area: one independent form per block in
  * `keys` (page order), each pre-filled from its row-or-default value and saved on
  * its own. Reuses the product form's stack — `useState` + a zod `safeParse` before
- * send + `putData` + the shared `parseFieldErrors` for server 400s — so there is
+ * send + `putData` + the shared `requestFieldErrors` for server refusals — so there is
  * no form library and no new mechanism here; the block-specific part is entirely
  * data (BLOCK_FIELDS). The `[area]` page hands it just its own area's keys, and
- * the categories and active products its destination pickers offer.
+ * the categories and active products its destination pickers offer — plus the
+ * listed ones, for the featured boxes.
  */
 export function ContentEditor<K extends ContentKey>({
   keys,
@@ -79,25 +85,6 @@ function hasVisibleToggle(key: ContentKey): boolean {
   return (
     'visible' in (CONTENT_SCHEMAS[key] as unknown as { shape: object }).shape
   );
-}
-
-/** Upload one picked image to the shared content-image endpoint; returns its key. */
-async function uploadContentImage(file: File): Promise<string> {
-  const form = new FormData();
-  form.set(IMAGE_FIELD_NAME, file);
-  const response = await fetch(API_PATHS.ADMIN_CONTENT_IMAGES, {
-    method: 'POST',
-    body: form,
-  });
-  const body = (await response.json().catch(() => null)) as {
-    status?: string;
-    data?: { key?: string };
-    message?: string;
-  } | null;
-  if (!response.ok || body?.status !== 'success' || !body.data?.key) {
-    throw new Error(body?.message ?? IMAGE_UPLOAD_FAILED);
-  }
-  return body.data.key;
 }
 
 function BlockForm({
@@ -199,61 +186,49 @@ function BlockForm({
     let next = value;
     const remainingFiles = { ...files };
     const remainingPreviews = { ...previews };
-    try {
-      for (const [path, file] of Object.entries(files)) {
-        const key = await uploadContentImage(file);
-        next = setPath(next, path, key);
-        delete remainingFiles[path];
-        delete remainingPreviews[path];
-      }
-    } catch (error) {
+    // Either failure keeps what was uploaded on the form, pending picks intact.
+    const restore = () => {
       setValue(next);
       setFiles(remainingFiles);
       setPreviews(remainingPreviews);
-      saving.current = false;
-      setBusy(false);
-      toast.error(error instanceof Error ? error.message : IMAGE_UPLOAD_FAILED);
-      return;
-    }
-
-    // (3) Save the block. Adopt the stored value back, so the form now reflects
-    // exactly what is persisted (new image keys included) and pending picks clear.
+    };
     try {
-      const saved = await putData<{
-        key: string;
-        value: ContentValues[ContentKey];
-      }>(apiAdminContentPath(contentKey), next);
-      setValue(saved.value);
-      setFiles({});
-      setPreviews({});
-      setFieldErrors({});
-      setJustSaved(true);
-      saving.current = false;
-      setBusy(false);
-    } catch (error) {
-      // Uploaded keys are already adopted into `next`; keep them on the form.
-      setValue(next);
-      setFiles(remainingFiles);
-      setPreviews(remainingPreviews);
-      saving.current = false;
-      setBusy(false);
-      if (
-        error instanceof ApiRequestError &&
-        (error.status === 400 || error.status === 422)
-      ) {
-        const { fields, unmapped } = parseFieldErrors(error.errors);
-        setFieldErrors(fields);
-        // A refusal no field can show is the request's own failure: a toast.
-        const message =
-          unmapped.length > 0
-            ? unmapped.join(' ')
-            : Object.keys(fields).length === 0
-              ? error.message
-              : undefined;
-        if (message) toast.error(message);
+      try {
+        for (const [path, file] of Object.entries(files)) {
+          const key = await uploadImage(file);
+          next = setPath(next, path, key);
+          delete remainingFiles[path];
+          delete remainingPreviews[path];
+        }
+      } catch (error) {
+        restore();
+        toast.error(reasonFrom(error) ?? DEFAULT_ERROR_MESSAGE);
         return;
       }
-      toast.error(error instanceof Error ? error.message : GENERIC_ERROR);
+
+      // (3) Save the block. Adopt the stored value back, so the form now
+      // reflects exactly what is persisted (new image keys included) and
+      // pending picks clear.
+      try {
+        const saved = await putData<{
+          key: string;
+          value: ContentValues[ContentKey];
+        }>(apiAdminContentPath(contentKey), next);
+        setValue(saved.value);
+        setFiles({});
+        setPreviews({});
+        setFieldErrors({});
+        setJustSaved(true);
+      } catch (error) {
+        restore();
+        // A refusal no field can show is the request's own failure: a toast.
+        const { fields, message } = requestFieldErrors(error);
+        setFieldErrors(fields);
+        if (message) toast.error(message);
+      }
+    } finally {
+      saving.current = false;
+      setBusy(false);
     }
   };
 
@@ -302,6 +277,23 @@ function BlockForm({
                 error={errorUnder(fieldErrors, field.path)}
                 onChange={(next) => setDestination(field.path, next)}
               />
+            ) : field.kind === 'categories' && field.homeTiles ? (
+              <CategoryPicker
+                key={field.path}
+                id={fid(field.path)}
+                label={field.label}
+                value={getPath(value, field.path) as string[] | undefined}
+                fallback={field.fallback ?? ''}
+                categories={options.mainCategories}
+                max={HOME_CATEGORY_TILES}
+                umami={{
+                  toggle: 'admin-panel-content-home-category-toggle',
+                  reorder: 'admin-panel-content-home-category-reorder',
+                }}
+                shows={(picked) => homeTiles(options.mainCategories, picked)}
+                error={errorUnder(fieldErrors, field.path)}
+                onChange={(next) => setDestination(field.path, next)}
+              />
             ) : field.kind === 'categories' ? (
               <CategoryPicker
                 key={field.path}
@@ -310,6 +302,24 @@ function BlockForm({
                 value={getPath(value, field.path) as string[] | undefined}
                 fallback={field.fallback ?? ''}
                 categories={options.categories}
+                max={MAX_ROUTINE_CATEGORIES}
+                umami={{
+                  toggle: 'admin-panel-content-routine-category-toggle',
+                  reorder: 'admin-panel-content-routine-category-reorder',
+                }}
+                error={errorUnder(fieldErrors, field.path)}
+                onChange={(next) => setDestination(field.path, next)}
+              />
+            ) : field.kind === 'products' ? (
+              <ProductPicker
+                key={field.path}
+                id={fid(field.path)}
+                label={field.label}
+                value={
+                  getPath(value, field.path) as (string | null)[] | undefined
+                }
+                fallback={field.fallback ?? ''}
+                products={options.cards}
                 error={errorUnder(fieldErrors, field.path)}
                 onChange={(next) => setDestination(field.path, next)}
               />
@@ -380,37 +390,29 @@ function BlockField({
         error={error}
         buttonLabel="تغییر تصویر"
         onPick={onPick}
+        umami="admin-panel-content-image-pick"
       />
     );
   }
 
+  const control = {
+    id,
+    value,
+    ...fieldAria(id, error),
+    className: controlClass(Boolean(error)),
+  };
   return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium">
-        {field.label}
-      </label>
+    <FieldShell id={id} label={field.label} error={error}>
       {field.kind === 'textarea' ? (
         <textarea
-          id={id}
+          {...control}
           rows={3}
-          value={value}
           onChange={(e) => onText(e.target.value)}
-          className={inputClass(error, true)}
         />
       ) : (
-        <input
-          id={id}
-          value={value}
-          onChange={(e) => onText(e.target.value)}
-          className={inputClass(error, false)}
-        />
+        <input {...control} onChange={(e) => onText(e.target.value)} />
       )}
-      {error && (
-        <p className="text-destructive mt-1.5 flex items-center gap-1 text-xs">
-          <AlertCircle size={12} aria-hidden="true" /> {error}
-        </p>
-      )}
-    </div>
+    </FieldShell>
   );
 }
 
@@ -420,12 +422,3 @@ const errorUnder = (errors: Record<string, string>, path: string) =>
   Object.entries(errors).find(
     ([key, message]) => message && key.startsWith(`${path}.`),
   )?.[1];
-
-const inputClass = (error: string | undefined, multiline: boolean) =>
-  `bg-secondary w-full rounded-xl px-4 text-sm outline-none border ${
-    multiline ? 'py-3' : 'h-12'
-  } ${
-    error
-      ? 'border-destructive'
-      : 'border-border focus-visible:border-accent-strong'
-  }`;

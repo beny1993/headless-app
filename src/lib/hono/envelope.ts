@@ -8,7 +8,7 @@ import '@hono/zod-openapi';
 import { z, type ZodError } from 'zod';
 
 /** Standard success envelope. `status` is the discriminant clients branch on. */
-export type ApiSuccess<T> = { status: 'success'; data: T };
+type ApiSuccess<T> = { status: 'success'; data: T };
 
 /** Standard error envelope. `errors` is optional, human-readable detail. */
 export type ApiError = { status: 'error'; message: string; errors?: string[] };
@@ -45,14 +45,6 @@ export const unwrap = <T>(body: ApiResponse<T>): T => {
   }
   return body.data;
 };
-
-/**
- * Narrow a parsed response envelope to its `data`, falling back to `fallback`
- * on the error branch. Use for best-effort reads where a failed request should
- * degrade to a default rather than throw.
- */
-export const unwrapOr = <T>(body: ApiResponse<T>, fallback: T): T =>
-  body.status === 'success' ? body.data : fallback;
 
 /** Flatten a ZodError into "path: message" strings (bare message when no path). */
 export const formatZodIssues = (error: ZodError): string[] =>

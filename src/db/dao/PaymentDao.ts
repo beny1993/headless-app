@@ -2,13 +2,13 @@
 // only write the state machine composes; the rest serve checkout (story 14) and
 // the Zarinpal verify callback (story 15).
 import { and, asc, eq, isNotNull, lt, ne } from 'drizzle-orm';
-import { db } from '@/db';
-import type { Executor, Tx } from '@/db/dao/OrderDao';
+import { db, type Executor, type Tx } from '@/db';
+
 import { payments, type NewPayment, type Payment } from '@/db/schema/orders';
 import { PAYMENT_METHODS, PAYMENT_STATUSES } from '@/lib/orders/order-status';
 
 /** What a caller supplies; the database owns `id` and both timestamps. */
-export type PaymentInput = Omit<NewPayment, 'id' | 'createdAt' | 'updatedAt'>;
+type PaymentInput = Omit<NewPayment, 'id' | 'createdAt' | 'updatedAt'>;
 
 export class PaymentDao {
   /**
@@ -55,6 +55,22 @@ export class PaymentDao {
       .from(payments)
       .where(eq(payments.orderId, orderId))
       .orderBy(asc(payments.createdAt), asc(payments.id));
+  }
+
+  /**
+   * How many payment attempts an order already has — **every** status, not just
+   * pending. A `failed` row was still one minted gateway authority and is still
+   * re-verified by every future reconcile sweep, so counting only open ones
+   * would let a caller reset their own ceiling by failing on purpose.
+   *
+   * Pass `executor` to count inside the transaction that already holds the
+   * order's lock, so a concurrent burst cannot land two attempts over the cap.
+   */
+  static async countByOrder(
+    orderId: string,
+    executor: Executor = db,
+  ): Promise<number> {
+    return executor.$count(payments, eq(payments.orderId, orderId));
   }
 
   /**

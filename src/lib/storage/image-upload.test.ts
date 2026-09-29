@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ACCEPTED_IMAGE_TYPES,
   IMAGE_EXTENSIONS,
+  IMAGE_KEY_ERROR,
+  imageKeySchema,
+  imageUploadResultSchema,
+  MAX_OBJECT_KEY_LENGTH,
   MAX_UPLOAD_BYTES,
   objectKeyFor,
   sniffImageType,
@@ -113,5 +118,31 @@ describe('UPLOAD_FILENAME_PATTERN', () => {
 describe('MAX_UPLOAD_BYTES', () => {
   it('is the 2 MB the design promises', () => {
     expect(MAX_UPLOAD_BYTES).toBe(2 * 1024 * 1024);
+  });
+});
+
+describe('imageKeySchema', () => {
+  // Every caller shows this refusal on an admin field, so it answers in
+  // Persian whatever made the key wrong — including the two checks zod would
+  // otherwise answer in English. The shape table lives in site-content.test.ts.
+  it.each([
+    ['a non-string', 12],
+    [
+      'an overlong key the pattern alone would pass',
+      `products/${'a'.repeat(MAX_OBJECT_KEY_LENGTH)}.jpg`,
+    ],
+  ])('refuses %s with the Persian message', (_, key) => {
+    expect(imageKeySchema.safeParse(key).error?.issues[0]?.message).toBe(
+      IMAGE_KEY_ERROR,
+    );
+  });
+
+  it('accepts every key the uploader mints, as the upload reply carries it', () => {
+    for (const type of ACCEPTED_IMAGE_TYPES) {
+      const key = objectKeyFor(type);
+      expect(imageUploadResultSchema.parse({ key, url: `/${key}` }).key).toBe(
+        key,
+      );
+    }
   });
 });

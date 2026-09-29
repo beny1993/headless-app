@@ -14,7 +14,7 @@
 //   · status comes from initialStatusFor(method), never the client; the COD
 //     payment row is created `pending`; a Zarinpal order gets no payment row yet
 import { eq, inArray } from 'drizzle-orm';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { orders, payments } from '@/db/schema/orders';
 import { products as productsTable } from '@/db/schema/catalog';
 import { provinces, shippingRates } from '@/db/schema/shipping';
@@ -24,11 +24,12 @@ import {
   PAYMENT_STATUSES,
   type OrderStatus,
 } from '@/lib/orders/order-status';
+import { CheckoutError } from '@/logic/checkout/checkout-error';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 
-const { createOrder, CheckoutError, MAX_OPEN_ORDERS } = await importWithDb(
+const { createOrder, MAX_OPEN_ORDERS } = await importWithDb(
   () => import('@/logic/checkout/create-order'),
 );
 const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
@@ -43,6 +44,13 @@ const { ShippingRateDao } = await importWithDb(
 const token = () => crypto.randomUUID().slice(0, 12);
 
 describe.skipIf(!databaseReachable)('createOrder', () => {
+  // Online payment is OFF by default, and `createOrder` now refuses a
+  // `zarinpal` order while it is — the API boundary the checkout page's hidden
+  // option was never a substitute for. These suites are about what a zarinpal
+  // order does once it exists, so they switch the feature on. The refusal
+  // itself is pinned in «online payment switched off» below.
+  beforeEach(() => vi.stubEnv('APP_CONFIG_ZARINPAL_ENABLED', 'true'));
+  afterEach(() => vi.unstubAllEnvs());
   const fx = new OrderFixtures();
   const provinceIds: number[] = [];
 
@@ -150,6 +158,37 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       expect(item.sku).toBe(product.sku);
       expect(item.unitPrice).toBe(99_000);
       expect(item.qty).toBe(1);
+    });
+
+    it('snapshots a family member by its displayed name, label and all', async () => {
+      const user = await fx.user();
+      const category = await fx.category();
+      const head = await fx.product(category, {
+        title: 'غذای خشک سگ',
+        variantLabel: '۵ کیلوگرم',
+        price: 250_000,
+        stock: 5,
+      });
+      const member = await fx.product(category, {
+        title: 'غذای خشک سگ',
+        variantOf: head.id,
+        variantLabel: '۱۰ کیلوگرم',
+        price: 450_000,
+        stock: 5,
+      });
+      const prov = await province();
+
+      const order = await createOrder(
+        user.id,
+        buildInput(prov, [{ productId: member.id, qty: 1 }]),
+      );
+      fx.remember(order.id);
+
+      // The snapshot is the only record of *which* size was bought once the
+      // product row is edited — the bare `title` is shared by the whole family,
+      // so an invoice reading «غذای خشک سگ» could mean either.
+      expect(order.items[0].title).toBe('غذای خشک سگ — ۱۰ کیلوگرم');
+      expect(order.items[0].unitPrice).toBe(450_000);
     });
 
     it('snapshots the price from the reservation RETURNING row, not the pre-load', async () => {
@@ -470,6 +509,72 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       );
 
       expect(await stockOf(product.id)).toBe(5); // restored
+    });
+  });
+
+  describe('online payment switched off', () => {
+    // `APP_CONFIG_ZARINPAL_ENABLED` is the switch the checkout page reads to
+    // hide the online-payment option. A page is not a boundary: the API takes
+    // `paymentMethod` from the body, so without this guard a client could post
+    // `zarinpal` to a card-to-card-only shop, land `pending_payment` and hold
+    // the stock — with no release path, because the gateway guard stops the
+    // payment request AND the reconcile sweep that would expire it.
+    beforeEach(() => vi.stubEnv('APP_CONFIG_ZARINPAL_ENABLED', 'false'));
+
+    it('refuses a zarinpal order and reserves nothing', async () => {
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+
+      const error = await createOrder(
+        user.id,
+        buildInput(prov, [{ productId: product.id, qty: 2 }], {
+          paymentMethod: PAYMENT_METHODS.ZARINPAL,
+        }),
+      ).catch((e) => e);
+
+      expect(error).toBeInstanceOf(CheckoutError);
+      expect(error.field).toBe('paymentMethod');
+      expect(error.message).toMatch(/[؀-ۿ]/); // Persian, customer-facing
+      expect(await stockOf(product.id)).toBe(5);
+      expect(await ordersForUser(user.id)).toHaveLength(0);
+    });
+
+    it('leaves card to card alone — that is the whole point of the shop', async () => {
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+
+      const order = await createOrder(
+        user.id,
+        buildInput(prov, [{ productId: product.id, qty: 2 }], {
+          paymentMethod: PAYMENT_METHODS.COD,
+        }),
+      );
+      fx.remember(order.id);
+
+      expect(order.status).toBe(ORDER_STATUSES.PROCESSING);
+      expect(await stockOf(product.id)).toBe(3);
+    });
+
+    it('treats an unset switch as off, as every other reader does', async () => {
+      vi.stubEnv('APP_CONFIG_ZARINPAL_ENABLED', '');
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+
+      const error = await createOrder(
+        user.id,
+        buildInput(prov, [{ productId: product.id, qty: 1 }], {
+          paymentMethod: PAYMENT_METHODS.ZARINPAL,
+        }),
+      ).catch((e) => e);
+
+      expect(error).toBeInstanceOf(CheckoutError);
+      expect(await stockOf(product.id)).toBe(5);
     });
   });
 

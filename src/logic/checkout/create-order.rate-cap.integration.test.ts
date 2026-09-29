@@ -19,6 +19,7 @@ import { ORDER_STATUSES, PAYMENT_METHODS } from '@/lib/orders/order-status';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
+import { CheckoutError } from '@/logic/checkout/checkout-error';
 
 const mocks = vi.hoisted(() => ({ notify: vi.fn() }));
 
@@ -28,12 +29,8 @@ vi.mock('@/logic/orders/notify-new-order', async (importOriginal) => ({
   notifyAdminsOfNewOrder: mocks.notify,
 }));
 
-const {
-  createOrder,
-  CheckoutError,
-  MAX_ORDERS_PER_WINDOW,
-  ORDER_RATE_WINDOW_MS,
-} = await importWithDb(() => import('@/logic/checkout/create-order'));
+const { createOrder, MAX_ORDERS_PER_WINDOW, ORDER_RATE_WINDOW_MS } =
+  await importWithDb(() => import('@/logic/checkout/create-order'));
 const { ShippingRateDao } = await importWithDb(
   () => import('@/db/dao/ShippingRateDao'),
 );

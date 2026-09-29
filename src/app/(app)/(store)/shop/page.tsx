@@ -1,6 +1,8 @@
+import { cache } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { CategoryDao } from '@/db/dao/CategoryDao';
+import { orderAsTree } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { ProductCard } from '@/features/storefront/product/product-card';
 import {
@@ -10,14 +12,67 @@ import {
 import { ShopPagination } from '@/features/storefront/shop/shop-pagination';
 import { ShopResults } from '@/features/storefront/shop/shop-results';
 import { ShopSearch } from '@/features/storefront/shop/shop-search';
+import { ShopEmptyState } from '@/features/storefront/shop/shop-empty-state';
+import {
+  SHOP_TITLE,
+  shelfTitle,
+  shopMetadata,
+} from '@/features/storefront/shop/shop-metadata';
 import {
   buildShopHref,
   parseShopQuery,
   updateShopQuery,
+  type ShopQuery,
 } from '@/features/storefront/shop/shop-query';
 import { PATHS } from '@/lib/constant/paths';
 
-export const metadata: Metadata = { title: 'فروشگاه' };
+type PageSearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+/**
+ * The categories, read once per request: `generateMetadata` titles a shelf by
+ * its category, and the page lists them in the filters.
+ */
+const listCategories = cache(() => CategoryDao.list());
+
+type ListOptions = NonNullable<Parameters<typeof ProductDao.list>[0]>;
+
+/**
+ * This URL's page of the listing, read once per request: the page renders it,
+ * and `generateMetadata` keeps a page that lists nothing out of the index.
+ * Keyed by a string because `cache` compares arguments by identity, and every
+ * parse of the query is a fresh object.
+ */
+const listShelf = cache((options: string) =>
+  ProductDao.list(JSON.parse(options) as ListOptions),
+);
+
+const shelfListing = (query: ShopQuery) =>
+  listShelf(
+    JSON.stringify({
+      categorySlug: query.category,
+      petType: query.pet,
+      inStock: query.inStock,
+      minPrice: query.minPrice,
+      maxPrice: query.maxPrice,
+      search: query.q,
+      sort: query.sort,
+      page: query.page,
+      limit: query.limit,
+    } satisfies ListOptions),
+  );
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: PageSearchParams;
+}): Promise<Metadata> {
+  const query = parseShopQuery(await searchParams);
+  const [{ items }, categories] = await Promise.all([
+    shelfListing(query),
+    listCategories(),
+  ]);
+  return shopMetadata(query, categories, items.length > 0);
+}
 
 /**
  * Rendered per request, for the same two reasons the home page is: the catalog
@@ -48,36 +103,34 @@ export const dynamic = 'force-dynamic';
 export default async function ShopPage({
   searchParams,
 }: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams: PageSearchParams;
 }) {
   const query = parseShopQuery(await searchParams);
 
-  const [{ items, total }, categories] = await Promise.all([
-    ProductDao.list({
-      categorySlug: query.category,
-      petType: query.pet,
-      minPrice: query.minPrice,
-      maxPrice: query.maxPrice,
-      search: query.q,
-      sort: query.sort,
-      page: query.page,
-      limit: query.limit,
-    }),
-    CategoryDao.list(),
+  const [{ items, total }, categories, priceBounds] = await Promise.all([
+    shelfListing(query),
+    listCategories(),
+    // The slider's ends. Catalogue-wide on purpose: bounds that narrowed with
+    // the current category would move the handles under the shopper's hand
+    // every time they picked a shelf.
+    ProductDao.priceBounds(),
   ]);
 
   // Narrowed to what the filter panel renders: `Category` also carries
-  // timestamps, and the panel is a client component.
-  const categoryOptions = categories.map(({ title, slug }) => ({
-    title,
-    slug,
-  }));
+  // timestamps, and the panel is a client component. Tree order, so each
+  // sub-category arrives straight after its parent and the panel can nest it.
+  const categoryOptions = orderAsTree(categories).map(
+    ({ title, slug, depth }) => ({ title, slug, depth }),
+  );
 
   const totalPages = Math.ceil(total / query.limit);
   // A page past the end is not the same as a filter set that matches nothing,
   // and the two need different ways out. Neither is clamped: the URL asked for
   // page 9, so page 9 is what gets answered — honestly.
   const pastLastPage = items.length === 0 && total > 0;
+  // The heading names the shelf, as the tab title does: a shelf the sitemap
+  // lists is a page of its own, and its visible title has to say so.
+  const shelf = shelfTitle(query, categories);
 
   return (
     <main className="min-h-screen">
@@ -90,12 +143,28 @@ export default async function ShopPage({
             <Link href={PATHS.HOME} className="hover:text-foreground">
               خانه
             </Link>
-            <span className="mx-1">/</span>
+            <span className="mx-1" aria-hidden="true">
+              /
+            </span>
+            {shelf && (
+              <>
+                <Link
+                  href={PATHS.SHOP}
+                  className="hover:text-foreground"
+                  data-umami-event="shop-breadcrumb-shop"
+                >
+                  {SHOP_TITLE}
+                </Link>
+                <span className="mx-1" aria-hidden="true">
+                  /
+                </span>
+              </>
+            )}
             <span className="text-foreground" aria-current="page">
-              فروشگاه
+              {shelf ?? SHOP_TITLE}
             </span>
           </nav>
-          <h1 className="mb-2 text-4xl font-black">فروشگاه</h1>
+          <h1 className="mb-2 text-4xl font-black">{shelf ?? SHOP_TITLE}</h1>
           <p className="text-muted-foreground">
             بهترین محصولات برای حیوان خانگی شما
           </p>
@@ -109,6 +178,7 @@ export default async function ShopPage({
           <ShopFilterSheet
             query={query}
             categories={categoryOptions}
+            priceBounds={priceBounds}
             total={total}
           />
         </div>
@@ -116,13 +186,17 @@ export default async function ShopPage({
         <div className="flex gap-8">
           <aside className="hidden w-56 shrink-0 lg:block">
             <p className="mb-4 font-bold">فیلترها</p>
-            <ShopFilters query={query} categories={categoryOptions} />
+            <ShopFilters
+              query={query}
+              categories={categoryOptions}
+              priceBounds={priceBounds}
+            />
           </aside>
 
           <div className="min-w-0 flex-1">
             <ShopResults query={query} total={total} count={items.length}>
               {items.length === 0 ? (
-                <EmptyState
+                <ShopEmptyState
                   pastLastPage={pastLastPage}
                   searchTerm={query.q}
                   // Back to the first page *of this filter set* — sending a
@@ -138,8 +212,16 @@ export default async function ShopPage({
                   )}
                 />
               ) : (
-                items.map((product) => (
-                  <ProductCard key={product.id} product={product} />
+                items.map((product, index) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    // The first row at the widest grid (`xl:grid-cols-3`). One
+                    // of these is the shop's LCP element, and which one depends
+                    // on the viewport — so all three are eager and none is
+                    // preloaded.
+                    eager={index < 3}
+                  />
                 ))
               )}
             </ShopResults>
@@ -149,78 +231,5 @@ export default async function ShopPage({
         </div>
       </div>
     </main>
-  );
-}
-
-/**
- * Three different nothings, and each one has its own way out.
- *
- * A page number past the end of the catalog is a URL problem, and the way out
- * is page one. A search that matched nothing is about the *term* — the shopper
- * needs to see which words were searched for, because a typo is the usual
- * cause, and the way out is dropping the term while keeping the filters they
- * chose deliberately. A filter set that matches nothing is the design's
- * original empty state, cleared by going back to the plain shop.
- */
-function EmptyState({
-  pastLastPage,
-  searchTerm,
-  firstPageHref,
-  clearSearchHref,
-}: {
-  pastLastPage: boolean;
-  /** The term that matched nothing, or undefined when this is not a search. */
-  searchTerm?: string;
-  firstPageHref: string;
-  clearSearchHref: string;
-}) {
-  const searchMissed = !pastLastPage && searchTerm !== undefined;
-
-  return (
-    <div className="bg-secondary/30 flex flex-col items-center justify-center gap-3 rounded-3xl py-24 text-center">
-      <span className="text-5xl" aria-hidden="true">
-        🔍
-      </span>
-      <p className="text-lg font-bold">
-        {pastLastPage
-          ? 'این صفحه محصولی ندارد'
-          : searchMissed
-            ? // The term is quoted so the shopper can see exactly what was
-              // searched for — «چیزی پیدا نشد» alone hides the typo that caused
-              // it. Persian quotation marks, as everywhere else on the site.
-              `نتیجه‌ای برای «${searchTerm}» پیدا نشد`
-            : 'محصولی با این فیلترها پیدا نشد'}
-      </p>
-      <p className="text-muted-foreground max-w-sm text-sm">
-        {pastLastPage
-          ? 'شماره صفحه از آخرین صفحه بیشتر است.'
-          : searchMissed
-            ? 'املای عبارت را بررسی کن یا کلمه کوتاه‌تری را امتحان کن.'
-            : 'می‌توانی فیلترها را کم کنی و دوباره امتحان کنی.'}
-      </p>
-      <Link
-        href={
-          pastLastPage
-            ? firstPageHref
-            : searchMissed
-              ? clearSearchHref
-              : PATHS.SHOP
-        }
-        className="bg-accent-strong hover:bg-accent-hover mt-2 rounded-xl px-6 py-3 font-bold text-white transition-colors"
-        data-umami-event={
-          pastLastPage
-            ? 'shop-empty-first-page'
-            : searchMissed
-              ? 'shop-empty-clear-search'
-              : 'shop-empty-clear-filters'
-        }
-      >
-        {pastLastPage
-          ? 'بازگشت به صفحه اول'
-          : searchMissed
-            ? 'پاک کردن جستجو'
-            : 'پاک کردن همه فیلترها'}
-      </Link>
-    </div>
   );
 }

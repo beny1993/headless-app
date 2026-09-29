@@ -36,7 +36,20 @@ export function LifeMomentsSection({
   // `direction: 1` means "further along the reading order". An RTL scroll
   // container's inline axis runs negative, so forward is a *negative*
   // scrollLeft delta — without the flip the arrows work in LTR and do nothing
-  // useful here (design review, finding 9).
+  // useful here.
+  //
+  // The product gallery avoids this arithmetic entirely by scrolling to a
+  // named slide and handing `scrollBy` the visual-rect delta to it. That does
+  // not transfer: a prev/next control scrolls *by* a direction over
+  // partial-width cards, and a direction is exactly what a visual rect cannot
+  // supply — the sign has to come from the inline axis either way, so it is
+  // read here, once, from the element's own computed direction.
+  //
+  // What does transfer is `behavior`: there is none, so CSS governs (the
+  // `scroll-smooth` below), and the global `prefers-reduced-motion` rule in
+  // globals.css — `scroll-behavior: auto !important`, which outranks the
+  // utility across layers — switches the animation off without this component
+  // asking `matchMedia` a question the stylesheet has already answered.
   const scrollByCards = (direction: -1 | 1) => {
     const element = scroller.current;
     if (!element) return;
@@ -44,9 +57,6 @@ export function LifeMomentsSection({
     const rtl = getComputedStyle(element).direction === 'rtl';
     element.scrollBy({
       left: (rtl ? -direction : direction) * element.clientWidth * 0.8,
-      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        ? 'auto'
-        : 'smooth',
     });
   };
 
@@ -57,21 +67,21 @@ export function LifeMomentsSection({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => scrollByCards(1)}
-              className="border-border hover:bg-secondary flex size-10 items-center justify-center rounded-full border transition-colors"
-              aria-label="اسلاید بعدی"
-              data-umami-event="home-moments-next"
-            >
-              <ChevronLeft size={16} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
               onClick={() => scrollByCards(-1)}
               className="border-border hover:bg-secondary flex size-10 items-center justify-center rounded-full border transition-colors"
               aria-label="اسلاید قبلی"
               data-umami-event="home-moments-prev"
             >
               <ChevronRight size={16} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollByCards(1)}
+              className="border-border hover:bg-secondary flex size-10 items-center justify-center rounded-full border transition-colors"
+              aria-label="اسلاید بعدی"
+              data-umami-event="home-moments-next"
+            >
+              <ChevronLeft size={16} aria-hidden="true" />
             </button>
             <ContentLink
               {...resolveLink(content.ctaLink, shopPath(), targets)}
@@ -92,10 +102,11 @@ export function LifeMomentsSection({
 
         <div
           ref={scroller}
-          className="flex snap-x snap-mandatory gap-5 overflow-x-auto pb-4"
-          // No `.scrollbar-hide` class exists in this codebase and the
-          // prototype's was undefined too; this is the real property.
-          style={{ scrollbarWidth: 'none' }}
+          // Both halves of hiding a scrollbar, the gallery's pair: there is no
+          // `.scrollbar-hide` class in this project, and `scrollbar-width`
+          // alone still paints a classic bar on Safari below 18.2 and Chromium
+          // below 121. `scroll-smooth` is what the arrows above animate with.
+          className="flex snap-x snap-mandatory [scrollbar-width:none] gap-5 overflow-x-auto scroll-smooth pb-4 [&::-webkit-scrollbar]:hidden"
         >
           {content.cards.map((card, index) => {
             const fallback = shopPath(LIFE_MOMENT_TARGETS[index].filters);

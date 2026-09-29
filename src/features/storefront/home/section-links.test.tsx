@@ -11,6 +11,7 @@ import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import type { LinkTargets } from '@/lib/content/link';
 import type { ContentValue } from '@/lib/content/site-content';
+import { imageSrc } from '@/lib/storage/image-url';
 import { CategoriesSection } from './categories';
 import { FeaturedStorySection } from './featured-story';
 import { HeroSection } from './hero';
@@ -95,7 +96,9 @@ describe('FeaturedStorySection button', () => {
 
 describe('CategoriesSection all-categories link', () => {
   const content = DEFAULT_CONTENT['home.categories'];
-  const tiles = [{ id: TOYS_ID, title: 'اسباب‌بازی', slug: 'toys' }];
+  const tiles = [
+    { id: TOYS_ID, title: 'اسباب‌بازی', slug: 'toys', imageKey: null },
+  ];
 
   it('opens the bare shop until a destination is saved; the tiles stay category links', () => {
     const { container, rerender } = render(
@@ -118,6 +121,92 @@ describe('CategoriesSection all-categories link', () => {
     expect(hrefOf(container, 'اسباب‌بازی')).toBe(
       shopPath({ category: 'toys' }),
     );
+  });
+
+  // The mosaic is built for six tiles; a seventh category would break the
+  // pattern rather than extend it, so the strip stops there.
+  it('shows at most six tiles, the first six, however many categories there are', () => {
+    const many = Array.from({ length: 9 }, (_, index) => ({
+      id: `${index}`,
+      title: `دسته ${index}`,
+      slug: `category-${index}`,
+      imageKey: null,
+    }));
+    const { container } = render(
+      <CategoriesSection
+        content={content}
+        categories={many}
+        targets={targets}
+      />,
+    );
+
+    const links = container.querySelectorAll(
+      '[data-umami-event="home-category-click"]',
+    );
+    expect(links).toHaveLength(6);
+    expect([...links].map((link) => link.getAttribute('href'))).toEqual(
+      many.slice(0, 6).map((tile) => shopPath({ category: tile.slug })),
+    );
+  });
+
+  it('puts the categories picked in the content first, in picking order, then the rest', () => {
+    const many = Array.from({ length: 9 }, (_, index) => ({
+      id: `${index}`,
+      title: `دسته ${index}`,
+      slug: `category-${index}`,
+      imageKey: null,
+    }));
+    const { container } = render(
+      <CategoriesSection
+        content={{ ...content, categoryIds: ['7', '2'] }}
+        categories={many}
+        targets={targets}
+      />,
+    );
+
+    const links = container.querySelectorAll(
+      '[data-umami-event="home-category-click"]',
+    );
+    expect([...links].map((link) => link.getAttribute('href'))).toEqual(
+      [7, 2, 0, 1, 3, 4].map((n) => shopPath({ category: `category-${n}` })),
+    );
+  });
+});
+
+describe('CategoriesSection photos', () => {
+  const PHOTO = 'uploads/123e4567-e89b-42d3-a456-426614174000.webp';
+
+  it('draws each tile’s own photo from its key, and a plain surface without one', () => {
+    // Production's case: an admin-made slug the demo data never had, with a
+    // photo uploaded in the panel — and a demo slug with no key, which gets no
+    // photo from anywhere, because the database is the only source.
+    const { container } = render(
+      <CategoriesSection
+        content={DEFAULT_CONTENT['home.categories']}
+        categories={[
+          {
+            id: TOYS_ID,
+            title: 'اسباب بازی',
+            slug: 'cat-toys',
+            imageKey: PHOTO,
+          },
+          {
+            id: DRY_FOOD_ID,
+            title: 'غذای خشک',
+            slug: 'dry-food',
+            imageKey: null,
+          },
+        ]}
+        targets={targets}
+      />,
+    );
+    const photoOf = (label: string) =>
+      anchor(container, label)?.querySelector('img');
+
+    expect(
+      decodeURIComponent(photoOf('اسباب بازی')?.getAttribute('src') ?? ''),
+    ).toContain(`url=${imageSrc(PHOTO)}`);
+    expect(photoOf('غذای خشک')).toBeNull();
   });
 });
 
@@ -165,8 +254,8 @@ describe('AboutCta button', () => {
 describe('RoutineSection tiles', () => {
   const content = DEFAULT_CONTENT['home.routine'];
   const categories = [
-    { id: DRY_FOOD_ID, title: 'غذای خشک', slug: 'dry-food' },
-    { id: TOYS_ID, title: 'اسباب‌بازی', slug: 'toys' },
+    { id: DRY_FOOD_ID, title: 'غذای خشک', slug: 'dry-food', imageKey: null },
+    { id: TOYS_ID, title: 'اسباب‌بازی', slug: 'toys', imageKey: null },
   ];
   const tileHrefs = (container: HTMLElement) =>
     [...container.querySelectorAll('a')].map((a) => a.getAttribute('href'));

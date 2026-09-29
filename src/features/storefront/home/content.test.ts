@@ -1,10 +1,9 @@
 // No database needed: these check the home page's code-side data and its parity
 // with the editable content it zips against.
-import { access, readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  CATEGORY_IMAGES,
   LIFE_MOMENT_TARGETS,
   momentEmoji,
   ROUTINE_TARGETS,
@@ -22,34 +21,15 @@ const SEED_SLUGS = new Set<string>(SEED_CATEGORIES.map((row) => row.slug));
 
 // The moment/hero/guide/community/card photos all moved into the content defaults
 // (`src/lib/content/defaults.ts`) as slash-less storage keys — covered by
-// `defaults.test.ts`. What remains here is the catalog-coupled category
-// photography, which keeps its `/`-prefixed public URLs.
-const everyImage = Object.values(CATEGORY_IMAGES);
+// `defaults.test.ts` — and the category photos into the catalog
+// (`categories.image_key`), whose demo keys `catalog-data.test.ts` checks.
 
-describe('category tile images', () => {
-  it('serves every photo from this repo — no external hotlink anywhere', () => {
-    // The blocker of the design review: Unsplash URLs are slow or unreachable
-    // from Iranian IPs. A relative path is the whole guarantee.
-    for (const image of everyImage) {
-      expect(image).not.toMatch(/^(https?:)?\/\//);
-      expect(image).toMatch(/^\//);
-    }
-  });
-
-  it('points every photo at a file that is actually committed', async () => {
-    // A typo would only ever surface as a broken image in the browser.
-    for (const image of new Set(everyImage)) {
-      await expect(
-        access(join(process.cwd(), 'public', image)),
-      ).resolves.toBeUndefined();
-    }
-  });
-
+describe('bundled photos', () => {
   it('credits every bundled photo in public/ATTRIBUTIONS.md', async () => {
     // These are licensed stock photos. The licence is only honoured if the
     // record exists, and the record is exactly the thing that gets forgotten
     // when someone drops a new .jpg into public/ — so the check is on the
-    // directory, not on the list above.
+    // directory.
     const attributions = await readFile(
       join(process.cwd(), 'public', 'ATTRIBUTIONS.md'),
       'utf8',
@@ -64,20 +44,6 @@ describe('category tile images', () => {
           file,
         );
       }
-    }
-  });
-});
-
-describe('category tiles', () => {
-  it('has a photo for every category the catalog ships with', () => {
-    for (const category of SEED_CATEGORIES) {
-      expect(CATEGORY_IMAGES[category.slug]).toBeDefined();
-    }
-  });
-
-  it('names no category the catalog does not have', () => {
-    for (const slug of Object.keys(CATEGORY_IMAGES)) {
-      expect(SEED_SLUGS).toContain(slug);
     }
   });
 });

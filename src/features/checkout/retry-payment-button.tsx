@@ -2,16 +2,13 @@
 
 import { useState } from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
-import { postData } from '@/lib/api-client';
-import { API_PATHS } from '@/lib/constant/paths';
+import { reasonFrom } from '@/lib/checkout/field-errors';
+import { startZarinpalPayment } from '@/lib/checkout/start-zarinpal-payment';
 
 /**
  * "Retry payment" for a `pending_payment` order on the result page — the only
  * interactive piece of that otherwise server-rendered page, so only `orderId`
- * crosses to the client. It starts a fresh Zarinpal attempt
- * (`POST /api/payments/zarinpal/request`, which mints a new authority) and sends
- * the browser to the returned gateway URL. The order id is the sole input; the
- * endpoint re-checks ownership and that the order is still awaiting payment.
+ * crosses to the client; `startZarinpalPayment` does the rest.
  */
 export function RetryPaymentButton({ orderId }: { orderId: string }) {
   const [busy, setBusy] = useState(false);
@@ -22,15 +19,9 @@ export function RetryPaymentButton({ orderId }: { orderId: string }) {
     setBusy(true);
     setError(undefined);
     try {
-      const { redirectUrl } = await postData<{ redirectUrl: string }>(
-        API_PATHS.PAYMENT_REQUEST,
-        { orderId },
-      );
-      window.location.assign(redirectUrl);
+      await startZarinpalPayment(orderId);
     } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : 'شروع پرداخت ناموفق بود.',
-      );
+      setError(reasonFrom(caught) ?? 'شروع پرداخت ناموفق بود.');
       setBusy(false);
     }
   };
@@ -41,7 +32,7 @@ export function RetryPaymentButton({ orderId }: { orderId: string }) {
         type="button"
         onClick={retry}
         disabled={busy}
-        className="bg-accent-strong hover:bg-accent-hover flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+        className="bg-brand hover:bg-brand-hover text-brand-foreground flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60"
         data-umami-event="checkout-result-retry-pay"
       >
         <RefreshCw size={16} aria-hidden="true" />{' '}

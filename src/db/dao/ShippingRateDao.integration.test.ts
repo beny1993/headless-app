@@ -6,9 +6,10 @@
 // Every row is a throwaway province («استان آزمایشی-<token>») cleaned up in
 // afterEach — the 31 seeded provinces are never mutated, so the suite is correct
 // against the shared dev database and leaves the seed untouched.
-import { eq, inArray } from 'drizzle-orm';
+import { TransactionRollbackError, eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { provinces, shippingRates } from '@/db/schema/shipping';
+import type { Tx } from '@/db';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 
 const { ShippingRateDao } = await importWithDb(
@@ -377,6 +378,79 @@ describe.skipIf(!databaseReachable)('ShippingRateDao', () => {
 
     it('returns null for an unknown id', async () => {
       expect(await ShippingRateDao.setActive(2_147_483_600, false)).toBeNull();
+    });
+  });
+
+  describe('setAllFees', () => {
+    // The write touches EVERY rate row, the 31 seeded ones included — shared
+    // dev-database state other suites and the running app read. So each case
+    // runs inside a transaction it rolls back: no other session ever sees the
+    // fees move, and nothing needs restoring.
+    const rolledBack = async (run: (tx: Tx) => Promise<void>) => {
+      try {
+        await testDb.transaction(async (tx) => {
+          await run(tx);
+          tx.rollback();
+        });
+      } catch (error) {
+        if (!(error instanceof TransactionRollbackError)) throw error;
+      }
+    };
+
+    it('sets every province to the fee — inactive ones too — and returns the admin list in id order', async () => {
+      const active = await seedOne(40_000);
+      const inactive = await seedOne(55_000);
+      await ShippingRateDao.setActive(inactive.provinceId, false);
+
+      await rolledBack(async (tx) => {
+        const rows = await ShippingRateDao.setAllFees(33_000, tx);
+
+        expect(rows.every((row) => row.fee === 33_000)).toBe(true);
+        expect(rows.find((r) => r.provinceId === active.provinceId)).toEqual({
+          ...active,
+          fee: 33_000,
+          isActive: true,
+        });
+        expect(rows.find((r) => r.provinceId === inactive.provinceId)).toEqual({
+          ...inactive,
+          fee: 33_000,
+          isActive: false,
+        });
+        const ids = rows.map((row) => row.provinceId);
+        expect(ids).toEqual([...ids].sort((a, b) => a - b));
+        // The list is the table, not a guess: every rate row was rewritten.
+        const stored = await tx
+          .select({ fee: shippingRates.fee })
+          .from(shippingRates);
+        expect(stored).toHaveLength(rows.length);
+        expect(stored.every((row) => row.fee === 33_000)).toBe(true);
+      });
+
+      // Rolled back — the guard this suite's isolation rests on.
+      expect(
+        (await ShippingRateDao.getByProvinceIdForAdmin(active.provinceId))?.fee,
+      ).toBe(40_000);
+    });
+
+    it('accepts zero — free shipping everywhere is a valid rate', async () => {
+      const seeded = await seedOne(40_000);
+
+      await rolledBack(async (tx) => {
+        const rows = await ShippingRateDao.setAllFees(0, tx);
+        expect(rows.find((r) => r.provinceId === seeded.provinceId)?.fee).toBe(
+          0,
+        );
+      });
+    });
+
+    it('is all-or-nothing — a fee the CHECK refuses changes no province', async () => {
+      const seeded = await seedOne(40_000);
+
+      await expect(ShippingRateDao.setAllFees(-1)).rejects.toThrow();
+
+      expect(
+        (await ShippingRateDao.getByProvinceIdForAdmin(seeded.provinceId))?.fee,
+      ).toBe(40_000);
     });
   });
 });

@@ -17,6 +17,8 @@ import {
  * products that are still active — a hidden or deleted product is left out, so
  * its link resolves to the shop. No link ids, no queries. A caller already
  * holding the category rows (the home page) passes them to skip that read.
+ * The «انتخاب‌های اسموکی» picks (`card` refs) are not links and are never
+ * loaded here; the home page reads them as cards.
  */
 export async function loadLinkTargets(
   values: readonly unknown[],
@@ -46,28 +48,38 @@ export async function loadLinkTargets(
   };
 }
 
+const MISSING = {
+  category: LINK_MESSAGES.missingCategory,
+  product: LINK_MESSAGES.missingProduct,
+  card: LINK_MESSAGES.missingCard,
+} as const;
+
 /**
  * The save-side check: one `path: message` error (the zod 400's own shape, so
  * the editor maps it onto the field) for each id in `value` that names no
- * category, or no active product. The ids are already uuids — the block's
- * schema runs first.
+ * category, no active product for a link, or no card the shop lists for a
+ * «انتخاب‌های اسموکی» box — read through the same `cardsByIds` the home page
+ * shows its picks with, so a family member (a valid link target, never a card)
+ * is refused here instead of being stored and silently never shown. The ids are
+ * already uuids — the block's schema runs first.
  */
 export async function findBrokenLinks(value: unknown): Promise<string[]> {
-  const targets = await loadLinkTargets([value]);
-  return collectLinkRefs(value)
-    .filter(
-      (ref) =>
-        !Object.hasOwn(
-          ref.kind === 'category' ? targets.categories : targets.products,
-          ref.id,
-        ),
-    )
-    .map(
-      (ref) =>
-        `${ref.path}: ${
-          ref.kind === 'category'
-            ? LINK_MESSAGES.missingCategory
-            : LINK_MESSAGES.missingProduct
-        }`,
-    );
+  const refs = collectLinkRefs(value);
+  const [targets, cards] = await Promise.all([
+    loadLinkTargets([value]),
+    ProductDao.cardsByIds(
+      refs.filter((ref) => ref.kind === 'card').map((ref) => ref.id),
+    ),
+  ]);
+  const listed = new Set(cards.map((card) => card.id));
+  const resolves = ({ kind, id }: (typeof refs)[number]) =>
+    kind === 'card'
+      ? listed.has(id)
+      : Object.hasOwn(
+          kind === 'category' ? targets.categories : targets.products,
+          id,
+        );
+  return refs
+    .filter((ref) => !resolves(ref))
+    .map((ref) => `${ref.path}: ${MISSING[ref.kind]}`);
 }

@@ -5,11 +5,16 @@
 // uses for order status).
 //
 // **Nothing here may import drizzle, `pg` or `@hono/zod-openapi`** — this ships in
-// the browser bundle with the account form. Plain zod only.
+// the browser bundle with the account form. Plain zod only. The `Pet` row below
+// is a TYPE import, which is erased, and it is what lets the wire projection
+// live here instead of inside the Hono route: the account server page imports
+// the projector as a value, and a value import of a route file drags
+// `@hono/zod-openapi` into the RSC graph for one pure function.
 //
 // `type` reuses the catalog's cat/dog `PET_TYPES` (a pet's species is the same
 // domain a product's `petType` is), so there is one cat/dog vocabulary sitewide.
 import { z } from 'zod';
+import type { Pet } from '@/db/schema/account';
 import { PET_TYPES } from '@/lib/catalog/product-query';
 import { boundedText, optionalBoundedText } from '@/lib/validation/text';
 
@@ -35,10 +40,10 @@ export const PET_GENDER_VALUES = Object.values(PET_GENDERS) as [
 ];
 
 /** cat/dog, reusing the catalog's tuple so the species vocabulary is one thing. */
-export const PET_KIND_VALUES = [PET_TYPES.CAT, PET_TYPES.DOG] as const;
+const PET_KIND_VALUES = [PET_TYPES.CAT, PET_TYPES.DOG] as const;
 
-export const petKindSchema = z.enum(PET_KIND_VALUES);
-export const petGenderSchema = z.enum(PET_GENDER_VALUES);
+const petKindSchema = z.enum(PET_KIND_VALUES);
+const petGenderSchema = z.enum(PET_GENDER_VALUES);
 
 /**
  * A render-time guard for a stored photo URL: `true` only for a real `https:` URL.
@@ -101,3 +106,39 @@ export const petInputSchema = z.object({
 });
 
 export type PetInput = z.infer<typeof petInputSchema>;
+
+/**
+ * The pet resource as it crosses the wire. Defined here, not in the route, so
+ * the server page that renders the first paint can project rows without
+ * importing the API. `GET/POST /api/me/pets` documents this very shape — see
+ * `src/lib/hono/routes/me-pets.ts`, which registers it under `Pet`.
+ */
+export const petResponseSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  type: petKindSchema,
+  gender: petGenderSchema,
+  neutered: z.boolean(),
+  breed: z.string().nullable(),
+  age: z.string().nullable(),
+  weight: z.string().nullable(),
+  photoUrl: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+});
+
+/** The pet shape the account UI renders. Import, don't restate. */
+export type PetResponse = z.infer<typeof petResponseSchema>;
+
+/** Pet row → the wire projection: Date to ISO, internal `userId`/`updatedAt` dropped. */
+export const toPetResponse = (row: Pet): PetResponse => ({
+  id: row.id,
+  name: row.name,
+  type: row.type,
+  gender: row.gender,
+  neutered: row.neutered,
+  breed: row.breed,
+  age: row.age,
+  weight: row.weight,
+  photoUrl: row.photoUrl,
+  createdAt: row.createdAt.toISOString(),
+});

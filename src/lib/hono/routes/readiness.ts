@@ -2,12 +2,9 @@
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import { z } from 'zod';
 import { HealthDao } from '@/db/dao/HealthDao';
-import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+import { assertReadyToServe } from '@/lib/zarinpal/client';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse } from '../route-responses';
 
 // Route pattern: always split into a `createRoute` definition and a separate
 // typed `RouteHandler` export in the same file — never inline the handler into
@@ -21,6 +18,13 @@ import {
  * have reported healthy while every page 500'd. This one answers "can this
  * instance actually serve traffic", which for this app means Postgres is
  * reachable and migrated. Point orchestrator probes here, not at `/health`.
+ *
+ * It is also where the simulated payment gateway is refused: a production build
+ * still on `mock` answers 503 here, so Coolify never routes traffic to a
+ * container that would settle every order as paid for zero Toman. That check
+ * runs before the database probe — it is pure environment, so there is no point
+ * spending I/O first — and it fires whenever online payment is switched on,
+ * which is when a mock provider could settle an order for zero Toman.
  */
 
 export const NOT_READY_MESSAGE = 'سرویس آماده نیست';
@@ -45,10 +49,9 @@ export const readinessRoute = createRoute({
       },
       description: 'Dependencies reachable — safe to route traffic here',
     },
-    503: {
-      content: { 'application/json': { schema: apiErrorSchema } },
-      description: 'A dependency is unreachable — do not route traffic here',
-    },
+    503: errorResponse(
+      'A dependency is unreachable — do not route traffic here',
+    ),
   },
 });
 
@@ -56,11 +59,23 @@ export const readinessHandler: RouteHandler<typeof readinessRoute> = async (
   c,
 ) => {
   try {
+    assertReadyToServe();
     await HealthDao.ping();
-  } catch {
+  } catch (error) {
     // Deliberately not reported to Sentry: a probe runs on a fixed interval, so
     // a database outage would emit an event every tick and bury everything else.
     // The unhealthy container is itself the signal.
+    //
+    // It does go to the server log, though, and that is not optional: the
+    // response is the generic Persian 503 because `/api/ready` is public, so
+    // without this line a refusal is unreadable. The gateway guard logs its own
+    // refusal once, but only after resolving the provider — an unrecognized
+    // APP_CONFIG_ZARINPAL_PROVIDER throws before that line is reached, which is
+    // exactly the deploy that would otherwise roll back blind. Note the provider
+    // is resolved only when online payment is ON: on a card-to-card-only deploy
+    // a typo'd provider now passes this probe and surfaces on the first
+    // checkout instead, which is the trade for not refusing that shop at all.
+    console.error('[ready] refusing traffic:', error);
     return c.json(apiError(NOT_READY_MESSAGE), 503);
   }
 

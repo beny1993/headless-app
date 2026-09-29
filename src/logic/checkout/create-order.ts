@@ -17,14 +17,18 @@ import { PaymentDao } from '@/db/dao/PaymentDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
 import type { OrderWithItems } from '@/db/schema/orders';
+import { displayTitle } from '@/lib/catalog/variant';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 import { computeDiscount } from '@/lib/discount/discount-code';
+import { isZarinpalEnabled } from '@/lib/zarinpal/client';
 import {
   ORDER_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
+  byProductId,
   initialStatusFor,
 } from '@/lib/orders/order-status';
+import { pgErrorOf } from '@/db/pg-error';
 import { CheckoutError } from '@/logic/checkout/checkout-error';
 import {
   DISCOUNT_EXHAUSTED,
@@ -36,15 +40,12 @@ import {
   notifyAdminsOfNewOrder,
 } from '@/logic/orders/notify-new-order';
 
-// Re-exported so the many importers of `CheckoutError` keep their path
-// (`@/logic/checkout/create-order`); the class itself lives in ./checkout-error
-// so the discount policy can throw it without an import cycle.
-export { CheckoutError };
-
 // Persian, customer-facing. The `errors[]` detail the route builds is
 // `${field}: ${message}`, per the design note.
 const PRODUCT_UNAVAILABLE = 'محصول انتخابی دیگر در دسترس نیست.';
 const INVALID_PROVINCE = 'استان انتخاب‌شده نامعتبر است.';
+const ONLINE_PAYMENT_UNAVAILABLE =
+  'پرداخت آنلاین در حال حاضر در دسترس نیست. پرداخت کارت به کارت را انتخاب کن.';
 const TOO_MANY_OPEN_ORDERS =
   'تعداد سفارش‌های در انتظار پرداختِ شما به حد مجاز رسیده است؛ لطفاً یکی را کامل یا لغو کنید.';
 const TOO_MANY_RECENT_ORDERS =
@@ -53,15 +54,13 @@ const insufficientStock = (title: string) =>
   `موجودی «${title}» برای تعداد درخواستی کافی نیست.`;
 
 /**
- * Interim per-user cap on concurrent `pending_payment` orders (2026-09-02).
+ * Per-user cap on concurrent `pending_payment` orders (2026-09-02).
  *
- * A Zarinpal checkout reserves stock into a `pending_payment` order, and until
- * the abandoned-order expiry/reconcile job exists that stock has no release path
- * — so one phone-verified account could loop `POST /api/checkout` and permanently
- * zero the catalog (denial of inventory). This cap makes a pre-production / test
- * deploy safe in the meantime. The REAL fix — expiry + restock — arrives with
- * `Story - Zarinpal Payment Integration` (build order 15) and SUPERSEDES this cap
- * (raise or drop it once expiry exists — Benyamin's call at that point).
+ * A Zarinpal checkout reserves stock into a `pending_payment` order, and only
+ * the reconcile sweep (`src/logic/payments/reconcile.ts`) releases an abandoned
+ * one. The sweep is admin-triggered, so between runs one phone-verified account
+ * looping `POST /api/checkout` could still zero the catalog (denial of
+ * inventory); this cap bounds that. Raising or dropping it is Benyamin's call.
  *
  * N is generous (a real shopper rarely has >1 unpaid online order at once) yet
  * caps abuse; tune it here.
@@ -92,10 +91,6 @@ export const MAX_OPEN_ORDERS = 5;
 export const MAX_ORDERS_PER_WINDOW = 30;
 export const ORDER_RATE_WINDOW_MS = 60 * 60 * 1000;
 
-/** Ascending productId — the deterministic lock order the design mandates. */
-const byProductId = (a: { productId: string }, b: { productId: string }) =>
-  a.productId < b.productId ? -1 : a.productId > b.productId ? 1 : 0;
-
 /**
  * The partial unique index that anchors idempotent order creation
  * (`src/db/schema/orders.ts`). A 23505 naming exactly this constraint means a
@@ -107,19 +102,14 @@ const IDEMPOTENCY_CONSTRAINT = 'orders_user_idempotency_key_unique';
 
 /**
  * Whether `error` is a Postgres unique-violation (23505) on `constraint`.
- *
- * node-postgres raises a `DatabaseError` carrying `code`/`constraint`; drizzle
- * may re-wrap it, so the original is checked at `.cause` too. Matching the
- * constraint name (not just the 23505 code) keeps this from mistaking an
+ * Matching the constraint name (not just the code) keeps this from mistaking an
  * unrelated unique conflict — a future one added to `orders` — for an
  * idempotency hit.
  */
-const isUniqueViolation = (error: unknown, constraint: string): boolean =>
-  [error, (error as { cause?: unknown })?.cause].some((candidate) => {
-    const pgError = candidate as
-      { code?: string; constraint?: string } | null | undefined;
-    return pgError?.code === '23505' && pgError?.constraint === constraint;
-  });
+const isUniqueViolation = (error: unknown, constraint: string): boolean => {
+  const pg = pgErrorOf(error);
+  return pg?.code === '23505' && pg.constraint === constraint;
+};
 
 /**
  * Creates an order for `userId` from a validated checkout body.
@@ -129,7 +119,9 @@ const isUniqueViolation = (error: unknown, constraint: string): boolean =>
  *
  *  1. Look up the shipping fee by province (fail-fast, before the transaction:
  *     an unknown province reserves nothing).
- *  2. Enforce the interim open-order cap (Zarinpal only — see `MAX_OPEN_ORDERS`).
+ *  2. Refuse a Zarinpal order while online payment is off, then enforce the
+ *     rolling creation cap (every method — see `MAX_ORDERS_PER_WINDOW`) and the
+ *     open-order cap (Zarinpal only — see `MAX_OPEN_ORDERS`).
  *  3. In one transaction, per line **in productId order** (deadlock symmetry with
  *     the restock path): reject a missing or inactive product, then run the atomic
  *     oversell guard; a 0-row decrement is out-of-stock. Snapshot title/sku/price
@@ -171,7 +163,24 @@ export const createOrder = async (
   const rate = await ShippingRateDao.getByProvinceId(input.address.provinceId);
   if (!rate) throw new CheckoutError('address.provinceId', INVALID_PROVINCE);
 
-  // 2a. The rolling creation cap, fail-fast, before the transaction: every
+  // 2a. Online payment switched off. The checkout page hides the option
+  // (`APP_CONFIG_ZARINPAL_ENABLED`, read there to build the form), but a page is
+  // not a boundary: the API took `paymentMethod` from the body and never asked.
+  // A `zarinpal` order on a card-to-card-only shop lands `pending_payment` and
+  // holds its stock, and nothing releases it — `POST /payments/zarinpal/request`
+  // cannot mint an authority (the gateway guard throws), and the reconcile sweep
+  // that would expire and restock it throws before pass 2 as well. So the stock
+  // is held until an admin cancels the order by hand, one at a time. Fifty lines
+  // per order and five open orders per user is a lot of catalogue for one
+  // throwaway account to freeze.
+  if (
+    input.paymentMethod === PAYMENT_METHODS.ZARINPAL &&
+    !isZarinpalEnabled()
+  ) {
+    throw new CheckoutError('paymentMethod', ONLINE_PAYMENT_UNAVAILABLE);
+  }
+
+  // 2b. The rolling creation cap, fail-fast, before the transaction: every
   // order this user created in the window, whatever its status and however it
   // was paid. This is the one that bounds a COD loop, and a replay never reaches
   // it — the fast path above returned. See MAX_ORDERS_PER_WINDOW.
@@ -183,14 +192,13 @@ export const createOrder = async (
     throw new CheckoutError('paymentMethod', TOO_MANY_RECENT_ORDERS);
   }
 
-  // 2b. Interim open-order cap (fail-fast, before the transaction). Only orders
-  // that WOULD enter `pending_payment` are gated — the one state whose reserved
-  // stock has no release path yet — so a COD checkout (→ `processing`) is never
+  // 2c. Open-order cap (fail-fast, before the transaction). Only orders that
+  // WOULD enter `pending_payment` are gated — the one state whose reserved stock
+  // waits on the reconcile sweep — so a COD checkout (→ `processing`) is never
   // blocked and never counted. See `MAX_OPEN_ORDERS`.
   // ponytail: the count→create window is non-atomic, so a concurrent burst from
   // one user can land a few over N; a sequential loop is hard-capped, which is
-  // what the anti-abuse guard needs. A hard invariant is the expiry/reconcile
-  // story's job (build order 15), which supersedes this cap.
+  // what the anti-abuse guard needs.
   if (
     initialStatusFor(input.paymentMethod) === ORDER_STATUSES.PENDING_PAYMENT
   ) {
@@ -207,7 +215,7 @@ export const createOrder = async (
     .sort(byProductId);
 
   try {
-    const order = await db.transaction(async (tx) => {
+    const created = await db.transaction(async (tx) => {
       const loaded = await ProductDao.getByIds(
         tx,
         lines.map((line) => line.productId),
@@ -234,7 +242,10 @@ export const createOrder = async (
         );
         // 0 rows: the atomic `stock >= qty` guard did not match — out of stock.
         if (!reserved) {
-          throw new CheckoutError(field, insufficientStock(product.title));
+          throw new CheckoutError(
+            field,
+            insufficientStock(displayTitle(product)),
+          );
         }
         // A soft-delete that landed between the load and the decrement: the
         // guard ignores `isActive`, so re-check the fresh row and roll back if
@@ -248,7 +259,11 @@ export const createOrder = async (
         // so this price/title/sku is current even if the cart was built earlier.
         items.push({
           productId: reserved.id,
-          title: reserved.title,
+          // `displayTitle`, not the bare column: a family member's line has to
+          // read «غذای خشک سگ — ۱۰ کیلوگرم», or an invoice cannot say which
+          // size was bought. The snapshot is the only record of that once the
+          // product row is edited, so it is written here and never derived later.
+          title: displayTitle(reserved),
           sku: reserved.sku,
           unitPrice: reserved.price,
           qty: line.qty,
@@ -347,9 +362,11 @@ export const createOrder = async (
     // rejects, so the shopper's response cannot be delayed or failed by a wedged
     // SMS provider. Not Next's `after()` — the reconcile sweep and the tests
     // call this function with no request scope at all.
-    if (notifiesOnCreate(order.status)) void notifyAdminsOfNewOrder(order.id);
+    if (notifiesOnCreate(created.status)) {
+      void notifyAdminsOfNewOrder(created.id);
+    }
 
-    return order;
+    return created;
   } catch (error) {
     // A concurrent request with the same key won the race: its insert committed
     // first, so this transaction's insert tripped the partial unique index and

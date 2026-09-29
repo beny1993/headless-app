@@ -1,10 +1,17 @@
 // Pure schema behaviour — no database. The null byte is constructed with
 // `String.fromCharCode(0)`, never typed (the project's control-character rule).
 import { describe, expect, it } from 'vitest';
-import { PET_GENDERS, isHttpsUrl, petInputSchema } from '@/lib/account/pet';
+import type { Pet } from '@/db/schema/account';
+import {
+  PET_GENDERS,
+  isHttpsUrl,
+  petInputSchema,
+  toPetResponse,
+} from '@/lib/account/pet';
 import { PET_TYPES } from '@/lib/catalog/product-query';
 
 const NUL = String.fromCharCode(0);
+const RLO = String.fromCharCode(0x202e);
 
 const valid = () => ({
   name: 'لونا',
@@ -18,6 +25,18 @@ const valid = () => ({
 });
 
 describe('petInputSchema', () => {
+  it('rejects a bidi override in the name', () => {
+    expect(
+      petInputSchema.safeParse({ ...valid(), name: `لونا${RLO}` }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a bidi override in an optional field', () => {
+    expect(
+      petInputSchema.safeParse({ ...valid(), breed: `ایرانی${RLO}` }).success,
+    ).toBe(false);
+  });
+
   it('accepts a full, well-formed pet', () => {
     const parsed = petInputSchema.parse(valid());
     expect(parsed.name).toBe('لونا');
@@ -130,5 +149,46 @@ describe('petInputSchema', () => {
     }) as Record<string, unknown>;
     expect(parsed).not.toHaveProperty('id');
     expect(parsed).not.toHaveProperty('userId');
+  });
+});
+
+// The wire projection the `/api/me/pets` routes and the account server page both
+// render from. It drops the columns a client must never see and ISOs the date —
+// a `Date` on the wire is whatever `JSON.stringify` felt like that day.
+describe('toPetResponse', () => {
+  const row: Pet = {
+    id: '11111111-1111-4111-8111-111111111111',
+    userId: 'user-1',
+    name: 'لونا',
+    type: PET_TYPES.CAT,
+    gender: PET_GENDERS.FEMALE,
+    neutered: true,
+    breed: null,
+    age: '۳ سال',
+    weight: null,
+    photoUrl: null,
+    createdAt: new Date('2026-03-21T06:30:00.000Z'),
+    updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+  };
+
+  it('ISOs the creation date and keeps every public field', () => {
+    expect(toPetResponse(row)).toEqual({
+      id: row.id,
+      name: 'لونا',
+      type: PET_TYPES.CAT,
+      gender: PET_GENDERS.FEMALE,
+      neutered: true,
+      breed: null,
+      age: '۳ سال',
+      weight: null,
+      photoUrl: null,
+      createdAt: '2026-03-21T06:30:00.000Z',
+    });
+  });
+
+  it('drops the owner id and the update timestamp', () => {
+    const projected = toPetResponse(row) as Record<string, unknown>;
+    expect(projected).not.toHaveProperty('userId');
+    expect(projected).not.toHaveProperty('updatedAt');
   });
 });

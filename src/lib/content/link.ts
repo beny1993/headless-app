@@ -52,6 +52,8 @@ export const LINK_MESSAGES = {
   url: 'لینک بیرونی باید یک آدرس کامل با https باشد.',
   missingCategory: 'این دسته‌بندی وجود ندارد.',
   missingProduct: 'این محصول وجود ندارد یا غیرفعال است.',
+  missingCard:
+    'این محصول وجود ندارد، غیرفعال است یا زیرمجموعه‌ی محصول دیگری است.',
 } as const;
 
 /** The longest stored external href — checked on the href, the stored value. */
@@ -129,7 +131,7 @@ export type LinkTargets = {
 };
 
 /** Where a link goes, and whether it leaves the site (new tab, `noopener`). */
-export type ResolvedLink = { href: string; external: boolean };
+type ResolvedLink = { href: string; external: boolean };
 
 /**
  * Where a saved link goes right now. Pure (the catalog lookups arrive in
@@ -163,19 +165,35 @@ export function resolveLink(
   }
 }
 
-/** A catalog id a content value references, at the field path it sits on. */
-export type LinkRef = {
+/**
+ * A catalog id a content value references, at the field path it sits on. A
+ * `product` is a link target — any active product, a family member's own page
+ * included. A `card` is a product the shop lists as a card — active and never a
+ * member — which is what a «انتخاب‌های اسموکی» box shows; it is not a link, so
+ * `loadLinkTargets` never resolves it.
+ */
+type LinkRef = {
   path: string;
-  kind: 'category' | 'product';
+  kind: 'category' | 'product' | 'card';
   id: string;
 };
 
 /**
+ * The fields that store a list of bare ids rather than links — a routine tab's
+ * categories, the «انتخاب‌های اسموکی» boxes (whose `null` entries are «خودکار»)
+ * — and what each id names.
+ */
+const ID_LISTS = new Map<string, LinkRef['kind']>([
+  ['categoryIds', 'category'],
+  ['productIds', 'card'],
+]);
+
+/**
  * Every category and product id in a parsed content value, with its dotted field
- * path (`cards.2.link`, `slots.0.categoryIds`) — a zod issue path's shape, so a
- * save-side error lands on the editor field holding the link. It walks the whole
- * value instead of a per-key list, so a link field added to a block later is
- * covered without touching this.
+ * path (`cards.2.link`, `slots.0.categoryIds`, `productIds`) — a zod issue path's
+ * shape, so a save-side error lands on the editor field holding the link. It
+ * walks the whole value instead of a per-key list, so a link field added to a
+ * block later is covered without touching this.
  */
 export function collectLinkRefs(
   value: unknown,
@@ -195,15 +213,12 @@ export function collectLinkRefs(
   if (node.type === LINK_TYPES.PRODUCT && typeof node.productId === 'string') {
     return [{ path: path.join('.'), kind: 'product', id: node.productId }];
   }
-  return Object.entries(node).flatMap(([key, child]) =>
-    key === 'categoryIds' && Array.isArray(child)
+  return Object.entries(node).flatMap(([key, child]) => {
+    const kind = ID_LISTS.get(key);
+    return kind && Array.isArray(child)
       ? child
           .filter((id): id is string => typeof id === 'string')
-          .map((id) => ({
-            path: [...path, key].join('.'),
-            kind: 'category' as const,
-            id,
-          }))
-      : collectLinkRefs(child, [...path, key]),
-  );
+          .map((id) => ({ path: [...path, key].join('.'), kind, id }))
+      : collectLinkRefs(child, [...path, key]);
+  });
 }

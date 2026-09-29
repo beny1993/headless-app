@@ -16,81 +16,35 @@
 // order-snapshotted by amount + string — so "delete" is a deactivate via toggle.
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
-import { z } from 'zod';
 import { DiscountCodeDao } from '@/db/dao/DiscountCodeDao';
-import type { DiscountCode } from '@/db/schema/discounts';
 import {
-  DISCOUNT_TYPE_VALUES,
   discountCodeInputSchema,
   discountCodeToggleSchema,
+  discountCodeViewSchema,
+  toDiscountView,
 } from '@/lib/discount/discount-code';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
 import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+  IdParamSchema,
+  errorResponse,
+  openapiObject,
+} from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
-import { pgErrorOf } from '../pg-error';
+import { pgErrorOf } from '@/db/pg-error';
 
 /** User-facing copy, so Persian. */
-export const DISCOUNT_NOT_FOUND_MESSAGE = 'کد تخفیف یافت نشد.';
+const DISCOUNT_NOT_FOUND_MESSAGE = 'کد تخفیف یافت نشد.';
 /** A save refused by the database (a duplicate code, or a CHECK). */
-export const DISCOUNT_SAVE_FAILED_MESSAGE =
-  'کد تخفیف ذخیره نشد؛ ورودی را بررسی کن.';
+const DISCOUNT_SAVE_FAILED_MESSAGE = 'کد تخفیف ذخیره نشد؛ ورودی را بررسی کن.';
 
-/**
- * The admin view of a discount code — the full row the panel shows, with the
- * timestamps and expiry ISO-stringified for the client. `usageCount` is read-only
- * here (the atomic claim owns it); it is shown so the admin sees remaining
- * capacity.
- */
-const DiscountCodeSchema = z
-  .object({
-    id: z.uuid(),
-    code: z.string(),
-    type: z.enum(DISCOUNT_TYPE_VALUES),
-    value: z.number().int().positive(),
-    expiresAt: z.iso.datetime().nullable(),
-    usageLimit: z.number().int().positive().nullable(),
-    usageCount: z.number().int().nonnegative(),
-    minOrderAmount: z.number().int().nonnegative(),
-    isActive: z.boolean(),
-    createdAt: z.iso.datetime(),
-    updatedAt: z.iso.datetime(),
-  })
-  .openapi('DiscountCode');
+/** The shape lives in `@/lib/discount/discount-code` — see `openapiObject`. */
+const DiscountCodeSchema = openapiObject(
+  discountCodeViewSchema,
+  'DiscountCode',
+);
 
-/** The discount payload — what create/toggle return, and the admin list renders. */
-export type DiscountCodeView = z.infer<typeof DiscountCodeSchema>;
-
-/** Project a DAO row to the admin response — ISO the dates. */
-export const toDiscountView = (c: DiscountCode): DiscountCodeView => ({
-  id: c.id,
-  code: c.code,
-  type: c.type,
-  value: c.value,
-  expiresAt: c.expiresAt ? c.expiresAt.toISOString() : null,
-  usageLimit: c.usageLimit,
-  usageCount: c.usageCount,
-  minOrderAmount: c.minOrderAmount,
-  isActive: c.isActive,
-  createdAt: c.createdAt.toISOString(),
-  updatedAt: c.updatedAt.toISOString(),
-});
-
-const IdParamSchema = z.object({
-  id: z.uuid().meta({
-    param: { name: 'id', in: 'path' },
-    example: '123e4567-e89b-12d3-a456-426614174000',
-  }),
-});
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
+/** Re-exported for the client components that already import the type here. */
+export type { DiscountCodeView } from '@/lib/discount/discount-code';
 
 // ── Postgres write-error mapping (as in admin-products) ───────────────────────
 /**
@@ -99,7 +53,7 @@ const errorResponse = (description: string) =>
  * bounds the input schema already blocks, but psql could still surface — is a
  * generic 400 rather than a 500. Unknown errors rethrow as the 500 they are.
  */
-export const discountWriteErrors = (error: unknown): string[] | null => {
+const discountWriteErrors = (error: unknown): string[] | null => {
   const pg = pgErrorOf(error);
   if (!pg) return null;
   if (pg.code === '23505' && pg.constraint === 'discount_codes_code_unique') {

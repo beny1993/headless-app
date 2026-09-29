@@ -10,6 +10,8 @@
 // key from that sniffed type — so a `.php` renamed to `.jpg`, or a `text/html`
 // with an image extension, is rejected, and the key we persist can never carry an
 // attacker-chosen extension.
+import { z } from 'zod';
+import { formatNumber } from '@/lib/format';
 
 /** The image content types the shop accepts, mapped to the extension we store. */
 export const IMAGE_EXTENSIONS = {
@@ -95,3 +97,84 @@ export function sniffImageType(bytes: Uint8Array): AcceptedImageType | null {
 export function objectKeyFor(type: AcceptedImageType): string {
   return `${UPLOAD_KEY_PREFIX}/${crypto.randomUUID()}.${IMAGE_EXTENSIONS[type]}`;
 }
+
+/**
+ * A bundled asset committed under `public/`, the other shape a stored key can
+ * take: `site/…` or `products/…`.
+ */
+const BUNDLED_IMAGE_KEY = /^(site|products)\/[a-z0-9-]+\.(jpe?g|png|webp)$/;
+
+/** The longest key anything here can produce, with room to spare. */
+export const MAX_OBJECT_KEY_LENGTH = 200;
+
+/** The refusal for a stored key that is not one, whatever made it wrong. */
+export const IMAGE_KEY_ERROR = 'کلید تصویر نامعتبر است.';
+
+/**
+ * What a valid stored image key looks like, for every caller that takes one
+ * from a client. Anchored to exactly the two shapes a key can have and derived
+ * from the uploader's own constants above — so adding an accepted type widens
+ * this for free, and no second answer to «is this a key» can drift from it.
+ * The message sits on the base type and the cap too, or a wrong type or an
+ * overlong key would answer in zod's English.
+ *
+ * Client-safe, like everything else in this module.
+ */
+export const imageKeySchema = z
+  .string({ error: IMAGE_KEY_ERROR })
+  .max(MAX_OBJECT_KEY_LENGTH, IMAGE_KEY_ERROR)
+  .refine(
+    (key) =>
+      BUNDLED_IMAGE_KEY.test(key) ||
+      (key.startsWith(`${UPLOAD_KEY_PREFIX}/`) &&
+        UPLOAD_FILENAME_PATTERN.test(key.slice(UPLOAD_KEY_PREFIX.length + 1))),
+    { error: IMAGE_KEY_ERROR },
+  );
+
+/**
+ * What the shared admin image upload answers: the stored key, for the form to
+ * save into its own body, and a URL to preview it by. Declared once, for the
+ * route to build its reply from and the client to parse it with, so the two
+ * cannot drift apart.
+ */
+export const imageUploadResultSchema = z.object({
+  key: imageKeySchema,
+  url: z.string(),
+});
+export type ImageUploadResult = z.infer<typeof imageUploadResultSchema>;
+
+/**
+ * Megabytes for the copy below, to one decimal place. Rounded because the
+ * division is exact only for a power-of-two cap: a 5,000,000-byte ceiling
+ * would otherwise print «۴.۷۶۸۳۷۱۵۸۲۰۳۱۲۵ مگابایت» in the field an admin is
+ * reading. Through `formatNumber`, not `toPersianDigits`, because a fraction
+ * needs the fa-IR decimal separator — `toPersianDigits` would leave a Latin
+ * full stop on a screen where every other number uses «٫».
+ */
+const MAX_UPLOAD_MB = formatNumber(
+  Math.round((MAX_UPLOAD_BYTES / 1024 / 1024) * 10) / 10,
+);
+
+/**
+ * The accepted formats as the admin reads them, derived from the one list that
+ * decides them. Typing them out meant two copies three lines apart that
+ * already disagreed on JPG versus JPEG, and that would both go on naming three
+ * formats the day a fourth was accepted.
+ */
+const ACCEPTED_LABELS = ((labels: string[]) =>
+  labels.length > 1
+    ? // Persian lists the last item after «یا», not another comma.
+      `${labels.slice(0, -1).join('، ')} یا ${labels[labels.length - 1]}`
+    : (labels[0] ?? ''))([
+  ...new Set(Object.values(IMAGE_EXTENSIONS).map((ext) => ext.toUpperCase())),
+]);
+
+/**
+ * The accept-and-size hint every image field shows, and the two refusals.
+ * Derived rather than written out: three hand-typed copies of «۲ مگابایت» went
+ * on promising two megabytes after the cap moved, in the very field the admin
+ * was looking at while a larger file uploaded fine.
+ */
+export const IMAGE_FORMAT_HINT = `${ACCEPTED_LABELS}، تا ${MAX_UPLOAD_MB} مگابایت`;
+export const IMAGE_TYPE_ERROR = `فقط تصویر ${ACCEPTED_LABELS}.`;
+export const IMAGE_SIZE_ERROR = `حجم تصویر باید حداکثر ${MAX_UPLOAD_MB} مگابایت باشد.`;

@@ -5,7 +5,7 @@ OTP sign-in, Zarinpal and card-to-card transfer.
 
 **Stack**: Next.js 16 (App Router, React 19) · TypeScript strict · Hono
 (`@hono/zod-openapi` + Scalar) · PostgreSQL + Drizzle · Better Auth ·
-Tailwind CSS v4 · React Email · Vitest · pnpm 11 / Node 24 · Docker.
+Tailwind CSS v4 · Vitest · pnpm 11 / Node 24 · Docker.
 
 ## Quick start
 

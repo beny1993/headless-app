@@ -24,6 +24,54 @@ export const PET_TYPES = {
 
 export type PetType = (typeof PET_TYPES)[keyof typeof PET_TYPES];
 
+/**
+ * The canonical order a product's pet selection is stored and read in. One
+ * order everywhere means `['cat','dog']` is the only both-pets value there is,
+ * so equality holds in a test, in a payload and on the page without anybody
+ * sorting first.
+ */
+export const PET_TYPE_VALUES = [PET_TYPES.CAT, PET_TYPES.DOG] as const;
+
+/**
+ * A pet selection as it is stored: deduped and in canonical order. Filtering
+ * the enum rather than sorting the input does both in one pass — and a value
+ * outside the enum cannot survive it, which is the schema's job but costs
+ * nothing to be true of here too.
+ */
+export const normalizePetTypes = (values: readonly PetType[]): PetType[] =>
+  PET_TYPE_VALUES.filter((value) => values.includes(value));
+
+/**
+ * One Persian word per `pet_type` value, keyed by the union so a third pet type
+ * stops the build here rather than rendering a bare `cat` somewhere.
+ *
+ * Beside the enum, because everything that shows a pet shows these two words:
+ * the shop's filter, the product page's specification row, the admin product
+ * form, the content link picker, the home quiz and the account pet form. They
+ * had been written out four times over, and each copy is a place the wording
+ * can drift from the others.
+ */
+export const PET_LABELS: Record<PetType, string> = {
+  [PET_TYPES.CAT]: 'گربه',
+  [PET_TYPES.DOG]: 'سگ',
+};
+
+/** The face each one wears where a control has room for it. */
+export const PET_EMOJI: Record<PetType, string> = {
+  [PET_TYPES.CAT]: '\u{1F431}',
+  [PET_TYPES.DOG]: '\u{1F436}',
+};
+
+/**
+ * A product's whole pet selection as one Persian phrase — «گربه», «سگ» or
+ * «گربه و سگ». Normalized first, so the phrase does not depend on the order the
+ * row happens to be written in.
+ */
+export const formatPetTypes = (petTypes: readonly PetType[]): string =>
+  normalizePetTypes(petTypes)
+    .map((pet) => PET_LABELS[pet])
+    .join(' و ');
+
 /** The orderings the storefront offers. Never compare against bare strings. */
 export const PRODUCT_SORTS = {
   NEWEST: 'newest',
@@ -98,6 +146,13 @@ export const productListQueryShape = {
     .transform(stripNullBytes)
     .optional(),
   pet: z.enum([PET_TYPES.CAT, PET_TYPES.DOG]).optional(),
+  /**
+   * «فقط محصولات موجود»: only what a shopper can buy. `stringbool`, never
+   * `z.coerce.boolean()`, which reads every non-empty string — «false»
+   * included — as true; this takes `true`/`1` and `false`/`0` (and zod's other
+   * yes/no words) and refuses the rest.
+   */
+  inStock: z.stringbool().optional(),
   sort: z
     .enum([
       PRODUCT_SORTS.NEWEST,

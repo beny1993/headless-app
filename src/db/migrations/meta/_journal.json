@@ -78,6 +78,62 @@
       "when": 1789300489551,
       "tag": "0010_fast_prima",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789683025359,
+      "tag": "0011_seed_provinces",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789685168704,
+      "tag": "0012_multi_pet_products",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789686799341,
+      "tag": "0013_category_parent",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789689363608,
+      "tag": "0014_product_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789758362924,
+      "tag": "0015_product_variants",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789806148995,
+      "tag": "0016_variant_label_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790502481776,
+      "tag": "0017_category_image_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790676878272,
+      "tag": "0018_blank_phone_names",
+      "breakpoints": true
     }
   ]
 }

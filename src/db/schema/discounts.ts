@@ -27,18 +27,10 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { createdAt, updatedAt } from '@/db/schema/columns';
 import { DISCOUNT_TYPE_VALUES } from '@/lib/discount/discount-code';
 
 export const discountTypeEnum = pgEnum('discount_type', DISCOUNT_TYPE_VALUES);
-
-const createdAt = timestamp('created_at', { withTimezone: true })
-  .defaultNow()
-  .notNull();
-
-const updatedAt = timestamp('updated_at', { withTimezone: true })
-  .defaultNow()
-  .$onUpdate(() => /* @__PURE__ */ new Date())
-  .notNull();
 
 export const discountCodes = pgTable(
   'discount_codes',

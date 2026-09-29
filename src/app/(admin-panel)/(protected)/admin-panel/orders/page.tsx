@@ -6,16 +6,22 @@ import { z } from 'zod';
 import { Pagination } from '@/components/ui/pagination';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { adminOrderPath, PROTECTED_PATHS } from '@/lib/constant/paths';
-import { formatJalali, formatToman, toPersianDigits } from '@/lib/format';
+import {
+  formatJalali,
+  formatNumber,
+  formatToman,
+  toPersianDigits,
+} from '@/lib/format';
 import {
   ORDER_STATUS_VALUES,
   orderStatusSchema,
-  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
   type OrderStatus,
-  type PaymentMethod,
 } from '@/lib/orders/order-status';
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
 import { ADMIN_PAGE_SIZE, pageParamSchema } from '@/lib/pagination';
+import { AdminTable } from '@/features/admin-panel/shared/admin-table';
+import { Pill } from '@/features/admin-panel/shared/pill';
 
 export const metadata: Metadata = { title: 'سفارش‌ها' };
 
@@ -40,9 +46,6 @@ const ordersHref = (status: OrderStatus | undefined, page: number): string => {
     : PROTECTED_PATHS.ORDERS;
 };
 
-const methodLabel = (method: PaymentMethod): string =>
-  method === PAYMENT_METHODS.COD ? 'کارت به کارت' : 'زرین‌پال';
-
 export default async function AdminOrdersPage({
   searchParams,
 }: {
@@ -63,8 +66,16 @@ export default async function AdminOrdersPage({
         <h1 className="text-2xl font-black">سفارش‌ها</h1>
 
         {/* Native GET form — no client JS. Submitting reloads with the filter in
-            the URL, which the server reads back above. */}
-        <form method="get" className="flex items-center gap-2">
+            the URL, which the server reads back above. Keyed by that filter: a
+            client-side move back to this list (the sidebar link) updates the
+            page in place, and React never re-applies a mounted <select>'s
+            changed `defaultValue`, so the form would keep showing — and
+            re-submit — a filter the list no longer applies. */}
+        <form
+          key={ordersHref(filters.status, 1)}
+          method="get"
+          className="flex items-center gap-2"
+        >
           <label htmlFor="filter-status" className="sr-only">
             فیلتر وضعیت سفارش
           </label>
@@ -91,103 +102,88 @@ export default async function AdminOrdersPage({
         </form>
       </div>
 
-      <div className="border-border overflow-hidden rounded-2xl border bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-secondary/50">
-              <tr>
-                {[
-                  'شناسه',
-                  'مشتری',
-                  'تاریخ',
-                  'مبلغ',
-                  'پرداخت',
-                  'وضعیت',
-                  'روش پرداخت',
-                  'عملیات',
-                ].map((heading) => (
-                  <th
-                    key={heading}
-                    className="text-muted-foreground px-4 py-3 text-start font-semibold"
+      <AdminTable
+        headings={[
+          'ردیف',
+          'شناسه',
+          'مشتری',
+          'تاریخ',
+          'مبلغ',
+          'پرداخت',
+          'وضعیت',
+          'روش پرداخت',
+          'عملیات',
+        ]}
+      >
+        {orders.length === 0 ? (
+          <tr>
+            <td
+              colSpan={9}
+              className="text-muted-foreground px-4 py-10 text-center"
+            >
+              {/* Past the last page is not the same as nothing matching:
+                 the pager below still links back. */}
+              {total > 0
+                ? 'این صفحه سفارشی ندارد.'
+                : 'سفارشی با این فیلتر پیدا نشد.'}
+            </td>
+          </tr>
+        ) : (
+          orders.map((order, index) => {
+            const badge = orderStatusBadge(order.status);
+            return (
+              <tr
+                key={order.id}
+                className="border-border hover:bg-secondary/20 border-t transition-colors"
+              >
+                <td className="text-muted-foreground nums px-4 py-3.5 text-xs">
+                  {/* The DAO's own offset, so numbering carries on across pages. */}
+                  {formatNumber(
+                    (filters.page - 1) * ADMIN_PAGE_SIZE + index + 1,
+                  )}
+                </td>
+                <td className="nums px-4 py-3.5 text-xs">
+                  #{toPersianDigits(order.orderNo)}
+                </td>
+                <td className="px-4 py-3.5 font-medium">
+                  {order.recipientName}
+                </td>
+                <td className="text-muted-foreground px-4 py-3.5 text-xs">
+                  {formatJalali(order.createdAt)}
+                </td>
+                <td className="nums px-4 py-3.5 font-semibold">
+                  {formatToman(order.total)}
+                </td>
+                <td className="px-4 py-3.5">
+                  <Pill tone={order.isPaid ? 'success' : 'muted'}>
+                    {order.isPaid ? 'پرداخت شده' : 'پرداخت‌نشده'}
+                  </Pill>
+                </td>
+                <td className="px-4 py-3.5">
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.badge}`}
                   >
-                    {heading}
-                  </th>
-                ))}
+                    {badge.label}
+                  </span>
+                </td>
+                <td className="text-muted-foreground px-4 py-3.5 text-xs">
+                  {PAYMENT_METHOD_LABELS[order.paymentMethod]}
+                </td>
+                <td className="px-4 py-3.5">
+                  <Link
+                    href={adminOrderPath(order.id)}
+                    aria-label={`مشاهده سفارش ${toPersianDigits(order.orderNo)}`}
+                    data-umami-event="admin-panel-orders-view"
+                    className="hover:bg-secondary flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
+                  >
+                    <Eye size={14} aria-hidden="true" />
+                  </Link>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {orders.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={8}
-                    className="text-muted-foreground px-4 py-10 text-center"
-                  >
-                    {/* Past the last page is not the same as nothing matching:
-                        the pager below still links back. */}
-                    {total > 0
-                      ? 'این صفحه سفارشی ندارد.'
-                      : 'سفارشی با این فیلتر پیدا نشد.'}
-                  </td>
-                </tr>
-              ) : (
-                orders.map((order) => {
-                  const badge = orderStatusBadge(order.status);
-                  return (
-                    <tr
-                      key={order.id}
-                      className="border-border hover:bg-secondary/20 border-t transition-colors"
-                    >
-                      <td className="nums px-4 py-3.5 text-xs">
-                        #{toPersianDigits(order.orderNo)}
-                      </td>
-                      <td className="px-4 py-3.5 font-medium">
-                        {order.recipientName}
-                      </td>
-                      <td className="text-muted-foreground px-4 py-3.5 text-xs">
-                        {formatJalali(order.createdAt)}
-                      </td>
-                      <td className="nums px-4 py-3.5 font-semibold">
-                        {formatToman(order.total)}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        {order.isPaid ? (
-                          <span className="bg-success-soft text-success-strong rounded-full px-2.5 py-1 text-xs font-medium">
-                            پرداخت شده
-                          </span>
-                        ) : (
-                          <span className="bg-secondary text-muted-foreground rounded-full px-2.5 py-1 text-xs font-medium">
-                            پرداخت‌نشده
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.badge}`}
-                        >
-                          {badge.label}
-                        </span>
-                      </td>
-                      <td className="text-muted-foreground px-4 py-3.5 text-xs">
-                        {methodLabel(order.paymentMethod)}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <Link
-                          href={adminOrderPath(order.id)}
-                          aria-label={`مشاهده سفارش ${toPersianDigits(order.orderNo)}`}
-                          data-umami-event="admin-panel-orders-view"
-                          className="hover:bg-secondary flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
-                        >
-                          <Eye size={14} aria-hidden="true" />
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            );
+          })
+        )}
+      </AdminTable>
 
       <Pagination
         page={filters.page}

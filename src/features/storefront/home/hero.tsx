@@ -81,7 +81,7 @@ export function HeroSection({
           <div className="flex flex-wrap gap-4">
             <ContentLink
               {...resolveLink(content.shopCtaLink, shopPath(), targets)}
-              className="bg-accent-strong hover:bg-accent-hover rounded-xl px-8 py-4 font-bold text-white transition-[transform,background-color] duration-200 hover:scale-105"
+              className="bg-brand hover:bg-brand-hover text-brand-foreground rounded-xl px-8 py-4 font-bold transition-[transform,background-color] duration-200 hover:scale-105"
               data-umami-event="home-hero-shop-click"
             >
               {content.shopCta}

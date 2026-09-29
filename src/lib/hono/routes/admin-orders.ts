@@ -23,21 +23,17 @@ import {
 } from '@/lib/orders/order-status';
 import { adminTransitionOrder } from '@/logic/orders/admin-transition';
 import { getAdminOrder, type AdminOrder } from '@/logic/orders/get-admin-order';
-import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { IdParamSchema, errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. */
-export const ADMIN_ORDER_NOT_FOUND_MESSAGE = 'سفارش یافت نشد';
+const ADMIN_ORDER_NOT_FOUND_MESSAGE = 'سفارش یافت نشد';
 /** The target is not an admin-triggerable next status from the order's current one. */
-export const ILLEGAL_TRANSITION_MESSAGE =
+const ILLEGAL_TRANSITION_MESSAGE =
   'این تغییر وضعیت مجاز نیست؛ فقط وضعیت‌های بعدیِ مجاز قابل انتخاب‌اند.';
 /** The order moved under the operator before the change was applied. */
-export const TRANSITION_CONFLICT_MESSAGE =
+const TRANSITION_CONFLICT_MESSAGE =
   'وضعیت سفارش هم‌زمان تغییر کرده است؛ صفحه را تازه کن و دوباره تلاش کن.';
 
 const AdminOrderItemSchema = z
@@ -94,12 +90,10 @@ const AdminOrderDetailSchema = z
   .openapi('AdminOrderDetail');
 
 /** The admin order shape the detail page and the transition endpoint return. */
-export type AdminOrderDetailResponse = z.infer<typeof AdminOrderDetailSchema>;
+type AdminOrderDetailResponse = z.infer<typeof AdminOrderDetailSchema>;
 
 /** AdminOrder → the wire projection: internal columns already dropped, Dates to ISO. */
-export const toAdminOrderResponse = (
-  order: AdminOrder,
-): AdminOrderDetailResponse => ({
+const toAdminOrderResponse = (order: AdminOrder): AdminOrderDetailResponse => ({
   orderId: order.id,
   orderNo: order.orderNo,
   status: order.status,
@@ -138,16 +132,6 @@ export const toAdminOrderResponse = (
   })),
 });
 
-const OrderIdParamSchema = z.object({
-  id: z.uuid().meta({ param: { name: 'id', in: 'path' } }),
-});
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
-
 // ── Detail read ─────────────────────────────────────────────────────────────
 
 export const adminOrderDetailRoute = createRoute({
@@ -155,7 +139,7 @@ export const adminOrderDetailRoute = createRoute({
   path: '/admin/orders/{id}',
   tags: ['admin'],
   summary: 'Read one order in full — admin projection (admin only)',
-  request: { params: OrderIdParamSchema },
+  request: { params: IdParamSchema },
   responses: {
     200: {
       content: {
@@ -204,7 +188,7 @@ export const adminOrderTransitionRoute = createRoute({
   tags: ['admin'],
   summary: 'Move an order to a legal next status (admin only)',
   request: {
-    params: OrderIdParamSchema,
+    params: IdParamSchema,
     body: {
       content: { 'application/json': { schema: TransitionBodySchema } },
       required: true,

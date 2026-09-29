@@ -59,7 +59,7 @@ export function AddToCartButton({
         'flex size-10 shrink-0 items-center justify-center rounded-full transition-[background-color,transform] duration-200',
         added
           ? 'bg-success scale-110 text-white'
-          : 'bg-primary text-primary-foreground hover:bg-accent-strong',
+          : 'bg-brand text-brand-foreground hover:bg-brand-hover',
         className,
       )}
       // The label carries the confirmation: the navbar badge is far away from

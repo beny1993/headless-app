@@ -2,8 +2,19 @@
 // orchestration (a transition's CAS plus its restock / COD-payment side effects)
 // lives in src/logic/orders/state-machine.ts, which composes these methods.
 // Never write raw SQL — the CAS below is the query builder, not a string.
-import { and, asc, count, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
-import { db } from '@/db';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  lt,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
+import { db, type Executor, type Tx } from '@/db';
 import {
   orderItems,
   orders,
@@ -86,25 +97,6 @@ const hasPaidPayment = sql<boolean>`exists (select 1 from ${payments} where ${pa
 const isRevenueOrder = () =>
   and(inArray(orders.status, REVENUE_ORDER_STATUSES), hasPaidPayment);
 
-/**
- * A transaction on one connection of the pool. It carries `rollback()`, which
- * the pool does not — so a parameter typed `Tx` structurally rejects the bare
- * `db`. The status CAS and its side effects must commit together, so the methods
- * that perform them (`casStatus`, `markCodPaid`, `transitionOrder`) take a `Tx`,
- * never an `Executor`: passing the pool there is a compile error, not a silent
- * run of each statement in its own autocommit.
- */
-export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-/**
- * Whatever a write can run on: the pool, or a transaction. Checkout (story 14)
- * composes several writes in one transaction, but each is also correct on its
- * own connection — so the writes that don't *require* a shared transaction
- * (`create`, `PaymentDao.create`, `decrementStock`, `restock`, reads) take this
- * wider type. Shared from here so the DAOs and the state machine speak one type.
- */
-export type Executor = typeof db | Tx;
-
 /** One line of an order at creation time — the snapshot the item will keep. */
 export type OrderItemInput = {
   productId: string;
@@ -139,9 +131,9 @@ export class OrderDao {
     { items, ...order }: OrderInput,
     tx?: Tx,
   ): Promise<OrderWithItems> {
-    const run = async (tx: Tx): Promise<OrderWithItems> => {
-      const [created] = await tx.insert(orders).values(order).returning();
-      const createdItems = await tx
+    const run = async (trx: Tx): Promise<OrderWithItems> => {
+      const [created] = await trx.insert(orders).values(order).returning();
+      const createdItems = await trx
         .insert(orderItems)
         .values(items.map((item) => ({ ...item, orderId: created.id })))
         .returning();
@@ -151,15 +143,16 @@ export class OrderDao {
     return tx ? run(tx) : db.transaction(run);
   }
 
+  /** The one order matching `where`, with its snapshotted line items, or `null`. */
+  private static async findOne(where: SQL): Promise<OrderWithItems | null> {
+    const [order] = await db.select().from(orders).where(where).limit(1);
+    if (!order) return null;
+    return { ...order, items: await OrderDao.getItems(db, order.id) };
+  }
+
   /** Order display / admin read: the order with its snapshotted line items. */
   static async getById(id: string): Promise<OrderWithItems | null> {
-    const [order] = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.id, id))
-      .limit(1);
-    if (!order) return null;
-    return { ...order, items: await OrderDao.getItems(db, id) };
+    return OrderDao.findOne(eq(orders.id, id));
   }
 
   /**
@@ -172,29 +165,13 @@ export class OrderDao {
     userId: string,
     idempotencyKey: string,
   ): Promise<OrderWithItems | null> {
-    const [order] = await db
-      .select()
-      .from(orders)
-      .where(
-        and(
-          eq(orders.userId, userId),
-          eq(orders.idempotencyKey, idempotencyKey),
-        ),
-      )
-      .limit(1);
-    if (!order) return null;
-    return { ...order, items: await OrderDao.getItems(db, order.id) };
-  }
-
-  /** Lookup by the human-readable order number — the id support is handed. */
-  static async getByOrderNo(orderNo: number): Promise<OrderWithItems | null> {
-    const [order] = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.orderNo, orderNo))
-      .limit(1);
-    if (!order) return null;
-    return { ...order, items: await OrderDao.getItems(db, order.id) };
+    // `and` of two defined conditions is never undefined.
+    return OrderDao.findOne(
+      and(
+        eq(orders.userId, userId),
+        eq(orders.idempotencyKey, idempotencyKey),
+      )!,
+    );
   }
 
   /**
@@ -223,22 +200,19 @@ export class OrderDao {
 
   /**
    * How many `pending_payment` orders `userId` currently holds — the input to
-   * checkout's interim open-order cap. Only `pending_payment` counts: it is the
-   * one state whose reserved stock has no release path until the Zarinpal
-   * expiry/reconcile job exists, so it is the only state the cap must bound. COD
-   * enters at `processing` (a releasable state) and is deliberately excluded.
+   * checkout's open-order cap. Only `pending_payment` counts: it is the one
+   * state whose reserved stock waits on the admin-triggered reconcile sweep, so
+   * it is the only state the cap must bound. COD enters at `processing` (a
+   * releasable state) and is deliberately excluded.
    */
   static async countOpenForUser(userId: string): Promise<number> {
-    const [row] = await db
-      .select({ value: count() })
-      .from(orders)
-      .where(
-        and(
-          eq(orders.userId, userId),
-          eq(orders.status, ORDER_STATUSES.PENDING_PAYMENT),
-        ),
-      );
-    return row.value;
+    return db.$count(
+      orders,
+      and(
+        eq(orders.userId, userId),
+        eq(orders.status, ORDER_STATUSES.PENDING_PAYMENT),
+      ),
+    );
   }
 
   /**
@@ -381,11 +355,11 @@ export class OrderDao {
       .limit(limit)
       .offset((page - 1) * limit);
 
-    const [items, [counted]] = await Promise.all([
+    const [items, total] = await Promise.all([
       pageQuery,
-      db.select({ value: count() }).from(orders).where(where),
+      db.$count(orders, where),
     ]);
-    return { items, total: counted.value };
+    return { items, total };
   }
 
   /**
@@ -427,10 +401,6 @@ export class OrderDao {
 
   /** How many orders are in one status — the dashboard's «awaiting action» tile. */
   static async countByStatus(status: OrderStatus): Promise<number> {
-    const [row] = await db
-      .select({ value: count() })
-      .from(orders)
-      .where(eq(orders.status, status));
-    return row.value;
+    return db.$count(orders, eq(orders.status, status));
   }
 }

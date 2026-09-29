@@ -22,14 +22,15 @@ import {
 } from 'vitest';
 import { siteContent } from '@/db/schema/site-content';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
-import {
-  API_PATHS,
-  apiAdminContentPath,
-  apiProductPath,
-} from '@/lib/constant/paths';
+import { API_PATHS, apiAdminContentPath } from '@/lib/constant/paths';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import { LINK_MESSAGES } from '@/lib/content/link';
 import type { ApiResponse } from '@/lib/hono/envelope';
+import {
+  IMAGE_TOO_LARGE_MESSAGE,
+  INVALID_IMAGE_MESSAGE,
+  NO_IMAGE_FILE_MESSAGE,
+} from '@/lib/hono/image-upload';
 import { MAX_UPLOAD_BYTES } from '@/lib/storage/image-upload';
 import { VARS } from '@/lib/utils/env';
 
@@ -41,6 +42,17 @@ const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
 const { readLocalUpload } = await importWithDb(
   () => import('@/lib/storage/local-driver'),
 );
+
+/** An upload refusal: the status and the exact error envelope, message included. */
+const expectRefusal = async (
+  response: Response | Promise<Response>,
+  status: number,
+  message: string,
+) => {
+  const res = await response;
+  expect(res.status).toBe(status);
+  expect(await res.json()).toEqual({ status: 'error', message });
+};
 
 /** A real image: a minimal JPEG header padded out — the bytes the route sniffs. */
 const jpegBytes = (size = 64): Uint8Array<ArrayBuffer> => {
@@ -165,7 +177,9 @@ describe.skipIf(!databaseReachable)('admin content API', () => {
       anon();
       // A slug that does not exist still proves the route is not behind the admin
       // guard: it answers 404 (a public not-found), never 401/403.
-      const res = await app.request(apiProductPath('no-such-slug-at-all'));
+      const res = await app.request(
+        `${API_PATHS.PRODUCTS}/no-such-slug-at-all`,
+      );
       expect(res.status).toBe(404);
     });
   });
@@ -364,12 +378,12 @@ describe.skipIf(!databaseReachable)('admin content API', () => {
         'evil.jpg',
         { type: 'image/jpeg' },
       );
-      expect((await uploadImage(notAnImage)).status).toBe(400);
+      await expectRefusal(uploadImage(notAnImage), 400, INVALID_IMAGE_MESSAGE);
     });
 
     it('400s when no file field is present', async () => {
       asAdmin();
-      expect((await uploadImage(undefined)).status).toBe(400);
+      await expectRefusal(uploadImage(undefined), 400, NO_IMAGE_FILE_MESSAGE);
     });
 
     it('413s a file over the size limit before storing it', async () => {
@@ -378,7 +392,7 @@ describe.skipIf(!databaseReachable)('admin content API', () => {
       const res = await uploadImage(
         new File([big], 'big.jpg', { type: 'image/jpeg' }),
       );
-      expect(res.status).toBe(413);
+      await expectRefusal(res, 413, IMAGE_TOO_LARGE_MESSAGE);
     });
   });
 });

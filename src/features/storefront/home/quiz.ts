@@ -4,15 +4,21 @@
 // Entirely client-side and stateless — there is no backend for it, by the
 // story's own acceptance criteria. The answers become a `/shop?…` deep link
 // and nothing else is stored.
-import { PET_TYPES, type PetType } from '@/lib/catalog/product-query';
+import {
+  PET_EMOJI,
+  PET_LABELS,
+  PET_TYPE_VALUES,
+  type PetType,
+} from '@/lib/catalog/product-query';
 import type { ShopFilters } from '@/lib/constant/paths';
 
 // PET_TYPES comes from the client-safe schema module (no drizzle/pg in it),
 // so the values are imported directly — the enum is the single source.
-export const QUIZ_PETS = [
-  { value: PET_TYPES.CAT, label: 'گربه', emoji: '🐱' },
-  { value: PET_TYPES.DOG, label: 'سگ', emoji: '🐶' },
-] as const;
+export const QUIZ_PETS = PET_TYPE_VALUES.map((value) => ({
+  value,
+  label: PET_LABELS[value],
+  emoji: PET_EMOJI[value],
+}));
 
 /**
  * Asked because the design asks it and the summary sentence reads it back —
@@ -43,7 +49,7 @@ export const QUIZ_NEEDS: readonly QuizNeed[] = [
   { label: 'آرامش', category: 'supplements' },
 ] as const;
 
-export type QuizAnswers = {
+type QuizAnswers = {
   pet: PetType | null;
   need: QuizNeed | null;
 };

@@ -7,7 +7,7 @@
  * and migrations applied (`pnpm migration:migrate`). Safe to re-run: it upserts
  * provinces by name and never resets a fee an admin has tuned.
  */
-import 'dotenv/config';
+import './load-env';
 import { seedShipping } from '@/db/seed/shipping';
 
 const { provinces } = await seedShipping();

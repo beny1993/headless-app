@@ -8,12 +8,16 @@ import { eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { categories, products } from '@/db/schema/catalog';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
-import { CATEGORY_MESSAGES } from '@/lib/catalog/category-input';
+import {
+  CATEGORY_MESSAGES,
+  CATEGORY_PARENT_MESSAGES,
+} from '@/lib/catalog/category-input';
 import { PET_TYPES } from '@/lib/catalog/product-query';
 import { API_PATHS, apiAdminCategoryPath } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import type { ApiResponse } from '@/lib/hono/envelope';
 import type { CategoryView } from '@/lib/hono/routes/admin-categories';
+import { IMAGE_KEY_ERROR } from '@/lib/storage/image-upload';
 
 const mocks = vi.hoisted(() => ({ getSession: vi.fn() }));
 vi.mock('@/lib/auth', () => ({ isAuthenticatedUser: mocks.getSession }));
@@ -57,19 +61,27 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
           }),
     });
 
-  const parse = async <T>(res: Response) => ({
-    status: res.status,
-    body: (await res.json()) as ApiResponse<T>,
-  });
+  /**
+   * Every category the API answers with is tracked for teardown here, so a
+   * refusal that regresses into a create fails its own test without leaving a
+   * row behind in the dev database.
+   */
+  const parse = async <T>(res: Response) => {
+    const payload = (await res.json()) as ApiResponse<T>;
+    if (payload.status === 'success') {
+      const { id } = (payload.data ?? {}) as { id?: unknown };
+      if (typeof id === 'string') categoryIds.push(id);
+    }
+    return { status: res.status, body: payload };
+  };
 
-  /** Create through the API as the admin, tracked for teardown. */
+  /** Create through the API as the admin. */
   const create = async (over: Record<string, unknown> = {}) => {
     asAdmin();
     const res = await parse<CategoryView>(
       await json(API_PATHS.ADMIN_CATEGORIES, 'POST', body(over)),
     );
     if (res.body.status !== 'success') throw new Error(res.body.message);
-    categoryIds.push(res.body.data.id);
     return res.body.data;
   };
 
@@ -82,7 +94,7 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
       price: 100_000,
       stock: 1,
       categoryId,
-      petType: PET_TYPES.CAT,
+      petTypes: [PET_TYPES.CAT],
     });
   };
 
@@ -105,9 +117,19 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
   // ── Authz matrix ────────────────────────────────────────────────────────────
 
   describe('authorization', () => {
+    // Bodies carry `parentId`: the guard must refuse before anything looks a
+    // parent up, so a stranger cannot probe which category ids exist.
     const everyRoute = (id: string) => [
-      json(API_PATHS.ADMIN_CATEGORIES, 'POST', body()),
-      json(apiAdminCategoryPath(id), 'PUT', body()),
+      json(
+        API_PATHS.ADMIN_CATEGORIES,
+        'POST',
+        body({ parentId: faker.string.uuid() }),
+      ),
+      json(
+        apiAdminCategoryPath(id),
+        'PUT',
+        body({ parentId: faker.string.uuid() }),
+      ),
       json(apiAdminCategoryPath(id), 'DELETE'),
     ];
 
@@ -161,7 +183,6 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
 
       expect(res.status).toBe(201);
       if (res.body.status !== 'success') throw new Error(res.body.message);
-      categoryIds.push(res.body.data.id);
       expect(res.body.data.id).not.toBe(pinned);
       expect(res.body.data).toMatchObject({
         title: 'اسباب‌بازی',
@@ -363,6 +384,59 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
       expect(await rowsFor(existing.id)).toHaveLength(1);
     });
 
+    it('refuses (409) while sub-categories sit under it, naming how many', async () => {
+      const parent = await create();
+      await create({ parentId: parent.id });
+      await create({ parentId: parent.id });
+      asAdmin();
+
+      const res = await parse(
+        await json(apiAdminCategoryPath(parent.id), 'DELETE'),
+      );
+
+      expect(res.status).toBe(409);
+      if (res.body.status !== 'error') throw new Error('expected an error');
+      expect(res.body.message).toBe(categoryInUseMessage(0, 2));
+      expect(res.body.message).toContain(formatNumber(2));
+      expect(await rowsFor(parent.id)).toHaveLength(1);
+    });
+
+    it('names both blockers when a category has sub-categories and products', async () => {
+      const parent = await create();
+      await create({ parentId: parent.id });
+      await makeProduct(parent.id);
+      asAdmin();
+
+      const res = await parse(
+        await json(apiAdminCategoryPath(parent.id), 'DELETE'),
+      );
+
+      expect(res.status).toBe(409);
+      if (res.body.status !== 'error') throw new Error('expected an error');
+      expect(res.body.message).toBe(categoryInUseMessage(1, 1));
+      expect(res.body.message).toContain('زیردسته');
+      expect(res.body.message).toContain('محصول');
+    });
+
+    it('refuses (409) while it is only an additional category of a product', async () => {
+      // The fix here is to untick the category on the product, not to move the
+      // product — but the refusal must come, and must count it.
+      const primary = await create();
+      const extra = await create();
+      const product = await makeProduct(primary.id);
+      await ProductDao.update(product.id, { extraCategoryIds: [extra.id] });
+      asAdmin();
+
+      const res = await parse(
+        await json(apiAdminCategoryPath(extra.id), 'DELETE'),
+      );
+
+      expect(res.status).toBe(409);
+      if (res.body.status !== 'error') throw new Error('expected an error');
+      expect(res.body.message).toBe(categoryInUseMessage(1));
+      expect(await rowsFor(extra.id)).toHaveLength(1);
+    });
+
     it('still refuses (409) when its only products are soft-deleted, and says so', async () => {
       const existing = await create();
       const hidden = await makeProduct(existing.id);
@@ -379,5 +453,227 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
       expect(res.body.message).toContain('غیرفعال');
       expect(await rowsFor(existing.id)).toHaveLength(1);
     });
+  });
+
+  // ── Sub-categories ──────────────────────────────────────────────────────────
+
+  describe('parentId', () => {
+    /** The refusal as the manager reads it: one `parentId: …` field error. */
+    const parentError = async (res: { body: ApiResponse<unknown> }) => {
+      if (res.body.status !== 'error') throw new Error('expected an error');
+      return res.body.errors;
+    };
+
+    it('round-trips a parent through create, move and promote', async () => {
+      const parent = await create();
+      const other = await create();
+      const sub = await create({ parentId: parent.id });
+      asAdmin();
+
+      const moved = await parse<CategoryView>(
+        await json(
+          apiAdminCategoryPath(sub.id),
+          'PUT',
+          body({ slug: sub.slug, parentId: other.id }),
+        ),
+      );
+      const promoted = await parse<CategoryView>(
+        await json(
+          apiAdminCategoryPath(sub.id),
+          'PUT',
+          body({ slug: sub.slug }),
+        ),
+      );
+
+      expect(sub.parentId).toBe(parent.id);
+      if (moved.body.status !== 'success') throw new Error(moved.body.message);
+      expect(moved.body.data.parentId).toBe(other.id);
+      // An omitted `parentId` is «top-level», because PUT replaces every field
+      // but the photo.
+      if (promoted.body.status !== 'success')
+        throw new Error(promoted.body.message);
+      expect(promoted.body.data.parentId).toBeNull();
+    });
+
+    it('refuses a category as its own parent (400)', async () => {
+      const existing = await create();
+      asAdmin();
+
+      const res = await parse(
+        await json(
+          apiAdminCategoryPath(existing.id),
+          'PUT',
+          body({ slug: existing.slug, parentId: existing.id }),
+        ),
+      );
+
+      expect(res.status).toBe(400);
+      expect(await parentError(res)).toEqual([
+        `parentId: ${CATEGORY_PARENT_MESSAGES.self}`,
+      ]);
+    });
+
+    it('refuses a parent that is itself a sub-category (400)', async () => {
+      const parent = await create();
+      const sub = await create({ parentId: parent.id });
+      asAdmin();
+
+      const res = await parse(
+        await json(
+          API_PATHS.ADMIN_CATEGORIES,
+          'POST',
+          body({ parentId: sub.id }),
+        ),
+      );
+
+      expect(res.status).toBe(400);
+      expect(await parentError(res)).toEqual([
+        `parentId: ${CATEGORY_PARENT_MESSAGES.nested}`,
+      ]);
+    });
+
+    it('refuses giving a parent to a category that has sub-categories (400)', async () => {
+      const parent = await create();
+      await create({ parentId: parent.id });
+      const other = await create();
+      asAdmin();
+
+      const res = await parse(
+        await json(
+          apiAdminCategoryPath(parent.id),
+          'PUT',
+          body({ slug: parent.slug, parentId: other.id }),
+        ),
+      );
+
+      expect(res.status).toBe(400);
+      expect(await parentError(res)).toEqual([
+        `parentId: ${CATEGORY_PARENT_MESSAGES.hasChildren}`,
+      ]);
+    });
+
+    it('refuses an unknown parent with 400, never a 23503-shaped 500', async () => {
+      asAdmin();
+
+      const res = await parse(
+        await json(
+          API_PATHS.ADMIN_CATEGORIES,
+          'POST',
+          body({ parentId: faker.string.uuid() }),
+        ),
+      );
+
+      expect(res.status).toBe(400);
+      expect(await parentError(res)).toEqual([
+        `parentId: ${CATEGORY_PARENT_MESSAGES.unknown}`,
+      ]);
+    });
+
+    it('refuses a malformed parent id with the schema’s Persian message', async () => {
+      asAdmin();
+
+      const res = await parse(
+        await json(
+          API_PATHS.ADMIN_CATEGORIES,
+          'POST',
+          body({ parentId: 'not-a-uuid' }),
+        ),
+      );
+
+      expect(res.status).toBe(400);
+      expect(await parentError(res)).toEqual([
+        `parentId: ${CATEGORY_MESSAGES.parent}`,
+      ]);
+    });
+  });
+
+  // ── imageKey ────────────────────────────────────────────────────────────────
+
+  describe('imageKey', () => {
+    // Keys only — the manager uploads the file through the content-image route
+    // first, so nothing here needs a file behind the key.
+    const UPLOAD_KEY = 'uploads/123e4567-e89b-42d3-a456-426614174000.jpg';
+    const OTHER_KEY = 'uploads/223e4567-e89b-42d3-a456-426614174000.webp';
+
+    it('round-trips a photo through create, replace and remove', async () => {
+      const created = await create({ imageKey: UPLOAD_KEY });
+      expect(created.imageKey).toBe(UPLOAD_KEY);
+
+      asAdmin();
+      const replaced = await parse<CategoryView>(
+        await json(
+          apiAdminCategoryPath(created.id),
+          'PUT',
+          body({ slug: created.slug, imageKey: OTHER_KEY }),
+        ),
+      );
+      expect(replaced.status).toBe(200);
+      if (replaced.body.status !== 'success') throw new Error('replace failed');
+      expect(replaced.body.data.imageKey).toBe(OTHER_KEY);
+
+      // A body that says nothing of the photo — what an admin tab opened
+      // before photos shipped sends — keeps it.
+      const kept = await parse<CategoryView>(
+        await json(
+          apiAdminCategoryPath(created.id),
+          'PUT',
+          body({ slug: created.slug, title: 'غذای خشک گربه' }),
+        ),
+      );
+      if (kept.body.status !== 'success') throw new Error('rename failed');
+      expect(kept.body.data).toMatchObject({
+        title: 'غذای خشک گربه',
+        imageKey: OTHER_KEY,
+      });
+
+      // Only an explicit null removes it.
+      const removed = await parse<CategoryView>(
+        await json(
+          apiAdminCategoryPath(created.id),
+          'PUT',
+          body({ slug: created.slug, imageKey: null }),
+        ),
+      );
+      if (removed.body.status !== 'success') throw new Error('remove failed');
+      expect(removed.body.data.imageKey).toBeNull();
+      expect((await rowsFor(created.id))[0]?.imageKey).toBeNull();
+    });
+
+    it.each(['https://example.com/cat.jpg', 'uploads/../../.env', 42])(
+      'refuses the key %j with the shared Persian message and writes nothing',
+      async (imageKey) => {
+        const existing = await create({ imageKey: UPLOAD_KEY });
+        const slug = `cat-${faker.string.alphanumeric(10).toLowerCase()}`;
+        asAdmin();
+
+        const refusedCreate = await parse(
+          await json(
+            API_PATHS.ADMIN_CATEGORIES,
+            'POST',
+            body({ slug, imageKey }),
+          ),
+        );
+        const refusedUpdate = await parse(
+          await json(
+            apiAdminCategoryPath(existing.id),
+            'PUT',
+            body({ slug: existing.slug, imageKey }),
+          ),
+        );
+
+        for (const res of [refusedCreate, refusedUpdate]) {
+          expect(res.status).toBe(400);
+          if (res.body.status !== 'error') throw new Error('expected an error');
+          expect(res.body.errors).toContain(`imageKey: ${IMAGE_KEY_ERROR}`);
+        }
+        expect(
+          await testDb
+            .select()
+            .from(categories)
+            .where(eq(categories.slug, slug)),
+        ).toHaveLength(0);
+        expect((await rowsFor(existing.id))[0]?.imageKey).toBe(UPLOAD_KEY);
+      },
+    );
   });
 });

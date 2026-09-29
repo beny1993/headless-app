@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { AlertCircle, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { postData } from '@/lib/api-client';
+import { reasonFrom } from '@/lib/checkout/field-errors';
 import { apiAdminOrderTransitionsPath } from '@/lib/constant/paths';
 import {
   adminNextStatuses,
@@ -65,9 +66,8 @@ export function OrderTransition({
       router.refresh();
     } catch (requestError) {
       toast.error(
-        requestError instanceof Error
-          ? requestError.message
-          : 'تغییر وضعیت سفارش ناموفق بود. دوباره تلاش کن.',
+        reasonFrom(requestError) ??
+          'تغییر وضعیت سفارش ناموفق بود. دوباره تلاش کن.',
       );
     } finally {
       setBusy(null);

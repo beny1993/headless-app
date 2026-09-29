@@ -18,16 +18,12 @@ import {
   orderStatusSchema,
 } from '@/lib/orders/order-status';
 import { getOwnedOrder, type OwnedOrder } from '@/logic/checkout/get-order';
-import {
-  apiError,
-  apiErrorSchema,
-  apiSuccess,
-  apiSuccessSchema,
-} from '../envelope';
+import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
+import { IdParamSchema, errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
-export const ORDER_NOT_FOUND_MESSAGE = 'سفارش یافت نشد';
+const ORDER_NOT_FOUND_MESSAGE = 'سفارش یافت نشد';
 
 const OrderItemSchema = z
   .object({
@@ -72,7 +68,7 @@ const OrderDetailSchema = z
   .openapi('OrderDetail');
 
 /** The order shape the result pages and account history render. Import, don't restate. */
-export type OrderDetailResponse = z.infer<typeof OrderDetailSchema>;
+type OrderDetailResponse = z.infer<typeof OrderDetailSchema>;
 
 /** OwnedOrder → the wire projection: internal columns dropped, Dates to ISO. */
 const toOrderDetail = (order: OwnedOrder): OrderDetailResponse => ({
@@ -107,16 +103,12 @@ const toOrderDetail = (order: OwnedOrder): OrderDetailResponse => ({
   })),
 });
 
-const OrderIdParamSchema = z.object({
-  id: z.uuid().meta({ param: { name: 'id', in: 'path' } }),
-});
-
 export const orderDetailRoute = createRoute({
   method: 'get',
   path: '/orders/{id}',
   tags: ['orders'],
   summary: 'Read one of your own orders (auth required, owner only)',
-  request: { params: OrderIdParamSchema },
+  request: { params: IdParamSchema },
   responses: {
     200: {
       content: {
@@ -126,21 +118,14 @@ export const orderDetailRoute = createRoute({
       },
       description: 'The order, with item snapshots and safe payment status',
     },
-    400: errorResponseFor('The id is not a valid uuid'),
-    401: errorResponseFor('No session'),
-    404: errorResponseFor(
+    400: errorResponse('The id is not a valid uuid'),
+    401: errorResponse('No session'),
+    404: errorResponse(
       'No such order for this user — deliberately the same answer for an id ' +
         'that never existed and one that belongs to someone else',
     ),
   },
 });
-
-function errorResponseFor(description: string) {
-  return {
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  } as const;
-}
 
 export const orderDetailHandler: RouteHandler<
   typeof orderDetailRoute,

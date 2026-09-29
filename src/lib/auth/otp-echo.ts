@@ -10,7 +10,7 @@
 // number is told that number's code. Hence two independent gates, which fail
 // in opposite directions:
 //
-//   - `APP_CONFIG_SHOW_OTP_IN_UI` must be exactly `true`. Off by default, and
+//   - `APP_CONFIG_SHOW_OTP_IN_UI` must be `true`. Off by default, and
 //     absent from `.env.example`'s production guidance.
 //   - the SMS provider must still be `console`. A production environment has a
 //     real provider, so the flag leaking into it does nothing; and a
@@ -19,7 +19,7 @@
 //     receives everybody's).
 import { z } from 'zod';
 import { getConfiguredSmsProvider } from '@/lib/sms';
-import { getEnvVariable, VARS } from '@/lib/utils/env';
+import { getEnvFlag, VARS } from '@/lib/utils/env';
 
 /**
  * The extra field on the send-otp response. The one shared contract: the route
@@ -29,7 +29,7 @@ import { getEnvVariable, VARS } from '@/lib/utils/env';
 export const otpEchoResponseSchema = z.object({ devCode: z.string() });
 
 export const isOtpEchoEnabled = () =>
-  getEnvVariable(VARS.APP_CONFIG_SHOW_OTP_IN_UI, false, '') === 'true' &&
+  getEnvFlag(VARS.APP_CONFIG_SHOW_OTP_IN_UI) &&
   getConfiguredSmsProvider() === 'console';
 
 /**

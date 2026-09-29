@@ -23,43 +23,38 @@ build from Git.
 
 All runtime configuration is env-only. Names come from the `VARS` enum in
 `src/lib/utils/env.ts`; the annotated template is `.env.example`. **Never commit
-`.env`.** Set these in Coolify's app → *Environment Variables*.
+`.env`.** Set these in Coolify's app → _Environment Variables_.
 
 ### Runtime (set in Coolify, plain env)
 
-| Variable | Required | What it is |
-| --- | --- | --- |
-| `APP_CONFIG_DATABASE_URL` | yes | Postgres connection string. Comes from the Coolify Postgres service (see §2). Use the **internal** service URL, not a public one. |
-| `APP_CONFIG_AUTH_SECRET` | yes | Better Auth signing secret. Generate once with `openssl rand -hex 32`; rotating it invalidates all sessions. |
-| `APP_CONFIG_SMS_PROVIDER` | yes | OTP SMS driver. `console` (default) logs codes to the server log — **fine for a soft launch, not for real customers**. Set to `smsir` before launch (see §6). |
-| `APP_CONFIG_SMSIR_API_KEY` | when `=smsir` | SMS.ir web-service key, sent as `x-api-key`. A **secret** — Coolify env only, never a build arg. |
-| `APP_CONFIG_SMSIR_TEMPLATE_ID` | when `=smsir` | Numeric id of the SMS.ir panel template the code is substituted into. Its body must contain `#OTP#`. |
-| `APP_CONFIG_SMSIR_ORDER_TEMPLATE_ID` | for order alerts | Numeric id of the **second** panel template: the new-order SMS every admin with a phone number gets. Its body must contain `#ORDER#`, `#AMOUNT#` and `#METHOD#`. Read only on that send — unset, sign-in is unaffected and only the alert fails, into Sentry. |
-| `APP_CONFIG_SHOW_OTP_IN_UI` | no | `true` prints the OTP on the login page for **staging/QA only**, where `console` codes reach nothing but the server log. Anything else is off, and it is ignored unless `APP_CONFIG_SMS_PROVIDER=console`. Never set it on the production app — it is a sign-in bypass. |
-| `APP_CONFIG_MAINTENANCE_MODE` | no | `true` shows every storefront page as the maintenance screen to everyone but a signed-in admin, who sees the real site. `/login` and `/admin-panel` stay open. Anything else is off. Restart after changing it — no rebuild. Hides the shop, does not lock it: `/api` stays reachable. |
-| `APP_CONFIG_ZARINPAL_PROVIDER` | yes | `mock` (default) simulates the full pay flow with no gateway account. Set to `zarinpal` at the real-gateway flip (see §6). |
-| `APP_CONFIG_ZARINPAL_MERCHANT_ID` | when `=zarinpal` | Merchant UUID from the Zarinpal panel. |
-| `APP_CONFIG_ZARINPAL_SANDBOX` | no | `true` routes the real driver at Zarinpal's sandbox host. Default `false`. |
-| `APP_CONFIG_STORAGE_PROVIDER` | yes | `local` (default) stores uploads on disk (needs a persistent volume, §3). `s3` uses the Liara/Arvan S3-compatible driver — built and verifiable with `pnpm verify-s3`; needs the four `LIARA_*` vars plus build-time `NEXT_PUBLIC_STORAGE_BASE_URL`. |
-| `APP_CONFIG_STORAGE_LOCAL_ROOT` | with `local` | Absolute path the `local` driver writes to. Set to **`/app/uploads`** and mount the volume there (§3). |
-| `APP_CONFIG_EMAIL_ENABLED` | no | `false` (default) logs emails to the console. `true` sends over SMTP and requires the five SMTP vars below. |
-| `APP_CONFIG_SMTP_SERVER` | when email on | SMTP host. |
-| `APP_CONFIG_SMTP_PORT` | when email on | `465` = implicit TLS, `587` = STARTTLS. |
-| `APP_CONFIG_SMTP_USER` | when email on | SMTP username. |
-| `APP_CONFIG_SMTP_PASSWORD` | when email on | SMTP password. |
-| `APP_CONFIG_SMTP_SENDER_EMAIL` | when email on | From address. |
+| Variable                          | Required                                      | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_CONFIG_DATABASE_URL`         | yes                                           | Postgres connection string. Comes from the Coolify Postgres service (see §2). Use the **internal** service URL, not a public one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `APP_CONFIG_AUTH_SECRET`          | yes                                           | Better Auth signing secret. Generate once with `openssl rand -hex 32`; rotating it invalidates all sessions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `APP_CONFIG_SMS_PROVIDER`         | yes                                           | OTP SMS driver. `console` (default) logs codes to the server log — **fine for a soft launch, not for real customers**. Set to `smsir` before launch (see §6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `APP_CONFIG_SMSIR_API_KEY`        | when `=smsir`                                 | SMS.ir web-service key, sent as `x-api-key`. A **secret** — Coolify env only, never a build arg.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `APP_CONFIG_SMSIR_TEMPLATE_ID`    | when `=smsir`                                 | Numeric id of the SMS.ir panel template the code is substituted into. Its body must contain `#OTP#`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `APP_CONFIG_SMSIR_ORDER_TEMPLATE_ID` | for order alerts                           | Numeric id of the **second** panel template: the new-order SMS every admin with a phone number gets. Its body must contain `#ORDER#`, `#AMOUNT#` and `#METHOD#`. Read only on that send — unset, sign-in is unaffected and only the alert fails, into Sentry.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `APP_CONFIG_SHOW_OTP_IN_UI`       | on staging                                    | `true` prints the OTP on the login page. **Required on a staging deploy:** outside development the `console` driver logs only _that_ a code was sent, never the code and never the number, so `docker logs` no longer carries it. Anything else is off, and it is ignored unless `APP_CONFIG_SMS_PROVIDER=console`. Never set it on the production app — it is a sign-in bypass.                                                                                                                                                                                                                                                                                 |
+| `APP_CONFIG_MAINTENANCE_MODE`     | no                                            | `true` shows every storefront page as the maintenance screen to everyone but a signed-in admin, who sees the real site. `/login` and `/admin-panel` stay open. Anything else is off. Restart after changing it — no rebuild. Hides the shop, does not lock it: `/api` stays reachable.                                                                                                                                                                                                                                                                                                                                                                           |
+| `APP_CONFIG_ZARINPAL_PROVIDER`    | yes                                           | `mock` (default) simulates the full pay flow with no gateway account. Set to `zarinpal` at the real-gateway flip (see §6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `APP_CONFIG_ZARINPAL_MERCHANT_ID` | when `=zarinpal`                              | Merchant UUID from the Zarinpal panel.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `APP_CONFIG_ZARINPAL_SANDBOX`     | no                                            | `true` routes the real driver at Zarinpal's sandbox host. Default `false`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `APP_CONFIG_ZARINPAL_ALLOW_MOCK`  | on staging, **if online payment is on there** | `true` declares that this deploy is _meant_ to run the simulated gateway. Every container is a production build, so `APP_CONFIG_ZARINPAL_PROVIDER=mock` **with `APP_CONFIG_ZARINPAL_ENABLED=true`** makes `GET /api/ready` answer **503** and the container never takes traffic (§6). With online payment switched **off**, readiness does not refuse — a shop that cannot take an online payment cannot settle a zero-Toman one — so a card-to-card-only deploy needs nothing here. The money path refuses either way. Anything but `true` is off. **Never set it on the production app**: it would disarm the guard for the day online payment is switched on. |
+| `APP_CONFIG_STORAGE_PROVIDER`     | yes                                           | `local` (default) stores uploads on disk (needs a persistent volume, §3). `s3` uses the Liara/Arvan S3-compatible driver — built and verifiable with `pnpm verify-s3`; needs the four `LIARA_*` vars plus build-time `NEXT_PUBLIC_STORAGE_BASE_URL`.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `APP_CONFIG_STORAGE_LOCAL_ROOT`   | with `local`                                  | Absolute path the `local` driver writes to. Set to **`/app/uploads`** and mount the volume there (§3).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 `NODE_ENV=production` is baked into the runtime image — do not override it.
 
 ### Build-time (Coolify: enable the "Build Variable" / build-time toggle)
 
-| Variable | Required | What it is |
-| --- | --- | --- |
-| `NEXT_PUBLIC_APP_URL` | yes | The real `https://` origin, no trailing slash (e.g. `https://shop.example.com`). **Inlined into the client bundle at build time** — it is a Docker build ARG, so it must be marked *available at build time* in Coolify, not just a runtime var. It drives the `Secure` session-cookie flag and Better Auth's CSRF trusted-origins list; `getAppBaseUrl()` throws in production if unset. A change here requires a **rebuild**, not just a restart. |
-| `NEXT_PUBLIC_SENTRY_DSN` | no | GlitchTip DSN. **Production app only** — leave it unset on staging, which then reports nothing (decision 2026-09-15). **Build-time only** — it is inlined into both the client *and* the server bundles, so setting it as a plain runtime variable does nothing at all. Empty ⇒ Sentry is off everywhere. A change needs a **rebuild**. See §9. |
-| `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | no | `production`. Tags each event with the deployment it came from. Set on the production app alone — staging has no DSN, so it has nothing to tag. Build-time, like the DSN. |
-| `NEXT_PUBLIC_UMAMI_SCRIPT_URL` | no | Tracker URL on our self-hosted Umami, `https://analytics.bendev.ir/script.js`. **Production app only** — leave it unset on staging. **Build-time only** — inlined into the client bundle, so a runtime-only variable does nothing. |
-| `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | no | Website id from the Umami dashboard. **Production app only** — staging leaves both Umami vars unset, so it ships no tracker and its traffic never lands in the real numbers. Either this or the script URL empty ⇒ no tracker at all. Build-time; a change needs a **rebuild**. |
+| Variable                         | Required | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_APP_URL`            | yes      | The real `https://` origin, no trailing slash (e.g. `https://shop.example.com`). **Inlined into the client bundle at build time** — it is a Docker build ARG, so it must be marked _available at build time_ in Coolify, not just a runtime var. It drives the `Secure` session-cookie flag and Better Auth's CSRF trusted-origins list; `getAppBaseUrl()` throws in production if unset. A change here requires a **rebuild**, not just a restart. |
+| `NEXT_PUBLIC_SENTRY_DSN`         | no       | GlitchTip DSN. **Production app only** — leave it unset on staging, which then reports nothing (decision 2026-09-15). **Build-time only** — it is inlined into both the client _and_ the server bundles, so setting it as a plain runtime variable does nothing at all. Empty ⇒ Sentry is off everywhere. A change needs a **rebuild**. See §9.                                                                                                     |
+| `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | no       | `production`. Tags each event with the deployment it came from. Set on the production app alone — staging has no DSN, so it has nothing to tag. Build-time, like the DSN.                                                                                                                                                                                                                                                                           |
+| `NEXT_PUBLIC_UMAMI_SCRIPT_URL`   | no       | Tracker URL on our self-hosted Umami, `https://analytics.bendev.ir/script.js`. **Production app only** — leave it unset on staging. **Build-time only** — inlined into the client bundle, so a runtime-only variable does nothing.                                                                                                                                                                                                                  |
+| `NEXT_PUBLIC_UMAMI_WEBSITE_ID`   | no       | Website id from the Umami dashboard. **Production app only** — staging leaves both Umami vars unset, so it ships no tracker and its traffic never lands in the real numbers. Either this or the script URL empty ⇒ no tracker at all. Build-time; a change needs a **rebuild**.                                                                                                                                                                     |
 
 **Not needed in Coolify** — these are consumed only by `docker-compose-dev.yaml`
 for the local dev database and have no role in production:
@@ -88,14 +83,14 @@ for the local dev database and have no role in production:
 **Launch option — `local` driver on a persistent volume (no extra service):**
 
 - Set `APP_CONFIG_STORAGE_PROVIDER=local` and `APP_CONFIG_STORAGE_LOCAL_ROOT=/app/uploads`.
-- In Coolify → app → *Storages*, add a **persistent volume mounted at `/app/uploads`**.
+- In Coolify → app → _Storages_, add a **persistent volume mounted at `/app/uploads`**.
   The image pre-creates that directory owned by the non-root `node` user (uid
   1000), so the app can write to it. Without the volume, uploads live in the
   container's writable layer and are **lost on every redeploy**.
 - The image's `chown` only takes effect for a Docker **named volume** on first
   mount. If Coolify is configured to back the storage with a **host-directory
   bind mount**, that directory is root-owned and uploads fail silently — `chown
-  1000:1000` the host directory on the VPS once before first deploy.
+1000:1000` the host directory on the VPS once before first deploy.
 
 **Production option — `s3` driver (Liara/Arvan):** the S3-compatible driver is
 built. Set the four `LIARA_*` vars as runtime secrets, set
@@ -116,41 +111,112 @@ redeploy with no persistent volume. The storage seam means nothing else changes.
 5. Networking: assign the domain, let Coolify issue the Let's Encrypt cert (TLS
    is terminated at Coolify's proxy). The app listens on port **3000** inside the
    container (`EXPOSE 3000`, `HOSTNAME=0.0.0.0`).
-6. **Health check:** point Coolify's health check at **`GET /api/health`** — it
-   returns `{"status":"success","data":{"status":"ok",...}}` and touches no DB,
-   so it reports process liveness, not database reachability. (There is
-   deliberately no Dockerfile `HEALTHCHECK`; Coolify owns it.)
+6. **Health check:** point Coolify's health check at **`GET /api/ready`** — it
+   answers only when the process is up AND Postgres is reachable and migrated.
+   (There is deliberately no Dockerfile `HEALTHCHECK`; Coolify owns it.)
+
+   > **Corrected 2026-09-19.** This step used to say `/api/health`, on the
+   > reasoning that liveness is what a health check wants. That is wrong _here_,
+   > and it silently disables the rollback §5 promises: `/api/health` touches no
+   > database, so a container whose migration failed still answers it and still
+   > turns healthy — Coolify would then retire the old container and serve the
+   > broken one. §5 already assumes `/api/ready`. **Check what the Coolify
+   > health check is actually set to before the next deploy**; if it is
+   > `/api/health`, the migration-failure rollback has never been armed.
+   > `GET /api/health` stays available for an uptime pinger that should not
+   > depend on the database.
+
+   Both paths are exempt from the `/api/*` rate limiter (`rateLimitGroupFor` in
+   `src/lib/hono/middleware/rate-limit.ts`) — a throttled probe would mark the
+   container unhealthy and roll a perfectly good deploy back.
 
 ---
 
 ## 5. Database migrations on deploy
 
-Migrations are **Drizzle SQL files** in `src/db/migrations/`, applied by
-`drizzle-kit migrate` (`pnpm migration:migrate`), which reads
-`src/db/migrations/meta/_journal.json` and applies only what's outstanding
-(idempotent — safe to re-run).
+Migrations are **Drizzle SQL files** in `src/db/migrations/`. The image applies
+them itself, **every time a container starts**, before the server does — its
+`CMD` is `node scripts/migrate.mjs && exec node server.js`. `scripts/migrate.mjs`
+is a plain-Node applier (drizzle-orm's `migrate()`; the slim runtime image has no
+`drizzle-kit`) that reads `src/db/migrations/meta/_journal.json` and applies only
+what is outstanding, so a restart with nothing pending is a no-op.
 
-**The slim runtime image does not contain `drizzle-kit`** (it's a devDependency),
-so Coolify's *pre-deployment command* — which runs inside that runtime image —
-**cannot** run migrations. Run them as a **separate release step** using the
-Dockerfile's `build` target, which already carries the source, dev deps,
-drizzle-kit and the migration files:
+Nothing is configured in Coolify for this. One deploy ships a migration _and_
+applies it, in the container that is about to serve:
+
+- **A migration fails** (or the database is unreachable): the script exits
+  non-zero, the server never starts, the new container never turns healthy, and
+  Coolify rolls back — the old container keeps serving and the deploy is marked
+  failed. Pending migrations run in one transaction, so a failed or interrupted
+  run leaves the schema as it was.
+- **A slow migration**: the new container has to answer `/api/ready` inside the
+  healthcheck window (start period + interval × retries, ~35 s as configured).
+  For a migration that needs longer, raise the _start period_ for that deploy,
+  or the deploy fails although nothing is wrong.
+- **One replica.** Two containers starting at once would both try to migrate;
+  take a `pg_advisory_lock` in `scripts/migrate.mjs` before scaling out.
+
+> **Remove Coolify's pre-deployment command** (`node scripts/migrate.mjs`) if it
+> is still set. Coolify runs it with `docker exec` in the container that is
+> _already running_, before the new commit is cloned — so it applied the
+> **previous** image's migrations, and a new migration only landed on the deploy
+> _after_ the one that shipped it. Left in place it is a harmless no-op.
+
+Migrations up to `0011` are additive. The old container keeps serving while the
+new one migrates, so a **destructive** migration still needs the compatible
+two-step: expand → deploy → contract.
+
+**`0012` is the first one that is not additive** — it rewrites
+`products.pet_type` from an enum to an enum array, in place. Its `USING` clause
+is hand-written and the file says so at the top: drizzle-kit's generated cast
+fails on a populated table, so regenerating this migration does not reproduce
+it. From the moment the
+new container has migrated until Coolify swaps it in (its healthcheck window,
+~35 s as configured), the old container is talking to the new column: its
+`?pet=` listings answer 500 (there is no `pet_type[] = pet_type` operator) and an
+admin product save is refused — both fail closed, nothing is written wrong. It
+ships as one step on purpose — the window is seconds — so for that deploy:
+
+- **Dump `products (id, pet_type, category_id)` first** — off-box database
+  backups are still open on the Docker-deploy story, and this is the one column
+  this release cannot reconstruct.
+- **Deploy when nobody is editing products**, and do not raise the start period
+  for it: the gap is the outage.
+
+**Going back.** Rolling the image back does not roll the column back, and the
+previous image cannot read `pet_type[]` at all — so a rollback without this is
+a shop whose every `?pet=` listing answers 500. Against the same database,
+before the old image starts:
+
+```sql
+-- The reverse of 0012. Keeps the FIRST pet of a both-pets product; the dump
+-- above is the only thing that can say which rows those were.
+ALTER TABLE products DROP CONSTRAINT products_pet_type_not_empty;
+ALTER TABLE products ALTER COLUMN pet_type TYPE pet_type USING pet_type[1];
+```
+
+And put it back by hand before deploying forward again — **the migration
+runner will not do it for you.** `drizzle-kit migrate` applies whatever is
+newer than the newest row in `drizzle.__drizzle_migrations`, and that row is
+still `0016`, so `0012` is behind the mark and never re-runs:
+
+```sql
+ALTER TABLE products ALTER COLUMN pet_type TYPE pet_type[] USING ARRAY[pet_type];
+ALTER TABLE products
+  ADD CONSTRAINT products_pet_type_not_empty CHECK (cardinality(pet_type) >= 1);
+```
+
+`0013`–`0016` need none of this: new nullable columns, indexes, and CHECKs that
+only constrain writes the old code never makes. `0012` is the one migration in
+this release that a rollback has to undo.
+
+The `build` target (source, dev deps, `drizzle-kit`) is still the tool for one-off
+jobs against a deployed database — the seed steps below:
 
 ```bash
 # On the VPS (or CI), against the same DATABASE_URL the app uses:
 docker build --target build -t smokey-shop:migrate .
-docker run --rm -e APP_CONFIG_DATABASE_URL="$APP_CONFIG_DATABASE_URL" \
-  smokey-shop:migrate pnpm migration:migrate
 ```
-
-Order: **migrate before the new image goes live.** All migrations so far are
-additive, so run-then-deploy is safe; if a future migration is destructive,
-gate it behind a compatible two-step (expand → deploy → contract).
-
-> Follow-up for the PM: if a Coolify-native pre-deploy is wanted, ship a small
-> programmatic migrator (drizzle-orm's `migrate()` + the migrations folder) in
-> the runtime image so migrations can run in-image without drizzle-kit. Out of
-> this story's box-independent scope.
 
 ### Seed steps (first deploy only, from the `build`/`migrate` image)
 
@@ -166,8 +232,14 @@ docker run --rm -e APP_CONFIG_DATABASE_URL="$APP_CONFIG_DATABASE_URL" \
   smokey-shop:migrate pnpm create-admin 09121234567 "Admin Name"
 ```
 
-`seed-catalog` is demo data — skip it on a real production store; `seed-shipping`
-is real infrastructure (you then tune the per-province fees in the admin panel).
+`seed-catalog` is demo data — skip it on a real production store.
+
+`seed-shipping` is no longer needed on a deploy: migration `0011_seed_provinces`
+plants the 31 provinces and their placeholder fees wherever migrations run. It
+only adds what is missing — a province already typed in by hand keeps its name,
+fee and active flag, and is recognised even when spelled with different spacing
+or a ZWNJ. Then set the real fees in the admin panel: one fee for every province
+with «اعمال روی همه استان‌ها», and the exceptions row by row.
 
 ---
 
@@ -183,7 +255,7 @@ and deliberately not baked into the image:
       `src/lib/auth/index.ts` resolves the client IP from `CF-Connecting-IP`
       (`advanced.ipAddress.ipAddressHeaders`) — without it Better Auth's IP rate
       limiter buckets every visitor together. Cloudflare overwrites that header,
-      so it cannot be forged *through* Cloudflare — but a request that reaches
+      so it cannot be forged _through_ Cloudflare — but a request that reaches
       the VPS **directly** carries whatever header it likes, and a fresh forged
       value per request mints a fresh rate-limit bucket each time. So the origin
       must refuse non-Cloudflare traffic: allow 443 only from
@@ -201,7 +273,8 @@ and deliberately not baked into the image:
       launch day shows every customer «به‌زودی برمی‌گردیم».
 - [ ] **Real SMS driver:** set `APP_CONFIG_SMS_PROVIDER=smsir` plus
       `APP_CONFIG_SMSIR_API_KEY` and `APP_CONFIG_SMSIR_TEMPLATE_ID`. The
-      `console` default logs every OTP to the server log. The driver posts to
+      `console` default sends nothing at all (and, outside development, does not
+      even log the code). The driver posts to
       SMS.ir's **verify** service (`/v1/send/verify`), which is where OTP is
       routed — the bulk/line-number API is for marketing sends and carriers
       filter codes on it. Create the template in the SMS.ir panel first: its
@@ -229,6 +302,88 @@ and deliberately not baked into the image:
       volume, telemetry is disabled (`NEXT_TELEMETRY_DISABLED=1` in the image).
       Verify against the deployed site.
 
+### Before deploying the forbidden-character widening (once, on production)
+
+The bidi marks (U+200E, U+200F, U+061C) and the two separators (U+2028, U+2029)
+are now refused on write, and the shared text validators behind checkout, pets,
+the address book and site content enforce the class for the first time. A row
+saved with one of those characters **before** this deploy keeps rendering, but
+every later edit of it fails with «نویسه‌های نامعتبر» — and the
+character is invisible, so there is nothing for the admin to see and delete. A
+price change on such a product is blocked until someone retypes its title.
+
+Run this first; it reads nothing but `id` and the offending value. **The target
+characters are built as `U&` escapes, never typed** (the control-character rule):
+a literal mark in a runbook is invisible to whoever copies it.
+
+```sql
+with bidi as (select U&'[\061C\200E\200F\2028\2029\202A-\202E\2066-\2069]' as p)
+select 'products.title'        as field, p.id::text as id, p.title          as value from products p, bidi b where p.title          ~ b.p
+union all select 'products.brand',          p.id::text, p.brand          from products p, bidi b where p.brand          ~ b.p
+union all select 'products.benefit',        p.id::text, p.benefit        from products p, bidi b where p.benefit        ~ b.p
+union all select 'products.description',    p.id::text, p.description    from products p, bidi b where p.description    ~ b.p
+union all select 'products.variant_label',  p.id::text, p.variant_label  from products p, bidi b where p.variant_label  ~ b.p
+union all select 'categories.title',        c.id::text, c.title          from categories c, bidi b where c.title        ~ b.p
+union all select 'site_content.value',      s.key,      s.value::text    from site_content s, bidi b where s.value::text ~ b.p
+union all select 'pets.name',               t.id::text, t.name           from pets t, bidi b where t.name               ~ b.p
+union all select 'addresses.recipient_name', a.id::text, a.recipient_name from addresses a, bidi b where a.recipient_name ~ b.p
+union all select 'addresses.address_line',  a.id::text, a.address_line   from addresses a, bidi b where a.address_line   ~ b.p;
+```
+
+ZWNJ (U+200C) is deliberately **not** in the pattern, so ordinary Persian
+titles never match it — only the reordering characters do.
+
+Empty result — nothing to do. Any rows: retype the value (an admin for the
+first three, the customer for the last two) before or just after the deploy.
+`provinces` is safe, because the old schema normalized the mark away on write.
+`orders` and `order_items` are safe too: they are snapshots, never re-validated
+and never edited, so a mark there stays as a rendering oddity on one historical
+order and blocks nothing.
+
+### Staging prerequisites (a staging deploy is a production build)
+
+Staging runs the same image as production — `NODE_ENV=production` — on the mock
+gateway and the console SMS driver, and both of those fail closed. Set both
+variables on the staging app, or the next staging deploy is unusable:
+
+- [ ] **`APP_CONFIG_ZARINPAL_ALLOW_MOCK=true`** — needed only if staging has
+      `APP_CONFIG_ZARINPAL_ENABLED=true`. With online payment switched on and
+      the provider left on `mock`, the container comes up dead: `GET /api/ready`
+      answers 503 and Coolify never routes to it. With it switched off,
+      readiness does not refuse and this variable is unnecessary — a shop that
+      cannot take an online payment cannot settle a zero-Toman one.
+      **Never set it on production.** It would disarm the guard for the one
+      deploy that matters: the day online payment is switched on and the
+      provider is still `mock`. Set `APP_CONFIG_ZARINPAL_PROVIDER=zarinpal`
+      with a merchant id there instead. Production's own deploy on 2026-09-22
+      rolled back on this refusal while card-to-card only — the reason the
+      guard now reads the switch.
+- [ ] **`APP_CONFIG_SHOW_OTP_IN_UI=true`** — without it nobody can sign in: the
+      console driver no longer writes the code or the number to the log.
+- [ ] **Confirm the Coolify health check is `GET /api/ready`**, not
+      `/api/health` — §6 above has been carrying that correction since
+      2026-09-19 and it may still be unfixed. Pointed at `/api/health`, the
+      mock-gateway 503 is never observed, and §5's migration-failure rollback
+      was never armed either. The money path still fails closed regardless:
+      `getZarinpalClient()` throws on the first checkout, so nothing settles
+      — the probe is what turns that into "no traffic" instead of "one broken
+      shopper".
+
+Neither variable belongs on the production app. Production sets a real provider
+and a real SMS driver, which is what makes both unnecessary there.
+
+**What `APP_CONFIG_SHOW_OTP_IN_UI=true` costs on staging.** It is now _required_
+there, because the log fallback is gone — and it makes
+`POST /api/auth/phone-number/send-otp` hand the code back in its own response to
+whoever asked. Anyone who can reach staging can send a code for a known admin
+number and read it back: one request, admin session. The 3-per-minute throttle
+does not stop a single targeted attempt, and it never did. Production is
+strictly safer after this change; staging is strictly less safe. **So staging
+must not be publicly routable** — put it behind the Cloudflare origin lockdown
+([[Story - Cloudflare Origin Lockdown]]) or behind basic auth before this ships.
+Treat every staging admin account as compromised-by-design: never reuse a
+production phone number or session there.
+
 ### Zarinpal real-driver flip (only when going live on the real gateway)
 
 Set `APP_CONFIG_ZARINPAL_PROVIDER=zarinpal` + `APP_CONFIG_ZARINPAL_MERCHANT_ID`.
@@ -248,7 +403,7 @@ abuse; the fixes belong to the payments / reconcile stories, not here.
 
 1. **Zero-total order + real Zarinpal → 500 + stuck order (LOW–MEDIUM).** A
    100%/subtotal-covering discount + a zero-fee province + `paymentMethod:
-   zarinpal` makes `total == 0` reachable; the real driver throws on the
+zarinpal` makes `total == 0` reachable; the real driver throws on the
    sub-minimum amount, stranding the order in `pending_payment` holding stock and
    a consumed discount. **Decision at flip:** auto-settle a zero-total order as
    paid without calling the gateway, **or** forbid `zarinpal` when `total == 0`
@@ -282,18 +437,18 @@ blocked. GlitchTip has none of that problem.
 
 ### Reachability from this box (measured 2026-09-08)
 
-| Host | | |
-| --- | --- | --- |
-| `app.glitchtip.com/api/<id>/envelope/` | **405** | ingest alive (405 = "POST me") — **what we use** |
-| `us.i.posthog.com/i/v0/e/`, `us-assets.i.posthog.com` | 400 / 200 | reachable; EU region is not |
-| `cloud.umami.is` | 200 | |
-| `notify.bugsnag.com`, `api.honeybadger.io`, `api.axiom.co` | 405 / 301 / 404 | reachable alternatives |
-| `downloads.sentry-cdn.com` | 200 | sentry-cli binary — not blocked |
-| `registry.npmjs.org` | 200 | |
-| `ghcr.io`, `registry-1.docker.io` | 401 | normal unauth reply — a prebuilt image can be pulled |
-| **`sentry.io`** | **403** | blocked |
-| **`eu.posthog.com`, `api.rollbar.com`, `otlp.eu01.nr-data.net`** | **403** | blocked |
-| **`in.logs.betterstack.com`, `api.telegram.org`** | **timeout** | blocked |
+| Host                                                             |                 |                                                      |
+| ---------------------------------------------------------------- | --------------- | ---------------------------------------------------- |
+| `app.glitchtip.com/api/<id>/envelope/`                           | **405**         | ingest alive (405 = "POST me") — **what we use**     |
+| `us.i.posthog.com/i/v0/e/`, `us-assets.i.posthog.com`            | 400 / 200       | reachable; EU region is not                          |
+| `cloud.umami.is`                                                 | 200             |                                                      |
+| `notify.bugsnag.com`, `api.honeybadger.io`, `api.axiom.co`       | 405 / 301 / 404 | reachable alternatives                               |
+| `downloads.sentry-cdn.com`                                       | 200             | sentry-cli binary — not blocked                      |
+| `registry.npmjs.org`                                             | 200             |                                                      |
+| `ghcr.io`, `registry-1.docker.io`                                | 401             | normal unauth reply — a prebuilt image can be pulled |
+| **`sentry.io`**                                                  | **403**         | blocked                                              |
+| **`eu.posthog.com`, `api.rollbar.com`, `otlp.eu01.nr-data.net`** | **403**         | blocked                                              |
+| **`in.logs.betterstack.com`, `api.telegram.org`**                | **timeout**     | blocked                                              |
 
 Note the egress IP is **not stable** — `api.ipify.org`, `ipinfo.io` and
 `icanhazip.com` each reported a different address (Liara NATs through a pool).
@@ -303,7 +458,7 @@ Anything that needs an IP allow-list is therefore not an option here.
 
 `NEXT_PUBLIC_SENTRY_DSN` holds the **GlitchTip** DSN; the variable keeps its name
 because the SDK reads it. Both it and `NEXT_PUBLIC_SENTRY_ENVIRONMENT` are
-**build-time** (§1) — they are inlined into the client *and* server bundles, so a
+**build-time** (§1) — they are inlined into the client _and_ server bundles, so a
 runtime-only value does nothing. Both are set on the **production** app only;
 staging leaves them empty and reports nothing (decision 2026-09-15), so the
 project only ever shows customer-facing errors.
@@ -328,4 +483,4 @@ There is no CI workflow in the repo today. When one is added, it **must** set
 `APP_CONFIG_DATABASE_URL` and provide a Postgres service, or the DB-backed
 integration suites silently skip (they skip only when the variable is unset; a
 configured-but-down DB fails the run instead — see `CLAUDE.md` › Testing
-standard). CI is the natural home for the migrate/seed release step in §5.
+standard). CI is the natural home for the seed release step in §5.

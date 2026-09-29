@@ -2,8 +2,11 @@ import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { CategoryDao } from '@/db/dao/CategoryDao';
+import { categoryOptions } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { SiteContentDao } from '@/db/dao/SiteContentDao';
+import type { ProductWithImages } from '@/db/schema/catalog';
+import { displayTitle } from '@/lib/catalog/variant';
 import { CONTENT_AREAS, contentAreaSchema } from '@/lib/content/site-content';
 import { ContentEditor } from '@/features/admin-panel/content/content-editor';
 import type { LinkOption } from '@/features/admin-panel/content/link-picker';
@@ -24,10 +27,9 @@ export async function generateMetadata({
 }
 
 /**
- * One content area's editor — «صفحه اصلی» / «درباره ما» / «هدر» / «فوتر». The
- * dynamic `[area]` segment is validated against the zod enum; an unknown area is a
- * 404 (the products/[id] precedent). The bare `/admin-panel/content` redirects
- * here (home area), so v1's "«محتوای سایت» opens the content editor" stays true.
+ * One `CONTENT_AREAS` editor. The dynamic `[area]` segment is validated against
+ * the zod enum; an unknown area is a 404. The bare `/admin-panel/content`
+ * redirects here (home area).
  */
 export default async function AdminContentAreaPage({
   params,
@@ -49,10 +51,15 @@ export default async function AdminContentAreaPage({
     // id/title/slug listing when the catalog grows.
     ProductDao.listForAdmin({ active: true }),
   ]);
-  const option = ({ id, title, slug }: LinkOption): LinkOption => ({
-    id,
-    title,
-    slug,
+  /**
+   * Products need the label too: the members of a family share one `title`, so
+   * a picker listing them plainly offers three identical options and the admin
+   * cannot tell which size they are linking to.
+   */
+  const productOption = (product: ProductWithImages): LinkOption => ({
+    id: product.id,
+    title: displayTitle(product),
+    slug: product.slug,
   });
 
   return (
@@ -68,8 +75,22 @@ export default async function AdminContentAreaPage({
         keys={area.keys}
         values={values}
         options={{
-          categories: categories.map(option),
-          products: products.map(option),
+          // Tree order, carrying both forms: `label` is the indented line the
+          // select shows, `title` the bare name a chip and a row of the picked
+          // categories' list use — those were rendering the indent as
+          // «— شامپو و نظافت», a dash with nothing before it.
+          categories: categoryOptions(categories),
+          // The home strip's candidates: top-level only, in the DAO's display
+          // order — the list `homeTiles` fills from on the page.
+          mainCategories: categories
+            .filter((category) => category.parentId === null)
+            .map(({ id, title, slug }) => ({ id, title, slug })),
+          products: products.map(productOption),
+          // The featured boxes offer what the shop lists as a card — a family
+          // once, by the head — titled as the card titles it.
+          cards: products
+            .filter((product) => product.variantOf === null)
+            .map(({ id, title, slug }) => ({ id, title, slug })),
         }}
       />
     </div>

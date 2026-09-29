@@ -1,23 +1,25 @@
-// Pins the admin product list: which row actions it offers, and how it pages.
-// Deactivating is a soft delete, so an inactive product must not offer it again:
-// clicking it there changed nothing, which read as a broken button. The page
-// number lives in the URL next to the filters, and every page link keeps them.
-// The page renders for real with its DAOs and the admin guard mocked at the
-// module edge.
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+// Pins the admin product list: which row actions it offers, how it pages, and
+// how it counts. Deactivating is a soft delete, so an inactive product must not
+// offer it again: clicking it there changed nothing, which read as a broken
+// button. The page number lives in the URL next to the filters, and every page
+// link keeps them. The page renders for real with its DAOs and the admin guard
+// mocked at the module edge.
+import { cleanup, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductWithImages } from '@/db/schema/catalog';
+import { SUBCATEGORY_PREFIX } from '@/lib/catalog/category-tree';
 import { PROTECTED_PATHS } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import { ADMIN_PAGE_SIZE } from '@/lib/pagination';
 import AdminProductsPage from './page';
 
-const { pageForAdmin } = vi.hoisted(() => ({ pageForAdmin: vi.fn() }));
+const { pageForAdmin, categories } = vi.hoisted(() => ({
+  pageForAdmin: vi.fn(),
+  categories: vi.fn(),
+}));
 vi.mock('@/lib/auth/session', () => ({ requireAdmin: vi.fn() }));
 vi.mock('@/db/dao/ProductDao', () => ({ ProductDao: { pageForAdmin } }));
-vi.mock('@/db/dao/CategoryDao', () => ({
-  CategoryDao: { list: async () => [] },
-}));
+vi.mock('@/db/dao/CategoryDao', () => ({ CategoryDao: { list: categories } }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
@@ -25,6 +27,19 @@ vi.mock('next/navigation', () => ({
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+beforeEach(() => categories.mockResolvedValue([]));
+
+/** A category row as the page reads it; `parent` names its parent's slug. */
+const category = (slug: string, title: string, parent?: string) => ({
+  id: `id-${slug}`,
+  title,
+  slug,
+  sortOrder: 0,
+  parentId: parent ? `id-${parent}` : null,
+  createdAt: new Date('2026-09-01T00:00:00Z'),
+  updatedAt: new Date('2026-09-01T00:00:00Z'),
 });
 
 const product = (
@@ -38,12 +53,15 @@ const product = (
   oldPrice: null,
   stock: 5,
   isActive: true,
+  variantOf: null,
+  variantLabel: null,
   categoryId: '22222222-2222-4222-8222-222222222222',
-  petType: 'cat',
+  petTypes: ['cat'],
   createdAt: new Date('2026-09-01T00:00:00Z'),
   updatedAt: new Date('2026-09-01T00:00:00Z'),
   searchText: '',
   images: [],
+  extraCategoryIds: [],
   ...overrides,
 });
 
@@ -95,6 +113,28 @@ it('offers deactivation only on active products', async () => {
   ).toBeTruthy();
 });
 
+it('offers sub-categories under their parent, prefixed, in the filter', async () => {
+  categories.mockResolvedValue([
+    category('hygiene', 'بهداشت'),
+    category('toys', 'اسباب‌بازی'),
+    category('grooming', 'شامپو و نظافت', 'hygiene'),
+  ]);
+  pageForAdmin.mockResolvedValue({ items: [ACTIVE], total: 1 });
+
+  await renderPage({});
+
+  expect(
+    [...(screen.getByLabelText('دسته‌بندی') as HTMLSelectElement).options].map(
+      (option) => option.textContent,
+    ),
+  ).toEqual([
+    'همه دسته‌ها',
+    'بهداشت',
+    `${SUBCATEGORY_PREFIX}شامپو و نظافت`,
+    'اسباب‌بازی',
+  ]);
+});
+
 describe('paging', () => {
   it('asks for the page in the URL and keeps the filters on every page link', async () => {
     pageForAdmin.mockResolvedValue({
@@ -137,6 +177,45 @@ describe('paging', () => {
       expect.objectContaining({ page: 1, limit: ADMIN_PAGE_SIZE }),
     );
     expect(screen.queryByRole('link', { name: 'صفحه بعد' })).toBeNull();
+  });
+
+  it('numbers rows on from the pages before', async () => {
+    pageForAdmin.mockResolvedValue({
+      items: [
+        ACTIVE,
+        product({
+          id: '44444444-4444-4444-8444-444444444444',
+          title: 'محصول دوم',
+          slug: 'second-product',
+          sku: 'SECOND-1',
+        }),
+      ],
+      total: ADMIN_PAGE_SIZE + 2,
+    });
+
+    await renderPage({ page: '2' });
+
+    // Page two starts after one full page, as the DAO's offset does.
+    const [, ...rows] = screen.getAllByRole('row');
+    expect(
+      rows.map((row) => within(row).getAllByRole('cell')[0].textContent),
+    ).toEqual([
+      formatNumber(ADMIN_PAGE_SIZE + 1),
+      formatNumber(ADMIN_PAGE_SIZE + 2),
+    ]);
+  });
+
+  it('counts the whole filtered result, not the page', async () => {
+    pageForAdmin.mockResolvedValue({
+      items: [ACTIVE],
+      total: ADMIN_PAGE_SIZE * 2 + 5,
+    });
+
+    await renderPage({ q: 'غذا' });
+
+    expect(
+      screen.getByText(`${formatNumber(ADMIN_PAGE_SIZE * 2 + 5)} محصول`),
+    ).toBeTruthy();
   });
 
   it('says a page past the end is empty, and still links back', async () => {

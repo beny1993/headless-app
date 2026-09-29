@@ -2,7 +2,9 @@
 // <select> whose value matches no option renders the first option while state
 // keeps the stale id — so without the guard the customer sees a province they
 // did not pick and saves straight into the API's 422. The form must say so in
-// Persian and send nothing until another province is picked.
+// Persian and send nothing until another province is picked. Also pins the
+// shared save path's refusal branch (`useFormState`): a 422's field entries land
+// under their fields, the rest in the top alert, and the button comes back.
 //
 // Mocked at the module edge only: the `@/lib/api-client` writers (the real
 // ApiRequestError is kept). Harness as in ./account-view.test.tsx.
@@ -15,6 +17,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AddressesTab } from './addresses-tab';
+import { ApiRequestError } from '@/lib/api-client';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
 import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
 
@@ -109,5 +112,46 @@ describe('AddressesTab — an address on a deactivated province', () => {
 
     click('account-addresses-edit');
     expect(screen.queryByText(STALE_PROVINCE_MESSAGE)).toBeNull();
+  });
+});
+
+describe('AddressesTab — a save the server refuses', () => {
+  it('shows the field error under its field, the rest on top, and frees the button', async () => {
+    const cityError = 'نام شهر معتبر نیست.';
+    const unmapped = 'این آدرس دیگر قابل ویرایش نیست.';
+    patchData.mockRejectedValue(
+      new ApiRequestError(422, 'Unprocessable', [
+        `city: ${cityError}`,
+        unmapped,
+      ]),
+    );
+    const onAddressesChange = vi.fn();
+    render(
+      <AddressesTab
+        addresses={[address]}
+        onAddressesChange={onAddressesChange}
+        provinces={[{ provinceId: 9, name: 'قم' }]}
+      />,
+    );
+
+    click('account-addresses-edit');
+    await act(async () => {
+      click('account-addresses-save');
+    });
+
+    expect(patchData).toHaveBeenCalledOnce();
+    expect(onAddressesChange).not.toHaveBeenCalled();
+    expect(document.getElementById('addr-city-error')?.textContent).toContain(
+      cityError,
+    );
+    expect(screen.getByLabelText('شهر').getAttribute('aria-describedby')).toBe(
+      'addr-city-error',
+    );
+    expect(screen.getByText(unmapped).getAttribute('role')).toBe('alert');
+    const save = document.querySelector<HTMLButtonElement>(
+      '[data-umami-event="account-addresses-save"]',
+    )!;
+    expect(save.disabled).toBe(false);
+    expect(save.textContent).toBe('ذخیره');
   });
 });

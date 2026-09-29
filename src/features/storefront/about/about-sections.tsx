@@ -120,11 +120,10 @@ function AboutProcess({ content }: { content: ContentValue<'about.process'> }) {
                 {item.desc}
               </p>
               {index < content.steps.length - 1 && (
-                // The connector runs the full width of the row, so it is
-                // direction-neutral decoration — physical placement is fine
-                // here (design review, finding 9).
+                // Spans this circle's centre to the next one's: `start-1/2`
+                // plus one column of width. Logical, so it follows RTL.
                 <div
-                  className="bg-border absolute top-6 left-0 -z-10 hidden h-0.5 w-full md:block"
+                  className="bg-border absolute start-1/2 top-6 -z-10 hidden h-0.5 w-full md:block"
                   aria-hidden="true"
                 />
               )}

@@ -9,44 +9,24 @@
 // order's items and safe payment status are read through the owner-scoped detail
 // route (`GET /api/orders/{id}`), not here.
 //
-// The projector is exported so the account server page renders from the exact
-// same shape the fetch would return — one type for the resource, never two.
+// The projection's shape and its projector live in `@/lib/orders/order-summary`,
+// which is client-safe: the account server page renders from the exact same
+// shape the fetch would return without importing this file — and with it
+// `@hono/zod-openapi` — as a value.
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
-import { OrderDao, type OrderSummaryRow } from '@/db/dao/OrderDao';
-import {
-  orderStatusSchema,
-  paymentMethodSchema,
-} from '@/lib/orders/order-status';
-import { apiErrorSchema, apiSuccess, apiSuccessSchema } from '../envelope';
+import { OrderDao } from '@/db/dao/OrderDao';
+import { orderSummarySchema, toOrderSummary } from '@/lib/orders/order-summary';
+import { apiSuccess, apiSuccessSchema } from '../envelope';
+import { errorResponse, openapiObject } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
-const OrderSummarySchema = z
-  .object({
-    orderId: z.uuid(),
-    orderNo: z.number().int().positive(),
-    status: orderStatusSchema,
-    paymentMethod: paymentMethodSchema,
-    total: z.number().int().nonnegative(),
-    createdAt: z.iso.datetime(),
-    itemCount: z.number().int().nonnegative(),
-  })
-  .openapi('OrderSummary');
+/** The shape lives in `@/lib/orders/order-summary` — see `openapiObject`. */
+const OrderSummarySchema = openapiObject(orderSummarySchema, 'OrderSummary');
 
-/** One order-history row, as the account orders tab renders it. Import, don't restate. */
-export type OrderSummaryResponse = z.infer<typeof OrderSummarySchema>;
-
-/** OrderSummaryRow → the wire projection: Date to ISO, DB id renamed to orderId. */
-export const toOrderSummary = (row: OrderSummaryRow): OrderSummaryResponse => ({
-  orderId: row.id,
-  orderNo: row.orderNo,
-  status: row.status,
-  paymentMethod: row.paymentMethod,
-  total: row.total,
-  createdAt: row.createdAt.toISOString(),
-  itemCount: row.itemCount,
-});
+/** Re-exported for the client components that already import the type here. */
+export type { OrderSummaryResponse } from '@/lib/orders/order-summary';
 
 export const meOrdersRoute = createRoute({
   method: 'get',
@@ -66,10 +46,7 @@ export const meOrdersRoute = createRoute({
       description:
         'The caller’s orders, newest first, with per-order item counts',
     },
-    401: {
-      content: { 'application/json': { schema: apiErrorSchema } },
-      description: 'No session',
-    },
+    401: errorResponse('No session'),
   },
 });
 

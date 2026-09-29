@@ -9,8 +9,8 @@
 // which is fine for a personal dashboard and keeps the component clear of the
 // URL-resync class the project's component-test rule flags. The order DETAIL is a
 // real route (`/account/orders/[orderId]`, server-rendered and owner-scoped), so
-// the security-carrying read is never client state. The wishlist tab from the
-// prototype is omitted (backlog, per the design review's "Omitted in v1").
+// the security-carrying read is never client state. The prototype's wishlist
+// tab is backlog.
 import { useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, MapPin, Package, User } from 'lucide-react';
@@ -27,6 +27,7 @@ import type { OrderSummaryResponse } from '@/lib/hono/routes/me-orders';
 import type { PetResponse } from '@/lib/hono/routes/me-pets';
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
 import { cn } from '@/lib/utils';
+import { EmptyState } from './account-ui';
 
 type Tab = 'orders' | 'pets' | 'addresses' | 'profile';
 
@@ -125,17 +126,11 @@ function OrdersTab({ orders }: { orders: OrderSummaryResponse[] }) {
     <div>
       <h2 className="mb-5 text-xl font-bold">سفارش‌های من</h2>
       {orders.length === 0 ? (
-        <div className="bg-secondary/40 rounded-2xl py-16 text-center">
-          <Package
-            size={40}
-            className="text-muted-foreground mx-auto mb-3"
-            aria-hidden="true"
-          />
-          <p className="mb-1 font-semibold">هنوز سفارشی ثبت نکرده‌ای</p>
-          <p className="text-muted-foreground text-sm">
-            اولین سفارشت اینجا نمایش داده می‌شود.
-          </p>
-        </div>
+        <EmptyState
+          icon={Package}
+          title="هنوز سفارشی ثبت نکرده‌ای"
+          description="اولین سفارشت اینجا نمایش داده می‌شود."
+        />
       ) : (
         <div className="space-y-3">
           {orders.map((order) => {

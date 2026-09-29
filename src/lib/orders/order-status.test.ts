@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ALLOWED_TRANSITIONS,
+  byProductId,
   adminNextStatuses,
   adminTransitionTargetSchema,
   canTransition,
@@ -148,5 +149,22 @@ describe('initialStatusFor', () => {
     expect(initialStatusFor(PAYMENT_METHODS.ZARINPAL)).toBe(
       ORDER_STATUSES.PENDING_PAYMENT,
     );
+  });
+});
+
+describe('byProductId', () => {
+  it('orders by code unit, not by locale or number', () => {
+    const ids = ['a', 'Z', '9', '10', 'b'].map((productId) => ({ productId }));
+    expect(ids.sort(byProductId).map((line) => line.productId)).toEqual([
+      '10',
+      '9',
+      'Z',
+      'a',
+      'b',
+    ]);
+  });
+
+  it('treats equal ids as equal', () => {
+    expect(byProductId({ productId: 'x' }, { productId: 'x' })).toBe(0);
   });
 });

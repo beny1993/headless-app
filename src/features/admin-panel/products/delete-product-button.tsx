@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { delData } from '@/lib/api-client';
+import { ApiRequestError, delData } from '@/lib/api-client';
 import { apiAdminProductPath } from '@/lib/constant/paths';
 
 /**
@@ -36,9 +36,18 @@ export function DeleteProductButton({
     try {
       await delData(apiAdminProductPath(id));
       router.refresh();
-    } catch {
+    } catch (error) {
       setBusy(false);
-      toast.error('غیرفعال کردن محصول ناموفق بود. دوباره تلاش کن.');
+      // Only the server's own sentence — `ApiRequestError` carries the envelope
+      // `message`, which for a family head names how many members are in the
+      // way and is already Persian. Every other rejection is a transport
+      // failure whose message is an internal English string, and there
+      // «try again» is exactly the right advice.
+      toast.error(
+        error instanceof ApiRequestError && error.message
+          ? error.message
+          : 'غیرفعال کردن محصول ناموفق بود. دوباره تلاش کن.',
+      );
     }
   };
 

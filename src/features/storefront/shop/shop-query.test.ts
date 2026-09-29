@@ -3,8 +3,6 @@ import {
   DEFAULT_SHOP_QUERY,
   buildShopHref,
   parseShopQuery,
-  toggleShopCategory,
-  toggleShopPet,
   updateShopQuery,
   type ShopQuery,
 } from '@/features/storefront/shop/shop-query';
@@ -192,6 +190,23 @@ describe('parseShopQuery', () => {
     });
   });
 
+  describe('in stock only', () => {
+    it('turns on for the values the API reads as true', () => {
+      expect(parseShopQuery({ inStock: 'true' }).inStock).toBe(true);
+      expect(parseShopQuery({ inStock: '1' }).inStock).toBe(true);
+    });
+
+    it('stays off for the values the API reads as false', () => {
+      expect(parseShopQuery({ inStock: 'false' }).inStock).toBe(false);
+      expect(parseShopQuery({ inStock: '0' }).inStock).toBe(false);
+    });
+
+    it('reads a value the API would refuse as absent', () => {
+      expect(parseShopQuery({ inStock: 'maybe' }).inStock).toBeUndefined();
+      expect(parseShopQuery({ inStock: ' ' }).inStock).toBeUndefined();
+    });
+  });
+
   describe('page', () => {
     it('keeps a one-based page', () => {
       expect(parseShopQuery({ page: '3' }).page).toBe(3);
@@ -345,6 +360,17 @@ describe('buildShopHref', () => {
     ).toBe(
       '/shop?category=dry-food&pet=dog&minPrice=50000&maxPrice=300000&sort=price-desc&page=2&limit=24',
     );
+  });
+
+  it('writes the in-stock switch after the pet, and only when it is on', () => {
+    const on = { ...DEFAULT_SHOP_QUERY, pet: 'cat' as const, inStock: true };
+
+    expect(buildShopHref({ ...on, minPrice: 50_000 })).toBe(
+      '/shop?pet=cat&inStock=true&minPrice=50000',
+    );
+    // Off is the default, so a switched-off link is the plain shelf's.
+    expect(buildShopHref({ ...on, inStock: false })).toBe('/shop?pet=cat');
+    expect(parseShopQuery(hrefParams(buildShopHref(on)))).toEqual(on);
   });
 
   it('writes the search term first, ahead of the filters', () => {
@@ -503,45 +529,6 @@ describe('updateShopQuery', () => {
       category: 'toys',
       page: 5,
     });
-  });
-});
-
-describe('toggleShopCategory', () => {
-  it('selects when nothing is selected', () => {
-    expect(toggleShopCategory(DEFAULT_SHOP_QUERY, 'toys').category).toBe(
-      'toys',
-    );
-  });
-
-  it('replaces the selection rather than accumulating one', () => {
-    // The API takes exactly one category slug. Checkbox UI, radio semantics.
-    const query = toggleShopCategory(DEFAULT_SHOP_QUERY, 'toys');
-    expect(toggleShopCategory(query, 'treats').category).toBe('treats');
-  });
-
-  it('clears when the selected one is clicked again', () => {
-    const query = toggleShopCategory(DEFAULT_SHOP_QUERY, 'toys');
-    expect(toggleShopCategory(query, 'toys').category).toBeUndefined();
-  });
-
-  it('returns to the first page', () => {
-    const deep = { ...DEFAULT_SHOP_QUERY, page: 3 };
-    expect(toggleShopCategory(deep, 'toys').page).toBe(1);
-  });
-});
-
-describe('toggleShopPet', () => {
-  it('selects, replaces and clears the same way', () => {
-    const cat = toggleShopPet(DEFAULT_SHOP_QUERY, 'cat');
-    expect(cat.pet).toBe('cat');
-    expect(toggleShopPet(cat, 'dog').pet).toBe('dog');
-    expect(toggleShopPet(cat, 'cat').pet).toBeUndefined();
-  });
-
-  it('returns to the first page', () => {
-    expect(toggleShopPet({ ...DEFAULT_SHOP_QUERY, page: 9 }, 'dog').page).toBe(
-      1,
-    );
   });
 });
 

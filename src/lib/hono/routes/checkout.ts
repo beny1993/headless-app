@@ -18,15 +18,16 @@ import type { Env } from 'hono';
 import { z } from 'zod';
 import { checkoutInputSchema } from '@/lib/checkout/checkout-input';
 import { orderStatusSchema } from '@/lib/orders/order-status';
-import { CheckoutError, createOrder } from '@/logic/checkout/create-order';
+import { CheckoutError } from '@/logic/checkout/checkout-error';
+import { createOrder } from '@/logic/checkout/create-order';
 import { previewDiscount } from '@/logic/checkout/preview-discount';
 import {
   apiError,
-  apiErrorSchema,
   apiSuccess,
   apiSuccessSchema,
   formatZodIssues,
 } from '../envelope';
+import { errorResponse } from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /**
@@ -57,12 +58,6 @@ const CheckoutResultSchema = z
 
 /** The checkout result the FE reads to redirect (COD) or start payment (Zarinpal). */
 export type CheckoutResultResponse = z.infer<typeof CheckoutResultSchema>;
-
-const errorResponse = (description: string) =>
-  ({
-    content: { 'application/json': { schema: apiErrorSchema } },
-    description,
-  }) as const;
 
 export const checkoutRoute = createRoute({
   method: 'post',

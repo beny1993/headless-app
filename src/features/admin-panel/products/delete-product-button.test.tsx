@@ -6,6 +6,7 @@
 import { act } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiRequestError } from '@/lib/api-client';
 import { apiAdminProductPath } from '@/lib/constant/paths';
 import { DeleteProductButton } from './delete-product-button';
 
@@ -15,7 +16,14 @@ const { refresh, delData, toast } = vi.hoisted(() => ({
   toast: { error: vi.fn() },
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }));
-vi.mock('@/lib/api-client', () => ({ delData }));
+vi.mock('@/lib/api-client', async (importOriginal) => ({
+  // `delData` is a recorder, but `ApiRequestError` is the REAL class: the
+  // component narrows on it to tell the server's Persian refusal from an
+  // internal transport string, so a stubbed class would make that branch
+  // untestable rather than tested.
+  ...(await importOriginal<typeof import('@/lib/api-client')>()),
+  delData,
+}));
 vi.mock('sonner', () => ({ toast }));
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -83,5 +91,24 @@ describe('DeleteProductButton', () => {
     expect(alert).not.toHaveBeenCalled();
     expect(refresh).not.toHaveBeenCalled();
     expect(button().disabled).toBe(false);
+  });
+
+  it('shows the server’s own refusal instead of the retry advice', async () => {
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true),
+    );
+    const refusal =
+      'این محصول ۲ زیرمجموعه فعال دارد؛ اول آن‌ها را جابه‌جا یا غیرفعال کن.';
+    delData.mockRejectedValue(new ApiRequestError(409, refusal));
+    render(<DeleteProductButton id={ID} title={TITLE} />);
+
+    await click();
+
+    // A family head names how many members block it, and retrying can never
+    // clear that — «دوباره تلاش کن» would send the admin round a loop that
+    // cannot end. The generic sentence stays for transport failures, where
+    // retrying is the right advice (the test above).
+    expect(toast.error).toHaveBeenCalledWith(refusal);
   });
 });

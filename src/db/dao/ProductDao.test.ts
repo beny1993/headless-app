@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/db', () => ({ db: {} }));
 
-const { ProductDao, buildProductSearchText } = await import('./ProductDao');
+const { ProductDao } = await import('./ProductDao');
+const { buildProductSearchText } = await import('./product-sql');
 
 describe('ProductDao — the soft-delete contract', () => {
   it('exposes no hard-delete method at all', () => {
@@ -67,6 +68,36 @@ describe('buildProductSearchText — what a shopper can find a product by', () =
     expect(
       buildProductSearchText({ title: 'غذای خشک', brand: null, benefit: null }),
     ).toBe('غذای خشک');
+  });
+
+  it('carries a family member’s own «نوع», so its size is searchable', () => {
+    // The reason `variantLabel` is in `SEARCHABLE_FIELDS` at all: a member's
+    // row is what «۱۰ کیلوگرم» has to match, since nothing rewrites the head's
+    // text when a member changes. Pinned here rather than only in the
+    // database-backed suite, which skips on a machine with no Postgres.
+    expect(
+      buildProductSearchText({
+        title: 'غذای خشک سگ',
+        brand: null,
+        benefit: null,
+        variantLabel: '۱۰ کیلوگرم',
+      }),
+      // Folded to ASCII digits by the same normalization the search term goes
+      // through, so «10 کیلو» and «۱۰ کیلو» both find it.
+    ).toBe('غذای خشک سگ 10 کیلوگرم');
+  });
+
+  it('leaves a standalone product’s text exactly as it was', () => {
+    // The columns are nullable and most products have neither, so adding the
+    // field must not change a single existing row's search text.
+    expect(
+      buildProductSearchText({
+        title: 'غذای خشک سگ',
+        brand: 'Royal Canin',
+        benefit: null,
+        variantLabel: null,
+      }),
+    ).toBe('غذای خشک سگ Royal Canin');
   });
 
   it('excludes the description, which is prose and would bury the title', () => {

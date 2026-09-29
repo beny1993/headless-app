@@ -2,6 +2,7 @@ import type { Context, Env } from 'hono';
 import * as Sentry from '@sentry/nextjs';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { OpenAPIHono } from '@hono/zod-openapi';
+import { isProductionServer } from '@/lib/utils/env';
 import { apiError, formatZodIssues } from './envelope';
 
 /**
@@ -81,9 +82,8 @@ export const apiErrorHandler = (err: Error, c: Context) => {
     extra: { method: c.req.method, path: c.req.path },
   });
 
-  const details =
-    process.env.NODE_ENV !== 'production'
-      ? [err.message, ...(err.stack ? [err.stack] : [])]
-      : undefined;
+  const details = !isProductionServer()
+    ? [err.message, ...(err.stack ? [err.stack] : [])]
+    : undefined;
   return c.json(apiError('Internal server error', details), 500);
 };

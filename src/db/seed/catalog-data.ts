@@ -1,6 +1,7 @@
 // The demo catalog's raw data: the six categories and eight products of the
 // design prototype (`design/src/app/App.tsx`), with its own Persian titles,
-// brands, benefit lines, SKUs and integer-Toman prices.
+// brands, benefit lines, SKUs and integer-Toman prices — plus the three
+// sub-categories and two products this shop's own stories need, appended.
 //
 // Deliberately free of database imports, so the checks on this data — image
 // files present, slugs legal, prices whole Toman — run without a database.
@@ -12,15 +13,79 @@
 import { PET_TYPES, type PetType } from '@/db/schema/catalog';
 
 export const SEED_CATEGORIES = [
-  { title: 'غذای خشک', slug: 'dry-food', sortOrder: 1 },
-  { title: 'غذای تر', slug: 'wet-food', sortOrder: 2 },
-  { title: 'تشویقی', slug: 'treats', sortOrder: 3 },
-  { title: 'مکمل', slug: 'supplements', sortOrder: 4 },
-  { title: 'اسباب‌بازی', slug: 'toys', sortOrder: 5 },
-  // No demo product yet — the design lists the category, so the storefront's
-  // category strip should show it.
-  { title: 'بهداشت', slug: 'hygiene', sortOrder: 6 },
+  {
+    title: 'غذای خشک',
+    slug: 'dry-food',
+    sortOrder: 1,
+    imageKey: 'products/cat-dry-food.jpg',
+  },
+  {
+    title: 'غذای تر',
+    slug: 'wet-food',
+    sortOrder: 2,
+    imageKey: 'products/cat-wet-food.jpg',
+  },
+  {
+    title: 'تشویقی',
+    slug: 'treats',
+    sortOrder: 3,
+    imageKey: 'products/cat-treats.jpg',
+  },
+  {
+    title: 'مکمل',
+    slug: 'supplements',
+    sortOrder: 4,
+    imageKey: 'products/cat-supplement.jpg',
+  },
+  {
+    title: 'اسباب‌بازی',
+    slug: 'toys',
+    sortOrder: 5,
+    imageKey: 'products/cat-toy.jpg',
+  },
+  {
+    title: 'بهداشت',
+    slug: 'hygiene',
+    sortOrder: 6,
+    imageKey: 'site/cat-hygiene.jpg',
+  },
 ] as const;
+
+/**
+ * One level of sub-categories, kept in an export of its own rather than mixed
+ * into `SEED_CATEGORIES`: the home strip shows top-level categories only, each
+ * with the photo its seed row carries, and the quiz deep-links at top-level
+ * shelves. Both read `SEED_CATEGORIES` and would demand a photo, or a quiz
+ * answer, for every sub-category added here.
+ *
+ * `parentSlug` is typed from `SEED_CATEGORIES`, so a sub-category under a
+ * sub-category — or under nothing — fails `pnpm type-check`, not a test run.
+ */
+export const SEED_SUBCATEGORIES = [
+  {
+    title: 'شامپو و نظافت',
+    slug: 'grooming',
+    sortOrder: 1,
+    parentSlug: 'hygiene',
+  },
+  { title: 'مالت', slug: 'malt', sortOrder: 1, parentSlug: 'supplements' },
+  {
+    title: 'مولتی‌ویتامین',
+    slug: 'multivitamin',
+    sortOrder: 2,
+    parentSlug: 'supplements',
+  },
+] as const satisfies readonly {
+  title: string;
+  slug: string;
+  sortOrder: number;
+  parentSlug: (typeof SEED_CATEGORIES)[number]['slug'];
+}[];
+
+/** A product may be filed under a top-level category or under a sub-category. */
+type SeedCategorySlug =
+  | (typeof SEED_CATEGORIES)[number]['slug']
+  | (typeof SEED_SUBCATEGORIES)[number]['slug'];
 
 type SeedProduct = {
   title: string;
@@ -33,9 +98,23 @@ type SeedProduct = {
   price: number;
   oldPrice: number | null;
   stock: number;
-  categorySlug: (typeof SEED_CATEGORIES)[number]['slug'];
-  petType: PetType;
+  /** The main category — the one the breadcrumb follows. */
+  categorySlug: SeedCategorySlug;
+  /** Additional categories the product is also found under. Never the main one. */
+  extraCategorySlugs?: SeedCategorySlug[];
+  petTypes: PetType[];
   imageKeys: string[];
+  /**
+   * «۱۰ کیلوگرم», «لاوندر» — what tells this member from its siblings. Set on
+   * the family's head too; absent on a standalone product.
+   */
+  variantLabel?: string;
+  /**
+   * The sku of the product this one is a variant of. By sku rather than by id
+   * because the seed has no ids until it runs — the runner resolves it, and a
+   * head must therefore appear **earlier in this list** than its members.
+   */
+  variantOfSku?: string;
 };
 
 export const SEED_PRODUCTS: SeedProduct[] = [
@@ -49,8 +128,18 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: 320_000,
     stock: 24,
     categorySlug: 'dry-food',
-    petType: PET_TYPES.CAT,
-    imageKeys: ['products/cat-dry-food.jpg'],
+    petTypes: [PET_TYPES.CAT],
+    // The one seeded gallery. Every other product carries a single photo, which
+    // left the thumbnail strip and the swipe track reachable only from a
+    // product a spec had built itself — and the admin spec that builds one runs
+    // at desktop width alone, so nothing walked the gallery at 375px at all.
+    // The two extra keys are stand-ins from the bundled set; they only have to
+    // be visibly different from each other and from the first.
+    imageKeys: [
+      'products/cat-dry-food.jpg',
+      'products/cat-toy.jpg',
+      'products/cat-supplement.jpg',
+    ],
   },
   {
     title: 'غذای خشک سگ با مرغ و برنج',
@@ -62,7 +151,7 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: null,
     stock: 12,
     categorySlug: 'dry-food',
-    petType: PET_TYPES.DOG,
+    petTypes: [PET_TYPES.DOG],
     imageKeys: ['products/dog-dry-food.jpg'],
   },
   {
@@ -75,7 +164,7 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: null,
     stock: 40,
     categorySlug: 'treats',
-    petType: PET_TYPES.CAT,
+    petTypes: [PET_TYPES.CAT],
     imageKeys: ['products/cat-treats.jpg'],
   },
   {
@@ -88,7 +177,7 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: 190_000,
     stock: 18,
     categorySlug: 'treats',
-    petType: PET_TYPES.DOG,
+    petTypes: [PET_TYPES.DOG],
     imageKeys: ['products/dog-treats.jpg'],
   },
   {
@@ -103,7 +192,7 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: null,
     stock: 0,
     categorySlug: 'wet-food',
-    petType: PET_TYPES.CAT,
+    petTypes: [PET_TYPES.CAT],
     imageKeys: ['products/cat-wet-food.jpg'],
   },
   {
@@ -116,7 +205,7 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: 210_000,
     stock: 7,
     categorySlug: 'supplements',
-    petType: PET_TYPES.CAT,
+    petTypes: [PET_TYPES.CAT],
     imageKeys: ['products/cat-supplement.jpg'],
   },
   {
@@ -129,7 +218,7 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: null,
     stock: 15,
     categorySlug: 'supplements',
-    petType: PET_TYPES.DOG,
+    petTypes: [PET_TYPES.DOG],
     // The prototype reuses the dog dry-food photo for this one.
     imageKeys: ['products/dog-dry-food.jpg'],
   },
@@ -144,7 +233,95 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     oldPrice: null,
     stock: 3,
     categorySlug: 'toys',
-    petType: PET_TYPES.CAT,
+    petTypes: [PET_TYPES.CAT],
     imageKeys: ['products/cat-toy.jpg'],
+  },
+  // Appended, never inserted: the two rows above are pinned by index, and
+  // e2e/support.ts picks the best-stocked, the sold-out and the low-stock
+  // product out of this list.
+  {
+    // For both animals at once, so the slug and the SKU carry no pet segment —
+    // the convention the product form's own hint teaches the admin.
+    title: 'شامپو ملایم حیوان خانگی',
+    slug: 'beaphar-gentle-shampoo-250',
+    sku: 'BP-SHAMPOO-250',
+    brand: 'Beaphar',
+    benefit: 'بدون اشک، مناسب پوست حساس',
+    price: 132_000,
+    oldPrice: null,
+    stock: 22,
+    categorySlug: 'grooming',
+    petTypes: [PET_TYPES.CAT, PET_TYPES.DOG],
+    // No new downloads: the supplement bottle stands in for the shampoo.
+    imageKeys: ['products/cat-supplement.jpg'],
+  },
+  {
+    // Benyamin's own example of a product in two categories: a malt paste that
+    // is also a multivitamin, so it is found under both shelves.
+    title: 'خمیر مالت گربه با مولتی‌ویتامین',
+    slug: 'gimcat-cat-malt-paste-100',
+    sku: 'GC-CAT-MALT-100',
+    brand: 'GimCat',
+    benefit: 'کمک به دفع گلوله مویی',
+    price: 148_000,
+    oldPrice: 165_000,
+    stock: 16,
+    categorySlug: 'malt',
+    extraCategorySlugs: ['multivitamin'],
+    petTypes: [PET_TYPES.CAT],
+    imageKeys: ['products/cat-supplement.jpg'],
+  },
+  // Benyamin's own example of one product in several smells: «our litter box
+  // deodorant has different kinds of smells». The three rows below are one card
+  // in the shop — the head is listed, the members are reached from its page.
+  // «لاوندر», the head, is sold out and the cheapest on purpose (his follow-up:
+  // one colour sold out, the others not). The card then exercises both rules
+  // at once: it prints «از ۱۴۹٬۰۰۰ تومان», the cheapest smell a shopper can
+  // buy, never the sold-out ۱۳۹٬۰۰۰, and it opens «بدون بو», not a page with
+  // nothing to add to the cart.
+  {
+    title: 'خوشبوکننده خاک گربه',
+    slug: 'catsan-litter-deodorizer-lavender',
+    sku: 'CS-DEO-LAVENDER',
+    brand: 'Catsan',
+    benefit: 'کنترل بو تا ۷ روز',
+    price: 139_000,
+    oldPrice: null,
+    stock: 0,
+    categorySlug: 'hygiene',
+    petTypes: [PET_TYPES.CAT],
+    // No new downloads, as with the shampoo above.
+    imageKeys: ['products/cat-supplement.jpg'],
+    variantLabel: 'لاوندر',
+  },
+  {
+    title: 'خوشبوکننده خاک گربه',
+    slug: 'catsan-litter-deodorizer-ocean',
+    sku: 'CS-DEO-OCEAN',
+    brand: 'Catsan',
+    benefit: 'کنترل بو تا ۷ روز',
+    price: 185_000,
+    oldPrice: null,
+    stock: 12,
+    categorySlug: 'hygiene',
+    petTypes: [PET_TYPES.CAT],
+    imageKeys: ['products/cat-supplement.jpg'],
+    variantLabel: 'اقیانوس',
+    variantOfSku: 'CS-DEO-LAVENDER',
+  },
+  {
+    title: 'خوشبوکننده خاک گربه',
+    slug: 'catsan-litter-deodorizer-unscented',
+    sku: 'CS-DEO-UNSCENTED',
+    brand: 'Catsan',
+    benefit: 'مناسب گربه‌های حساس',
+    price: 149_000,
+    oldPrice: null,
+    stock: 9,
+    categorySlug: 'hygiene',
+    petTypes: [PET_TYPES.CAT],
+    imageKeys: ['products/cat-supplement.jpg'],
+    variantLabel: 'بدون بو',
+    variantOfSku: 'CS-DEO-LAVENDER',
   },
 ];

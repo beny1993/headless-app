@@ -30,6 +30,7 @@ import { z } from 'zod';
 import {
   PET_TYPES,
   PRODUCT_SORTS,
+  PET_LABELS,
   productListQueryShape,
   type ProductListQuery,
 } from '@/lib/catalog/product-query';
@@ -37,7 +38,7 @@ import { PATHS } from '@/lib/constant/paths';
 
 /** Borrowed from the catalog API's query schema, never restated. */
 export type ShopSort = ProductListQuery['sort'];
-export type ShopPet = NonNullable<ProductListQuery['pet']>;
+type ShopPet = NonNullable<ProductListQuery['pet']>;
 
 /** The parsed, always-valid shape the page and its controls both work in. */
 export type ShopQuery = {
@@ -52,6 +53,8 @@ export type ShopQuery = {
   /** A category *slug*, and at most one — the API takes a single category. */
   category?: string;
   pet?: ShopPet;
+  /** «فقط محصولات موجود». Off — `false` or absent — is the default. */
+  inStock?: boolean;
   /** Inclusive, integer Toman. */
   minPrice?: number;
   /** Inclusive, integer Toman. */
@@ -63,7 +66,7 @@ export type ShopQuery = {
 };
 
 /** Next hands a page's `searchParams` in this shape; `URLSearchParams` also works. */
-export type ShopSearchParams =
+type ShopSearchParams =
   URLSearchParams | Record<string, string | string[] | undefined>;
 
 /**
@@ -88,6 +91,7 @@ const shopQuerySchema = z.object({
   q: asAbsentWhenInvalid(productListQueryShape.q),
   category: asAbsentWhenInvalid(productListQueryShape.category),
   pet: asAbsentWhenInvalid(productListQueryShape.pet),
+  inStock: asAbsentWhenInvalid(productListQueryShape.inStock),
   minPrice: asAbsentWhenInvalid(productListQueryShape.minPrice),
   maxPrice: asAbsentWhenInvalid(productListQueryShape.maxPrice),
   sort: asAbsentWhenInvalid(productListQueryShape.sort),
@@ -109,16 +113,6 @@ const SORT_LABELS: Record<ShopSort, string> = {
   newest: 'جدیدترین',
   'price-asc': 'ارزان‌ترین',
   'price-desc': 'گران‌ترین',
-};
-
-/**
- * Exported because the product page's specification rows name the same enum:
- * one Persian word per `pet_type` value, in one place. Keyed by the union, so
- * a third pet type stops the build here rather than rendering a bare `cat`.
- */
-export const PET_LABELS: Record<ShopPet, string> = {
-  cat: 'گربه',
-  dog: 'سگ',
 };
 
 /** The sort control's options: the API's orderings with their Persian labels. */
@@ -170,6 +164,7 @@ export function parseShopQuery(params: ShopSearchParams): ShopQuery {
     q: readText(params, 'q'),
     category: readText(params, 'category'),
     pet: readText(params, 'pet'),
+    inStock: readText(params, 'inStock'),
     minPrice: readText(params, 'minPrice'),
     maxPrice: readText(params, 'maxPrice'),
     sort: readText(params, 'sort'),
@@ -192,6 +187,9 @@ export function buildShopHref(query: ShopQuery): string {
   if (query.q) params.set('q', query.q);
   if (query.category) params.set('category', query.category);
   if (query.pet) params.set('pet', query.pet);
+  // Written only when on: off is the default, and a switched-off link must be
+  // the plain shelf's, one URL for one screen.
+  if (query.inStock) params.set('inStock', 'true');
   // Compared against undefined, not truthiness: `minPrice=0` is a bound the
   // shopper typed, and `if (query.minPrice)` would quietly drop it.
   if (query.minPrice !== undefined) {
@@ -230,17 +228,3 @@ export function updateShopQuery(
 
   return { ...query, ...patch, page };
 }
-
-/**
- * Category is single-select against checkbox UI — the API takes one slug, so
- * picking another replaces it and picking the checked one clears it. Radios
- * would look equally right and lose that click-to-clear.
- */
-export const toggleShopCategory = (query: ShopQuery, slug: string): ShopQuery =>
-  updateShopQuery(query, {
-    category: query.category === slug ? undefined : slug,
-  });
-
-/** Same single-select semantics for the pet type. */
-export const toggleShopPet = (query: ShopQuery, pet: ShopPet): ShopQuery =>
-  updateShopQuery(query, { pet: query.pet === pet ? undefined : pet });

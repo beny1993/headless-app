@@ -14,12 +14,6 @@
       "port": 5173
     },
     {
-      "name": "React Email",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev:email"],
-      "port": 3000
-    },
-    {
       "name": "Drizzle Studio",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["drizzle-studio"],

@@ -1,15 +1,17 @@
 // Needs a live database — see src/db/test-db.ts. The DAO's surface is checked
 // without one in ./ProductDao.test.ts.
 import { faker } from '@faker-js/faker';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   categories,
   PET_TYPES,
+  productCategories,
   productImages,
   products,
   type Category,
   type NewProduct,
+  type PetType,
 } from '@/db/schema/catalog';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import type { ProductInput } from '@/db/dao/ProductDao';
@@ -21,12 +23,15 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
   // so running the suite against a seeded dev database leaves the seed intact.
   const createdCategoryIds: string[] = [];
 
-  const makeCategory = async (): Promise<Category> => {
+  const makeCategory = async (
+    parentId: string | null = null,
+  ): Promise<Category> => {
     const [row] = await testDb
       .insert(categories)
       .values({
         title: 'دسته آزمایشی',
         slug: `test-${faker.string.alphanumeric(10).toLowerCase()}`,
+        parentId,
       })
       .returning();
     createdCategoryIds.push(row.id);
@@ -45,7 +50,7 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       price: 100_000,
       stock: 5,
       categoryId: category.id,
-      petType: PET_TYPES.CAT,
+      petTypes: [PET_TYPES.CAT],
       ...overrides,
     };
   };
@@ -170,10 +175,10 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
     it('filters by pet type', async () => {
       const category = await makeCategory();
       const cat = await ProductDao.create(
-        makeProduct(category, { petType: PET_TYPES.CAT }),
+        makeProduct(category, { petTypes: [PET_TYPES.CAT] }),
       );
       const dog = await ProductDao.create(
-        makeProduct(category, { petType: PET_TYPES.DOG }),
+        makeProduct(category, { petTypes: [PET_TYPES.DOG] }),
       );
 
       const { items: dogs } = await ProductDao.list({
@@ -189,10 +194,14 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       const wanted = await makeCategory();
       const other = await makeCategory();
       const match = await ProductDao.create(
-        makeProduct(wanted, { petType: PET_TYPES.DOG }),
+        makeProduct(wanted, { petTypes: [PET_TYPES.DOG] }),
       );
-      await ProductDao.create(makeProduct(wanted, { petType: PET_TYPES.CAT }));
-      await ProductDao.create(makeProduct(other, { petType: PET_TYPES.DOG }));
+      await ProductDao.create(
+        makeProduct(wanted, { petTypes: [PET_TYPES.CAT] }),
+      );
+      await ProductDao.create(
+        makeProduct(other, { petTypes: [PET_TYPES.DOG] }),
+      );
 
       const { items: rows } = await ProductDao.list({
         categorySlug: wanted.slug,
@@ -208,6 +217,99 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       });
 
       expect(rows).toEqual([]);
+    });
+
+    it('reads an empty slug as no category filter, not as one that misses', async () => {
+      // What `?category=` made of nothing but null bytes strips down to in
+      // `product-query.ts`, which documents this very reading. An unknown slug
+      // must empty the listing; an empty one must leave it alone — reading the
+      // two the same way would answer a stripped parameter with a shop that
+      // looks shut.
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+
+      const empty = await ProductDao.list({ categorySlug: '' });
+      const absent = await ProductDao.list({});
+      const adminEmpty = await ProductDao.pageForAdmin({ categorySlug: '' });
+      const adminAbsent = await ProductDao.pageForAdmin({});
+
+      expect(empty.total).toBe(absent.total);
+      expect(empty.items.map((row) => row.id)).toContain(product.id);
+      expect(adminEmpty.total).toBe(adminAbsent.total);
+      expect(adminEmpty.items.map((row) => row.id)).toContain(product.id);
+    });
+
+    describe('a parent category takes in its sub-categories', () => {
+      /** A parent holding one product itself, over a sub holding two. */
+      const makeFamily = async () => {
+        const parent = await makeCategory();
+        const sub = await makeCategory(parent.id);
+        const other = await makeCategory();
+        return {
+          parent,
+          sub,
+          own: await ProductDao.create(makeProduct(parent)),
+          under: [
+            await ProductDao.create(makeProduct(sub)),
+            await ProductDao.create(
+              makeProduct(sub, { petTypes: [PET_TYPES.DOG] }),
+            ),
+          ],
+          elsewhere: await ProductDao.create(makeProduct(other)),
+        };
+      };
+
+      const ids = (rows: { id: string }[]) => rows.map((row) => row.id).sort();
+
+      it('lists the parent’s own products and every sub-category’s, counted once each', async () => {
+        const { parent, own, under } = await makeFamily();
+
+        const { items, total } = await ProductDao.list({
+          categorySlug: parent.slug,
+        });
+
+        expect(ids(items)).toEqual(ids([own, ...under]));
+        expect(total).toBe(3);
+      });
+
+      it('lists only its own products under a sub-category’s slug', async () => {
+        const { sub, under } = await makeFamily();
+
+        const { items, total } = await ProductDao.list({
+          categorySlug: sub.slug,
+        });
+
+        expect(ids(items)).toEqual(ids(under));
+        expect(total).toBe(2);
+      });
+
+      it('narrows the parent’s whole set by pet type', async () => {
+        const { parent, under } = await makeFamily();
+
+        const { items, total } = await ProductDao.list({
+          categorySlug: parent.slug,
+          petType: PET_TYPES.DOG,
+        });
+
+        expect(ids(items)).toEqual([under[1].id]);
+        expect(total).toBe(1);
+      });
+
+      it('does the same on the admin read', async () => {
+        const { parent, sub, own, under } = await makeFamily();
+
+        const wide = await ProductDao.pageForAdmin({
+          categorySlug: parent.slug,
+        });
+        const narrow = await ProductDao.pageForAdmin({
+          categorySlug: sub.slug,
+        });
+
+        expect(ids(wide.items)).toEqual(ids([own, ...under]));
+        expect(wide.total).toBe(3);
+        expect(ids(narrow.items)).toEqual(ids(under));
+        expect(narrow.total).toBe(2);
+      });
     });
 
     it('attaches images in sort order', async () => {
@@ -297,12 +399,14 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       const category = await makeCategory();
       const other = await makeCategory();
       await ProductDao.create(
-        makeProduct(category, { petType: PET_TYPES.DOG }),
+        makeProduct(category, { petTypes: [PET_TYPES.DOG] }),
       );
       await ProductDao.create(
-        makeProduct(category, { petType: PET_TYPES.CAT }),
+        makeProduct(category, { petTypes: [PET_TYPES.CAT] }),
       );
-      await ProductDao.create(makeProduct(other, { petType: PET_TYPES.DOG }));
+      await ProductDao.create(
+        makeProduct(other, { petTypes: [PET_TYPES.DOG] }),
+      );
 
       const dogs = await ProductDao.list({
         categorySlug: category.slug,
@@ -507,6 +611,51 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
         expect(page.total).toBe(0);
       }
     });
+
+    it('lists every in-stock product before any sold-out one, under every sort', async () => {
+      // The two sold-out products are the newest, the cheapest and the
+      // dearest, so each sort on its own would lead with one of them. Within
+      // each half the chosen sort still decides.
+      const category = await makeCategory();
+      const at = (day: number) => new Date(Date.UTC(2026, 0, day));
+      const insert = (values: Partial<NewProduct>) =>
+        testDb
+          .insert(products)
+          .values({ ...makeProduct(category), ...values })
+          .returning()
+          .then(([row]) => row);
+      const [inStockOld, inStockNew, soldOutCheap, soldOutDear] =
+        await Promise.all([
+          insert({ price: 100_000, createdAt: at(1) }),
+          insert({ price: 200_000, createdAt: at(2) }),
+          insert({ price: 50_000, stock: 0, createdAt: at(3) }),
+          insert({ price: 300_000, stock: 0, createdAt: at(4) }),
+        ]);
+
+      const idsFor = async (sort: 'newest' | 'price-asc' | 'price-desc') =>
+        (
+          await ProductDao.list({ categorySlug: category.slug, sort })
+        ).items.map((row) => row.id);
+
+      expect(await idsFor('newest')).toEqual([
+        inStockNew.id,
+        inStockOld.id,
+        soldOutDear.id,
+        soldOutCheap.id,
+      ]);
+      expect(await idsFor('price-asc')).toEqual([
+        inStockOld.id,
+        inStockNew.id,
+        soldOutCheap.id,
+        soldOutDear.id,
+      ]);
+      expect(await idsFor('price-desc')).toEqual([
+        inStockNew.id,
+        inStockOld.id,
+        soldOutDear.id,
+        soldOutCheap.id,
+      ]);
+    });
   });
 
   describe('getBySlug', () => {
@@ -624,11 +773,11 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       const cat = await ProductDao.create(
         makeProduct(category, {
           title: 'غذای خشک گربه رویال',
-          petType: PET_TYPES.CAT,
+          petTypes: [PET_TYPES.CAT],
         }),
       );
       const dog = await ProductDao.create(
-        makeProduct(category, { title: 'قلاده سگ', petType: PET_TYPES.DOG }),
+        makeProduct(category, { title: 'قلاده سگ', petTypes: [PET_TYPES.DOG] }),
       );
       await ProductDao.create(makeProduct(other));
 
@@ -694,10 +843,10 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       const removed = await ProductDao.create(makeProduct(category));
       await ProductDao.softDelete(removed.id);
 
-      const page = (active: boolean) =>
+      const page = (isActive: boolean) =>
         ProductDao.pageForAdmin({
           categorySlug: category.slug,
-          active,
+          active: isActive,
           page: 1,
           limit: 10,
         });
@@ -708,6 +857,312 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       expect(inactiveOnly.total).toBe(1);
       expect(activeOnly.items.map((row) => row.id)).toEqual([active.id]);
       expect(activeOnly.total).toBe(1);
+    });
+  });
+
+  describe('a product for one pet or both', () => {
+    /** cat-only, dog-only and one for both, in one throwaway category. */
+    const makePetCatalog = async () => {
+      const category = await makeCategory();
+      const [cat, dog, both] = await Promise.all([
+        ProductDao.create(makeProduct(category, { petTypes: [PET_TYPES.CAT] })),
+        ProductDao.create(makeProduct(category, { petTypes: [PET_TYPES.DOG] })),
+        ProductDao.create(
+          makeProduct(category, {
+            petTypes: [PET_TYPES.CAT, PET_TYPES.DOG],
+          }),
+        ),
+      ]);
+      return { category, cat, dog, both };
+    };
+
+    const ids = (rows: { id: string }[]) => rows.map((row) => row.id).sort();
+
+    it('reads both pets back as an array, not as a string', async () => {
+      const category = await makeCategory();
+
+      const product = await ProductDao.create(
+        makeProduct(category, { petTypes: [PET_TYPES.CAT, PET_TYPES.DOG] }),
+      );
+
+      expect(product.petTypes).toEqual(['cat', 'dog']);
+      expect((await ProductDao.findByIdForAdmin(product.id))?.petTypes).toEqual(
+        ['cat', 'dog'],
+      );
+    });
+
+    it('stores a widened selection on the seed path too', async () => {
+      // The update branch of the upsert, not the insert: a re-seed that adds a
+      // pet to an existing sku must actually write it.
+      const category = await makeCategory();
+      const input = makeProduct(category, { petTypes: [PET_TYPES.CAT] });
+
+      await ProductDao.upsertBySku(input);
+      const second = await ProductDao.upsertBySku({
+        ...input,
+        petTypes: [PET_TYPES.CAT, PET_TYPES.DOG],
+      });
+
+      expect(second.petTypes).toEqual(['cat', 'dog']);
+    });
+
+    it('lists a both-pets product under each pet filter, and once without one', async () => {
+      const { category, cat, dog, both } = await makePetCatalog();
+      const listed = (petType?: PetType) =>
+        ProductDao.list({ categorySlug: category.slug, petType });
+
+      const cats = await listed(PET_TYPES.CAT);
+      const dogs = await listed(PET_TYPES.DOG);
+      const all = await listed();
+
+      expect(ids(cats.items)).toEqual([cat.id, both.id].sort());
+      expect(ids(dogs.items)).toEqual([dog.id, both.id].sort());
+      expect(ids(all.items)).toEqual([cat.id, dog.id, both.id].sort());
+      // The count is the filtered result, so the pager cannot disagree with it.
+      expect([cats.total, dogs.total, all.total]).toEqual([2, 2, 3]);
+    });
+
+    it('does the same on the admin listing, so no product goes missing there', async () => {
+      const { category, cat, dog, both } = await makePetCatalog();
+      const listed = (petType?: PetType) =>
+        ProductDao.pageForAdmin({ categorySlug: category.slug, petType });
+
+      const cats = await listed(PET_TYPES.CAT);
+      const dogs = await listed(PET_TYPES.DOG);
+      const all = await listed();
+
+      expect(ids(cats.items)).toEqual([cat.id, both.id].sort());
+      expect(ids(dogs.items)).toEqual([dog.id, both.id].sort());
+      expect(ids(all.items)).toEqual([cat.id, dog.id, both.id].sort());
+      expect([cats.total, dogs.total, all.total]).toEqual([2, 2, 3]);
+    });
+  });
+
+  describe('a product in more than one category', () => {
+    const ids = (rows: { id: string }[]) => rows.map((row) => row.id).sort();
+
+    /** Benyamin's own example: «مکمل» over «مالت» and «مولتی‌ویتامین». */
+    const makeFamily = async () => {
+      const parent = await makeCategory();
+      return {
+        parent,
+        malt: await makeCategory(parent.id),
+        multivitamin: await makeCategory(parent.id),
+        elsewhere: await makeCategory(),
+      };
+    };
+
+    it('reads the extras back on every read path, in the order they were added', async () => {
+      const { malt, multivitamin, elsewhere } = await makeFamily();
+      const extras = [multivitamin.id, elsewhere.id];
+
+      const forwards = await ProductDao.create({
+        ...makeProduct(malt),
+        extraCategoryIds: extras,
+      });
+      // The same pair the other way round, so «the order they were added» is
+      // pinned by the two disagreeing — an id-ordered read would fail one.
+      const backwards = await ProductDao.create({
+        ...makeProduct(malt),
+        extraCategoryIds: [...extras].reverse(),
+      });
+
+      expect(forwards.extraCategoryIds).toEqual(extras);
+      expect(backwards.extraCategoryIds).toEqual([...extras].reverse());
+      expect(
+        (await ProductDao.findByIdForAdmin(forwards.id))?.extraCategoryIds,
+      ).toEqual(extras);
+      expect(
+        (await ProductDao.getBySlug(forwards.slug))?.extraCategoryIds,
+      ).toEqual(extras);
+      const { items } = await ProductDao.list({ categorySlug: malt.slug });
+      expect(
+        items.find((row) => row.id === forwards.id)?.extraCategoryIds,
+      ).toEqual(extras);
+      expect(
+        items.find((row) => row.id === backwards.id)?.extraCategoryIds,
+      ).toEqual([...extras].reverse());
+    });
+
+    it('keeps that order once the rows stop sitting in insert order', async () => {
+      // The assertion above cannot see a missing `order by sort_order`: the
+      // junction is written by delete-then-insert, so heap order and stored
+      // order agree on a fresh row and an unordered read looks right by luck.
+      // Rewriting one row moves its tuple to the end of the heap — what any
+      // in-place edit of the column would do — and only the ORDER BY survives
+      // it. Without it the product page and the form's chips would list a
+      // product's categories in whatever order Postgres felt like.
+      const { malt, multivitamin, elsewhere } = await makeFamily();
+      const extras = [multivitamin.id, elsewhere.id];
+      const product = await ProductDao.create({
+        ...makeProduct(malt),
+        extraCategoryIds: extras,
+      });
+
+      await testDb
+        .update(productCategories)
+        .set({ sortOrder: 0 })
+        .where(
+          and(
+            eq(productCategories.productId, product.id),
+            eq(productCategories.categoryId, multivitamin.id),
+          ),
+        );
+
+      expect(
+        (await ProductDao.findByIdForAdmin(product.id))?.extraCategoryIds,
+      ).toEqual(extras);
+      expect(
+        (await ProductDao.getBySlug(product.slug))?.extraCategoryIds,
+      ).toEqual(extras);
+      // …and through the other reader, the one a patch that mentions no
+      // extras goes down.
+      expect(
+        (await ProductDao.update(product.id, {}))?.extraCategoryIds,
+      ).toEqual(extras);
+    });
+
+    it('reads an empty list, never undefined, for a product with none', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+
+      expect(product.extraCategoryIds).toEqual([]);
+      expect(
+        (await ProductDao.getBySlug(product.slug))?.extraCategoryIds,
+      ).toEqual([]);
+    });
+
+    it('drops a repeated category and the primary itself before storing', async () => {
+      const { malt, multivitamin } = await makeFamily();
+
+      const product = await ProductDao.create({
+        ...makeProduct(malt),
+        extraCategoryIds: [
+          multivitamin.id,
+          multivitamin.id,
+          malt.id,
+          multivitamin.id,
+        ],
+      });
+
+      expect(product.extraCategoryIds).toEqual([multivitamin.id]);
+    });
+
+    it('writes the extras on an update that changes no column at all', async () => {
+      const { malt, multivitamin } = await makeFamily();
+      const product = await ProductDao.create(makeProduct(malt));
+
+      const updated = await ProductDao.update(product.id, {
+        extraCategoryIds: [multivitamin.id],
+      });
+
+      expect(updated?.extraCategoryIds).toEqual([multivitamin.id]);
+      expect(
+        (await ProductDao.findByIdForAdmin(product.id))?.extraCategoryIds,
+      ).toEqual([multivitamin.id]);
+    });
+
+    it('leaves the extras alone when an update does not mention them', async () => {
+      const { malt, multivitamin } = await makeFamily();
+      const product = await ProductDao.create({
+        ...makeProduct(malt),
+        extraCategoryIds: [multivitamin.id],
+      });
+
+      const updated = await ProductDao.update(product.id, {
+        title: 'عنوان تازه',
+      });
+
+      expect(updated).toMatchObject({
+        title: 'عنوان تازه',
+        extraCategoryIds: [multivitamin.id],
+      });
+    });
+
+    it('drops the junction row of a category that becomes the primary', async () => {
+      const { malt, multivitamin, elsewhere } = await makeFamily();
+      const product = await ProductDao.create({
+        ...makeProduct(malt),
+        extraCategoryIds: [multivitamin.id, elsewhere.id],
+      });
+
+      // The new primary is stripped from the extras it is sent with — read
+      // from the row as it ends up, not as it started.
+      const updated = await ProductDao.update(product.id, {
+        categoryId: multivitamin.id,
+        extraCategoryIds: [multivitamin.id, elsewhere.id],
+      });
+
+      expect(updated).toMatchObject({
+        categoryId: multivitamin.id,
+        extraCategoryIds: [elsewhere.id],
+      });
+    });
+
+    it('leaves no product row behind when an extra category does not exist', async () => {
+      const category = await makeCategory();
+      const input = makeProduct(category);
+
+      await expect(
+        ProductDao.create({
+          ...input,
+          extraCategoryIds: [crypto.randomUUID()],
+        }),
+      ).rejects.toMatchObject({
+        cause: {
+          constraint: 'product_categories_category_id_categories_id_fk',
+        },
+      });
+
+      const left = await testDb
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.slug, input.slug));
+      expect(left).toEqual([]);
+    });
+
+    it('replaces the extras wholesale on the seed path', async () => {
+      const { malt, multivitamin, elsewhere } = await makeFamily();
+      const input = {
+        ...makeProduct(malt),
+        extraCategoryIds: [multivitamin.id],
+      };
+
+      await ProductDao.upsertBySku(input);
+      const second = await ProductDao.upsertBySku({
+        ...input,
+        extraCategoryIds: [elsewhere.id],
+      });
+
+      expect(second.extraCategoryIds).toEqual([elsewhere.id]);
+    });
+
+    it('lists the product once under its primary, each extra and their parent', async () => {
+      const { parent, malt, multivitamin, elsewhere } = await makeFamily();
+      const product = await ProductDao.create({
+        ...makeProduct(malt),
+        extraCategoryIds: [multivitamin.id],
+      });
+      // A neighbour under the same parent, so a total of one is a filter
+      // working rather than an empty corner of the catalogue.
+      const neighbour = await ProductDao.create(makeProduct(elsewhere));
+
+      const under = async (slug: string) => {
+        const page = await ProductDao.list({ categorySlug: slug });
+        const admin = await ProductDao.pageForAdmin({ categorySlug: slug });
+        expect(ids(admin.items)).toEqual(ids(page.items));
+        expect(admin.total).toBe(page.total);
+        return page;
+      };
+
+      for (const slug of [malt.slug, multivitamin.slug, parent.slug]) {
+        const { items, total } = await under(slug);
+        // The parent's scope holds both of the product's categories, and it is
+        // still one row and one match — a join to the junction would say two.
+        expect(ids(items)).toEqual([product.id]);
+        expect(total).toBe(1);
+      }
+      expect(ids((await under(elsewhere.slug)).items)).toEqual([neighbour.id]);
     });
   });
 
@@ -817,6 +1272,18 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       expect(refused).toBe('products_stock_non_negative');
     });
 
+    it('rejects a product suited to no pet at all', async () => {
+      // zod refuses an empty selection too, but the seed and psql bypass it;
+      // this is the rule that actually holds.
+      const category = await makeCategory();
+
+      const refused = await refusedBy(() =>
+        ProductDao.create(makeProduct(category, { petTypes: [] })),
+      );
+
+      expect(refused).toBe('products_pet_type_not_empty');
+    });
+
     it('rejects a zero price', async () => {
       const category = await makeCategory();
 
@@ -880,6 +1347,42 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       );
 
       expect(refused).toBe('products_category_id_categories_id_fk');
+    });
+
+    it('refuses the same extra category twice on one product', async () => {
+      // The DAO dedupes, but the seed and psql bypass it; this is the rule
+      // that actually holds.
+      const primary = await makeCategory();
+      const extra = await makeCategory();
+      const product = await ProductDao.create({
+        ...makeProduct(primary),
+        extraCategoryIds: [extra.id],
+      });
+
+      const refused = await refusedBy(() =>
+        testDb.insert(productCategories).values({
+          productId: product.id,
+          categoryId: extra.id,
+          sortOrder: 1,
+        }),
+      );
+
+      expect(refused).toBe('product_categories_product_id_category_id_pk');
+    });
+
+    it('refuses to drop a category that is only an extra of some product', async () => {
+      const primary = await makeCategory();
+      const extra = await makeCategory();
+      await ProductDao.create({
+        ...makeProduct(primary),
+        extraCategoryIds: [extra.id],
+      });
+
+      const refused = await refusedBy(() =>
+        testDb.delete(categories).where(eq(categories.id, extra.id)),
+      );
+
+      expect(refused).toBe('product_categories_category_id_categories_id_fk');
     });
   });
 
@@ -954,7 +1457,7 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
           title: 'غذای خشک پرمیوم گربه بالغ',
           brand: 'Royal Canin',
           benefit: 'مناسب گوارش حساس',
-          petType: PET_TYPES.CAT,
+          petTypes: [PET_TYPES.CAT],
         }),
       ),
       ProductDao.create(
@@ -963,7 +1466,7 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
           title: 'اسباب‌بازی تعاملی پر و زنگوله',
           brand: 'Catit',
           benefit: 'تحریک غریزه شکار',
-          petType: PET_TYPES.CAT,
+          petTypes: [PET_TYPES.CAT],
         }),
       ),
       ProductDao.create(
@@ -971,7 +1474,7 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
           title: 'شامپو ضد کک و کنه سگ',
           brand: 'Beaphar',
           benefit: 'پوست حساس',
-          petType: PET_TYPES.DOG,
+          petTypes: [PET_TYPES.DOG],
         }),
       ),
     ]);
@@ -1275,6 +1778,47 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       ]);
     });
 
+    it('combines a search with a parent scope over both of a product’s categories', async () => {
+      // The one combination the rest of this file never lines up: a search runs
+      // its page and its count inside a transaction with the similarity GUC,
+      // and the category scope it carries is two subqueries over two tables.
+      // Both halves of that `or` are here — `inside` matches through its
+      // primary *and* its extra, which is where a join would list and count it
+      // twice; `outside` is only reachable through the junction at all.
+      const parent = await makeCategory();
+      const malt = await makeCategory(parent.id);
+      const multivitamin = await makeCategory(parent.id);
+      const elsewhere = await makeCategory();
+      const title = 'خمیر مالت مولتی‌ویتامین گربه';
+      const inside = await ProductDao.create({
+        ...makeProduct(malt, { title, brand: 'Gimcat' }),
+        extraCategoryIds: [multivitamin.id],
+      });
+      const outside = await ProductDao.create({
+        ...makeProduct(elsewhere, { title, brand: 'Trixie' }),
+        extraCategoryIds: [malt.id],
+      });
+      // Under the parent but not matching the term, so a total of two is the
+      // search working rather than the whole family coming back.
+      await ProductDao.create(makeProduct(multivitamin));
+
+      const ids = (rows: { id: string }[]) => rows.map((row) => row.id).sort();
+      const expected = ids([inside, outside]);
+      const page = await ProductDao.list({
+        categorySlug: parent.slug,
+        search: 'خمیر مالت',
+      });
+      const admin = await ProductDao.pageForAdmin({
+        categorySlug: parent.slug,
+        search: 'خمیر مالت',
+      });
+
+      expect(ids(page.items)).toEqual(expected);
+      expect(page.total).toBe(2);
+      expect(ids(admin.items)).toEqual(expected);
+      expect(admin.total).toBe(2);
+    });
+
     it('narrows by price range and search together', async () => {
       const { category } = await makeSearchCatalog();
 
@@ -1409,6 +1953,122 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       await ProductDao.setImages(product.id, []);
 
       expect((await ProductDao.getBySlug(product.slug))?.images).toEqual([]);
+    });
+
+    // The race the gallery PUT loses: the route reads the product, an upload
+    // appends to it, and only then does the write run. The `DELETE` takes the
+    // appended row too, so a caller diffing against its own stale snapshot
+    // would keep that file with nothing referencing it — and the only sweep
+    // works from the rows, so nothing would ever collect it.
+    it('reports a row the caller never knew about as removed', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+      await ProductDao.setImages(product.id, ['uploads/known.jpg']);
+      await ProductDao.appendImage(product.id, 'uploads/raced-in.jpg', 5);
+
+      // The caller still believes the gallery is just the one photo.
+      const { removedKeys } = await ProductDao.setImages(product.id, [
+        'uploads/known.jpg',
+      ]);
+
+      expect(removedKeys).toEqual(['uploads/raced-in.jpg']);
+    });
+
+    it('reports nothing removed when the list is unchanged', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+      await ProductDao.setImages(product.id, ['uploads/a.jpg']);
+
+      const reordered = await ProductDao.setImages(product.id, [
+        'uploads/a.jpg',
+      ]);
+
+      // A reorder deletes nothing, however many rows it rewrites.
+      expect(reordered.removedKeys).toEqual([]);
+    });
+  });
+
+  describe('appendImage', () => {
+    it('adds one photo to the end and leaves the rest alone', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+      await ProductDao.setImages(product.id, [
+        'products/a.jpg',
+        'products/b.jpg',
+      ]);
+
+      const added = await ProductDao.appendImage(
+        product.id,
+        'uploads/c.jpg',
+        5,
+      );
+
+      expect(added?.sortOrder).toBe(2);
+      expect(
+        (await ProductDao.getBySlug(product.slug))?.images.map(
+          (image) => image.objectKey,
+        ),
+      ).toEqual(['products/a.jpg', 'products/b.jpg', 'uploads/c.jpg']);
+    });
+
+    it('refuses once the gallery is full, storing nothing', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+      await ProductDao.setImages(product.id, ['products/a.jpg']);
+
+      const refused = await ProductDao.appendImage(
+        product.id,
+        'uploads/b.jpg',
+        1,
+      );
+
+      expect(refused).toBeNull();
+      expect(
+        (await ProductDao.getBySlug(product.slug))?.images.map(
+          (image) => image.objectKey,
+        ),
+      ).toEqual(['products/a.jpg']);
+    });
+
+    it('refuses for a product that does not exist', async () => {
+      expect(
+        await ProductDao.appendImage(
+          '11111111-1111-4111-8111-111111111111',
+          'uploads/a.jpg',
+          5,
+        ),
+      ).toBeNull();
+    });
+
+    // The reason this method exists. An append built on `setImages` reads the
+    // current keys and writes the list back, so racers all read the same list
+    // and the last write wins — every loser's file then has no row, and the
+    // only deleter works out what to delete *from* the rows, so nothing will
+    // ever collect them. Serialized on the product row, the ceiling holds and
+    // every photo that was accepted is still there.
+    it('holds the ceiling when appends race, and loses no accepted photo', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+      const max = 5;
+
+      const results = await Promise.all(
+        Array.from({ length: 12 }, (_, index) =>
+          ProductDao.appendImage(product.id, `uploads/race-${index}.jpg`, max),
+        ),
+      );
+
+      const accepted = results.filter((image) => image !== null);
+      expect(accepted).toHaveLength(max);
+
+      const stored = (await ProductDao.getBySlug(product.slug))?.images ?? [];
+      expect(stored).toHaveLength(max);
+      // Every key the DAO said it stored is really there: an accepted append
+      // that a later racer overwrote would be a file with no row.
+      expect(new Set(stored.map((image) => image.objectKey))).toEqual(
+        new Set(accepted.map((image) => image.objectKey)),
+      );
+      // And no two photos claim the same position.
+      expect(new Set(stored.map((image) => image.sortOrder)).size).toBe(max);
     });
   });
 });

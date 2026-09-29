@@ -7,7 +7,10 @@
 //
 // **Nothing here may import drizzle, `pg` or `@hono/zod-openapi`** — the admin
 // form is a client component, so this stays plain zod, exactly like
-// `product-input.ts` and `checkout-input.ts` (see the notes there).
+// `product-input.ts` and `checkout-input.ts` (see the notes there). The
+// `DiscountCode` row is a TYPE import, which is erased; keeping the admin
+// projection here is what stops the discounts server page importing a value out
+// of a Hono route for one pure function.
 //
 // Money invariants the security pass will probe live here, not just in the UI:
 //   · A percent code is 1–100; a fixed code is a strictly-positive integer Toman.
@@ -19,6 +22,7 @@
 //     — the database owns the id and the timestamps, and only the atomic claim at
 //     checkout ever moves `usageCount`.
 import { z } from 'zod';
+import type { DiscountCode } from '@/db/schema/discounts';
 import { MAX_DISCOUNT_CODE } from '@/lib/checkout/checkout-input';
 
 export const DISCOUNT_TYPES = {
@@ -36,7 +40,7 @@ export const DISCOUNT_TYPE_VALUES = [
   DISCOUNT_TYPES.FIXED,
 ] as const;
 
-export const discountTypeSchema = z.enum(DISCOUNT_TYPE_VALUES);
+const discountTypeSchema = z.enum(DISCOUNT_TYPE_VALUES);
 
 /**
  * The canonical storage/lookup form of a code: trimmed and upper-cased, so
@@ -104,18 +108,22 @@ const expiresAtField = z
   .nullish()
   .transform((value) => (value ? new Date(value) : null));
 
-/** The fields every code carries, regardless of type. */
+/**
+ * The fields every code carries, regardless of type. Each number carries its
+ * message on the base `z.number()` too: the form sends `parseDigits`' NaN for
+ * text that is not a whole number, and zod's own answer to that is English.
+ */
 const sharedFields = {
   code: codeField,
   expiresAt: expiresAtField,
   usageLimit: z
-    .number()
+    .number({ error: MESSAGES.usageLimit })
     .int(MESSAGES.usageLimit)
     .positive(MESSAGES.usageLimit)
     .max(2_147_483_647, MESSAGES.usageLimit)
     .nullish(),
   minOrderAmount: z
-    .number()
+    .number({ error: MESSAGES.minOrder })
     .int(MESSAGES.minOrder)
     .nonnegative(MESSAGES.minOrder)
     .default(0),
@@ -134,7 +142,7 @@ export const discountCodeInputSchema = z.discriminatedUnion('type', [
     ...sharedFields,
     type: z.literal(DISCOUNT_TYPES.PERCENT),
     value: z
-      .number()
+      .number({ error: MESSAGES.percent })
       .int(MESSAGES.percent)
       .min(1, MESSAGES.percent)
       .max(100, MESSAGES.percent),
@@ -142,12 +150,54 @@ export const discountCodeInputSchema = z.discriminatedUnion('type', [
   z.object({
     ...sharedFields,
     type: z.literal(DISCOUNT_TYPES.FIXED),
-    value: z.number().int(MESSAGES.fixed).positive(MESSAGES.fixed),
+    value: z
+      .number({ error: MESSAGES.fixed })
+      .int(MESSAGES.fixed)
+      .positive(MESSAGES.fixed),
   }),
 ]);
 
-/** The validated create body — assignable to `DiscountCodeDao`'s input. */
-export type DiscountCodeInputBody = z.infer<typeof discountCodeInputSchema>;
-
 /** The toggle body — the only mutable field after creation (deactivate/reactivate). */
 export const discountCodeToggleSchema = z.object({ isActive: z.boolean() });
+
+/**
+ * The admin view of a discount code — the full row the panel shows, with the
+ * timestamps and expiry ISO-stringified for the client. `usageCount` is
+ * read-only here (the atomic claim owns it); it is shown so the admin sees
+ * remaining capacity.
+ *
+ * Defined here rather than in the route so the discounts server page can
+ * project rows without importing `@/lib/hono/routes/*` as a value.
+ * `src/lib/hono/routes/admin-discounts.ts` registers it under `DiscountCode`.
+ */
+export const discountCodeViewSchema = z.object({
+  id: z.uuid(),
+  code: z.string(),
+  type: discountTypeSchema,
+  value: z.number().int().positive(),
+  expiresAt: z.iso.datetime().nullable(),
+  usageLimit: z.number().int().positive().nullable(),
+  usageCount: z.number().int().nonnegative(),
+  minOrderAmount: z.number().int().nonnegative(),
+  isActive: z.boolean(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+/** The discount payload — what create/toggle return, and the admin list renders. */
+export type DiscountCodeView = z.infer<typeof discountCodeViewSchema>;
+
+/** Project a DAO row to the admin response — ISO the dates. */
+export const toDiscountView = (c: DiscountCode): DiscountCodeView => ({
+  id: c.id,
+  code: c.code,
+  type: c.type,
+  value: c.value,
+  expiresAt: c.expiresAt ? c.expiresAt.toISOString() : null,
+  usageLimit: c.usageLimit,
+  usageCount: c.usageCount,
+  minOrderAmount: c.minOrderAmount,
+  isActive: c.isActive,
+  createdAt: c.createdAt.toISOString(),
+  updatedAt: c.updatedAt.toISOString(),
+});

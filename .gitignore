@@ -34,8 +34,11 @@ yarn-error.log*
 # Playwright (`pnpm test:e2e`): reports, traces and the saved test sessions
 /test-results/
 /playwright-report/
+# Screenshots and snapshots the Playwright MCP browser tools write during manual QA.
+/.playwright-mcp/
 /e2e/.auth/
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.claude/settings.local.json

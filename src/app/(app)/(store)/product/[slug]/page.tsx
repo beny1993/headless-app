@@ -1,22 +1,29 @@
-import { cache } from 'react';
+import { cache, Fragment } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { AlertCircle, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
+import { JsonLd } from '@/components/json-ld';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
-import {
-  AVAILABILITY,
-  availability,
-} from '@/features/storefront/product/availability';
+import { availability } from '@/features/storefront/product/availability';
 import { ProductGallery } from '@/features/storefront/product/product-gallery';
 import { ProductPurchase } from '@/features/storefront/product/product-purchase';
+import {
+  productJsonLd,
+  productMetadata,
+} from '@/features/storefront/product/product-seo';
 import { ProductTabs } from '@/features/storefront/product/product-tabs';
-import { PET_LABELS } from '@/features/storefront/shop/shop-query';
-import { productSlugSchema } from '@/lib/catalog/product-query';
-import type { ProductWithImages } from '@/db/schema/catalog';
-import { PATHS, shopPath } from '@/lib/constant/paths';
-import { formatNumber, formatToman } from '@/lib/format';
+import { Spec } from '@/features/storefront/product/spec-row';
+import { StockNotice } from '@/features/storefront/product/stock-notice';
+import { VariantChips } from '@/features/storefront/product/variant-chips';
+import { SHOP_TITLE } from '@/features/storefront/shop/shop-metadata';
+import { formatPetTypes, productSlugSchema } from '@/lib/catalog/product-query';
+import { displayTitle } from '@/lib/catalog/variant';
+import type { ProductDetail } from '@/db/schema/catalog';
+import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
+import { formatToman } from '@/lib/format';
+import { breadcrumbJsonLd } from '@/lib/seo';
 
 /**
  * The product detail page, ported from `design/src/app/App.tsx`.
@@ -48,7 +55,7 @@ type Params = { params: Promise<{ slug: string }> };
  * cache is per-request, so it never serves one visitor's product to the next.
  */
 const findProduct = cache(
-  async (slug: string): Promise<ProductWithImages | null> => {
+  async (slug: string): Promise<ProductDetail | null> => {
     const parsed = productSlugSchema.safeParse(slug);
     return parsed.success ? ProductDao.getBySlug(parsed.data) : null;
   },
@@ -64,7 +71,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
   const product = await findProduct(slug);
 
-  return product ? { title: product.title } : {};
+  return product ? productMetadata(product) : {};
 }
 
 export default async function ProductDetailPage({ params }: Params) {
@@ -84,42 +91,85 @@ export default async function ProductDetailPage({ params }: Params) {
   // behind a restricting foreign key), but the lookup is still optional-typed
   // — the crumb is dropped rather than the page failing over a link.
   const category = categories.find((row) => row.id === product.categoryId);
+  // A sub-category's parent gets a crumb of its own, so the trail reads
+  // «فروشگاه › بهداشت › شامپو و نظافت». Optional-typed for the same reason.
+  const parentCategory = categories.find(
+    (row) => row.id === category?.parentId,
+  );
+  // Every category the product is filed under, main first, then the additional
+  // ones in the order the admin added them — the breadcrumb above still
+  // follows the main one alone. A category that has since vanished is simply
+  // dropped rather than failing the page over a link.
+  const filedUnder = [product.categoryId, ...product.extraCategoryIds].flatMap(
+    (id) => categories.filter((row) => row.id === id),
+  );
   const state = availability(product.stock);
+
+  // One trail for the nav and for its structured data, so the markup Google
+  // reads can never name a crumb the page does not show. The last crumb is
+  // this page, shown as text.
+  const trail: { name: string; path: string; umamiEvent?: string }[] = [
+    { name: 'خانه', path: PATHS.HOME },
+    { name: SHOP_TITLE, path: PATHS.SHOP },
+    ...(parentCategory
+      ? [
+          {
+            name: parentCategory.title,
+            path: shopPath({ category: parentCategory.slug }),
+            umamiEvent: 'product-breadcrumb-parent-category',
+          },
+        ]
+      : []),
+    ...(category
+      ? [
+          {
+            name: category.title,
+            path: shopPath({ category: category.slug }),
+            umamiEvent: 'product-breadcrumb-category',
+          },
+        ]
+      : []),
+    { name: displayTitle(product), path: productPath(product.slug) },
+  ];
 
   return (
     <main className="min-h-screen">
+      <JsonLd data={productJsonLd(product, category?.title)} />
+      <JsonLd data={breadcrumbJsonLd(trail)} />
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-8">
         <nav
           aria-label="مسیر صفحه"
           className="text-muted-foreground mb-8 flex flex-wrap items-center gap-2 text-sm"
         >
-          <Link href={PATHS.HOME} className="hover:text-foreground">
-            خانه
-          </Link>
-          <span aria-hidden="true">/</span>
-          <Link href={PATHS.SHOP} className="hover:text-foreground">
-            فروشگاه
-          </Link>
-          {category && (
-            <>
-              <span aria-hidden="true">/</span>
-              <Link
-                href={shopPath({ category: category.slug })}
-                className="hover:text-foreground"
-                data-umami-event="product-breadcrumb-category"
-              >
-                {category.title}
-              </Link>
-            </>
-          )}
-          <span aria-hidden="true">/</span>
-          <span className="text-foreground" aria-current="page">
-            {product.title}
-          </span>
+          {trail.map((crumb, index) => (
+            <Fragment key={crumb.path}>
+              {index > 0 && <span aria-hidden="true">/</span>}
+              {index < trail.length - 1 ? (
+                <Link
+                  href={crumb.path}
+                  className="hover:text-foreground"
+                  data-umami-event={crumb.umamiEvent}
+                >
+                  {crumb.name}
+                </Link>
+              ) : (
+                <span className="text-foreground" aria-current="page">
+                  {crumb.name}
+                </span>
+              )}
+            </Fragment>
+          ))}
         </nav>
 
         <div className="mb-16 grid grid-cols-1 gap-12 lg:grid-cols-2">
-          <ProductGallery images={product.images} title={product.title} />
+          {/* Keyed: without it React keeps the gallery's tree position across a
+              client-side move from one product page to another, and the photo
+              the visitor had selected on the last product opens on this one. */}
+          <ProductGallery
+            key={product.id}
+            images={product.images}
+            title={displayTitle(product)}
+          />
 
           <div className="flex flex-col">
             {product.brand && (
@@ -128,7 +178,7 @@ export default async function ProductDetailPage({ params }: Params) {
               </p>
             )}
             <h1 className="mb-3 text-3xl leading-tight font-black">
-              {product.title}
+              {displayTitle(product)}
             </h1>
             {product.benefit && (
               <p className="text-success-strong mb-4 flex items-center gap-1.5 text-sm">
@@ -136,6 +186,9 @@ export default async function ProductDetailPage({ params }: Params) {
                 {product.benefit}
               </p>
             )}
+
+            {/* Above the price, because picking a size changes it. */}
+            <VariantChips variants={product.variants} label="نوع" />
 
             <div className="nums mb-4 flex flex-wrap items-baseline gap-3">
               <span className="text-3xl font-black">
@@ -157,7 +210,9 @@ export default async function ProductDetailPage({ params }: Params) {
               line={{
                 productId: product.id,
                 slug: product.slug,
-                title: product.title,
+                // The same derivation the order snapshot uses, so the drawer,
+                // the checkout summary and the invoice all name one thing.
+                title: displayTitle(product),
                 sku: product.sku,
                 brand: product.brand ?? undefined,
                 unitPrice: product.price,
@@ -186,12 +241,36 @@ export default async function ProductDetailPage({ params }: Params) {
                 <dl className="max-w-3xl">
                   {product.brand && <Spec label="برند" value={product.brand} />}
                   <Spec label="کد کالا" value={product.sku} />
-                  {category && (
-                    <Spec label="دسته‌بندی" value={category.title} />
+                  {filedUnder.length > 0 && (
+                    <Spec
+                      label="دسته‌بندی"
+                      value={filedUnder.map((row, index) => (
+                        <span key={row.id} className="flex items-center">
+                          <Link
+                            href={shopPath({ category: row.slug })}
+                            className="hover:text-accent-strong hover:underline"
+                            data-umami-event="product-category-link"
+                          >
+                            {row.title}
+                          </Link>
+                          {/* The comma is content, so it is a real node —
+                              hiding it from a screen reader leaves the links
+                              announced as the separate items they are. It
+                              trails its own link, inside the same gap-less
+                              span: Persian punctuation hugs the word before
+                              it, and the `<dd>`'s gap is what separates the
+                              items. At a wrap it ends the line, which is
+                              where a separator belongs. */}
+                          {index < filedUnder.length - 1 && (
+                            <span aria-hidden="true">،</span>
+                          )}
+                        </span>
+                      ))}
+                    />
                   )}
                   <Spec
                     label="مناسب برای"
-                    value={PET_LABELS[product.petType]}
+                    value={formatPetTypes(product.petTypes)}
                   />
                 </dl>
               ),
@@ -200,64 +279,5 @@ export default async function ProductDetailPage({ params }: Params) {
         />
       </div>
     </main>
-  );
-}
-
-/**
- * The three states the design draws, and the reason `availability` exists: the
- * notice and the add button read the same stock through the same function, so
- * «ناموجود» can never appear above a live add button.
- */
-function StockNotice({
-  state,
-  stock,
-}: {
-  state: ReturnType<typeof availability>;
-  stock: number;
-}) {
-  if (state === AVAILABILITY.OUT_OF_STOCK) {
-    return (
-      <div className="bg-muted border-border flex items-start gap-2 rounded-xl border p-3">
-        <AlertCircle
-          size={16}
-          className="text-muted-foreground mt-0.5 shrink-0"
-          aria-hidden="true"
-        />
-        <div>
-          <p className="text-sm font-semibold">فعلاً ناموجود است</p>
-          <p className="text-muted-foreground mt-0.5 text-xs">
-            به‌محض شارژ موجودی دوباره اینجا قرار می‌گیرد.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (state === AVAILABILITY.LOW_STOCK) {
-    return (
-      <p className="text-warning flex items-center gap-1.5 text-sm">
-        <AlertCircle size={14} className="shrink-0" aria-hidden="true" />
-        <span>
-          تنها <span className="nums">{formatNumber(stock)}</span> عدد باقی
-          مانده
-        </span>
-      </p>
-    );
-  }
-
-  return (
-    <p className="text-success-strong flex items-center gap-1.5 text-sm">
-      <Check size={14} className="shrink-0" aria-hidden="true" />
-      موجود در انبار
-    </p>
-  );
-}
-
-function Spec({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border-border flex items-center justify-between gap-4 border-b py-3">
-      <dt className="text-muted-foreground font-medium">{label}</dt>
-      <dd className="font-semibold">{value}</dd>
-    </div>
   );
 }

@@ -6,12 +6,14 @@ import {
   formatNumber,
   formatToman,
   jalaliYearMonth,
+  parseDigits,
   toPersianDigits,
 } from '@/lib/format';
 
 // fa-IR emits U+2212 MINUS SIGN preceded by U+200E LTR MARK — both invisible in
-// an editor, so every negative expectation is written with explicit escapes.
-const MINUS = '‎−';
+// an editor, so the mark is constructed with `String.fromCharCode`, never typed,
+// per the project's control-character rule.
+const MINUS = String.fromCharCode(0x200e) + '−';
 // fa-IR groups with U+066C ARABIC THOUSANDS SEPARATOR, not a Latin comma.
 const SEP = '٬';
 
@@ -109,7 +111,7 @@ describe('formatToman', () => {
     expect(formatToman(-50000n)).toBe(`${MINUS}۵۰${SEP}۰۰۰ تومان`);
   });
 
-  it('never renders a negative zero — a zero discount is not «‎−۰»', () => {
+  it(`never renders a negative zero — a zero discount is not «${MINUS}۰»`, () => {
     expect(formatToman(-0)).toBe('۰ تومان');
   });
 
@@ -229,5 +231,76 @@ describe('formatJalaliYear', () => {
 
   it('defaults to now — the footer copyright has no date to pass', () => {
     expect(formatJalaliYear()).toMatch(/^[۰-۹]{4}$/);
+  });
+});
+
+describe('parseDigits', () => {
+  it('reads ASCII, Persian and Arabic-Indic digits', () => {
+    expect(parseDigits('1250')).toBe(1250);
+    expect(parseDigits('۱۲۵۰')).toBe(1250);
+    expect(parseDigits('١٢٥٠')).toBe(1250);
+    expect(parseDigits('۰')).toBe(0);
+  });
+
+  it('is undefined for empty or blank input', () => {
+    expect(parseDigits('')).toBeUndefined();
+    expect(parseDigits('   ')).toBeUndefined();
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(parseDigits('  ۴۲ ')).toBe(42);
+  });
+
+  it('drops Latin and Persian thousands separators', () => {
+    expect(parseDigits('1,250,000')).toBe(1_250_000);
+    expect(parseDigits('125,000')).toBe(125_000);
+    expect(parseDigits(`۱${SEP}۲۵۰${SEP}۰۰۰`)).toBe(1_250_000);
+  });
+
+  it('keeps a sign, so the schema can refuse it in its own words', () => {
+    expect(parseDigits('-5')).toBe(-5);
+    expect(parseDigits('-1,000')).toBe(-1000);
+  });
+
+  // A separator only counts where it groups thousands. Anywhere else the text is
+  // a typo or a decimal comma — read as another number, `7,5` in the discount
+  // form would create a 75% code.
+  it('is NaN for a separator that does not group thousands', () => {
+    for (const raw of [
+      '7,5',
+      '50,00',
+      '1,200,00',
+      '1,2345',
+      '12,',
+      ',12',
+      '1,,200',
+      '0,500',
+      `۷${SEP}۵`,
+    ]) {
+      expect(parseDigits(raw)).toBeNaN();
+    }
+  });
+
+  // Every field it feeds is whole Toman or a count, and `25.000` is ambiguous —
+  // 25, or 25,000 grouped with a dot — so a fraction is refused, never guessed.
+  it('is NaN for a fraction', () => {
+    for (const raw of ['25.000', '۲۵.۰۰۰', '1.5', '۱.۵', '1,200.5']) {
+      expect(parseDigits(raw)).toBeNaN();
+    }
+  });
+
+  it('is NaN for anything that is not a plain whole number', () => {
+    for (const raw of [
+      'abc',
+      '12abc',
+      '1e3',
+      '0x10',
+      'Infinity',
+      '1 000',
+      '.',
+      '-',
+    ]) {
+      expect(parseDigits(raw)).toBeNaN();
+    }
   });
 });

@@ -104,6 +104,11 @@ export const API_PATHS = {
   DOC: '/api/doc',
   REFERENCE: '/api/reference',
   HEALTH: '/api/health',
+  // Readiness, distinct from liveness: `/health` says the process is up,
+  // `/ready` says it can serve (Postgres reachable AND migrated). Coolify's
+  // container probe and Playwright's webServer poll this one, so the rate
+  // limiter exempts it — a throttled probe marks the container unhealthy.
+  READY: '/api/ready',
   CATEGORIES: '/api/categories',
   PRODUCTS: '/api/products',
   // Admin product CRUD. A dedicated `/admin/*` prefix, not `/products/*`, because
@@ -123,6 +128,10 @@ export const API_PATHS = {
   // guard; deliberately not under `/shipping/rates`, where a method-agnostic
   // guard would also 403 the public `GET /shipping/rates` checkout reads.
   ADMIN_PROVINCES: '/api/admin/provinces',
+  // One fee for every province at once (`PUT`). Under `/admin/*` for the same
+  // reason: the natural `PUT /shipping/rates` could only be guarded by a mount
+  // that also 401s the public `GET` on that path.
+  ADMIN_PROVINCES_FEE: '/api/admin/provinces/fee',
   // Admin storefront content — replace one block by key, and a shared image
   // upload. Same `/admin/*` guard. No public content GET: the storefront reads
   // through the DAO in server components, as the home page already does.
@@ -151,60 +160,25 @@ export const API_PATHS = {
   PAYMENT_MOCK_COMPLETE: '/api/payments/zarinpal/mock-complete',
 } as const;
 
-/** `/api/orders/{id}` — the OpenAPI template for the owner-scoped order read. */
-export const API_ORDER_DETAIL_TEMPLATE = `${API_PATHS.ORDERS}/{id}`;
-
-/** The owner-scoped order-detail path for one order. */
-export const apiOrderPath = (id: string) =>
-  `${API_PATHS.ORDERS}/${encodeURIComponent(id)}`;
-
-/** `/api/admin/orders/{id}` — the OpenAPI template for the admin order read. */
-export const API_ADMIN_ORDER_TEMPLATE = `${API_PATHS.ADMIN_ORDERS}/{id}`;
-
-/** The admin order-read path for one order, by id. */
-export const apiAdminOrderPath = (id: string) =>
-  `${API_PATHS.ADMIN_ORDERS}/${encodeURIComponent(id)}`;
-
-/** `/api/admin/orders/{id}/transitions` — the OpenAPI template for a status change. */
-export const API_ADMIN_ORDER_TRANSITIONS_TEMPLATE = `${API_PATHS.ADMIN_ORDERS}/{id}/transitions`;
-
 /** The admin status-transition path for one order, by id. */
 export const apiAdminOrderTransitionsPath = (id: string) =>
   `${API_PATHS.ADMIN_ORDERS}/${encodeURIComponent(id)}/transitions`;
-
-/** `/api/admin/discounts/{id}` — the OpenAPI template for the toggle route. */
-export const API_ADMIN_DISCOUNT_TEMPLATE = `${API_PATHS.ADMIN_DISCOUNTS}/{id}`;
 
 /** The admin toggle path for one discount code, by id. */
 export const apiAdminDiscountPath = (id: string) =>
   `${API_PATHS.ADMIN_DISCOUNTS}/${encodeURIComponent(id)}`;
 
-/** `/api/admin/provinces/{id}` — the OpenAPI template for the province toggle. */
-export const API_ADMIN_PROVINCE_TEMPLATE = `${API_PATHS.ADMIN_PROVINCES}/{id}`;
-
 /** The admin activate/deactivate path for one province, by id. */
 export const apiAdminProvincePath = (id: number) =>
   `${API_PATHS.ADMIN_PROVINCES}/${id}`;
-
-/** `/api/admin/content/{key}` — the OpenAPI template for the content block update. */
-export const API_ADMIN_CONTENT_TEMPLATE = `${API_PATHS.ADMIN_CONTENT}/{key}`;
 
 /** The content-block update path for one block, by key. */
 export const apiAdminContentPath = (key: string) =>
   `${API_PATHS.ADMIN_CONTENT}/${encodeURIComponent(key)}`;
 
-/** `/api/shipping/rates/{provinceId}` — the OpenAPI template for the admin update. */
-export const API_SHIPPING_RATE_TEMPLATE = `${API_PATHS.SHIPPING_RATES}/{provinceId}`;
-
 /** The admin rate-update path for one province. */
 export const apiShippingRatePath = (provinceId: number) =>
   `${API_PATHS.SHIPPING_RATES}/${provinceId}`;
-
-/** `/api/products/{slug}` — the OpenAPI template, as it appears in the doc. */
-export const API_PRODUCT_DETAIL_TEMPLATE = `${API_PATHS.PRODUCTS}/{slug}`;
-
-/** `/api/admin/products/{id}` — the OpenAPI template for the admin update/delete. */
-export const API_ADMIN_PRODUCT_TEMPLATE = `${API_PATHS.ADMIN_PRODUCTS}/{id}`;
 
 /** The admin update/delete path for one product, by id. */
 export const apiAdminProductPath = (id: string) =>
@@ -214,26 +188,13 @@ export const apiAdminProductPath = (id: string) =>
 export const apiAdminCategoryPath = (id: string) =>
   `${API_PATHS.ADMIN_CATEGORIES}/${encodeURIComponent(id)}`;
 
-/** `/api/admin/products/{id}/images` — the OpenAPI template for image upload. */
-export const API_ADMIN_PRODUCT_IMAGES_TEMPLATE = `${API_PATHS.ADMIN_PRODUCTS}/{id}/images`;
-
 /** The image-upload path for one product, by id. */
 export const apiAdminProductImagesPath = (id: string) =>
   `${API_PATHS.ADMIN_PRODUCTS}/${encodeURIComponent(id)}/images`;
 
-/** The storefront's product detail path for one product. */
-export const apiProductPath = (slug: string) =>
-  `${API_PATHS.PRODUCTS}/${encodeURIComponent(slug)}`;
-
-/** `/api/me/pets/{id}` — the OpenAPI template for the owner-scoped pet routes. */
-export const API_ME_PET_TEMPLATE = `${API_PATHS.ME_PETS}/{id}`;
-
 /** One of the caller's pets, by id (owner-scoped server-side). */
 export const apiMePetPath = (id: string) =>
   `${API_PATHS.ME_PETS}/${encodeURIComponent(id)}`;
-
-/** `/api/me/addresses/{id}` — the OpenAPI template for the owner-scoped address routes. */
-export const API_ME_ADDRESS_TEMPLATE = `${API_PATHS.ME_ADDRESSES}/{id}`;
 
 /** One of the caller's addresses, by id (owner-scoped server-side). */
 export const apiMeAddressPath = (id: string) =>

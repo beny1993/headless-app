@@ -5,15 +5,6 @@ import { db } from '@/db';
 import { ROLES, users, type Role, type User } from '@/db/schema/auth';
 
 export class UserDao {
-  static async findByEmail(email: string): Promise<User | null> {
-    const rows = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, email.toLowerCase()))
-      .limit(1);
-    return rows[0] ?? null;
-  }
-
   /**
    * Looks a customer up by phone number.
    *
@@ -51,10 +42,6 @@ export class UserDao {
       .from(users)
       .where(and(eq(users.role, ROLES.ADMIN), isNotNull(users.phoneNumber)))
       .orderBy(asc(users.createdAt))) as { id: string; phoneNumber: string }[];
-  }
-
-  static async list(): Promise<User[]> {
-    return db.select().from(users).orderBy(asc(users.createdAt));
   }
 
   /** Creates a customer unless an elevated role is asked for explicitly. */
