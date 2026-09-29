@@ -270,6 +270,27 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       expect(page.total).toBe(1);
     });
 
+    it('lists only what can be bought when asked for in-stock products', async () => {
+      const category = await makeCategory();
+      const inStock = await ProductDao.create(makeProduct(category));
+      const soldOut = await ProductDao.create(
+        makeProduct(category, { stock: 0 }),
+      );
+      const ids = (page: ProductListResponse) =>
+        page.items.map((row) => row.id).sort();
+
+      const only = await getData<ProductListResponse>(
+        `${API_PATHS.PRODUCTS}?category=${category.slug}&inStock=true`,
+      );
+      const off = await getData<ProductListResponse>(
+        `${API_PATHS.PRODUCTS}?category=${category.slug}&inStock=false`,
+      );
+
+      expect(ids(only)).toEqual([inStock.id]);
+      expect(only.total).toBe(1);
+      expect(ids(off)).toEqual([inStock.id, soldOut.id].sort());
+    });
+
     it('filters on an inclusive price range', async () => {
       const { category } = await makeSortableTrio();
 

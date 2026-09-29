@@ -154,6 +154,11 @@ type ProductFilters = {
   /** Inclusive, integer Toman. */
   maxPrice?: number;
   /**
+   * Only what can be bought: a family stays when any active member has stock,
+   * the same `familyInStock` the card's «ناموجود» badge and the sort read.
+   */
+  inStock?: boolean;
+  /**
    * A Persian search term as the shopper typed it — normalization happens
    * here, not in the caller, because the column it is matched against was
    * normalized by the same function on write. A term that normalizes to
@@ -339,8 +344,14 @@ export class ProductDao {
     // alone would both hide a card whose printed «از ۲۵۰٬۰۰۰» is in range and
     // keep one whose only affordable size was the member. For a standalone
     // product the family is the row itself, so this is the old behaviour.
+    // With a price bound, «in stock» is asked of the member in the window —
+    // one subquery, never a second `exists` another member could satisfy.
     if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
-      where.push(familyPriceWithin(filters.minPrice, filters.maxPrice));
+      where.push(
+        familyPriceWithin(filters.minPrice, filters.maxPrice, filters.inStock),
+      );
+    } else if (filters.inStock) {
+      where.push(familyInStock);
     }
     // `%>` rather than `word_similarity(…) >= x`: same meaning, but only the
     // operator reads the trigram index (`Bitmap Index Scan on

@@ -97,6 +97,7 @@ describe('shopMetadata', () => {
     ['a price range', { minPrice: '100000', maxPrice: '900000' }],
     ['a page size', { limit: '24' }],
     ['a sorted later page', { sort: PRODUCT_SORTS.PRICE_ASC, page: '2' }],
+    ['the in-stock-only switch', { inStock: 'true' }],
   ])(
     'keeps %s of a shelf out of the index, with no canonical to contradict it',
     (_, view) => {
@@ -111,6 +112,17 @@ describe('shopMetadata', () => {
       expect(metadata.description).toBe(purchaseSentence('غذای خشک'));
     },
   );
+
+  it('indexes a switched-off in-stock flag as the plain shelf it lists', () => {
+    // Off is the default, so the listing is the shelf's own and the canonical
+    // is the shelf — not a view to keep out of the index.
+    const metadata = metadataFor({ category: 'dry-food', inStock: 'false' });
+
+    expect(metadata).not.toHaveProperty('robots');
+    expect(metadata.alternates?.canonical).toBe(
+      absoluteUrl(shopPath({ category: 'dry-food' })),
+    );
+  });
 
   it('keeps a search out of the index, with no canonical', () => {
     const metadata = metadataFor({ q: 'غذا', category: 'dry-food' });

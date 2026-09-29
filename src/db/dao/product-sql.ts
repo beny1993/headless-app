@@ -129,11 +129,20 @@ export const familyMinPrice = sql<string>`(select min(fam.price) ${FAMILY_SCOPE}
  * ۱۸۵٬۰۰۰, which is how the old pair of comparisons put a card with nothing in
  * the window onto the shelf. Either bound may be absent; the caller only asks
  * when at least one is set.
+ *
+ * `inStock` joins the same subquery for the same reason: «a sold-out 5kg is in
+ * the window» and «the 10kg has stock» are two members, and the shopper who
+ * asked for both can buy neither.
  */
-export const familyPriceWithin = (min?: number, max?: number): SQL => {
+export const familyPriceWithin = (
+  min?: number,
+  max?: number,
+  inStock = false,
+): SQL => {
   const bounds: SQL[] = [];
   if (min !== undefined) bounds.push(sql`fam.price >= ${min}`);
   if (max !== undefined) bounds.push(sql`fam.price <= ${max}`);
+  if (inStock) bounds.push(sql`fam.stock > 0`);
   return sql`exists (select 1 ${FAMILY_SCOPE} and ${sql.join(bounds, sql` and `)})`;
 };
 

@@ -146,6 +146,13 @@ export const productListQueryShape = {
     .transform(stripNullBytes)
     .optional(),
   pet: z.enum([PET_TYPES.CAT, PET_TYPES.DOG]).optional(),
+  /**
+   * «فقط محصولات موجود»: only what a shopper can buy. `stringbool`, never
+   * `z.coerce.boolean()`, which reads every non-empty string — «false»
+   * included — as true; this takes `true`/`1` and `false`/`0` (and zod's other
+   * yes/no words) and refuses the rest.
+   */
+  inStock: z.stringbool().optional(),
   sort: z
     .enum([
       PRODUCT_SORTS.NEWEST,

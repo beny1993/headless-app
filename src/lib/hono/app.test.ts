@@ -61,6 +61,7 @@ describe('hono app', () => {
     );
     expect(names.sort()).toEqual([
       'category',
+      'inStock',
       'limit',
       'maxPrice',
       'minPrice',

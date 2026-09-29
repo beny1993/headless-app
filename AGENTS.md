@@ -246,7 +246,8 @@ hand, run at 1280px and again at 375px. Storefront: phone-OTP sign-in for a
 customer and an admin; home → shop → product → cart drawer (quantity, removal,
 empty state) and a sold-out product; the sort control stepped through all
 three orderings on the sold-out product's pet shelf, every in-stock card
-listed before any sold-out one; the home page's category mosaic with no
+listed before any sold-out one, and «فقط محصولات موجود» hiding it there
+until its chip is removed; the home page's category mosaic with no
 empty cell and its tall tiles two rows tall (three at 1280px, two at 375px); a
 both-pets product under either pet
 filter and under its sub-category's parent, reading «گربه و سگ» on its page —

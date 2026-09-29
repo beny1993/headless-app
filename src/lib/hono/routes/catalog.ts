@@ -126,6 +126,10 @@ const ProductListQuerySchema = z.object({
   pet: productListQueryShape.pet.meta({
     description: 'Restrict to one pet type.',
   }),
+  inStock: productListQueryShape.inStock.meta({
+    description:
+      'Only products that can be bought: a family counts when a member has stock, and with a price bound that member must be inside it. Case-insensitive `true`, `1`, `yes`, `on`, `y`, `enabled` turn it on; `false`, `0`, `no`, `off`, `n`, `disabled` or absence leave it off; anything else is a 400.',
+  }),
   sort: productListQueryShape.sort.meta({
     description:
       'Ordering, applied within in-stock products first and sold-out ones after. Defaults to newest first.',
@@ -291,12 +295,13 @@ export const productListRoute = createRoute({
 export const productListHandler: RouteHandler<typeof productListRoute> = async (
   c,
 ) => {
-  const { category, pet, sort, minPrice, maxPrice, page, limit, q } =
+  const { category, pet, inStock, sort, minPrice, maxPrice, page, limit, q } =
     c.req.valid('query');
 
   const { items, total } = await ProductDao.list({
     categorySlug: category,
     petType: pet,
+    inStock,
     minPrice,
     maxPrice,
     search: q,

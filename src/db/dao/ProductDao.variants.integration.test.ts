@@ -307,6 +307,77 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       expect(items.map((card) => card.id)).toEqual([head.id, soldOut.id]);
     });
 
+    it('keeps a family whose member is in stock under the in-stock filter, and drops the rest', async () => {
+      const category = await makeCategory();
+      const sellsThroughMember = await insert(category, {
+        stock: 0,
+        variantLabel: '۵ کیلوگرم',
+      });
+      await insert(category, {
+        stock: 7,
+        variantOf: sellsThroughMember.id,
+        variantLabel: '۱۰ کیلوگرم',
+      });
+      const soldOutFamily = await insert(category, {
+        stock: 0,
+        variantLabel: 'قرمز',
+      });
+      await insert(category, {
+        stock: 0,
+        variantOf: soldOutFamily.id,
+        variantLabel: 'آبی',
+      });
+      await insert(category, { stock: 0 });
+      const standalone = await insert(category, { stock: 3 });
+
+      const only = await ProductDao.list({
+        categorySlug: category.slug,
+        inStock: true,
+      });
+      const all = await ProductDao.list({
+        categorySlug: category.slug,
+        inStock: false,
+      });
+
+      expect(only.items.map((card) => card.id).sort()).toEqual(
+        [sellsThroughMember.id, standalone.id].sort(),
+      );
+      expect(only.total).toBe(2);
+      expect(all.total).toBe(4);
+    });
+
+    it('asks the price window and the in-stock filter of the same member', async () => {
+      // The sold-out 5kg is in the window and the 10kg has stock, but nothing
+      // a shopper can buy costs at most 200,000. Two separate checks over the
+      // family would each find a different member and list the card anyway.
+      const category = await makeCategory();
+      const head = await insert(category, {
+        price: 150_000,
+        stock: 0,
+        variantLabel: '۵ کیلوگرم',
+      });
+      await insert(category, {
+        price: 400_000,
+        stock: 5,
+        variantOf: head.id,
+        variantLabel: '۱۰ کیلوگرم',
+      });
+      const ids = async (filters: {
+        minPrice?: number;
+        maxPrice?: number;
+        inStock?: boolean;
+      }) =>
+        (
+          await ProductDao.list({ categorySlug: category.slug, ...filters })
+        ).items.map((card) => card.id);
+
+      expect(await ids({ maxPrice: 200_000, inStock: true })).toEqual([]);
+      expect(await ids({ maxPrice: 200_000 })).toEqual([head.id]);
+      expect(await ids({ minPrice: 300_000, inStock: true })).toEqual([
+        head.id,
+      ]);
+    });
+
     it('reports that a family has members even when the prices agree', async () => {
       const category = await makeCategory();
       const head = await insert(category, {

@@ -2,7 +2,7 @@
 
 import { useId, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Filter, X } from 'lucide-react';
+import { Check, Filter, X } from 'lucide-react';
 import {
   SHOP_PET_OPTIONS,
   buildShopHref,
@@ -21,7 +21,7 @@ export type ShopCategoryOption = {
 };
 
 /**
- * The shop's filter panel: category, pet type and price range.
+ * The shop's filter panel: category, in stock only, pet type and price range.
  *
  * Rendered twice (desktop sidebar, mobile sheet), so every id is namespaced
  * with `useId`.
@@ -119,6 +119,17 @@ export function ShopFilters({
         </ul>
       </fieldset>
 
+      <div className="border-border/70 mb-5 border-b pb-5">
+        <InStockSwitch
+          id={`${ids}-in-stock`}
+          checked={query.inStock === true}
+          // Off is «no filter», so it leaves the URL rather than writing false.
+          onToggle={(on) =>
+            go(updateShopQuery(query, { inStock: on || undefined }))
+          }
+        />
+      </div>
+
       <fieldset className="border-border/70 mb-5 border-b pb-5">
         <legend className="mb-2 text-sm font-semibold">نوع حیوان</legend>
         <div className="bg-secondary flex gap-1 rounded-xl p-1">
@@ -169,6 +180,15 @@ function ActiveFilters({
       clear: updateShopQuery(query, { category: undefined }),
     });
   }
+  // In the panel's own order — under «دسته‌بندی» — so the chips read the way
+  // the controls do.
+  if (query.inStock) {
+    chips.push({
+      key: 'inStock',
+      label: IN_STOCK_LABEL,
+      clear: updateShopQuery(query, { inStock: undefined }),
+    });
+  }
   if (query.pet !== undefined) {
     const pet = SHOP_PET_OPTIONS.find((option) => option.value === query.pet);
     chips.push({
@@ -201,6 +221,7 @@ function ActiveFilters({
           onClick={() =>
             onChange(
               updateShopQuery(query, {
+                inStock: undefined,
                 category: undefined,
                 pet: undefined,
                 minPrice: undefined,
@@ -231,6 +252,63 @@ function ActiveFilters({
         ))}
       </ul>
     </div>
+  );
+}
+
+/** The switch's words, and its chip's. */
+const IN_STOCK_LABEL = 'فقط محصولات موجود';
+
+/**
+ * «فقط محصولات موجود» — the category row's bones as a checkbox: an `sr-only`
+ * input whose 44px label is the target, its focus ring rebuilt on the label.
+ * The tick carries the state by shape as well as by fill.
+ */
+function InStockSwitch({
+  id,
+  checked,
+  onToggle,
+}: {
+  id: string;
+  checked: boolean;
+  onToggle: (on: boolean) => void;
+}) {
+  return (
+    <>
+      <input
+        type="checkbox"
+        id={id}
+        className="peer sr-only"
+        checked={checked}
+        onChange={(event) => onToggle(event.target.checked)}
+        data-umami-event="shop-filter-in-stock-toggle"
+      />
+      <label
+        htmlFor={id}
+        className={cn(
+          'flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl px-3 text-sm transition-colors duration-200 select-none',
+          'hover:bg-secondary motion-reduce:transition-none',
+          'peer-focus-visible:ring-accent-strong peer-focus-visible:ring-2',
+          checked
+            ? 'bg-accent-soft text-foreground font-semibold'
+            : 'text-muted-foreground',
+        )}
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            'flex size-4 shrink-0 items-center justify-center rounded border transition-colors duration-200 motion-reduce:transition-none',
+            checked
+              ? 'bg-accent-strong border-accent-strong text-white'
+              : // `muted-foreground`, not the `border` token: a lone box has no
+                // ticked neighbour to read against, so its edge needs 3:1.
+                'border-muted-foreground bg-background',
+          )}
+        >
+          {checked && <Check size={12} strokeWidth={3} />}
+        </span>
+        {IN_STOCK_LABEL}
+      </label>
+    </>
   );
 }
 
@@ -562,6 +640,7 @@ export function ShopFilterSheet({
 
   // One per `ActiveFilters` chip — price counts once, however many bounds.
   const activeCount = [
+    query.inStock || undefined,
     query.category,
     query.pet,
     query.minPrice ?? query.maxPrice,
