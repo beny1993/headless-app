@@ -466,6 +466,24 @@ describe('createSmsIrDriver', () => {
       expect(String(error).length).toBeLessThan(400);
     });
 
+    it('masks every digit run in SMS.ir’s reason, in any script', async () => {
+      // The reason is free text from outside, and this error goes to Sentry.
+      // A provider that echoes the number back must not carry it there — not
+      // whole, not a Persian-digit tail. The words stay: they are the diagnosis.
+      fetchMock.mockResolvedValueOnce(
+        reply(10, 400, 'شماره 09121234567 با پایان ۴۵۶۷ مجاز نیست'),
+      );
+
+      const error = await createSmsIrDriver()(PHONE, otpSms('482913')).catch(
+        (caught: Error) => caught,
+      );
+
+      const text = String(error);
+      expect(text).not.toContain('1234567');
+      expect(text).not.toContain('۴۵۶۷');
+      expect(text).toContain('مجاز نیست');
+    });
+
     it('rejects a body that is not SMS.ir’s envelope', async () => {
       // A proxy error page or an outage HTML body. Reporting success here
       // leaves the shopper waiting for an SMS that was never dispatched.
