@@ -80,11 +80,8 @@ export const MAX_OPEN_ORDERS = 5;
  * that, for both payment methods at once.
  *
  * 30/hour is far above any real shopper — and above the machines: the E2E
- * suite's single throwaway customer places 15 orders in one full run (13
- * through `placeOrder`/`completeCheckout` across both viewports, 2 in the
- * card-to-card content spec). Count them with
- * `grep -c 'checkout-submit-order' e2e/*.spec.ts e2e/support.ts`, and keep the
- * headroom if the suite grows.
+ * suite's single throwaway customer places about 15 orders a run (AGENTS.md,
+ * «Checkout is rate-capped per account»). Keep that headroom if the suite grows.
  *
  * Deliberately NOT status-aware: cancelling an order must not give the quota
  * back (see `OrderDao.countCreatedSince`). Only time does.
