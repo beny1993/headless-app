@@ -7,6 +7,7 @@ import { CategoryDao } from '@/db/dao/CategoryDao';
 import { categoryOptions } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
 import {
+  MAX_SEARCH_TERM_LENGTH,
   PET_EMOJI,
   PET_LABELS,
   PET_TYPE_VALUES,
@@ -87,6 +88,7 @@ export default async function AdminProductsPage({
             id="filter-q"
             name="q"
             type="search"
+            maxLength={MAX_SEARCH_TERM_LENGTH}
             defaultValue={filters.q ?? ''}
             placeholder="جستجو در نام، برند یا مزیت"
             className="border-border focus-visible:border-accent-strong h-11 w-full rounded-xl border bg-white px-4 text-sm outline-none"

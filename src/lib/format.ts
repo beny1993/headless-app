@@ -141,6 +141,47 @@ export function jalaliYearMonth(date: Date): { year: number; month: number } {
   return { year, month };
 }
 
+// The Jalali day of the month and the Tehran wall clock, Latin digits, for
+// {@link jalaliMonthStart}. `h23` so midnight reads `0`, never `24`.
+const jalaliDayAndClockParts = new Intl.DateTimeFormat(LOCALE, {
+  calendar: 'persian',
+  timeZone: TIME_ZONE,
+  numberingSystem: 'latn',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: 'numeric',
+  second: 'numeric',
+  hourCycle: 'h23',
+});
+
+/**
+ * The UTC instant the Jalali month containing `now` began: 00:00 Tehran on its
+ * 1st. Everything the month has seen so far is `>= jalaliMonthStart(now)`, so a
+ * DAO can take the one instant, since Postgres has no Persian calendar. It
+ * subtracts the Tehran day-of-month and wall clock `Intl` reports, which needs
+ * no reverse Jalali to Gregorian arithmetic.
+ *
+ * ponytail: assumes every Tehran day since the 1st was 24 hours long, true since
+ * Iran abolished DST in 2022. If a clock change ever returns, step back day by
+ * day with `jalaliYearMonth` instead.
+ */
+export function jalaliMonthStart(now: Date): Date {
+  const parts = jalaliDayAndClockParts.formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((p) => p.type === type)?.value);
+  const elapsedSeconds =
+    ((part('day') - 1) * 24 + part('hour')) * 3600 +
+    part('minute') * 60 +
+    part('second');
+  if (!Number.isInteger(elapsedSeconds)) {
+    throw new RangeError(`jalaliMonthStart: not a valid date: ${now}`);
+  }
+  // Tehran is a whole number of minutes off UTC, so the milliseconds agree.
+  return new Date(
+    now.getTime() - elapsedSeconds * 1000 - now.getUTCMilliseconds(),
+  );
+}
+
 const jalaliMonthName = new Intl.DateTimeFormat(LOCALE, {
   calendar: 'persian',
   timeZone: TIME_ZONE,

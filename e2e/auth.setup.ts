@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import { randomInt } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
 // The plain `test`, not the one in ./support: a run that waits out the send-otp
 // limit logs its 429s as console errors, by design.
 import { expect, test as setup, type Page } from '@playwright/test';
 import { otpEchoResponseSchema } from '@/lib/auth/otp-echo';
-import { ADMIN_STATE, CUSTOMER_STATE } from './support';
+import { ADMIN_STATE, CUSTOMER_PHONE, CUSTOMER_STATE } from './support';
 
 /**
  * A number nobody has used yet. Each run signs in new accounts, so the 90s
@@ -61,8 +62,11 @@ async function signIn(page: Page, phone: string, next: string) {
 
 setup('a new customer signs in with a phone OTP', async ({ page }) => {
   setup.setTimeout(3 * 60_000);
-  await signIn(page, freshPhone(), '/account');
+  const phone = freshPhone();
+  await signIn(page, phone, '/account');
   await page.context().storageState({ path: CUSTOMER_STATE });
+  // The admin users spec looks this customer up by the number they typed.
+  writeFileSync(CUSTOMER_PHONE, phone);
 });
 
 setup('an admin signs in with a phone OTP', async ({ page }) => {

@@ -14,7 +14,7 @@
 import { act, StrictMode } from 'react';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { UmamiTracker } from './umami-tracker';
+import { analyticsUrl, UmamiTracker } from './umami-tracker';
 
 const { script } = vi.hoisted(() => ({
   script: { props: {} as Record<string, unknown> },
@@ -42,7 +42,8 @@ const track = vi.fn<NonNullable<Window['umami']>['track']>(() => {
   titles.push(document.title);
 });
 /** Every payload sent so far, as the tracker would have built it. */
-const sent = () => track.mock.calls.map(([payload]) => payload(STALE));
+const sent = (stale: Record<string, unknown> = STALE) =>
+  track.mock.calls.map(([payload]) => payload(stale));
 
 const origin = () => window.location.origin;
 const moveTo = (path: string) => window.history.pushState(null, '', path);
@@ -273,5 +274,111 @@ describe('the Umami tracker', () => {
 
     // The landing pageview, and nothing else.
     expect(track).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The users search is a GET form, so an admin URL can carry a customer's phone
+// number (`?q=0912…`), and the Umami instance is shared by every project. An
+// admin URL goes out without its query; the storefront's are left alone.
+describe('the Umami tracker in the admin panel', () => {
+  const SEARCH = '/admin-panel/users?q=09121234567';
+  // Another admin search than the page's own, so a referrer taken from the
+  // wrong place (the page itself) cannot pass for the right one once stripped.
+  const adminStale = {
+    ...STALE,
+    referrer: `${origin()}/admin-panel/orders?q=09121234567`,
+  };
+
+  it('sends admin pageviews and their referrers without the query', () => {
+    moveTo(SEARCH);
+    const tracker = renderTracker();
+    tracker.load();
+    tracker.navigate('/admin-panel/users/abc123');
+    wait(PAGEVIEW_WAIT_MS);
+
+    expect(sent(adminStale)).toEqual([
+      // The landing page, referred by the tracker's own `document.referrer`.
+      {
+        ...adminStale,
+        url: `${origin()}/admin-panel/users`,
+        referrer: `${origin()}/admin-panel/orders`,
+      },
+      {
+        ...adminStale,
+        url: `${origin()}/admin-panel/users/abc123`,
+        referrer: `${origin()}/admin-panel/users`,
+      },
+    ]);
+    expect(JSON.stringify(sent(adminStale))).not.toContain('0912');
+  });
+
+  it('sends an admin click without the query', () => {
+    moveTo(SEARCH);
+    const tracker = renderTracker();
+    tracker.load();
+
+    clickAndReadPrevented(trackedLink('admin-panel-users-view'));
+
+    expect(sent(adminStale).slice(1)).toEqual([
+      {
+        ...adminStale,
+        url: `${origin()}/admin-panel/users`,
+        name: 'admin-panel-users-view',
+        referrer: `${origin()}/admin-panel/orders`,
+      },
+    ]);
+  });
+
+  it('still counts each admin URL, query changes included', () => {
+    moveTo('/admin-panel/orders');
+    const tracker = renderTracker();
+    tracker.load();
+    tracker.navigate('/admin-panel/orders?page=2');
+    wait(PAGEVIEW_WAIT_MS);
+
+    expect(sent().map((payload) => payload.url)).toEqual([
+      `${origin()}/admin-panel/orders`,
+      `${origin()}/admin-panel/orders`,
+    ]);
+  });
+
+  it('leaves a storefront search, and its referrer, as they are', () => {
+    const shopSearch = `${origin()}/shop?q=%DA%AF%D8%B1%D8%A8%D9%87`;
+    moveTo('/shop?q=%DA%AF%D8%B1%D8%A8%D9%87');
+    const tracker = renderTracker();
+    tracker.load();
+    clickAndReadPrevented(trackedLink('shop-search-submit'));
+
+    const stale = { ...STALE, referrer: shopSearch };
+    expect(sent(stale)).toEqual([
+      { ...stale, url: shopSearch },
+      { ...stale, url: shopSearch, name: 'shop-search-submit' },
+    ]);
+  });
+});
+
+describe('analyticsUrl', () => {
+  it.each([
+    ['/admin-panel?page=2', '/admin-panel'],
+    ['/admin-panel/users?q=0912#top', '/admin-panel/users#top'],
+    ['/admin-panel/users/abc', '/admin-panel/users/abc'],
+  ])('strips the query from our admin URL %s', (path, expected) => {
+    expect(analyticsUrl(`${origin()}${path}`)).toBe(`${origin()}${expected}`);
+  });
+
+  it.each([
+    [`/shop?q=0912`],
+    [`/admin-panel-archive?q=0912`],
+    [`/admin-panelx?q=0912`],
+  ])('leaves %s alone', (path) => {
+    expect(analyticsUrl(`${origin()}${path}`)).toBe(`${origin()}${path}`);
+  });
+
+  it.each([
+    ['another site', 'https://example.test/admin-panel?q=1'],
+    ['something that is not a URL', 'not a url'],
+    ['blank', ''],
+  ])('leaves %s alone', (_label, url) => {
+    expect(analyticsUrl(url)).toBe(url);
   });
 });

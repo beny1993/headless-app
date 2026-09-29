@@ -2,10 +2,10 @@ import { requireAdmin } from '@/lib/auth/session';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { z } from 'zod';
 import { toLocalIranPhone } from '@/lib/auth/phone';
-import { PROTECTED_PATHS } from '@/lib/constant/paths';
+import { adminUserPath, PROTECTED_PATHS } from '@/lib/constant/paths';
 import { formatJalali, formatToman, toPersianDigits } from '@/lib/format';
 import { PAYMENT_METHOD_LABELS } from '@/lib/orders/order-status';
 import {
@@ -141,6 +141,16 @@ export default async function AdminOrderDetailPage({
             <p className="text-muted-foreground nums text-sm" dir="ltr">
               {toPersianDigits(toLocalIranPhone(order.recipientPhone))}
             </p>
+            {/* The card shows the delivery recipient, who may not be the
+                account holder, so the link names the orderer's account. */}
+            <Link
+              href={adminUserPath(order.userId)}
+              data-umami-event="admin-panel-order-customer-view"
+              className="text-accent-strong mt-3 inline-flex items-center gap-1 text-sm font-medium underline"
+            >
+              مشاهده حساب سفارش‌دهنده
+              <ChevronLeft size={14} aria-hidden="true" />
+            </Link>
           </section>
 
           <section className="border-border rounded-2xl border bg-white p-5">
