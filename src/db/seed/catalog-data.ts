@@ -274,17 +274,20 @@ export const SEED_PRODUCTS: SeedProduct[] = [
   // Benyamin's own example of one product in several smells: «our litter box
   // deodorant has different kinds of smells». The three rows below are one card
   // in the shop — the head is listed, the members are reached from its page.
-  // «بدون بو» is cheaper on purpose, so the card exercises «از ۱۴۹٬۰۰۰ تومان»
-  // rather than a plain price.
+  // «لاوندر», the head, is sold out and the cheapest on purpose (his follow-up:
+  // one colour sold out, the others not). The card then exercises both rules
+  // at once: it prints «از ۱۴۹٬۰۰۰ تومان», the cheapest smell a shopper can
+  // buy, never the sold-out ۱۳۹٬۰۰۰, and it opens «بدون بو», not a page with
+  // nothing to add to the cart.
   {
     title: 'خوشبوکننده خاک گربه',
     slug: 'catsan-litter-deodorizer-lavender',
     sku: 'CS-DEO-LAVENDER',
     brand: 'Catsan',
     benefit: 'کنترل بو تا ۷ روز',
-    price: 185_000,
+    price: 139_000,
     oldPrice: null,
-    stock: 18,
+    stock: 0,
     categorySlug: 'hygiene',
     petTypes: [PET_TYPES.CAT],
     // No new downloads, as with the shampoo above.

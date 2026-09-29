@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Check, ShoppingBag } from 'lucide-react';
 import { AddToCartButton } from './add-to-cart-button';
+import { cardPrice } from './card-price';
 import type { ProductCard as ProductCardRow } from '@/db/schema/catalog';
 import { productPath } from '@/lib/constant/paths';
 import { displayTitle } from '@/lib/catalog/variant';
@@ -46,6 +47,10 @@ export function ProductCard({
   // from the grid would pick a smell or a size nobody asked for. True even when
   // the prices agree, which is why it is its own fact and not `familyPricesVary`.
   const mustChoose = product.familyHasMembers;
+  // The head, unless it is sold out and another colour is not — tapping the
+  // card must not land the shopper on a page they cannot buy from.
+  const opens = productPath(product.familyOpenSlug);
+  const { price, oldPrice } = cardPrice(product);
 
   return (
     <article className="group bg-card relative overflow-hidden rounded-2xl transition-[transform,box-shadow] duration-300 group-data-[view=list]/results:flex group-data-[view=list]/results:items-stretch hover:-translate-y-1 hover:shadow-lg">
@@ -84,7 +89,7 @@ export function ProductCard({
           <span className="bg-muted text-muted-foreground absolute end-3 top-3 rounded-full px-2 py-0.5 text-xs font-medium">
             ناموجود
           </span>
-        ) : product.oldPrice && !product.familyPricesVary ? (
+        ) : oldPrice ? (
           <span className="bg-accent-strong absolute end-3 top-3 rounded-full px-2 py-0.5 text-xs font-medium text-white">
             تخفیف
           </span>
@@ -97,7 +102,7 @@ export function ProductCard({
         )}
         <h3 className="text-foreground mb-2 line-clamp-2 text-sm leading-relaxed font-semibold">
           <Link
-            href={productPath(product.slug)}
+            href={opens}
             // Stretches the link's hit area over the whole card without
             // wrapping the add button in an anchor.
             className="after:absolute after:inset-0"
@@ -127,17 +132,17 @@ export function ProductCard({
                   {/* A real space, not just the margin: without it the text
                       content reads «از۱۴۹٬۰۰۰» to a screen reader and to
                       anyone who copies the line. */}{' '}
-                  {formatToman(product.familyMinPrice)}
+                  {formatToman(price)}
                 </>
               ) : (
-                formatToman(product.price)
+                formatToman(price)
               )}
             </p>
             {/* A struck-through «was» price under an «از …» would be claiming a
                 discount on a price the card is not even showing. */}
-            {product.oldPrice && !product.familyPricesVary && (
+            {oldPrice && (
               <p className="text-muted-foreground text-xs line-through">
-                {formatToman(product.oldPrice)}
+                {formatToman(oldPrice)}
               </p>
             )}
           </div>
@@ -147,7 +152,7 @@ export function ProductCard({
             // overlay so it reads as its own control to a screen reader, and
             // it names the product for the same reason.
             <Link
-              href={productPath(product.slug)}
+              href={opens}
               className="bg-secondary text-foreground hover:bg-secondary/80 relative z-10 inline-flex min-h-11 shrink-0 items-center rounded-xl px-4 text-sm font-medium transition-colors"
               data-umami-event="product-card-choose"
             >

@@ -88,3 +88,48 @@ describe('database exception privacy', () => {
     );
   });
 });
+
+// The users search is a GET form: `?q=` on an admin URL can be a customer's
+// phone or name, and the SDK sends the page URL whole — `urlQueryParams: false`
+// only drops the separate `query_string`.
+describe('admin query string privacy', () => {
+  const SEARCH = 'https://shop.example/admin-panel/users?q=09121234567';
+
+  async function captureWith(url: string, breadcrumbUrl: string) {
+    Sentry.getIsolationScope().clearBreadcrumbs();
+    Sentry.addBreadcrumb({
+      category: 'navigation',
+      data: { from: breadcrumbUrl, to: '/admin-panel/users/abc' },
+    });
+    Sentry.addBreadcrumb({
+      category: 'fetch',
+      data: { method: 'GET', url: `${breadcrumbUrl}&_rsc=1` },
+    });
+    captured = undefined;
+    Sentry.captureEvent({
+      message: 'Render failed',
+      request: { url, headers: { Referer: url } },
+    });
+    await Sentry.flush(2000);
+    expect(captured).toBeDefined();
+    return captured!;
+  }
+
+  it('sends no admin query in the request URL, its Referer or a breadcrumb', async () => {
+    const event = await captureWith(SEARCH, '/admin-panel/users?q=09121234567');
+
+    expect(event).not.toContain('0912');
+    expect(event).toContain('https://shop.example/admin-panel/users');
+    expect(event).toContain('/admin-panel/users/abc');
+  });
+
+  it('leaves a storefront URL and its query as they are', async () => {
+    const event = await captureWith(
+      'https://shop.example/shop?q=royal',
+      '/shop?q=royal',
+    );
+
+    expect(event).toContain('https://shop.example/shop?q=royal');
+    expect(event).toContain('/shop?q=royal&_rsc=1');
+  });
+});

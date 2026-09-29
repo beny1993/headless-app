@@ -25,6 +25,7 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import { db, type Executor } from '@/db';
+import { escapeLike } from '@/db/dao/like-pattern';
 import {
   DEFAULT_PRODUCT_PAGE_SIZE,
   PRODUCT_SORTS,
@@ -39,6 +40,7 @@ import {
   familyHasMembers,
   familyInStock,
   familyMinPrice,
+  familyOpenSlug,
   familyPriceWithin,
   familyPricesVary,
   inCategoryScope,
@@ -154,6 +156,11 @@ type ProductFilters = {
   /** Inclusive, integer Toman. */
   maxPrice?: number;
   /**
+   * Only what can be bought: a family stays when any active member has stock,
+   * the same `familyInStock` the card's «ناموجود» badge and the sort read.
+   */
+  inStock?: boolean;
+  /**
    * A Persian search term as the shopper typed it — normalization happens
    * here, not in the caller, because the column it is matched against was
    * normalized by the same function on write. A term that normalizes to
@@ -195,6 +202,7 @@ type ProductCardRow = Product & {
   familyPricesVary: boolean;
   familyInStock: boolean;
   familyHasMembers: boolean;
+  familyOpenSlug: string;
 };
 
 /**
@@ -294,6 +302,7 @@ export class ProductDao {
         familyPricesVary,
         familyInStock,
         familyHasMembers,
+        familyOpenSlug,
       })
       .from(products)
       .where(where);
@@ -335,12 +344,18 @@ export class ProductDao {
     // Compared against undefined, not truthiness: a `minPrice` of 0 is a real
     // bound, even if the price check makes it a no-op.
     // Asked of the family, not of the head's own price: a family belongs on the
-    // shelf when **one member** is inside the window. Filtering on the head
+    // shelf when a member **whose price the card prints** is inside the window
+    // — an in-stock one, or any when nothing is in stock. Filtering on the head
     // alone would both hide a card whose printed «از ۲۵۰٬۰۰۰» is in range and
-    // keep one whose only affordable size was the member. For a standalone
-    // product the family is the row itself, so this is the old behaviour.
+    // keep one whose only affordable size was the member. With the in-stock
+    // filter on, the priced members are the in-stock ones, so the two filters
+    // are asked of the same member. For a standalone product the family is the
+    // row itself.
     if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
       where.push(familyPriceWithin(filters.minPrice, filters.maxPrice));
+    }
+    if (filters.inStock) {
+      where.push(familyInStock);
     }
     // `%>` rather than `word_similarity(…) >= x`: same meaning, but only the
     // operator reads the trigram index (`Bitmap Index Scan on
@@ -436,7 +451,7 @@ export class ProductDao {
     // same way the column was written, so Arabic vs. Persian yeh/kaf still match.
     const search = filters.search ? normalizeSearchText(filters.search) : '';
     if (search) {
-      where.push(ilike(products.searchText, `%${search}%`));
+      where.push(ilike(products.searchText, `%${escapeLike(search)}%`));
     }
     return where.length > 0 ? and(...where) : undefined;
   }

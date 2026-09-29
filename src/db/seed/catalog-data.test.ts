@@ -87,11 +87,15 @@ describe('catalog seed data', () => {
     // e2e/support.ts reduces this list to the best-stocked product and finds
     // the sold-out and the low-stock one. An appended row that out-stocked the
     // first, or added a second sold-out one, would move three specs onto a
-    // different product without changing a line of them.
+    // different product without changing a line of them. «The sold-out one» is
+    // the standalone one: the family head is sold out too, on purpose, and the
+    // fixtures skip family rows.
     const best = SEED_PRODUCTS.reduce((a, b) => (b.stock > a.stock ? b : a));
 
     expect(best.sku).toBe('AP-CAT-TREAT-60');
-    expect(SEED_PRODUCTS.filter((p) => p.stock === 0)).toHaveLength(1);
+    expect(
+      SEED_PRODUCTS.filter((p) => p.stock === 0 && !p.variantLabel),
+    ).toHaveLength(1);
     expect(
       SEED_PRODUCTS.filter(
         (p) => p.stock > 1 && p.stock <= LOW_STOCK_THRESHOLD,
@@ -249,6 +253,23 @@ describe('the seeded product family', () => {
     );
     const prices = new Set(family.map((product) => product.price));
     expect(prices.size).toBeGreaterThan(1);
+  });
+
+  it('sells out the head and prices it lowest, so the card has to look past it', () => {
+    // The E2E family walk proves the card prints the cheapest price a shopper
+    // can buy at and opens a member in stock. Both are vacuous unless the head
+    // is sold out and cheaper than every member still on the shelf, and at
+    // least two of those differ in price so the card still reads «از …».
+    const head = SEED_PRODUCTS.find((product) =>
+      members.some((member) => member.variantOfSku === product.sku),
+    )!;
+    const buyable = members.filter((member) => member.stock > 0);
+
+    expect(head.stock).toBe(0);
+    expect(buyable.every((member) => member.price > head.price)).toBe(true);
+    expect(new Set(buyable.map((member) => member.price)).size).toBeGreaterThan(
+      1,
+    );
   });
 
   it('files every member where its head is', () => {

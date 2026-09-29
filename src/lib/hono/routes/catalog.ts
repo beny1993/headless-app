@@ -48,23 +48,30 @@ const CategorySchema = z
   .openapi('Category');
 
 /**
- * A listing row: the product plus what its whole family costs and whether any
+ * A listing row: the product plus what its family can be bought for and whether any
  * of it is in stock. A client rendering a grid needs these to print «از …» and
  * to grey out a card; a standalone product reports its own price, no variation
  * and its own stock, so a consumer that ignores families still reads the truth.
  */
 const ProductCardSchema = ProductSchema.safeExtend({
-  familyMinPrice: z.number().int().positive(),
+  familyMinPrice: z.number().int().positive().meta({
+    description:
+      'The price to print on the card, integer Toman: the cheapest member a shopper can buy, or the cheapest active member when nothing is in stock. Print this, not `price` — a sold-out head is not a price anyone can buy at.',
+  }),
   familyPricesVary: z.boolean(),
   familyInStock: z.boolean(),
   familyHasMembers: z.boolean(),
+  familyOpenSlug: z.string().meta({
+    description:
+      'The slug the card opens: the head while it has stock, else the cheapest member in stock, else the head.',
+  }),
 }).openapi('ProductCard');
 
 /**
  * One chip on the product page: which sibling it is, what it costs and whether
  * it can be bought. The price is on the chip because the card advertises the
- * family's cheapest — «از ۱۴۹٬۰۰۰» — and the page it links to has to say which
- * member that is.
+ * family's cheapest buyable price — «از ۱۴۹٬۰۰۰» — and the page it links to has
+ * to say which member that is.
  */
 const VariantChipSchema = z
   .object({
@@ -126,8 +133,13 @@ const ProductListQuerySchema = z.object({
   pet: productListQueryShape.pet.meta({
     description: 'Restrict to one pet type.',
   }),
+  inStock: productListQueryShape.inStock.meta({
+    description:
+      'Only products that can be bought: a family counts when a member has stock, and with a price bound that member must be inside it. Case-insensitive `true`, `1`, `yes`, `on`, `y`, `enabled` turn it on; `false`, `0`, `no`, `off`, `n`, `disabled` or absence leave it off; anything else is a 400.',
+  }),
   sort: productListQueryShape.sort.meta({
-    description: 'Ordering. Defaults to newest first.',
+    description:
+      'Ordering, applied within in-stock products first and sold-out ones after. Defaults to newest first.',
   }),
   minPrice: productListQueryShape.minPrice.meta({
     description: 'Inclusive lower bound, integer Toman.',
@@ -216,13 +228,14 @@ const toProductResponse = (row: ProductWithImages): ProductResponse => ({
   })),
 });
 
-/** A listing row: the product, plus the three facts about its family. */
+/** A listing row: the product, plus the facts about its family. */
 const toProductCardResponse = (row: ProductCard): ProductCardResponse => ({
   ...toProductResponse(row),
   familyMinPrice: row.familyMinPrice,
   familyPricesVary: row.familyPricesVary,
   familyInStock: row.familyInStock,
   familyHasMembers: row.familyHasMembers,
+  familyOpenSlug: row.familyOpenSlug,
 });
 
 /** The detail payload: the product, plus its family's chips. */
@@ -290,12 +303,13 @@ export const productListRoute = createRoute({
 export const productListHandler: RouteHandler<typeof productListRoute> = async (
   c,
 ) => {
-  const { category, pet, sort, minPrice, maxPrice, page, limit, q } =
+  const { category, pet, inStock, sort, minPrice, maxPrice, page, limit, q } =
     c.req.valid('query');
 
   const { items, total } = await ProductDao.list({
     categorySlug: category,
     petType: pet,
+    inStock,
     minPrice,
     maxPrice,
     search: q,

@@ -76,6 +76,8 @@ export const PROTECTED_PATHS = {
    *  segment, so Next resolves it ahead of the sibling `products/[id]` route. */
   CATEGORIES: '/admin-panel/products/categories',
   ORDERS: '/admin-panel/orders',
+  /** Every account, admins and customers alike — «کاربران» in the sidebar. */
+  USERS: '/admin-panel/users',
   /** The discount-code manager — «کدهای تخفیف» in the sidebar. */
   DISCOUNTS: '/admin-panel/discounts',
   /** The shipping-rate editor — «نرخ ارسال» in the sidebar. */
@@ -99,6 +101,10 @@ export const adminEditProductPath = (id: string) =>
 /** The admin order-detail page for one order, by uuid id. */
 export const adminOrderPath = (id: string) =>
   `${PROTECTED_PATHS.ORDERS}/${encodeURIComponent(id)}`;
+
+/** The admin user-detail page for one account, by its text id (not a uuid). */
+export const adminUserPath = (id: string) =>
+  `${PROTECTED_PATHS.USERS}/${encodeURIComponent(id)}`;
 
 export const API_PATHS = {
   DOC: '/api/doc',

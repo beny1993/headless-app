@@ -611,6 +611,51 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
         expect(page.total).toBe(0);
       }
     });
+
+    it('lists every in-stock product before any sold-out one, under every sort', async () => {
+      // The two sold-out products are the newest, the cheapest and the
+      // dearest, so each sort on its own would lead with one of them. Within
+      // each half the chosen sort still decides.
+      const category = await makeCategory();
+      const at = (day: number) => new Date(Date.UTC(2026, 0, day));
+      const insert = (values: Partial<NewProduct>) =>
+        testDb
+          .insert(products)
+          .values({ ...makeProduct(category), ...values })
+          .returning()
+          .then(([row]) => row);
+      const [inStockOld, inStockNew, soldOutCheap, soldOutDear] =
+        await Promise.all([
+          insert({ price: 100_000, createdAt: at(1) }),
+          insert({ price: 200_000, createdAt: at(2) }),
+          insert({ price: 50_000, stock: 0, createdAt: at(3) }),
+          insert({ price: 300_000, stock: 0, createdAt: at(4) }),
+        ]);
+
+      const idsFor = async (sort: 'newest' | 'price-asc' | 'price-desc') =>
+        (
+          await ProductDao.list({ categorySlug: category.slug, sort })
+        ).items.map((row) => row.id);
+
+      expect(await idsFor('newest')).toEqual([
+        inStockNew.id,
+        inStockOld.id,
+        soldOutDear.id,
+        soldOutCheap.id,
+      ]);
+      expect(await idsFor('price-asc')).toEqual([
+        inStockOld.id,
+        inStockNew.id,
+        soldOutCheap.id,
+        soldOutDear.id,
+      ]);
+      expect(await idsFor('price-desc')).toEqual([
+        inStockNew.id,
+        inStockOld.id,
+        soldOutDear.id,
+        soldOutCheap.id,
+      ]);
+    });
   });
 
   describe('getBySlug', () => {
@@ -812,6 +857,22 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       expect(inactiveOnly.total).toBe(1);
       expect(activeOnly.items.map((row) => row.id)).toEqual([active.id]);
       expect(activeOnly.total).toBe(1);
+    });
+
+    it('searches `%`, `_` and `\\` as themselves, never as wildcards', async () => {
+      const category = await makeCategory();
+      const marked = await ProductDao.create(
+        makeProduct(category, { title: 'قلاده ۵۰%_تخفیف \\ ویژه' }),
+      );
+      await ProductDao.create(makeProduct(category));
+      const ids = async (search: string) =>
+        (
+          await ProductDao.pageForAdmin({ categorySlug: category.slug, search })
+        ).items.map((row) => row.id);
+
+      expect(await ids('%')).toEqual([marked.id]);
+      expect(await ids('_')).toEqual([marked.id]);
+      expect(await ids('\\')).toEqual([marked.id]);
     });
   });
 

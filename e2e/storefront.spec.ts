@@ -1,4 +1,7 @@
-import { formatPetTypes } from '@/lib/catalog/product-query';
+import {
+  MAX_PRODUCT_PAGE_SIZE,
+  formatPetTypes,
+} from '@/lib/catalog/product-query';
 import type { Page } from '@playwright/test';
 import { PET_TYPES } from '@/db/schema/catalog';
 import { HOME_CATEGORY_TILES } from '@/lib/catalog/category-tree';
@@ -9,6 +12,11 @@ import {
 } from '@/db/seed/catalog-data';
 import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
+import {
+  DEFAULT_SHOP_QUERY,
+  SHOP_SORT_OPTIONS,
+  buildShopHref,
+} from '@/features/storefront/shop/shop-query';
 import {
   GALLERY_PRODUCT,
   IN_STOCK_PRODUCT,
@@ -38,7 +46,7 @@ if (!bothPets || !multiCategory) {
 if (!catOnly || !dogOnly) {
   throw new Error('The catalog seed needs a cat-only and a dog-only row.');
 }
-/** The seeded family: the head, the members that point at it, the cheapest. */
+/** The seeded family: the head and the members that point at it. */
 const familyMembers = SEED_PRODUCTS.filter((product) => product.variantOfSku);
 const familyHead = SEED_PRODUCTS.find((product) =>
   familyMembers.some((member) => member.variantOfSku === product.sku),
@@ -46,18 +54,48 @@ const familyHead = SEED_PRODUCTS.find((product) =>
 if (!familyHead || familyMembers.length === 0) {
   throw new Error('The catalog seed needs one product family.');
 }
-/** Head included: the «از …» price is the whole family's minimum. */
-const cheapest = [familyHead, ...familyMembers].reduce((best, product) =>
+/**
+ * What the card prints and opens: the cheapest member a shopper can buy, and
+ * another one in stock to walk to. The seed sells the head out and prices it
+ * lowest, so a card printing the family's overall minimum, or opening the
+ * head, fails below.
+ */
+const buyable = familyMembers.filter((member) => member.stock > 0);
+const cheapest = buyable.reduce((best, product) =>
   product.price < best.price ? product : best,
 );
-if (cheapest.price === familyHead.price) {
-  throw new Error('The family seed must price a member below its head.');
+const sibling = buyable.find((member) => member !== cheapest);
+if (familyHead.stock !== 0 || familyHead.price >= cheapest.price || !sibling) {
+  throw new Error(
+    'The family seed must sell out its head, price it lowest, and keep two members in stock.',
+  );
 }
 
 const mainCategory = subOf(multiCategory.categorySlug);
 const grooming = subOf(bothPets.categorySlug);
 if (!mainCategory || !grooming) {
   throw new Error('Both seeded products should sit in a sub-category.');
+}
+
+/**
+ * The seeded sold-out product, and the cheapest listed in-stock product of its
+ * pet that costs more. Capped there, its pet's shelf has a card a shopper can
+ * buy priced above it, so the cheapest-first sort alone would list it ahead
+ * of that card.
+ */
+const soldOut = SEED_PRODUCTS.find(
+  (product) => product.stock === 0 && !product.variantLabel,
+);
+const dearerInStock = SEED_PRODUCTS.filter(
+  (product) =>
+    soldOut &&
+    product.stock > 0 &&
+    !product.variantOfSku &&
+    product.petTypes.includes(soldOut.petTypes[0]) &&
+    product.price > soldOut.price,
+).sort((a, b) => a.price - b.price)[0];
+if (!soldOut || !dearerInStock) {
+  throw new Error('The seed needs an in-stock product dearer than sold-out.');
 }
 
 /** What the storefront calls a category, top-level or sub. */
@@ -88,8 +126,8 @@ test('a shopper browses from home to a product and into the cart', async ({
   );
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-  // The first card can be the sold-out product, so the cart is exercised on
-  // one that always has stock.
+  // The cart is exercised on the best-stocked product, which no run's orders
+  // ever empty — the first card may be a family, which has no add button.
   await page.goto(IN_STOCK_PRODUCT);
   const title = await page.getByRole('heading', { level: 1 }).innerText();
   await page.locator('[data-umami-event="product-add-to-cart"]').click();
@@ -234,6 +272,42 @@ test('a sold-out product cannot go in the cart', async ({ page }) => {
   ).toHaveCount(0);
 });
 
+test('every sort lists the products in stock before the sold-out ones', async ({
+  page,
+}) => {
+  await page.goto(
+    buildShopHref({
+      ...DEFAULT_SHOP_QUERY,
+      pet: soldOut.petTypes[0],
+      maxPrice: dearerInStock.price,
+      limit: MAX_PRODUCT_PAGE_SIZE,
+    }),
+  );
+  const sort = page.locator('[data-umami-event="shop-sort-change"]');
+  const cards = page
+    .locator('article')
+    .filter({ has: page.locator('[data-umami-event="product-card-open"]') });
+
+  for (const { value } of SHOP_SORT_OPTIONS) {
+    if (value !== DEFAULT_SHOP_QUERY.sort) {
+      await sort.selectOption(value);
+      await expect(page).toHaveURL(
+        (url) => url.searchParams.get('sort') === value,
+      );
+    }
+    // Both kinds are on the page, so the order below says something.
+    await expect(cardsFor(page, soldOut.title)).toBeVisible();
+    await expect(cardsFor(page, dearerInStock.title)).toBeVisible();
+    // The card's «ناموجود» badge, in page order: every false before any true.
+    const soldOutInOrder = await cards.evaluateAll((articles) =>
+      articles.map((article) => article.textContent?.includes('ناموجود')),
+    );
+    expect(soldOutInOrder).toEqual(
+      [...soldOutInOrder].sort((a, b) => Number(a) - Number(b)),
+    );
+  }
+});
+
 test('a product family is one card, and its page picks the member', async ({
   page,
 }) => {
@@ -245,9 +319,9 @@ test('a product family is one card, and its page picks the member', async ({
   const cards = cardsFor(page, familyHead.title);
   await expect(cards).toHaveCount(1);
 
-  // «از ۱۴۹٬۰۰۰ تومان» — the family's cheapest, not the head's own price. The
-  // seed prices «بدون بو» below the other two precisely so this is not a
-  // tautology: printing `familyHead.price` here would fail.
+  // «از ۱۴۹٬۰۰۰ تومان» — the cheapest smell a shopper can buy. The head is
+  // sold out and cheaper still, so printing the family's overall minimum —
+  // or the head's own price — would fail here.
   const card = page.locator('article', { has: cards });
   await expect(card).toContainText(`از ${formatNumber(cheapest.price)}`);
   await expect(card).not.toContainText(formatNumber(familyHead.price));
@@ -259,22 +333,28 @@ test('a product family is one card, and its page picks the member', async ({
   ).toHaveCount(0);
   await card.locator('[data-umami-event="product-card-choose"]').click();
 
-  // The head's own page: heading is title + label, and every member is a chip.
+  // Not the sold-out head's page: the member whose price the card printed.
+  // Heading is title + label, and every other member is a chip — the head's
+  // saying it is sold out.
+  await expect(page).toHaveURL(new RegExp(`${cheapest.slug}$`));
   await expect(
     page.getByRole('heading', {
       level: 1,
-      name: `${familyHead.title} — ${familyHead.variantLabel}`,
+      name: `${cheapest.title} — ${cheapest.variantLabel}`,
     }),
   ).toBeVisible();
   const chips = page.locator('[data-umami-event="product-variant-open"]');
   await expect(chips).toHaveCount(familyMembers.length);
+  await expect(
+    chips.filter({ hasText: familyHead.variantLabel! }),
+  ).toContainText('ناموجود');
 
   // Picking a sibling is ordinary navigation to that member's own slug — swapped
   // in place, from where the shopper was. Scrolled past the page's top first:
   // only then does Next's default throw the page back up, which is what read as
   // a reload. (This run blanks Umami, so its full reload on a tracked link is
   // pinned by src/app/layout.test.ts and umami-tracker.test.tsx, not here.)
-  const chip = chips.filter({ hasText: cheapest.variantLabel! });
+  const chip = chips.filter({ hasText: sibling.variantLabel! });
   await chip.evaluate((element) =>
     window.scrollTo(
       0,
@@ -290,26 +370,24 @@ test('a product family is one card, and its page picks the member', async ({
       .evaluate((element) => element.getBoundingClientRect().top),
   ).toBeLessThan(0);
   await chip.click();
-  await expect(page).toHaveURL(new RegExp(`${cheapest.slug}$`));
+  await expect(page).toHaveURL(new RegExp(`${sibling.slug}$`));
   await expect(
     page.getByRole('heading', {
       level: 1,
-      name: `${cheapest.title} — ${cheapest.variantLabel}`,
+      name: `${sibling.title} — ${sibling.variantLabel}`,
     }),
   ).toBeVisible();
   const after = await page.evaluate(() => window.scrollY);
   expect(Math.abs(after - scrolled)).toBeLessThanOrEqual(40);
   // Its own price, not the family's «از …» — this is a single product now.
-  await expect(page.locator('main')).toContainText(
-    formatNumber(cheapest.price),
-  );
+  await expect(page.locator('main')).toContainText(formatNumber(sibling.price));
 
   // The line a shopper ends up buying names the member, because the cart title
   // and the order snapshot come from the same derivation.
   await page.locator('[data-umami-event="product-add-to-cart"]').click();
   const drawer = page.getByRole('dialog', { name: 'سبد خرید' });
   await expect(drawer).toContainText(
-    `${cheapest.title} — ${cheapest.variantLabel}`,
+    `${sibling.title} — ${sibling.variantLabel}`,
   );
   await drawer.locator('[data-umami-event="cart-line-remove"]').click();
 });

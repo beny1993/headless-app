@@ -11,8 +11,16 @@
 // Months are bucketed by *Jalali* month via Intl (format.ts), never by Gregorian
 // month — a Gregorian bucket straddles two Jalali months and would mislabel the
 // chart. No date dependency.
+//
+// «مشتریان جدید این ماه» is UserDao's customers-only count from 00:00 Tehran on
+// this Jalali month's 1st, the same call the admin users page makes.
 import { OrderDao } from '@/db/dao/OrderDao';
-import { formatJalaliMonth, jalaliYearMonth } from '@/lib/format';
+import { UserDao } from '@/db/dao/UserDao';
+import {
+  formatJalaliMonth,
+  jalaliMonthStart,
+  jalaliYearMonth,
+} from '@/lib/format';
 import { ORDER_STATUSES } from '@/lib/orders/order-status';
 
 /** One month's bar on the dashboard charts. `key` is `year*12 + (month-1)`. */
@@ -29,6 +37,8 @@ export type DashboardStats = {
   paidOrderCount: number;
   averageOrderValue: number;
   awaitingProcessing: number;
+  /** Customers (not admins) who joined in the current Jalali month. */
+  newCustomersThisMonth: number;
 };
 
 type DashboardReport = {
@@ -96,18 +106,21 @@ export function bucketRevenueByJalaliMonth(
 }
 
 /**
- * The whole dashboard read: the six-month revenue/order-count series plus the
- * all-time top-line stats. `now` is injectable so the bucketing is testable.
+ * The whole dashboard read: the six-month revenue/order-count series, the
+ * all-time top-line stats and this month's new customers. `now` is injectable
+ * so the bucketing is testable.
  */
 export async function buildDashboardReport(
   now: Date = new Date(),
 ): Promise<DashboardReport> {
   const cutoff = new Date(now.getTime() - WINDOW_DAYS * DAY_MS);
-  const [rows, summary, awaitingProcessing] = await Promise.all([
-    OrderDao.revenueOrdersSince(cutoff),
-    OrderDao.revenueSummary(),
-    OrderDao.countByStatus(ORDER_STATUSES.PAID),
-  ]);
+  const [rows, summary, awaitingProcessing, newCustomersThisMonth] =
+    await Promise.all([
+      OrderDao.revenueOrdersSince(cutoff),
+      OrderDao.revenueSummary(),
+      OrderDao.countByStatus(ORDER_STATUSES.PAID),
+      UserDao.countCustomers(jalaliMonthStart(now)),
+    ]);
 
   const averageOrderValue =
     summary.orderCount > 0
@@ -121,6 +134,7 @@ export async function buildDashboardReport(
       paidOrderCount: summary.orderCount,
       averageOrderValue,
       awaitingProcessing,
+      newCustomersThisMonth,
     },
   };
 }

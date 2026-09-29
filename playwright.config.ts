@@ -4,6 +4,7 @@
 // `DOTENV_CONFIG_PATH=<checkout>/.env pnpm test:e2e`.
 import './scripts/load-env';
 import { defineConfig } from '@playwright/test';
+import { z } from 'zod';
 
 import { API_PATHS } from './src/lib/constant/paths';
 
@@ -11,7 +12,17 @@ import { API_PATHS } from './src/lib/constant/paths';
 // possibly from another checkout on another branch, and nothing about a reused
 // server says which code it runs. Better Auth trusts only the origin in
 // NEXT_PUBLIC_APP_URL, so the server below is handed this URL as well.
-const PORT = 3100;
+//
+// :3100 unless `E2E_PORT` says otherwise: two worktrees running the suite at
+// once each need their own, or the second stops at «already used» — or, worse,
+// one's cleanup takes the other's server down mid-run (2026-09-29).
+const PORT = z.coerce
+  .number()
+  .int()
+  .min(1024)
+  .max(65535)
+  .default(3100)
+  .parse(process.env.E2E_PORT);
 const baseURL = `http://localhost:${PORT}`;
 
 export default defineConfig({

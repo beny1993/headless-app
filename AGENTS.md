@@ -244,7 +244,10 @@ covered by their pure modules' unit tests plus browser verification.
 `pnpm test:e2e` (Playwright, `e2e/`) is the regression walk QA used to do by
 hand, run at 1280px and again at 375px. Storefront: phone-OTP sign-in for a
 customer and an admin; home → shop → product → cart drawer (quantity, removal,
-empty state) and a sold-out product; the home page's category mosaic with no
+empty state) and a sold-out product; the sort control stepped through all
+three orderings on the sold-out product's pet shelf, every in-stock card
+listed before any sold-out one, and «فقط محصولات موجود» hiding it there
+until its chip is removed; the home page's category mosaic with no
 empty cell and its tall tiles two rows tall (three at 1280px, two at 375px); a
 both-pets product under either pet
 filter and under its sub-category's parent, reading «گربه و سگ» on its page —
@@ -255,8 +258,10 @@ names; a product
 in two categories listed once under that parent and once under each of its own,
 its breadcrumb naming parent then sub-category and both its categories linked
 in the spec row; a product family listed as **one** card reading «از …» with
-the cheapest member's price and an «انتخاب» link in place of the add button,
-its page headed title — label, its chips carrying the shopper to a sibling's
+the cheapest **in-stock** member's price (its head is seeded sold out and
+cheaper) and an «انتخاب» link in place of the add button that opens that
+member rather than the sold-out head, its page headed title — label, the
+head's chip reading «ناموجود», its chips carrying the shopper to a sibling's
 own slug and the cart line naming that member; checkout by card to card — Jalali date and `format.ts`-formatted numbers
 on the result page, the order in `/account` — and through the mock Zarinpal
 gateway (paid, and failed → retry → paid). Admin: anonymous visitors and
@@ -301,7 +306,14 @@ into the opposite order — by mouse at 1280px, by a finger through Chrome's own
 touch input at 375px, where the grip's `touch-none` is all that keeps the drag
 from turning into a scroll — the grip's row marked while the gesture runs and
 none after, the arrow keys leaving focus on the grip that moved, then listed
-so by the reopened editor and led with by the strip. For search engines: `sitemap.xml` listing a seeded
+so by the reopened editor and led with by the strip; the users area — its two
+customer counts formatted, the new-this-month one read again, the same, off the
+dashboard's tile, the run's customer on the first page, a search by the number
+they typed (`0999…`, stored `+98…`) listing exactly their row, their account
+page, with the sidebar's «کاربران» lit on both, opening one of their orders,
+whose «مشاهده حساب سفارش‌دهنده» leads back to that same account — and
+anonymous visitors and customers turned away from the list and a detail page.
+For search engines: `sitemap.xml` listing a seeded
 product, a family member and their shelves by the URL each page names as its
 canonical; a product page's `Product` JSON-LD priced in Rial and its
 breadcrumb, both in the HTML the server sends; the home page's canonical,
@@ -336,7 +348,9 @@ tracker loaded and check it still swaps the page in place — and anything
 visual (RTL layout, Persian font rendering).
 
 - **It starts its own server**: `next dev` on :3100, never a running :3000 —
-  that one may be another checkout on another branch. Before it: migrate,
+  that one may be another checkout on another branch. Worktrees running the
+  suite at the same time each pick their own with `E2E_PORT=3101 pnpm test:e2e`
+  (validated in `playwright.config.ts`; :3100 when unset). Before it: migrate,
   `seed-catalog` and `seed-shipping`, all idempotent (the seed also puts back
   the stock the specs spend). `webServer.env` pins console SMS with the code on
   the login page, mock Zarinpal switched on (`APP_CONFIG_ZARINPAL_ENABLED`,
@@ -347,14 +361,21 @@ visual (RTL layout, Persian font rendering).
   already running" — stop that server, or run the suite from a worktree.
 - **A worktree has no `.env`**:
   `DOTENV_CONFIG_PATH=<main checkout>/.env pnpm test:e2e`.
+- **Stop only the server you started (Benyamin, 2026-09-29).** A QA or cleanup
+  step ends a dev server by the PID it launched (or `lsof -ti :<its port>`),
+  never by pattern — `pkill -f next-server` also kills every other worktree's
+  server, and on 2026-09-29 it took down a parallel session's E2E run mid-suite.
 - **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
   customer and a fresh admin (`pnpm create-admin`) in through the real login
-  page and saves their sessions; specs opt in with `test.use({ storageState })`
-  (`e2e/support.ts`). send-otp allows 3 a minute for the whole machine, so a run
-  started within a minute of the last one waits about a minute.
+  page and saves their sessions, plus the customer's number
+  (`customerPhone()`, for the users spec); specs opt in with
+  `test.use({ storageState })` (`e2e/support.ts`). send-otp allows 3 a minute
+  for the whole machine, so a run started within a minute of the last one
+  waits about a minute.
 - **What a run leaves in the dev database:** two throwaway `0999…` accounts, a
-  few orders, one inactive `e2e-…` product (it is given three photos and has two
-  of them removed again, so one file stays under `uploads/`)
+  few orders (the users spec places one card-to-card order per width, to walk
+  from the account to it), one inactive `e2e-…` product (it is given three
+  photos and has two of them removed again, so one file stays under `uploads/`)
   filed under a seeded sub-category and a seeded second category — seeded, and
   never one the spec made, because the junction's restricting foreign key would
   pin that category for good — one switched-off `E2E…` discount code and one
@@ -373,7 +394,7 @@ visual (RTL layout, Persian font rendering).
   own fee back (through the API, all attempted before any failure is reported), the province spec switches its province
   off, and the catalog spec switches its product off (through the API), even when they fail.
 - **Leaked active test products break shelf pagination.** Shelves list
-  newest-first, 12 a page, so a stray active `test-…`/`e2e-…` product pushes a
+  in-stock products first, then newest-first, 12 a page, so a stray active `test-…`/`e2e-…` product pushes a
   seeded one to a later page and a spec that looks for it on page one fails.
   The seed's sweep switches off any not updated for an hour.
 - **Leaked top-level test categories crowd the home strip.** It shows the

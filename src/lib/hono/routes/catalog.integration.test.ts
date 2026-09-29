@@ -270,6 +270,27 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       expect(page.total).toBe(1);
     });
 
+    it('lists only what can be bought when asked for in-stock products', async () => {
+      const category = await makeCategory();
+      const inStock = await ProductDao.create(makeProduct(category));
+      const soldOut = await ProductDao.create(
+        makeProduct(category, { stock: 0 }),
+      );
+      const ids = (page: ProductListResponse) =>
+        page.items.map((row) => row.id).sort();
+
+      const only = await getData<ProductListResponse>(
+        `${API_PATHS.PRODUCTS}?category=${category.slug}&inStock=true`,
+      );
+      const off = await getData<ProductListResponse>(
+        `${API_PATHS.PRODUCTS}?category=${category.slug}&inStock=false`,
+      );
+
+      expect(ids(only)).toEqual([inStock.id]);
+      expect(only.total).toBe(1);
+      expect(ids(off)).toEqual([inStock.id, soldOut.id].sort());
+    });
+
     it('filters on an inclusive price range', async () => {
       const { category } = await makeSortableTrio();
 
@@ -317,8 +338,11 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       expect(page.total).toBe(1);
       const [card] = page.items;
       expect(card.id).toBe(head.id);
-      expect(card.familyMinPrice).toBe(149_000);
-      expect(card.familyPricesVary).toBe(true);
+      // The sold-out 149,000 is not a price anyone can buy at, so the card
+      // prints the head's own, with no «از» in front of it — and opens the head.
+      expect(card.familyMinPrice).toBe(185_000);
+      expect(card.familyPricesVary).toBe(false);
+      expect(card.familyOpenSlug).toBe(head.slug);
       expect(card.familyHasMembers).toBe(true);
       // The head has stock even though the cheap member does not.
       expect(card.familyInStock).toBe(true);
@@ -521,8 +545,8 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       );
 
       // Each chip names its sibling, prices it and says whether it can be
-      // bought — the card advertises «از ۱۴۹٬۰۰۰» and this is what tells the
-      // shopper which member that is.
+      // bought — the card advertises only what can be, and this is what tells
+      // the shopper which member is which.
       expect(detail.variants.map((chip) => chip.label)).toEqual([
         'لاوندر',
         'بدون بو',

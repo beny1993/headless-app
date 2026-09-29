@@ -7,9 +7,14 @@
 // the behaviours below only ever went wrong inside the sheet.
 import type { Page } from '@playwright/test';
 import { SEED_CATEGORIES, SEED_PRODUCTS } from '@/db/seed/catalog-data';
+import {
+  DEFAULT_SHOP_QUERY,
+  buildShopHref,
+} from '@/features/storefront/shop/shop-query';
+import { MAX_PRODUCT_PAGE_SIZE } from '@/lib/catalog/product-query';
 import { shopPath } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
-import { expect, test } from './support';
+import { SOLD_OUT_PRODUCT, expect, test } from './support';
 
 /** A seeded top-level category with products in it — never restated here. */
 const category = SEED_CATEGORIES.find((row) =>
@@ -17,6 +22,14 @@ const category = SEED_CATEGORIES.find((row) =>
 );
 if (!category) {
   throw new Error('The catalog seed files no product in a top-level category.');
+}
+
+/** The seeded sold-out product, whose own pet shelf the switch is tried on. */
+const soldOut = SEED_PRODUCTS.find(
+  (product) => product.stock === 0 && !product.variantLabel,
+);
+if (!soldOut) {
+  throw new Error('The catalog seed needs a sold-out product.');
 }
 
 /**
@@ -157,4 +170,48 @@ test('a price bound below the catalogue never shows a negative price', async ({
   // number on the storefront.
   expect(printed).toContain(formatNumber(low));
   expect(printed).toContain(formatNumber(high));
+});
+
+test('«فقط محصولات موجود» hides what cannot be bought, and its chip brings it back', async ({
+  page,
+}) => {
+  // Its pet's shelf, a page wide enough that the sold-out card — listed last
+  // since #107 — is on it before the switch hides it.
+  await page.goto(
+    buildShopHref({
+      ...DEFAULT_SHOP_QUERY,
+      pet: soldOut.petTypes[0],
+      limit: MAX_PRODUCT_PAGE_SIZE,
+    }),
+  );
+  const everything = await resultCount(page).innerText();
+  const soldOutCard = page.locator(
+    `[data-umami-event="product-card-open"][href="${SOLD_OUT_PRODUCT}"]`,
+  );
+  await expect(soldOutCard).toHaveCount(1);
+
+  await openFilters(page);
+  // The box is `sr-only`; a shopper clicks its label, so this does too.
+  await page
+    .locator('label:visible')
+    .filter({ hasText: /^فقط محصولات موجود$/ })
+    .click();
+
+  await expect(page).toHaveURL(/inStock=true/);
+  await expect(soldOutCard).toHaveCount(0);
+  await expect(resultCount(page)).not.toHaveText(everything);
+
+  await openFilters(page);
+  const box = control(page, 'shop-filter-in-stock-toggle');
+  await expect(box).toBeChecked();
+  await control(page, 'shop-filter-chip-remove')
+    .filter({ hasText: 'فقط محصولات موجود' })
+    .click();
+
+  await expect(page).not.toHaveURL(/inStock=/);
+  await expect(soldOutCard).toHaveCount(1);
+  await expect(resultCount(page)).toHaveText(everything);
+  // The box follows the URL back — the panel stays mounted across the change.
+  await openFilters(page);
+  await expect(box).not.toBeChecked();
 });

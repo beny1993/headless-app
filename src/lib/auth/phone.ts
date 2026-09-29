@@ -30,8 +30,12 @@ import { normalizeSearchText } from '@/lib/catalog/search-text';
  */
 const WRITABLE_PHONE = /^\+?[0-9۰-۹٠-٩ ()-]+$/;
 
-/** Separators, once the allowlist above has vouched for the whole string. */
-const SEPARATORS = /[ ()-]/g;
+/**
+ * The separators a number is written with (`0912 123 4567`, `(0912)-123`),
+ * stripped once the allowlist above has vouched for the whole string. Shared
+ * with the admin users search, so a grouped partial reads as the same number.
+ */
+export const SEPARATORS = /[ ()-]/g;
 
 /**
  * Longer than any legal way of writing one of these numbers
