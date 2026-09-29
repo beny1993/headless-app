@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { blankableText, boundedText } from '@/lib/validation/text';
 import { toAsciiDigits, toPersianDigits } from '@/lib/format';
 import { imageKeySchema } from '@/lib/storage/image-upload';
+import { HOME_CATEGORY_TILES } from '@/lib/catalog/category-tree';
 import { LINK_MESSAGES, linkSchema } from './link';
 
 /** One row per editable block. Fixed set — the structure lives in code, only the
@@ -89,23 +90,27 @@ const card = z.object({
   image: imageKeySchema,
   link,
 });
+// A picked list of 1–`max` distinct category ids, in the order they show. Unset
+// (never `[]`) means the section's code categories. The message spells its bound
+// in Persian digits, never an ASCII numeral.
+const categoryIds = (max: number) => {
+  const message = `یک تا ${toPersianDigits(max)} دسته‌بندی متفاوت انتخاب کن.`;
+  return z
+    .array(z.uuid(LINK_MESSAGES.category))
+    .min(1, { error: message })
+    .max(max, { error: message })
+    .refine((ids) => new Set(ids).size === ids.length, { error: message })
+    .optional();
+};
 // A «روتین روزانه» tab's two labels. Its emoji + category slugs are the same-index
 // entry in `ROUTINE_TARGETS`; a saved `categoryIds` (1–4 distinct ids) replaces the
-// slugs. The message spells its bound in Persian digits, never an ASCII numeral.
+// slugs.
 /** A routine tab's category tiles at most; the editor's picker stops there too. */
 export const MAX_ROUTINE_CATEGORIES = 4;
-const ROUTINE_CATEGORIES_MESSAGE = `یک تا ${toPersianDigits(MAX_ROUTINE_CATEGORIES)} دسته‌بندی متفاوت انتخاب کن.`;
 const routineSlot = z.object({
   label: t(30),
   sub: t(30),
-  categoryIds: z
-    .array(z.uuid(LINK_MESSAGES.category))
-    .min(1, { error: ROUTINE_CATEGORIES_MESSAGE })
-    .max(MAX_ROUTINE_CATEGORIES, { error: ROUTINE_CATEGORIES_MESSAGE })
-    .refine((ids) => new Set(ids).size === ids.length, {
-      error: ROUTINE_CATEGORIES_MESSAGE,
-    })
-    .optional(),
+  categoryIds: categoryIds(MAX_ROUTINE_CATEGORIES),
 });
 /**
  * The «انتخاب‌های اسموکی» grid's cards — one row on desktop — and so the most
@@ -287,6 +292,9 @@ export const CONTENT_SCHEMAS = {
     // The «همه دسته‌بندی‌ها» link label and destination (unset: the bare shop).
     cta: t(40),
     ctaLink: link,
+    // The main categories the strip shows first, in this order; the rest of
+    // its tiles fill by display order (`homeTiles`). Unset: display order alone.
+    categoryIds: categoryIds(HOME_CATEGORY_TILES),
     visible,
   }),
   'home.philosophy': z.object({

@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
-import { HOME_CATEGORY_TILES } from '@/lib/catalog/category-tree';
+import { homeTiles } from '@/lib/catalog/category-tree';
 import type { ContentValue } from '@/lib/content/site-content';
 import { shopPath } from '@/lib/constant/paths';
 import { imageSrc } from '@/lib/storage/image-url';
@@ -20,11 +20,13 @@ export type CategoryTile = {
 /**
  * The category strip. The section heading and the «همه دسته‌بندی‌ها» label are
  * admin content (`home.categories`), and so is where that label goes (unset: the
- * bare shop); the tiles themselves are catalog rows — title, slug and photo, all
- * set in the admin panel. A category added there appears here without a code
- * change — the first six of them, since the mosaic is built for exactly that
- * many and the rest are one «همه دسته‌بندی‌ها» click away. One with no photo
- * falls back to a plain surface rather than a broken image.
+ * bare shop) and which categories come first (`categoryIds`); the tiles
+ * themselves are catalog rows — title, slug and photo, all set in the admin
+ * panel. `categories` is every main category in display order, and `homeTiles`
+ * takes six of them: the picked ones, then the rest by display order, since the
+ * mosaic is built for exactly that many and the others are one «همه
+ * دسته‌بندی‌ها» click away. One with no photo falls back to a plain surface
+ * rather than a broken image.
  *
  * Real `<Link>`s, not clickable `<div>`s (design review) — keyboard-reachable,
  * cmd-clickable, and crawlable.
@@ -60,7 +62,7 @@ export function CategoriesSection({
             the middle row holds only tall tiles, and with nothing short in it
             to size it, it collapses and the tall tiles come out one row high. */}
         <div className="grid auto-rows-[10rem] grid-cols-2 gap-4 md:grid-cols-3">
-          {categories.slice(0, HOME_CATEGORY_TILES).map((category, index) => {
+          {homeTiles(categories, content.categoryIds).map((category, index) => {
             const image = category.imageKey && imageSrc(category.imageKey);
 
             return (

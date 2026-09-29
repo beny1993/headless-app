@@ -10,11 +10,31 @@
 export const SUBCATEGORY_PREFIX = '— ';
 
 /**
- * How many top-level categories the home strip shows, first by sort order then
- * title. The admin manager's photo hint quotes it, so a photo an admin is told
- * will show is one the strip renders.
+ * How many top-level categories the home strip shows — the ones picked in the
+ * home content first, then by sort order and title (`homeTiles`). The admin
+ * manager's photo hint quotes it, so a photo an admin is told will show is one
+ * the strip renders.
  */
 export const HOME_CATEGORY_TILES = 6;
+
+/**
+ * The home strip's tiles: the main categories picked in the home content, in the
+ * order picked, then the rest in display order — up to `HOME_CATEGORY_TILES`, so
+ * the mosaic stays full however few were picked. `main` is the top-level rows,
+ * already in display order. A pick no longer among them (deleted since, or made
+ * a sub-category) drops out, and the next one takes its place.
+ */
+export function homeTiles<T extends { id: string }>(
+  main: readonly T[],
+  picked: readonly string[] | undefined,
+): T[] {
+  const chosen = (picked ?? []).flatMap((id) => {
+    const tile = main.find((row) => row.id === id);
+    return tile ? [tile] : [];
+  });
+  const rest = main.filter((row) => !chosen.includes(row));
+  return [...chosen, ...rest].slice(0, HOME_CATEGORY_TILES);
+}
 
 type Node = { id: string; parentId: string | null };
 

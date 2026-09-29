@@ -10,6 +10,7 @@ import {
   IMAGE_FORMAT_HINT,
 } from '@/lib/storage/image-upload';
 import { imageSrc } from '@/lib/storage/image-url';
+import { DRAG_HINT, useDragReorder } from '@/hooks/use-drag-reorder';
 import { validateImageFile } from '@/features/admin-panel/shared/image-picker';
 
 // The product form's gallery field: up to `MAX_PRODUCT_IMAGES` photos as a grid
@@ -34,8 +35,6 @@ const FIELD_HINT = `عکس اول، عکس اصلی است و در فهرست ف
 const ADD_LABEL = 'افزودن عکس';
 const COVER_CAPTION = 'عکس اصلی';
 const EMPTY_STATE = 'هنوز عکسی اضافه نشده است.';
-const DRAG_HINT =
-  'برای جابه‌جایی، بکش و رها کن یا با کلیدهای جهت‌نما حرکت بده.';
 const CAP_REACHED = `سقف ${toPersianDigits(MAX_PRODUCT_IMAGES)} عکس پر شده است؛ برای افزودن، یکی را حذف کن.`;
 
 /** «عکس اصلی» for the cover, «۲»/«۳»/… for the rest — the caption and the name. */
@@ -65,14 +64,6 @@ const removedMessage = (index: number) => `${photoName(index)} حذف شد.`;
 const previewOf = (photo: ProductPhoto) =>
   photo.kind === 'saved' ? imageSrc(photo.objectKey) : photo.blobUrl;
 
-/** `from` moved to `to`, the rest closing up behind it. */
-const moved = <T,>(items: T[], from: number, to: number): T[] => {
-  const next = [...items];
-  const [item] = next.splice(from, 1);
-  next.splice(to, 0, item);
-  return next;
-};
-
 export function ProductImagesField({
   id,
   photos,
@@ -84,31 +75,20 @@ export function ProductImagesField({
 }) {
   /** One line per file this field refused, cleared by the next pick. */
   const [rejections, setRejections] = useState<string[]>([]);
-  /**
-   * The single polite line that reorder, add and remove all speak through.
-   * `seq` is load-bearing: a live region announces only when its text changes,
-   * so it renders as trailing non-breaking spaces that make a repeat differ.
-   */
-  const [announcement, setAnnouncement] = useState({ text: '', seq: 0 });
-  /** The tile being dragged, or null. Only its opacity depends on this. */
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-
-  const slotRefs = useRef<(HTMLLIElement | null)[]>([]);
-  /** The gesture in flight, or null — read by the window listeners. */
-  const dragging = useRef<{ pointerId: number; photoId: string } | null>(null);
-  /** Aborts the window listeners that carry the gesture. */
-  const dragListeners = useRef<AbortController | null>(null);
-  /**
-   * `photos` and `onChange` as of the last render, for the window listeners —
-   * they are registered once per gesture and would otherwise reorder a list
-   * they captured at `pointerdown`.
-   */
-  const latest = useRef({ photos, onChange });
-  // A layout effect, not a passive one: a `pointermove` can land between the
-  // commit and a passive effect, and read a stale list. Nothing interleaves a
-  // layout effect.
-  useLayoutEffect(() => {
-    latest.current = { photos, onChange };
+  // The drag, the arrow keys, focus following the moved handle and the one
+  // polite line — which the adds and removes below speak through too.
+  const {
+    slotRefs,
+    draggingId,
+    announce,
+    onHandleKeyDown,
+    onHandlePointerDown,
+    liveRegionProps,
+  } = useDragReorder({
+    items: photos,
+    onChange,
+    movedMessage,
+    handleSelector: '[data-photo-handle]',
   });
   /** The add tile's input, the fallback when the last photo is removed. */
   const addRef = useRef<HTMLInputElement | null>(null);
@@ -117,12 +97,6 @@ export function ProductImagesField({
    * unmounts with its tile, dropping focus to `<body>`.
    */
   const focusAfterRemoval = useRef<number | null>(null);
-  /**
-   * The tile index whose handle focus is owed after a keyboard move: React
-   * reorders a keyed list with `insertBefore`, and moving the focused element
-   * drops focus to `<body>` — in one direction only (`from < to`).
-   */
-  const focusHandleAt = useRef<number | null>(null);
 
   // Revoke on unmount as well as on removal, or every pick leaks a blob. A ref,
   // so the cleanup sees the list at unmount and does not run on every change.
@@ -201,23 +175,7 @@ export function ProductImagesField({
       slot?.querySelector<HTMLButtonElement>('[data-photo-remove]') ??
       addRef.current;
     target?.focus();
-  }, [photos]);
-
-  // The keyboard twin of the effect above. `insertBefore` moves the focused
-  // handle, which drops focus to `<body>`, so the handle that was operated has
-  // to be given focus again at its new position.
-  useLayoutEffect(() => {
-    const index = focusHandleAt.current;
-    if (index === null) return;
-    focusHandleAt.current = null;
-    slotRefs.current[index]
-      ?.querySelector<HTMLButtonElement>('[data-photo-handle]')
-      ?.focus();
-  }, [photos]);
-
-  // A gesture in flight when the field unmounts would leave its window
-  // listeners behind.
-  useEffect(() => () => dragListeners.current?.abort(), []);
+  }, [photos, slotRefs]);
 
   const removeAt = (index: number) => {
     const photo = photos[index];
@@ -228,130 +186,6 @@ export function ProductImagesField({
     onChange(photos.filter((_, position) => position !== index));
     announce(removedMessage(index));
     focusAfterRemoval.current = index;
-  };
-
-  const announce = (text: string) =>
-    setAnnouncement((previous) => ({ text, seq: previous.seq + 1 }));
-
-  /**
-   * Move a tile and say where it landed. Out-of-range targets are no-ops.
-   * Returns whether anything moved, so a keyboard caller knows whether focus
-   * is owed somewhere new.
-   *
-   * Reads the list from `latest` rather than the closure: a window listener
-   * registered at `pointerdown` would otherwise reorder the list as it was
-   * when the finger went down.
-   */
-  const moveTo = (from: number, to: number): boolean => {
-    const { photos: current, onChange: notify } = latest.current;
-    if (to < 0 || to >= current.length || to === from) return false;
-    notify(moved(current, from, to));
-    announce(movedMessage(from, to));
-    return true;
-  };
-
-  const onHandleKeyDown = (event: React.KeyboardEvent, index: number) => {
-    // RTL, hardcoded: right is toward the start of the list, left toward its
-    // end. Up/down keep their usual meaning. The arrows move the photo
-    // directly — there is no pick-up/drop mode, so a reorder cannot be left
-    // half-finished by a lost keystroke.
-    const delta = { ArrowRight: -1, ArrowUp: -1, ArrowLeft: 1, ArrowDown: 1 }[
-      event.key
-    ];
-    if (delta === undefined) return;
-    event.preventDefault();
-    // Focus follows the photo, not the position: the button this event came
-    // from is about to be moved by `insertBefore`, which drops focus to
-    // `<body>`. Only owed when something actually moved.
-    if (moveTo(index, index + delta)) focusHandleAt.current = index + delta;
-  };
-
-  /**
-   * End the gesture — only for the contact that started it: a foreign release
-   * (a resting thumb, a stray tap) reaches these window listeners too. `blur`
-   * passes no pointer and ends it unconditionally, so an alt-tab mid-drag
-   * cannot leave the gesture running with no finger.
-   */
-  const endDrag = (event?: Event) => {
-    const drag = dragging.current;
-    if (
-      drag &&
-      event instanceof PointerEvent &&
-      event.pointerId !== drag.pointerId
-    ) {
-      return;
-    }
-    dragListeners.current?.abort();
-    dragListeners.current = null;
-    dragging.current = null;
-    setDraggingId(null);
-  };
-
-  /**
-   * The gesture runs on `window`; pointer capture is not what carries it.
-   * React reorders with `insertBefore`, and moving the `<li>` holding the
-   * captured element drops the capture firing **neither `pointerup` nor
-   * `pointercancel`** — so a handle-bound drag toward the end dies after one
-   * cell. Capture is still requested; nothing depends on it.
-   */
-  const onHandlePointerDown = (event: React.PointerEvent, index: number) => {
-    // Left button or a touch/pen contact only — a right-click must not start a
-    // drag that then has no pointerup to end it.
-    if (event.button !== 0) return;
-    // A second finger while one is already dragging would otherwise start a
-    // competing gesture that either release then ends.
-    if (dragging.current !== null) return;
-
-    event.currentTarget.setPointerCapture(event.pointerId);
-    dragging.current = {
-      pointerId: event.pointerId,
-      photoId: photos[index].id,
-    };
-    setDraggingId(photos[index].id);
-
-    const controller = new AbortController();
-    dragListeners.current = controller;
-    const { signal } = controller;
-    window.addEventListener('pointermove', onWindowPointerMove, { signal });
-    window.addEventListener('pointerup', endDrag, { signal });
-    window.addEventListener('pointercancel', endDrag, { signal });
-    // Non-capturing, and that is load-bearing: `blur` does not bubble, so only
-    // the window's own blur reaches this. Chrome focuses the handle on
-    // pointerdown and the first reorder moves it, dropping focus to `<body>` —
-    // a blur on every cell crossed. `focusout` or `capture: true` here would
-    // end every drag after one cell.
-    window.addEventListener('blur', endDrag, { signal });
-  };
-
-  const onWindowPointerMove = (event: PointerEvent) => {
-    const drag = dragging.current;
-    // Only the contact that started it: a second finger reports its own moves
-    // to this same window listener.
-    if (!drag || event.pointerId !== drag.pointerId) return;
-
-    const current = latest.current.photos;
-    // By id, never by the index the gesture started at — the list has been
-    // reordering underneath the finger the whole time.
-    const from = current.findIndex((photo) => photo.id === drag.photoId);
-    if (from === -1) return;
-
-    // Read per move, not snapshotted: rects are viewport-relative, and a
-    // mid-drag scroll or breakpoint change moves every cell. A `null` keeps its
-    // index so positions stay aligned.
-    const rects = slotRefs.current
-      .slice(0, current.length)
-      .map((slot) => slot?.getBoundingClientRect() ?? null);
-    const target = rects.findIndex(
-      (rect) =>
-        rect !== null &&
-        event.clientX >= rect.left &&
-        event.clientX <= rect.right &&
-        event.clientY >= rect.top &&
-        event.clientY <= rect.bottom,
-    );
-    // Outside every cell, or already there: the drag waits.
-    if (target === -1 || target === from) return;
-    moveTo(from, target);
   };
 
   const hintId = `${id}-hint`;
@@ -489,18 +323,9 @@ export function ProductImagesField({
         </div>
       )}
 
-      {/* One expression, so the toggle is a `characterData` change on the node
-          holding the sentence. Two adjacent children would be two text nodes,
-          and React would then add or *remove* the second — an addition whose
-          whole content is a space, or a removal, which the region's default
-          `aria-relevant` ("additions text") excludes outright. Either way the
-          sentence itself would not be in the changed subtree, so a repeat
-          announced nothing, which is the defect the counter exists to cure.
-          The space is constructed from an escape, per the repo's rule on
-          invisible characters. */}
-      <p aria-live="polite" aria-atomic="true" className="sr-only">
-        {announcement.text + '\u00A0'.repeat(announcement.seq % 2)}
-      </p>
+      {/* The hook's one polite line: a single string child, so a repeat still
+          changes the text node that holds the sentence. */}
+      <p {...liveRegionProps} />
     </div>
   );
 }

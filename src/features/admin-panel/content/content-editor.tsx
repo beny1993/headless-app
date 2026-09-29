@@ -7,8 +7,10 @@ import { z } from 'zod';
 import { DEFAULT_ERROR_MESSAGE, putData } from '@/lib/api-client';
 import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
 import { apiAdminContentPath } from '@/lib/constant/paths';
+import { HOME_CATEGORY_TILES, homeTiles } from '@/lib/catalog/category-tree';
 import {
   CONTENT_SCHEMAS,
+  MAX_ROUTINE_CATEGORIES,
   type ContentKey,
   type ContentValues,
 } from '@/lib/content/site-content';
@@ -275,6 +277,23 @@ function BlockForm({
                 error={errorUnder(fieldErrors, field.path)}
                 onChange={(next) => setDestination(field.path, next)}
               />
+            ) : field.kind === 'categories' && field.homeTiles ? (
+              <CategoryPicker
+                key={field.path}
+                id={fid(field.path)}
+                label={field.label}
+                value={getPath(value, field.path) as string[] | undefined}
+                fallback={field.fallback ?? ''}
+                categories={options.mainCategories}
+                max={HOME_CATEGORY_TILES}
+                umami={{
+                  toggle: 'admin-panel-content-home-category-toggle',
+                  reorder: 'admin-panel-content-home-category-reorder',
+                }}
+                shows={(picked) => homeTiles(options.mainCategories, picked)}
+                error={errorUnder(fieldErrors, field.path)}
+                onChange={(next) => setDestination(field.path, next)}
+              />
             ) : field.kind === 'categories' ? (
               <CategoryPicker
                 key={field.path}
@@ -283,6 +302,11 @@ function BlockForm({
                 value={getPath(value, field.path) as string[] | undefined}
                 fallback={field.fallback ?? ''}
                 categories={options.categories}
+                max={MAX_ROUTINE_CATEGORIES}
+                umami={{
+                  toggle: 'admin-panel-content-routine-category-toggle',
+                  reorder: 'admin-panel-content-routine-category-reorder',
+                }}
                 error={errorUnder(fieldErrors, field.path)}
                 onChange={(next) => setDestination(field.path, next)}
               />
