@@ -341,7 +341,9 @@ tracker loaded and check it still swaps the page in place — and anything
 visual (RTL layout, Persian font rendering).
 
 - **It starts its own server**: `next dev` on :3100, never a running :3000 —
-  that one may be another checkout on another branch. Before it: migrate,
+  that one may be another checkout on another branch. Worktrees running the
+  suite at the same time each pick their own with `E2E_PORT=3101 pnpm test:e2e`
+  (validated in `playwright.config.ts`; :3100 when unset). Before it: migrate,
   `seed-catalog` and `seed-shipping`, all idempotent (the seed also puts back
   the stock the specs spend). `webServer.env` pins console SMS with the code on
   the login page, mock Zarinpal switched on (`APP_CONFIG_ZARINPAL_ENABLED`,
@@ -352,6 +354,10 @@ visual (RTL layout, Persian font rendering).
   already running" — stop that server, or run the suite from a worktree.
 - **A worktree has no `.env`**:
   `DOTENV_CONFIG_PATH=<main checkout>/.env pnpm test:e2e`.
+- **Stop only the server you started (Benyamin, 2026-09-29).** A QA or cleanup
+  step ends a dev server by the PID it launched (or `lsof -ti :<its port>`),
+  never by pattern — `pkill -f next-server` also kills every other worktree's
+  server, and on 2026-09-29 it took down a parallel session's E2E run mid-suite.
 - **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
   customer and a fresh admin (`pnpm create-admin`) in through the real login
   page and saves their sessions; specs opt in with `test.use({ storageState })`
