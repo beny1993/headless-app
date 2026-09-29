@@ -1,7 +1,7 @@
 // All Drizzle DB access goes through DAOs like this one. Multi-DAO operations
 // belong in src/logic/, not in route handlers or components. Never write raw SQL.
 import { and, asc, eq, isNotNull } from 'drizzle-orm';
-import { db } from '@/db';
+import { db, type Tx } from '@/db';
 import { ROLES, users, type Role, type User } from '@/db/schema/auth';
 
 export class UserDao {
@@ -42,6 +42,24 @@ export class UserDao {
       .from(users)
       .where(and(eq(users.role, ROLES.ADMIN), isNotNull(users.phoneNumber)))
       .orderBy(asc(users.createdAt))) as { id: string; phoneNumber: string }[];
+  }
+
+  /**
+   * Holds this user's row until `tx` ends — checkout's one-at-a-time lock per
+   * account (`src/logic/checkout/create-order.ts`). A second checkout by the
+   * same account waits here until the first has committed, so the caps it
+   * counts next include that order.
+   *
+   * It must be the transaction's FIRST lock. Product rows are only ever locked
+   * after it, in `byProductId` order, so no two transactions can hold these in
+   * opposite orders and deadlock.
+   */
+  static async lockForCheckout(tx: Tx, id: string): Promise<void> {
+    await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, id))
+      .for('update');
   }
 
   /** Creates a customer unless an elevated role is asked for explicitly. */

@@ -16,6 +16,7 @@ import { OrderDao, type OrderItemInput } from '@/db/dao/OrderDao';
 import { PaymentDao } from '@/db/dao/PaymentDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
+import { UserDao } from '@/db/dao/UserDao';
 import type { OrderWithItems } from '@/db/schema/orders';
 import { displayTitle } from '@/lib/catalog/variant';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
@@ -96,7 +97,8 @@ export const ORDER_RATE_WINDOW_MS = 60 * 60 * 1000;
  * (`src/db/schema/orders.ts`). A 23505 naming exactly this constraint means a
  * concurrent request with the same `(userId, idempotencyKey)` won the race — not
  * any other uniqueness failure — so `createOrder` returns that order rather than
- * a 500.
+ * a 500. A backstop since the account lock: same-key requests from one account
+ * now queue, and the re-check under the lock hands the winner back first.
  */
 const IDEMPOTENCY_CONSTRAINT = 'orders_user_idempotency_key_unique';
 
@@ -119,19 +121,22 @@ const isUniqueViolation = (error: unknown, constraint: string): boolean => {
  *
  *  1. Look up the shipping fee by province (fail-fast, before the transaction:
  *     an unknown province reserves nothing).
- *  2. Refuse a Zarinpal order while online payment is off, then enforce the
- *     rolling creation cap (every method — see `MAX_ORDERS_PER_WINDOW`) and the
- *     open-order cap (Zarinpal only — see `MAX_OPEN_ORDERS`).
- *  3. In one transaction, per line **in productId order** (deadlock symmetry with
- *     the restock path): reject a missing or inactive product, then run the atomic
- *     oversell guard; a 0-row decrement is out-of-stock. Snapshot title/sku/price
- *     from the guard's fresh RETURNING row.
- *  4. If a discount code was given, apply it (still in the same transaction, so it
+ *  2. Refuse a Zarinpal order while online payment is off.
+ *  3. In one transaction, lock this account's user row FIRST, so its checkouts
+ *     run one at a time; hand back the order a queued replay of this key already
+ *     created; then enforce the rolling creation cap (every method — see
+ *     `MAX_ORDERS_PER_WINDOW`) and the open-order cap (Zarinpal only — see
+ *     `MAX_OPEN_ORDERS`), whose counts no concurrent request can outrun.
+ *  4. Per line **in productId order** (deadlock symmetry with the restock path):
+ *     reject a missing or inactive product, then run the atomic oversell guard; a
+ *     0-row decrement is out-of-stock. Snapshot title/sku/price from the guard's
+ *     fresh RETURNING row.
+ *  5. If a discount code was given, apply it (still in the same transaction, so it
  *     rolls back with everything else): classify it against the server subtotal
  *     for a specific Persian error, then claim one use atomically — 0 rows means
  *     exhausted/expired/deactivated in a race. The amount is computed from the
  *     claimed row and clamped to the subtotal, never client-supplied.
- *  5. Compute integer-Toman totals server-side, insert the order + item snapshots
+ *  6. Compute integer-Toman totals server-side, insert the order + item snapshots
  *     (with the discount amount + code snapshotted), and (COD only) a `pending`
  *     payment row. Any step failing throws, and the transaction rolls the whole
  *     order — every reservation and the usage claim — back.
@@ -148,7 +153,8 @@ export const createOrder = async (
   // unit would 422 on the stock guard, and a replay of a Zarinpal order that put
   // the user at the open-order cap would 422 on the cap — instead of returning
   // the order the first attempt created. The concurrent race that slips past this
-  // (two requests both finding nothing here) is caught at the insert below.
+  // (two requests both finding nothing here) is caught under the account lock
+  // below (3b).
   if (idempotencyKey) {
     const existing = await OrderDao.getByUserAndIdempotencyKey(
       userId,
@@ -163,7 +169,7 @@ export const createOrder = async (
   const rate = await ShippingRateDao.getByProvinceId(input.address.provinceId);
   if (!rate) throw new CheckoutError('address.provinceId', INVALID_PROVINCE);
 
-  // 2a. Online payment switched off. The checkout page hides the option
+  // 2. Online payment switched off. The checkout page hides the option
   // (`APP_CONFIG_ZARINPAL_ENABLED`, read there to build the form), but a page is
   // not a boundary: the API took `paymentMethod` from the body and never asked.
   // A `zarinpal` order on a card-to-card-only shop lands `pending_payment` and
@@ -180,34 +186,6 @@ export const createOrder = async (
     throw new CheckoutError('paymentMethod', ONLINE_PAYMENT_UNAVAILABLE);
   }
 
-  // 2b. The rolling creation cap, fail-fast, before the transaction: every
-  // order this user created in the window, whatever its status and however it
-  // was paid. This is the one that bounds a COD loop, and a replay never reaches
-  // it — the fast path above returned. See MAX_ORDERS_PER_WINDOW.
-  const recentOrders = await OrderDao.countCreatedSince(
-    userId,
-    new Date(Date.now() - ORDER_RATE_WINDOW_MS),
-  );
-  if (recentOrders >= MAX_ORDERS_PER_WINDOW) {
-    throw new CheckoutError('paymentMethod', TOO_MANY_RECENT_ORDERS);
-  }
-
-  // 2c. Open-order cap (fail-fast, before the transaction). Only orders that
-  // WOULD enter `pending_payment` are gated — the one state whose reserved stock
-  // waits on the reconcile sweep — so a COD checkout (→ `processing`) is never
-  // blocked and never counted. See `MAX_OPEN_ORDERS`.
-  // ponytail: the count→create window is non-atomic, so a concurrent burst from
-  // one user can land a few over N; a sequential loop is hard-capped, which is
-  // what the anti-abuse guard needs.
-  if (
-    initialStatusFor(input.paymentMethod) === ORDER_STATUSES.PENDING_PAYMENT
-  ) {
-    const openOrders = await OrderDao.countOpenForUser(userId);
-    if (openOrders >= MAX_OPEN_ORDERS) {
-      throw new CheckoutError('paymentMethod', TOO_MANY_OPEN_ORDERS);
-    }
-  }
-
   // Keep each line's original request index so an error names the line the
   // client sent, even though reservation runs in productId order.
   const lines = input.items
@@ -215,7 +193,55 @@ export const createOrder = async (
     .sort(byProductId);
 
   try {
-    const created = await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
+      // 3a. One checkout per account at a time. This account's user row is the
+      // transaction's FIRST lock — product rows are locked only after it, in
+      // productId order — so a second checkout of the same account waits here
+      // until the first has committed, and the caps below count every order
+      // that came before it, however many requests arrived at once.
+      // ponytail: a burst from one account queues on its own row, each waiting
+      // request holding a pool connection until its turn; the /api/* rate limit
+      // bounds that queue. The caps stay per account: N verified phones still
+      // make N × MAX_ORDERS_PER_WINDOW an hour — the global SMS cap's job.
+      await UserDao.lockForCheckout(tx, userId);
+
+      // 3b. A replay that queued behind its own first attempt. That attempt has
+      // committed by now, so hand its order back BEFORE the caps: it may be the
+      // very order that filled them, and a double-submit is not a new order.
+      if (idempotencyKey) {
+        const existing = await OrderDao.getByUserAndIdempotencyKey(
+          userId,
+          idempotencyKey,
+          tx,
+        );
+        if (existing) return { order: existing, replayed: true };
+      }
+
+      // 3c. The rolling creation cap: every order this user created in the
+      // window, whatever its status and however it was paid. This is the one
+      // that bounds a COD loop. See MAX_ORDERS_PER_WINDOW.
+      const recentOrders = await OrderDao.countCreatedSince(
+        userId,
+        new Date(Date.now() - ORDER_RATE_WINDOW_MS),
+        tx,
+      );
+      if (recentOrders >= MAX_ORDERS_PER_WINDOW) {
+        throw new CheckoutError('paymentMethod', TOO_MANY_RECENT_ORDERS);
+      }
+
+      // 3d. Open-order cap. Only orders that WOULD enter `pending_payment` are
+      // gated — the one state whose reserved stock waits on the reconcile sweep —
+      // so a COD checkout (→ `processing`) is never blocked and never counted.
+      // See `MAX_OPEN_ORDERS`.
+      if (
+        initialStatusFor(input.paymentMethod) === ORDER_STATUSES.PENDING_PAYMENT
+      ) {
+        const openOrders = await OrderDao.countOpenForUser(userId, tx);
+        if (openOrders >= MAX_OPEN_ORDERS) {
+          throw new CheckoutError('paymentMethod', TOO_MANY_OPEN_ORDERS);
+        }
+      }
+
       const loaded = await ProductDao.getByIds(
         tx,
         lines.map((line) => line.productId),
@@ -329,8 +355,9 @@ export const createOrder = async (
           postalCode: input.address.postalCode,
           addressLine: input.address.addressLine,
           // The idempotency anchor. Written in the SAME transaction as the stock
-          // decrement above, so a losing concurrent insert with the same key
-          // trips the partial unique index and rolls its reservation back.
+          // decrement above, so an insert that ever got past the lock with a
+          // taken key trips the partial unique index and rolls its reservation
+          // back.
           idempotencyKey: idempotencyKey ?? null,
           items,
         },
@@ -352,22 +379,25 @@ export const createOrder = async (
         );
       }
 
-      return order;
+      return { order, replayed: false };
     });
 
-    // Tell the admins — AFTER the commit, and only here: neither replay branch
-    // (the fast path above, the unique-violation catch below) reaches this line,
-    // so a double-submit sends one SMS. Deliberately un-awaited and never
-    // `await`ed anywhere: `notifyAdminsOfNewOrder` catches everything and never
-    // rejects, so the shopper's response cannot be delayed or failed by a wedged
-    // SMS provider. Not Next's `after()` — the reconcile sweep and the tests
-    // call this function with no request scope at all.
-    if (notifiesOnCreate(created.status)) {
-      void notifyAdminsOfNewOrder(created.id);
+    // Tell the admins — AFTER the commit, and only for an order this call
+    // created: the fast path above and the unique-violation catch below return
+    // before this line, and a re-check hit under the lock comes back
+    // `replayed` — so a double-submit sends one SMS.
+    // Deliberately un-awaited and never `await`ed anywhere:
+    // `notifyAdminsOfNewOrder` catches everything and never rejects, so the
+    // shopper's response cannot be delayed or failed by a wedged SMS provider.
+    // Not Next's `after()` — the reconcile sweep and the tests call this
+    // function with no request scope at all.
+    if (!result.replayed && notifiesOnCreate(result.order.status)) {
+      void notifyAdminsOfNewOrder(result.order.id);
     }
 
-    return created;
+    return result.order;
   } catch (error) {
+    // A backstop since the account lock, which makes same-key requests queue.
     // A concurrent request with the same key won the race: its insert committed
     // first, so this transaction's insert tripped the partial unique index and
     // rolled back (releasing every reservation it made in the same tx). Re-read

@@ -29,8 +29,12 @@ vi.mock('@/logic/orders/notify-new-order', async (importOriginal) => ({
   notifyAdminsOfNewOrder: mocks.notify,
 }));
 
-const { createOrder, MAX_ORDERS_PER_WINDOW, ORDER_RATE_WINDOW_MS } =
-  await importWithDb(() => import('@/logic/checkout/create-order'));
+const {
+  createOrder,
+  MAX_OPEN_ORDERS,
+  MAX_ORDERS_PER_WINDOW,
+  ORDER_RATE_WINDOW_MS,
+} = await importWithDb(() => import('@/logic/checkout/create-order'));
 const { ShippingRateDao } = await importWithDb(
   () => import('@/db/dao/ShippingRateDao'),
 );
@@ -106,10 +110,13 @@ describe.skipIf(!databaseReachable)('createOrder rate cap', () => {
     rows.forEach((row) => fx.remember(row.id));
   };
 
-  const scenario = async (overrides: Partial<CheckoutInput> = {}) => {
+  const scenario = async (
+    overrides: Partial<CheckoutInput> = {},
+    stock = 5,
+  ) => {
     const user = await fx.user();
     const category = await fx.category();
-    const product = await fx.product(category, { price: 100_000, stock: 5 });
+    const product = await fx.product(category, { price: 100_000, stock });
     const prov = await province(40_000);
     const input: CheckoutInput = {
       items: [{ productId: product.id, qty: 1 }],
@@ -233,5 +240,84 @@ describe.skipIf(!databaseReachable)('createOrder rate cap', () => {
     const replay = await createOrder(user.id, input, idempotencyKey);
 
     expect(replay.id).toBe(first.id);
+  });
+  describe('under a concurrent burst from one account', () => {
+    // Both caps count committed rows. Fired at once, every request used to read
+    // the same count before any of them had committed, so a whole burst went
+    // through — a review measured 120 of 120 committed, and 74 SMS from one
+    // burst over HTTP. However the requests interleave, the caps must hold.
+    const fire = (size: number, run: () => Promise<unknown>) =>
+      Promise.allSettled(Array.from({ length: size }, run));
+
+    const refusals = (results: PromiseSettledResult<unknown>[]) =>
+      results.flatMap((result) =>
+        result.status === 'rejected' ? [result.reason] : [],
+      );
+
+    it('commits exactly the creation cap, and alerts exactly that often', async () => {
+      const size = MAX_ORDERS_PER_WINDOW + 10;
+      const { user, input } = await scenario({}, size);
+
+      const results = await fire(size, () =>
+        createOrder(user.id, input, crypto.randomUUID()),
+      );
+
+      expect(await ordersOf(user.id)).toHaveLength(MAX_ORDERS_PER_WINDOW);
+      expect(mocks.notify).toHaveBeenCalledTimes(MAX_ORDERS_PER_WINDOW);
+      const refused = refusals(results);
+      expect(refused).toHaveLength(10);
+      for (const error of refused) {
+        expect(error).toBeInstanceOf(CheckoutError);
+        expect(error.message).toContain('یک ساعت گذشته');
+      }
+    });
+
+    it('commits exactly the open-order cap of Zarinpal checkouts', async () => {
+      vi.stubEnv('APP_CONFIG_ZARINPAL_ENABLED', 'true');
+      const size = MAX_OPEN_ORDERS + 5;
+      const { user, input } = await scenario(
+        { paymentMethod: PAYMENT_METHODS.ZARINPAL },
+        size,
+      );
+
+      const results = await fire(size, () =>
+        createOrder(user.id, input, crypto.randomUUID()),
+      );
+
+      const created = await ordersOf(user.id);
+      expect(created).toHaveLength(MAX_OPEN_ORDERS);
+      expect(
+        created.every((row) => row.status === ORDER_STATUSES.PENDING_PAYMENT),
+      ).toBe(true);
+      const refused = refusals(results);
+      expect(refused).toHaveLength(5);
+      for (const error of refused) {
+        expect(error).toBeInstanceOf(CheckoutError);
+        expect(error.message).toContain('در انتظار پرداخت');
+      }
+    });
+
+    it('hands a queued replay its order back, even the order that filled the cap', async () => {
+      // Five copies of one request, one below the cap. The first to commit
+      // fills it; every copy queued behind it must get that order back, never
+      // the cap's 422 — a double-submit is not a new order.
+      const { user, input } = await scenario();
+      await seedOrders(user, MAX_ORDERS_PER_WINDOW - 1);
+      const k = crypto.randomUUID();
+
+      const results = await fire(5, () => createOrder(user.id, input, k));
+
+      expect(refusals(results)).toEqual([]);
+      const ids = new Set(
+        results.map((result) =>
+          result.status === 'fulfilled'
+            ? (result.value as { id: string }).id
+            : null,
+        ),
+      );
+      expect(ids.size).toBe(1);
+      expect(await ordersOf(user.id)).toHaveLength(MAX_ORDERS_PER_WINDOW);
+      expect(mocks.notify).toHaveBeenCalledTimes(1);
+    });
   });
 });
