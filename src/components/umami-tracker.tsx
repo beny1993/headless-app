@@ -3,7 +3,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import Script from 'next/script';
-import { PROTECTED_PATHS } from '@/lib/constant/paths';
+import { stripAdminQuery } from '@/lib/admin-url';
 
 type UmamiPayload = Record<string, unknown>;
 
@@ -113,26 +113,12 @@ export function trackedEventOf(target: Element): string | null {
 }
 
 /**
- * A URL as it may be sent to Umami. A query on one of our own admin pages goes:
- * the users search puts a customer's phone number there (`?q=0912…`), and the
- * Umami instance is shared by every project. Anything else, storefront searches
- * included, is sent as it is.
+ * A URL as it may be sent to Umami: our own admin pages lose their query (see
+ * `stripAdminQuery`); anything else, storefront searches included, is sent as
+ * it is.
  */
-export function analyticsUrl(url: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return url;
-  }
-  const admin = PROTECTED_PATHS.INDEX;
-  const isAdmin =
-    parsed.origin === window.location.origin &&
-    (parsed.pathname === admin || parsed.pathname.startsWith(`${admin}/`));
-  if (!isAdmin) return url;
-  parsed.search = '';
-  return parsed.href;
-}
+export const analyticsUrl = (url: string): string =>
+  stripAdminQuery(url, window.location.origin);
 
 /**
  * A payload's `url` and `referrer`. With no referrer of our own, the tracker's

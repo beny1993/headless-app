@@ -92,11 +92,13 @@ describe('bucketRevenueByJalaliMonth', () => {
 
 describe('buildDashboardReport', () => {
   it("counts new customers from 00:00 Tehran on this Jalali month's 1st", async () => {
-    const report = await buildDashboardReport(new Date('2026-09-29T12:00:00Z'));
+    // A fixed past `now`, not today: a report that read the clock instead of
+    // its argument would still land in today's month and pass.
+    const report = await buildDashboardReport(NOW);
 
-    // 1 Mehr 1405 began at 20:30 UTC on 22 Sep 2026.
+    // NOW is 14 Shahrivar 1405; 1 Shahrivar began at 20:30 UTC on 22 Aug 2026.
     expect(dao.countCustomers).toHaveBeenCalledExactlyOnceWith(
-      new Date('2026-09-22T20:30:00Z'),
+      new Date('2026-08-22T20:30:00Z'),
     );
     expect(report.stats.newCustomersThisMonth).toBe(7);
   });

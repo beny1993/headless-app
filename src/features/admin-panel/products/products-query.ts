@@ -19,10 +19,14 @@ type ActiveValue = (typeof ACTIVE_VALUES)[number];
 
 // `q` and `category` are the storefront's own fields: the same length cap and
 // null-byte strip (Postgres rejects U+0000 in a parameter — a 500), since both
-// reach the same `search_text` and category scope.
+// reach the same `search_text` and category scope. Trimmed first, as the shop's
+// `readText` does before them, so padding neither echoes nor counts to the cap.
+const trimmed = <T extends z.ZodType<unknown, string>>(field: T) =>
+  z.string().trim().pipe(field).optional().catch(undefined);
+
 export const adminProductFilterSchema = z.object({
-  q: productListQueryShape.q.catch(undefined),
-  category: productListQueryShape.category.catch(undefined),
+  q: trimmed(productListQueryShape.q.unwrap()),
+  category: trimmed(productListQueryShape.category.unwrap()),
   pet: z.enum(PET_TYPE_VALUES).optional().catch(undefined),
   active: z.enum(ACTIVE_VALUES).catch('all'),
   page: pageParamSchema,

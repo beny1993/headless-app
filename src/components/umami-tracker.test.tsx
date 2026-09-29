@@ -282,7 +282,12 @@ describe('the Umami tracker', () => {
 // admin URL goes out without its query; the storefront's are left alone.
 describe('the Umami tracker in the admin panel', () => {
   const SEARCH = '/admin-panel/users?q=09121234567';
-  const adminStale = { ...STALE, referrer: `${origin()}${SEARCH}` };
+  // Another admin search than the page's own, so a referrer taken from the
+  // wrong place (the page itself) cannot pass for the right one once stripped.
+  const adminStale = {
+    ...STALE,
+    referrer: `${origin()}/admin-panel/orders?q=09121234567`,
+  };
 
   it('sends admin pageviews and their referrers without the query', () => {
     moveTo(SEARCH);
@@ -296,7 +301,7 @@ describe('the Umami tracker in the admin panel', () => {
       {
         ...adminStale,
         url: `${origin()}/admin-panel/users`,
-        referrer: `${origin()}/admin-panel/users`,
+        referrer: `${origin()}/admin-panel/orders`,
       },
       {
         ...adminStale,
@@ -319,7 +324,7 @@ describe('the Umami tracker in the admin panel', () => {
         ...adminStale,
         url: `${origin()}/admin-panel/users`,
         name: 'admin-panel-users-view',
-        referrer: `${origin()}/admin-panel/users`,
+        referrer: `${origin()}/admin-panel/orders`,
       },
     ]);
   });

@@ -34,6 +34,19 @@ describe('adminProductFilterSchema', () => {
     expect(filters({ q: `غذا${nul}ی خشک` }).q).toBe('غذای خشک');
   });
 
+  it('trims the search and the category, and reads a blank one as none', () => {
+    expect(
+      filters({ q: '  غذای خشک  ', category: ' dry-food ' }),
+    ).toMatchObject({ q: 'غذای خشک', category: 'dry-food' });
+    expect(filters({ q: '   ', category: ' ' })).toMatchObject({
+      q: undefined,
+      category: undefined,
+    });
+    // Padding does not count toward the cap.
+    const atCap = 'ب'.repeat(MAX_SEARCH_TERM_LENGTH);
+    expect(filters({ q: ` ${atCap} ` }).q).toBe(atCap);
+  });
+
   it('drops a search longer than the storefront’s cap', () => {
     const atCap = 'ب'.repeat(MAX_SEARCH_TERM_LENGTH);
 

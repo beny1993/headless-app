@@ -2,7 +2,7 @@
 // search it is. Client-safe (plain zod, no DB): the page bounds its input with
 // the same constant the schema checks, and `UserDao.pageForAdmin` turns the
 // classification into SQL.
-import { normalizeIranPhone } from '@/lib/auth/phone';
+import { normalizeIranPhone, SEPARATORS } from '@/lib/auth/phone';
 import { toAsciiDigits } from '@/lib/format';
 import { boundedText } from '@/lib/validation/text';
 
@@ -26,9 +26,6 @@ export type UserSearch =
   | { by: 'name'; text: string };
 
 const LOCAL_PARTIAL = /^0\d*$/;
-
-/** The separators a grouped number is written with: `0912 123`, `(0912)-123`. */
-const SEPARATORS = /[ ()-]/g;
 
 /**
  * A term the admin typed → how to search for it. A number that normalizes is a
