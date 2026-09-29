@@ -1,6 +1,7 @@
 // Wiring test for buildDashboardReport against a live Postgres — proves the
 // report reflects real orders: a freshly paid order lands in the current Jalali
-// month's bucket and in the top-line totals. Membership/exclusion is exhaustively
+// month's bucket and in the top-line totals, and its new customer in this
+// month's «مشتریان جدید این ماه». Membership/exclusion is exhaustively
 // covered in OrderDao.admin.integration.test.ts; this is the assembly.
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -50,6 +51,10 @@ describe.skipIf(!databaseReachable)('buildDashboardReport', () => {
       order.total,
     );
     expect(after.stats.paidOrderCount - before.stats.paidOrderCount).toBe(1);
+    // `fx.user()` made a customer just now: this Jalali month's newcomer.
+    expect(
+      after.stats.newCustomersThisMonth - before.stats.newCustomersThisMonth,
+    ).toBe(1);
 
     // The order was created now, so it belongs to the last (current) bucket.
     const lastBefore = before.months.at(-1)!;

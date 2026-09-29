@@ -301,7 +301,14 @@ into the opposite order — by mouse at 1280px, by a finger through Chrome's own
 touch input at 375px, where the grip's `touch-none` is all that keeps the drag
 from turning into a scroll — the grip's row marked while the gesture runs and
 none after, the arrow keys leaving focus on the grip that moved, then listed
-so by the reopened editor and led with by the strip. For search engines: `sitemap.xml` listing a seeded
+so by the reopened editor and led with by the strip; the users area — its two
+customer counts formatted, the new-this-month one read again, the same, off the
+dashboard's tile, the run's customer on the first page, a search by the number
+they typed (`0999…`, stored `+98…`) listing exactly their row, their account
+page, with the sidebar's «کاربران» lit on both, opening one of their orders,
+whose «مشاهده حساب سفارش‌دهنده» leads back to that same account — and
+anonymous visitors and customers turned away from the list and a detail page.
+For search engines: `sitemap.xml` listing a seeded
 product, a family member and their shelves by the URL each page names as its
 canonical; a product page's `Product` JSON-LD priced in Rial and its
 breadcrumb, both in the HTML the server sends; the home page's canonical,
@@ -349,12 +356,15 @@ visual (RTL layout, Persian font rendering).
   `DOTENV_CONFIG_PATH=<main checkout>/.env pnpm test:e2e`.
 - **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
   customer and a fresh admin (`pnpm create-admin`) in through the real login
-  page and saves their sessions; specs opt in with `test.use({ storageState })`
-  (`e2e/support.ts`). send-otp allows 3 a minute for the whole machine, so a run
-  started within a minute of the last one waits about a minute.
+  page and saves their sessions, plus the customer's number
+  (`customerPhone()`, for the users spec); specs opt in with
+  `test.use({ storageState })` (`e2e/support.ts`). send-otp allows 3 a minute
+  for the whole machine, so a run started within a minute of the last one
+  waits about a minute.
 - **What a run leaves in the dev database:** two throwaway `0999…` accounts, a
-  few orders, one inactive `e2e-…` product (it is given three photos and has two
-  of them removed again, so one file stays under `uploads/`)
+  few orders (the users spec places one card-to-card order per width, to walk
+  from the account to it), one inactive `e2e-…` product (it is given three
+  photos and has two of them removed again, so one file stays under `uploads/`)
   filed under a seeded sub-category and a seeded second category — seeded, and
   never one the spec made, because the junction's restricting foreign key would
   pin that category for good — one switched-off `E2E…` discount code and one

@@ -1,12 +1,29 @@
 // Pure dashboard bucketing — no database. The revenue-set membership and the
 // summed totals are proven against Postgres in
 // src/db/dao/OrderDao.admin.integration.test.ts; this pins the Jalali-month
-// windowing and the empty state, which are pure functions of (rows, now).
-import { describe, expect, it } from 'vitest';
+// windowing and the empty state, which are pure functions of (rows, now), and,
+// with the DAOs mocked, the window «مشتریان جدید این ماه» is counted over.
+import { describe, expect, it, vi } from 'vitest';
 import {
   bucketRevenueByJalaliMonth,
+  buildDashboardReport,
   lastJalaliMonths,
 } from '@/logic/orders/dashboard-report';
+
+// Only `buildDashboardReport` reaches these; the bucketing below is pure.
+const dao = vi.hoisted(() => ({
+  countCustomers: vi.fn(async () => 7),
+}));
+vi.mock('@/db/dao/OrderDao', () => ({
+  OrderDao: {
+    revenueOrdersSince: async () => [],
+    revenueSummary: async () => ({ revenue: 0, orderCount: 0 }),
+    countByStatus: async () => 0,
+  },
+}));
+vi.mock('@/db/dao/UserDao', () => ({
+  UserDao: { countCustomers: dao.countCustomers },
+}));
 
 // 5 Shahrivar 1405 (month 6). The six months ending here, oldest first.
 const NOW = new Date(Date.UTC(2026, 8, 5, 12, 0, 0));
@@ -70,5 +87,17 @@ describe('bucketRevenueByJalaliMonth', () => {
     const months = bucketRevenueByJalaliMonth(rows, NOW);
     const total = months.reduce((sum, m) => sum + m.revenue, 0);
     expect(total).toBe(1_000_000);
+  });
+});
+
+describe('buildDashboardReport', () => {
+  it("counts new customers from 00:00 Tehran on this Jalali month's 1st", async () => {
+    const report = await buildDashboardReport(new Date('2026-09-29T12:00:00Z'));
+
+    // 1 Mehr 1405 began at 20:30 UTC on 22 Sep 2026.
+    expect(dao.countCustomers).toHaveBeenCalledExactlyOnceWith(
+      new Date('2026-09-22T20:30:00Z'),
+    );
+    expect(report.stats.newCustomersThisMonth).toBe(7);
   });
 });

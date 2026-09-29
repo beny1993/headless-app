@@ -3,6 +3,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import Script from 'next/script';
+import { PROTECTED_PATHS } from '@/lib/constant/paths';
 
 type UmamiPayload = Record<string, unknown>;
 
@@ -20,8 +21,13 @@ declare global {
  */
 const PAGEVIEW_WAIT_MS = 300;
 
-/** The page the last pageview counted, and the page that referred it. */
-type CountedPage = { url: string; referrer: string | null };
+/**
+ * The page the last pageview counted, and the page that referred it, both as
+ * sent. `href` is the raw URL, kept only to tell one page from the next: an
+ * admin page whose query changed is still a new page, though it is sent as the
+ * same URL.
+ */
+type CountedPage = { href: string; url: string; referrer: string | null };
 
 /**
  * Self-hosted Umami, with the tracker's auto-track switched off.
@@ -67,16 +73,14 @@ export function UmamiTracker({
       if (!(event.target instanceof Element)) return;
       const name = trackedEventOf(event.target);
       if (!name) return;
-      const url = window.location.href;
+      const href = window.location.href;
       // Referred like its page, as auto-track's events were. A page still in
       // its pageview wait is referred by the one counted before it.
       const page = counted.current;
-      const referrer = page && (page.url === url ? page.referrer : page.url);
+      const referrer = page && (page.href === href ? page.referrer : page.url);
       window.umami?.track((props) => ({
-        ...props,
-        url,
+        ...stamp(props, analyticsUrl(href), referrer),
         name,
-        ...(referrer && { referrer }),
       }));
     };
     document.addEventListener('click', onClick, true);
@@ -109,19 +113,57 @@ export function trackedEventOf(target: Element): string | null {
 }
 
 /**
+ * A URL as it may be sent to Umami. A query on one of our own admin pages goes:
+ * the users search puts a customer's phone number there (`?q=0912…`), and the
+ * Umami instance is shared by every project. Anything else, storefront searches
+ * included, is sent as it is.
+ */
+export function analyticsUrl(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  const admin = PROTECTED_PATHS.INDEX;
+  const isAdmin =
+    parsed.origin === window.location.origin &&
+    (parsed.pathname === admin || parsed.pathname.startsWith(`${admin}/`));
+  if (!isAdmin) return url;
+  parsed.search = '';
+  return parsed.href;
+}
+
+/**
+ * A payload's `url` and `referrer`. With no referrer of our own, the tracker's
+ * (`document.referrer`, where the visitor came from) stays, but it too goes
+ * through {@link analyticsUrl}: it can be one of our admin pages.
+ */
+function stamp(
+  props: UmamiPayload,
+  url: string,
+  referrer: string | null,
+): UmamiPayload {
+  const sentReferrer = referrer ?? props.referrer;
+  return {
+    ...props,
+    url,
+    ...(typeof sentReferrer === 'string' &&
+      sentReferrer && { referrer: analyticsUrl(sentReferrer) }),
+  };
+}
+
+/**
  * One pageview for the current URL, referred by the last one counted. A URL
  * already counted is skipped, like the tracker's own history hook skips one.
  */
 function trackPageview(counted: RefObject<CountedPage | null>) {
-  const url = window.location.href;
-  if (!window.umami || url === counted.current?.url) return;
+  const href = window.location.href;
+  if (!window.umami || href === counted.current?.href) return;
 
   // The first pageview keeps the tracker's referrer: where the visitor came from.
+  const url = analyticsUrl(href);
   const referrer = counted.current?.url ?? null;
-  counted.current = { url, referrer };
-  window.umami.track((props) => ({
-    ...props,
-    url,
-    ...(referrer && { referrer }),
-  }));
+  counted.current = { href, url, referrer };
+  window.umami.track((props) => stamp(props, url, referrer));
 }

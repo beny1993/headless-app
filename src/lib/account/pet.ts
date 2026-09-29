@@ -33,6 +33,12 @@ export const PET_GENDERS = {
 
 export type PetGender = (typeof PET_GENDERS)[keyof typeof PET_GENDERS];
 
+/** The Persian word for each gender: the account's pet cards and the admin's. */
+export const GENDER_LABELS: Record<PetGender, string> = {
+  [PET_GENDERS.FEMALE]: 'ماده',
+  [PET_GENDERS.MALE]: 'نر',
+};
+
 /** Non-empty tuple for `pgEnum` (in the schema) and `z.enum` (below). */
 export const PET_GENDER_VALUES = Object.values(PET_GENDERS) as [
   PetGender,

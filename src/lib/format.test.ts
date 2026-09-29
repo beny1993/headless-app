@@ -5,6 +5,7 @@ import {
   formatJalaliYear,
   formatNumber,
   formatToman,
+  jalaliMonthStart,
   jalaliYearMonth,
   parseDigits,
   toPersianDigits,
@@ -190,6 +191,46 @@ describe('jalaliYearMonth', () => {
 
   it('throws on an invalid date rather than returning NaN', () => {
     expect(() => jalaliYearMonth(new Date('not a date'))).toThrow(RangeError);
+  });
+});
+
+describe('jalaliMonthStart', () => {
+  // 1 Mehr 1405 begins at 00:00 Tehran, which is 20:30 UTC on 22 Sep 2026.
+  const MEHR_1405 = new Date('2026-09-22T20:30:00Z');
+
+  it('is 00:00 Tehran on the Jalali 1st of the month `now` falls in', () => {
+    expect(jalaliMonthStart(new Date('2026-09-29T12:00:00.123Z'))).toEqual(
+      MEHR_1405,
+    );
+  });
+
+  it('counts an instant still on the previous day in UTC as this month', () => {
+    // 20:45 UTC on 22 Sep is 00:15 on 1 Mehr in Tehran.
+    expect(jalaliMonthStart(new Date('2026-09-22T20:45:00Z'))).toEqual(
+      MEHR_1405,
+    );
+    expect(jalaliMonthStart(MEHR_1405)).toEqual(MEHR_1405);
+  });
+
+  it('puts a minute before the Tehran midnight in the previous month', () => {
+    // 20:29 UTC is 23:59 on 31 Shahrivar; Shahrivar began on 22 Aug 20:30 UTC.
+    expect(jalaliMonthStart(new Date('2026-09-22T20:29:00Z'))).toEqual(
+      new Date('2026-08-22T20:30:00Z'),
+    );
+  });
+
+  it('rolls over at Nowruz', () => {
+    expect(jalaliMonthStart(new Date('2026-03-20T20:30:00Z'))).toEqual(
+      new Date('2026-03-20T20:30:00Z'),
+    );
+    // Esfand 1404 began on 19 Feb 2026 20:30 UTC.
+    expect(jalaliMonthStart(new Date('2026-03-20T20:29:59.999Z'))).toEqual(
+      new Date('2026-02-19T20:30:00Z'),
+    );
+  });
+
+  it('throws on an invalid date rather than returning NaN', () => {
+    expect(() => jalaliMonthStart(new Date('not a date'))).toThrow(RangeError);
   });
 });
 
