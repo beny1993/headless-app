@@ -284,6 +284,29 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       expect(items[0].familyInStock).toBe(true);
     });
 
+    it('sorts a family with an in-stock member ahead of a newer sold-out product', async () => {
+      // The head's own stock is 0, so ordering on it would tie the two and put
+      // the newer sold-out one first. The card sells through its member.
+      const category = await makeCategory();
+      const at = (day: number) => new Date(Date.UTC(2026, 0, day));
+      const head = await insert(category, {
+        stock: 0,
+        variantLabel: '۵ کیلوگرم',
+        createdAt: at(1),
+      });
+      await insert(category, {
+        stock: 7,
+        variantOf: head.id,
+        variantLabel: '۱۰ کیلوگرم',
+        createdAt: at(1),
+      });
+      const soldOut = await insert(category, { stock: 0, createdAt: at(2) });
+
+      const { items } = await ProductDao.list({ categorySlug: category.slug });
+
+      expect(items.map((card) => card.id)).toEqual([head.id, soldOut.id]);
+    });
+
     it('reports that a family has members even when the prices agree', async () => {
       const category = await makeCategory();
       const head = await insert(category, {

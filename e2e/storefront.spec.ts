@@ -1,4 +1,7 @@
-import { formatPetTypes } from '@/lib/catalog/product-query';
+import {
+  MAX_PRODUCT_PAGE_SIZE,
+  formatPetTypes,
+} from '@/lib/catalog/product-query';
 import type { Page } from '@playwright/test';
 import { PET_TYPES } from '@/db/schema/catalog';
 import { HOME_CATEGORY_TILES } from '@/lib/catalog/category-tree';
@@ -9,6 +12,11 @@ import {
 } from '@/db/seed/catalog-data';
 import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
+import {
+  DEFAULT_SHOP_QUERY,
+  SHOP_SORT_OPTIONS,
+  buildShopHref,
+} from '@/features/storefront/shop/shop-query';
 import {
   GALLERY_PRODUCT,
   IN_STOCK_PRODUCT,
@@ -60,6 +68,25 @@ if (!mainCategory || !grooming) {
   throw new Error('Both seeded products should sit in a sub-category.');
 }
 
+/**
+ * The seeded sold-out product, and the cheapest listed in-stock product of its
+ * pet that costs more. Capped there, its pet's shelf has a card a shopper can
+ * buy priced above it, so the cheapest-first sort alone would list it ahead
+ * of that card.
+ */
+const soldOut = SEED_PRODUCTS.find((product) => product.stock === 0);
+const dearerInStock = SEED_PRODUCTS.filter(
+  (product) =>
+    soldOut &&
+    product.stock > 0 &&
+    !product.variantOfSku &&
+    product.petTypes.includes(soldOut.petTypes[0]) &&
+    product.price > soldOut.price,
+).sort((a, b) => a.price - b.price)[0];
+if (!soldOut || !dearerInStock) {
+  throw new Error('The seed needs an in-stock product dearer than sold-out.');
+}
+
 /** What the storefront calls a category, top-level or sub. */
 const titleOf = (slug: string) =>
   [...SEED_CATEGORIES, ...SEED_SUBCATEGORIES].find(
@@ -88,8 +115,8 @@ test('a shopper browses from home to a product and into the cart', async ({
   );
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
-  // The first card can be the sold-out product, so the cart is exercised on
-  // one that always has stock.
+  // The cart is exercised on the best-stocked product, which no run's orders
+  // ever empty — the first card may be a family, which has no add button.
   await page.goto(IN_STOCK_PRODUCT);
   const title = await page.getByRole('heading', { level: 1 }).innerText();
   await page.locator('[data-umami-event="product-add-to-cart"]').click();
@@ -232,6 +259,42 @@ test('a sold-out product cannot go in the cart', async ({ page }) => {
   await expect(
     page.locator('[data-umami-event="product-add-to-cart"]'),
   ).toHaveCount(0);
+});
+
+test('every sort lists the products in stock before the sold-out ones', async ({
+  page,
+}) => {
+  await page.goto(
+    buildShopHref({
+      ...DEFAULT_SHOP_QUERY,
+      pet: soldOut.petTypes[0],
+      maxPrice: dearerInStock.price,
+      limit: MAX_PRODUCT_PAGE_SIZE,
+    }),
+  );
+  const sort = page.locator('[data-umami-event="shop-sort-change"]');
+  const cards = page
+    .locator('article')
+    .filter({ has: page.locator('[data-umami-event="product-card-open"]') });
+
+  for (const { value } of SHOP_SORT_OPTIONS) {
+    if (value !== DEFAULT_SHOP_QUERY.sort) {
+      await sort.selectOption(value);
+      await expect(page).toHaveURL(
+        (url) => url.searchParams.get('sort') === value,
+      );
+    }
+    // Both kinds are on the page, so the order below says something.
+    await expect(cardsFor(page, soldOut.title)).toBeVisible();
+    await expect(cardsFor(page, dearerInStock.title)).toBeVisible();
+    // The card's «ناموجود» badge, in page order: every false before any true.
+    const soldOutInOrder = await cards.evaluateAll((articles) =>
+      articles.map((article) => article.textContent?.includes('ناموجود')),
+    );
+    expect(soldOutInOrder).toEqual(
+      [...soldOutInOrder].sort((a, b) => Number(a) - Number(b)),
+    );
+  }
 });
 
 test('a product family is one card, and its page picks the member', async ({

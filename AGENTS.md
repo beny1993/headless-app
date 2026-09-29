@@ -244,7 +244,9 @@ covered by their pure modules' unit tests plus browser verification.
 `pnpm test:e2e` (Playwright, `e2e/`) is the regression walk QA used to do by
 hand, run at 1280px and again at 375px. Storefront: phone-OTP sign-in for a
 customer and an admin; home → shop → product → cart drawer (quantity, removal,
-empty state) and a sold-out product; the home page's category mosaic with no
+empty state) and a sold-out product; the sort control stepped through all
+three orderings on the sold-out product's pet shelf, every in-stock card
+listed before any sold-out one; the home page's category mosaic with no
 empty cell and its tall tiles two rows tall (three at 1280px, two at 375px); a
 both-pets product under either pet
 filter and under its sub-category's parent, reading «گربه و سگ» on its page —
@@ -373,7 +375,7 @@ visual (RTL layout, Persian font rendering).
   own fee back (through the API, all attempted before any failure is reported), the province spec switches its province
   off, and the catalog spec switches its product off (through the API), even when they fail.
 - **Leaked active test products break shelf pagination.** Shelves list
-  newest-first, 12 a page, so a stray active `test-…`/`e2e-…` product pushes a
+  in-stock products first, then newest-first, 12 a page, so a stray active `test-…`/`e2e-…` product pushes a
   seeded one to a later page and a spec that looks for it on page one fails.
   The seed's sweep switches off any not updated for an hour.
 - **Leaked top-level test categories crowd the home strip.** It shows the

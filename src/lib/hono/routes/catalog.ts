@@ -127,7 +127,8 @@ const ProductListQuerySchema = z.object({
     description: 'Restrict to one pet type.',
   }),
   sort: productListQueryShape.sort.meta({
-    description: 'Ordering. Defaults to newest first.',
+    description:
+      'Ordering, applied within in-stock products first and sold-out ones after. Defaults to newest first.',
   }),
   minPrice: productListQueryShape.minPrice.meta({
     description: 'Inclusive lower bound, integer Toman.',

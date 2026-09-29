@@ -151,17 +151,36 @@ export const familyInStock = sql<boolean>`(exists (select 1 ${FAMILY_SCOPE} and 
 export const familyHasMembers = sql<boolean>`(exists (select 1 ${MEMBER_SCOPE}))`;
 
 /**
+ * Every ordering starts with «can be bought» (Benyamin, 2026-09-29): a
+ * sold-out card never sits above an in-stock one, however new or cheap it is.
+ * `familyInStock`, not the row's own stock — the same flag as the card's
+ * «ناموجود» badge, so a sold-out head still sells through its 10kg member.
+ * It is a sort key, so the `exists` runs for every row the filters keep, not
+ * only the twelve listed — the ceiling in the family-scalars note above.
+ *
  * Every ordering ends in `sku`, which is unique. Without that tiebreak Postgres
  * is free to return rows with equal prices in a different order per query, and
  * two products at the same price can appear on both page 1 and page 2.
  */
 export const ORDER_BY: Record<ProductSort, SQL[]> = {
-  [PRODUCT_SORTS.NEWEST]: [desc(products.createdAt), asc(products.sku)],
+  [PRODUCT_SORTS.NEWEST]: [
+    desc(familyInStock),
+    desc(products.createdAt),
+    asc(products.sku),
+  ],
   // The family's own cheapest, not the head's price — otherwise a family whose
   // card prints «از ۱۰۰٬۰۰۰» sorts among the 900,000s and the order visibly
   // disagrees with the number printed on it.
-  [PRODUCT_SORTS.PRICE_ASC]: [asc(familyMinPrice), asc(products.sku)],
-  [PRODUCT_SORTS.PRICE_DESC]: [desc(familyMinPrice), asc(products.sku)],
+  [PRODUCT_SORTS.PRICE_ASC]: [
+    desc(familyInStock),
+    asc(familyMinPrice),
+    asc(products.sku),
+  ],
+  [PRODUCT_SORTS.PRICE_DESC]: [
+    desc(familyInStock),
+    desc(familyMinPrice),
+    asc(products.sku),
+  ],
 };
 
 /**
