@@ -167,7 +167,9 @@ export const test = base.extend<{ shopper: Page }>({
 const mostStocked = SEED_PRODUCTS.reduce((best, product) =>
   product.stock > best.stock ? product : best,
 );
-const soldOut = SEED_PRODUCTS.find((product) => product.stock === 0);
+const soldOut = SEED_PRODUCTS.find(
+  (product) => product.stock === 0 && !product.variantLabel,
+);
 const runningOut = SEED_PRODUCTS.find(
   (product) => product.stock > 1 && product.stock <= LOW_STOCK_THRESHOLD,
 );

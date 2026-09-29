@@ -275,7 +275,7 @@ export type VariantChip = {
   label: string;
   isCurrent: boolean;
   /**
-   * Integer Toman. The card advertises the family's cheapest member, so the
+   * Integer Toman. The card advertises the family's cheapest buyable member, so the
    * page it links to has to say which member that is — otherwise «از ۱۴۹٬۰۰۰»
    * lands on a heading priced ۱۸۵٬۰۰۰ with nothing explaining the gap.
    */
@@ -285,7 +285,7 @@ export type VariantChip = {
 };
 
 /**
- * A product as the storefront *listing* reads it. The three family scalars are
+ * A product as the storefront *listing* reads it. The family scalars are
  * computed per row by the listing query, never by a join — a join against the
  * members would duplicate the row and break `total`.
  *
@@ -294,9 +294,12 @@ export type VariantChip = {
  * about families still reads the truth.
  */
 export type ProductCard = ProductWithImages & {
-  /** Integer Toman: the cheapest active member of the family. */
+  /**
+   * Integer Toman: the cheapest member a shopper can buy — or, when nothing is
+   * in stock, the cheapest active member.
+   */
   familyMinPrice: number;
-  /** `min <> max` across the family — what makes the card read «از …». */
+  /** `min <> max` across those same members — what makes the card read «از …». */
   familyPricesVary: boolean;
   /** True when any active member has stock; a sold-out head must not hide one. */
   familyInStock: boolean;
@@ -306,6 +309,11 @@ export type ProductCard = ProductWithImages & {
    * cart from the shop grid, or the shopper gets a smell nobody chose.
    */
   familyHasMembers: boolean;
+  /**
+   * The slug the card opens: the head while it has stock, else the cheapest
+   * member in stock, else the head. A standalone product opens itself.
+   */
+  familyOpenSlug: string;
 };
 
 /** A product as its own page reads it: the row plus its family's chips. */

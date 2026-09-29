@@ -116,12 +116,31 @@ const FAMILY_SCOPE = sql`from products fam where (fam.id = ${products.id} or fam
 /** «The members of this row», for the one scalar that must exclude the row. */
 export const MEMBER_SCOPE = sql`from products fam where fam.variant_of = ${products.id} and fam.is_active`;
 
-/** Integer Toman. `bigint` comes back from `pg` as a string — coerced on read. */
-export const familyMinPrice = sql<string>`(select min(fam.price) ${FAMILY_SCOPE})`;
+/**
+ * «Some active member of this family has stock». Aliased `sib`, not `fam`, so
+ * it can sit inside a `fam` subquery without the two readings shadowing each
+ * other.
+ */
+const FAMILY_HAS_STOCK = sql`exists (select 1 from products sib where (sib.id = ${products.id} or sib.variant_of = ${products.id}) and sib.is_active and sib.stock > 0)`;
 
 /**
- * «Some member of this family costs between these two», as one `exists` over
- * the family scope.
+ * The members whose price the card prints: the ones a shopper can buy — or,
+ * when nothing is in stock, all of them, so a sold-out card still has a price.
+ * A member qualifies when its own «in stock» matches the family's.
+ *
+ * Benyamin, 2026-09-29: a sold-out colour must not be the «از …». The price,
+ * the «از» itself, the price sort and the price window all read this one set,
+ * so the number a card prints and the shelf it is filtered onto cannot
+ * disagree.
+ */
+const PRICED_SCOPE = sql`${FAMILY_SCOPE} and (fam.stock > 0) = ${FAMILY_HAS_STOCK}`;
+
+/** Integer Toman. `bigint` comes back from `pg` as a string — coerced on read. */
+export const familyMinPrice = sql<string>`(select min(fam.price) ${PRICED_SCOPE})`;
+
+/**
+ * «The price this card prints is between these two», as one `exists` over the
+ * priced members.
  *
  * One subquery rather than a bound apiece, because two would be satisfied by
  * two *different* members — «someone costs at least ۱۶۰٬۰۰۰» and «someone
@@ -130,27 +149,34 @@ export const familyMinPrice = sql<string>`(select min(fam.price) ${FAMILY_SCOPE}
  * the window onto the shelf. Either bound may be absent; the caller only asks
  * when at least one is set.
  *
- * `inStock` joins the same subquery for the same reason: «a sold-out 5kg is in
- * the window» and «the 10kg has stock» are two members, and the shopper who
- * asked for both can buy neither.
+ * Over {@link PRICED_SCOPE}, not every member: a sold-out 5kg in the window
+ * beside a 10kg in stock above it is a card printing a price over the cap.
+ * With the in-stock filter on, the priced members are the in-stock ones, so
+ * the filter and the window are asked of the same member.
  */
-export const familyPriceWithin = (
-  min?: number,
-  max?: number,
-  inStock = false,
-): SQL => {
+export const familyPriceWithin = (min?: number, max?: number): SQL => {
   const bounds: SQL[] = [];
   if (min !== undefined) bounds.push(sql`fam.price >= ${min}`);
   if (max !== undefined) bounds.push(sql`fam.price <= ${max}`);
-  if (inStock) bounds.push(sql`fam.stock > 0`);
-  return sql`exists (select 1 ${FAMILY_SCOPE} and ${sql.join(bounds, sql` and `)})`;
+  return sql`exists (select 1 ${PRICED_SCOPE} and ${sql.join(bounds, sql` and `)})`;
 };
 
 /** `min <> max` — what makes a card read «از …» rather than a plain price. */
-export const familyPricesVary = sql<boolean>`(select min(fam.price) <> max(fam.price) ${FAMILY_SCOPE})`;
+export const familyPricesVary = sql<boolean>`(select min(fam.price) <> max(fam.price) ${PRICED_SCOPE})`;
 
 /** Any member with stock. A sold-out head must not hide an in-stock 10kg. */
-export const familyInStock = sql<boolean>`(exists (select 1 ${FAMILY_SCOPE} and fam.stock > 0))`;
+export const familyInStock = sql<boolean>`(${FAMILY_HAS_STOCK})`;
+
+/** «This row itself» — nested for the reason `FAMILY_SCOPE` is. */
+const IS_THIS_ROW = sql`fam.id = ${products.id}`;
+
+/**
+ * The member the card opens: the head while it has stock, else the cheapest
+ * member in stock — the one whose price the card prints — else, with nothing
+ * in stock, the head. A shopper tapping a card must not land on a sold-out
+ * colour when another is on the shelf (Benyamin, 2026-09-29).
+ */
+export const familyOpenSlug = sql<string>`(select fam.slug ${FAMILY_SCOPE} order by (fam.stock > 0) desc, (${IS_THIS_ROW}) desc, fam.price asc, fam.sku asc limit 1)`;
 
 /**
  * Whether anything hangs off this row. The card needs it even when the prices

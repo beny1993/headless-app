@@ -258,8 +258,10 @@ names; a product
 in two categories listed once under that parent and once under each of its own,
 its breadcrumb naming parent then sub-category and both its categories linked
 in the spec row; a product family listed as **one** card reading «از …» with
-the cheapest member's price and an «انتخاب» link in place of the add button,
-its page headed title — label, its chips carrying the shopper to a sibling's
+the cheapest **in-stock** member's price (its head is seeded sold out and
+cheaper) and an «انتخاب» link in place of the add button that opens that
+member rather than the sold-out head, its page headed title — label, the
+head's chip reading «ناموجود», its chips carrying the shopper to a sibling's
 own slug and the cart line naming that member; checkout by card to card — Jalali date and `format.ts`-formatted numbers
 on the result page, the order in `/account` — and through the mock Zarinpal
 gateway (paid, and failed → retry → paid). Admin: anonymous visitors and

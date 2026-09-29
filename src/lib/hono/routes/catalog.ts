@@ -48,23 +48,30 @@ const CategorySchema = z
   .openapi('Category');
 
 /**
- * A listing row: the product plus what its whole family costs and whether any
+ * A listing row: the product plus what its family can be bought for and whether any
  * of it is in stock. A client rendering a grid needs these to print «از …» and
  * to grey out a card; a standalone product reports its own price, no variation
  * and its own stock, so a consumer that ignores families still reads the truth.
  */
 const ProductCardSchema = ProductSchema.safeExtend({
-  familyMinPrice: z.number().int().positive(),
+  familyMinPrice: z.number().int().positive().meta({
+    description:
+      'The price to print on the card, integer Toman: the cheapest member a shopper can buy, or the cheapest active member when nothing is in stock. Print this, not `price` — a sold-out head is not a price anyone can buy at.',
+  }),
   familyPricesVary: z.boolean(),
   familyInStock: z.boolean(),
   familyHasMembers: z.boolean(),
+  familyOpenSlug: z.string().meta({
+    description:
+      'The slug the card opens: the head while it has stock, else the cheapest member in stock, else the head.',
+  }),
 }).openapi('ProductCard');
 
 /**
  * One chip on the product page: which sibling it is, what it costs and whether
  * it can be bought. The price is on the chip because the card advertises the
- * family's cheapest — «از ۱۴۹٬۰۰۰» — and the page it links to has to say which
- * member that is.
+ * family's cheapest buyable price — «از ۱۴۹٬۰۰۰» — and the page it links to has
+ * to say which member that is.
  */
 const VariantChipSchema = z
   .object({
@@ -221,13 +228,14 @@ const toProductResponse = (row: ProductWithImages): ProductResponse => ({
   })),
 });
 
-/** A listing row: the product, plus the three facts about its family. */
+/** A listing row: the product, plus the facts about its family. */
 const toProductCardResponse = (row: ProductCard): ProductCardResponse => ({
   ...toProductResponse(row),
   familyMinPrice: row.familyMinPrice,
   familyPricesVary: row.familyPricesVary,
   familyInStock: row.familyInStock,
   familyHasMembers: row.familyHasMembers,
+  familyOpenSlug: row.familyOpenSlug,
 });
 
 /** The detail payload: the product, plus its family's chips. */

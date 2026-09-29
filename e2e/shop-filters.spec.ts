@@ -25,7 +25,9 @@ if (!category) {
 }
 
 /** The seeded sold-out product, whose own pet shelf the switch is tried on. */
-const soldOut = SEED_PRODUCTS.find((product) => product.stock === 0);
+const soldOut = SEED_PRODUCTS.find(
+  (product) => product.stock === 0 && !product.variantLabel,
+);
 if (!soldOut) {
   throw new Error('The catalog seed needs a sold-out product.');
 }
