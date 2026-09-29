@@ -50,6 +50,11 @@ export class UserDao {
    * same account waits here until the first has committed, so the caps it
    * counts next include that order.
    *
+   * `FOR NO KEY UPDATE`, not `FOR UPDATE`: two checkouts still conflict, but
+   * the `FOR KEY SHARE` a foreign-key check takes on this row does not, so an
+   * insert that references the user (a login's session row) never waits for a
+   * checkout to finish.
+   *
    * It must be the transaction's FIRST lock. Product rows are only ever locked
    * after it, in `byProductId` order, so no two transactions can hold these in
    * opposite orders and deadlock.
@@ -59,7 +64,7 @@ export class UserDao {
       .select({ id: users.id })
       .from(users)
       .where(eq(users.id, id))
-      .for('update');
+      .for('no key update');
   }
 
   /** Creates a customer unless an elevated role is asked for explicitly. */
