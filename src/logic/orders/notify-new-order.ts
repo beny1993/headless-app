@@ -23,18 +23,12 @@ import { UserDao } from '@/db/dao/UserDao';
 import { formatToman, toPersianDigits } from '@/lib/format';
 import {
   ORDER_STATUSES,
-  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
   type OrderStatus,
   type PaymentMethod,
 } from '@/lib/orders/order-status';
 import { newOrderSms, sendSms } from '@/lib/sms';
 import type { SettleOutcome } from '@/logic/payments/verify';
-
-/** How the admin panel names each method, and so how the SMS does. */
-const METHOD_LABELS: Record<PaymentMethod, string> = {
-  [PAYMENT_METHODS.COD]: 'کارت به کارت',
-  [PAYMENT_METHODS.ZARINPAL]: 'زرین‌پال',
-};
 
 /**
  * The alert for one order, as the SMS seam carries it. Pure.
@@ -51,7 +45,9 @@ export const newOrderAlert = (order: {
   newOrderSms({
     ORDER: toPersianDigits(order.orderNo),
     AMOUNT: formatToman(order.total),
-    METHOD: METHOD_LABELS[order.paymentMethod],
+    // The admin panel's own name for the method, so the SMS and the orders
+    // page read the same.
+    METHOD: PAYMENT_METHOD_LABELS[order.paymentMethod],
   });
 
 /**
