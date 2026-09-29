@@ -686,9 +686,9 @@ function PhotoField({
         buttonLabel={preview ? 'تغییر تصویر' : 'انتخاب تصویر'}
         onPick={onPick}
         umami={umami}
-        // The strip's own cap, so an admin is not told a photo will show on a
-        // tile the strip never renders.
-        hint={`روی کاشی دسته‌بندی در صفحه‌ی اصلی دیده می‌شود (فقط ${formatNumber(HOME_CATEGORY_TILES)} دسته‌بندی اصلی اول، به ترتیب نمایش).`}
+        // The strip's own count, and where its categories are picked, so an
+        // admin is not told a photo will show on a tile the strip never renders.
+        hint={`روی کاشی دسته‌بندی در صفحه‌ی اصلی دیده می‌شود، اگر جزو ${formatNumber(HOME_CATEGORY_TILES)} کاشی آن باشد (انتخابشان در محتوای سایت ← صفحه اصلی).`}
       />
       {preview && (
         <button

@@ -15,6 +15,7 @@
 // Paths are dotted, with numeric segments for tuple and list entries
 // (`slots.0.name`, `cards.2.link`, `navLinks.0`), read/written by getPath/setPath.
 import type { ContentKey } from '@/lib/content/site-content';
+import { HOME_CATEGORY_TILES } from '@/lib/catalog/category-tree';
 import { PATHS, shopPath } from '@/lib/constant/paths';
 import { toPersianDigits } from '@/lib/format';
 import {
@@ -37,10 +38,16 @@ export type FieldDescriptor = {
   /**
    * A picker's code destination: what the storefront uses while nothing is saved
    * at `path` — the href for a `link` (a `*_TARGETS` entry or a section's inline
-   * path), the category slugs for `categories`, the automatic rule for
-   * `products`. Only pickers carry one.
+   * path), the category slugs for `categories` (for the home strip, its rule in
+   * words), the automatic rule for `products`. Only pickers carry one.
    */
   fallback?: string;
+  /**
+   * A `categories` picker for the home strip: it offers main categories only,
+   * up to the strip's tile count, and previews the tiles filled by display
+   * order behind the picks — as `homeTiles` fills them on the page.
+   */
+  homeTiles?: true;
 };
 
 type BlockDescriptor = { title: string; fields: FieldDescriptor[] };
@@ -254,6 +261,13 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
       { path: 'headline', label: 'سرتیتر', kind: 'input' },
       { path: 'cta', label: 'پیوند «همه دسته‌بندی‌ها»', kind: 'input' },
       link('ctaLink', 'مقصد پیوند «همه دسته‌بندی‌ها»', shopPath()),
+      {
+        path: 'categoryIds',
+        label: 'دسته‌بندی‌های صفحه اصلی',
+        kind: 'categories',
+        fallback: `${fa(HOME_CATEGORY_TILES)} دسته‌بندی اصلی اول، به ترتیب نمایش`,
+        homeTiles: true,
+      },
     ],
   },
   'home.philosophy': {

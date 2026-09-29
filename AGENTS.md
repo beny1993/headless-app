@@ -34,7 +34,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/lib/sentry.ts` | The one `Sentry.init` options object, shared by all three runtimes (`register()` in `src/instrumentation.ts` for Node and edge, `src/instrumentation-client.ts` for the browser). Owns the privacy contract: explicit `dataCollection` opt-outs and the removal of the console-breadcrumb integration, without which every OTP in the server log rides along on the next event |
 | `src/lib/content/` | Storefront editorial content: the client-safe zod schemas + key enum + area map + `isVisible` (`site-content.ts`), the saved-link contract + `resolveLink` (`link.ts`; its id → slug targets load in `src/logic/content/link-targets.ts`), the typed defaults + `resolveContent` fallback (`defaults.ts`), and the header/footer request-time read `readSiteChrome` (`chrome.ts`, `await connection()`). Values live in the `site_content` table; the page-organized admin editor is `/admin-panel/content/[area]` |
 | `src/features/<area>/<feature>/` | Feature components; route files stay thin |
-| `src/hooks/` | Shared client hooks (`@/hooks`). `use-modal-dialog.ts` is the one wiring for every native modal `<dialog>` — mobile menu, cart drawer, shop filter sheet |
+| `src/hooks/` | Shared client hooks (`@/hooks`). `use-modal-dialog.ts` is the one wiring for every native modal `<dialog>` — mobile menu, cart drawer, shop filter sheet. `use-drag-reorder.ts` is the one drag-to-reorder — the product gallery's photos and the content editor's category picks: the pointer gesture carried by `window` listeners, the RTL arrow keys, focus following the moved handle and one polite live region, each trap documented beside its code |
 | `src/lib/catalog/variant.ts` | Product families: `displayTitle` (the **single** derivation used by the product heading, the admin list and the `order_items` snapshot), the label cap and the Persian refusals. A family is `products.variant_of` + `variant_label` — a member is an ordinary product row, so the cart, the stock decrement and `order_items` are untouched; the storefront lists `variant_of is null` and reaches members from the head's page |
 | `design/` | **Canonical design reference** — vendored Figma prototype (own deps, own `pnpm dev` on :5173). FE stories port from it. Never imported by the app. |
 | `scripts/create-admin.ts` | Grant admin by phone (`pnpm create-admin <phone> [name]`) — creates or promotes |
@@ -295,7 +295,13 @@ flagged in both — until it is switched back on; a home headline that the
 storefront then shows; a product the home grid already shows, picked for the
 first «انتخاب‌های اسموکی» box — the seeded family offered by its head's row and
 never a member's (matched by id) — that the grid then shows first and only
-there, every other box still filled. For search engines: `sitemap.xml` listing a seeded
+there, every other box still filled; home categories an admin picks in the
+content editor, leading the strip in the order picked, and two more dragged
+into the opposite order — by mouse at 1280px, by a finger through Chrome's own
+touch input at 375px, where the grip's `touch-none` is all that keeps the drag
+from turning into a scroll — the grip's row marked while the gesture runs and
+none after, the arrow keys leaving focus on the grip that moved, then listed
+so by the reopened editor and led with by the strip. For search engines: `sitemap.xml` listing a seeded
 product, a family member and their shelves by the URL each page names as its
 canonical; a product page's `Product` JSON-LD priced in Rial and its
 breadcrumb, both in the HTML the server sends; the home page's canonical,
@@ -317,7 +323,8 @@ fail, restore. Only a change with no user-facing flow (a helper, a migration,
 docs) is exempt.
 
 **Not covered — still walked by hand when a story touches them:** content
-areas other than the home headline and the featured boxes, a wrong or resent login code, maintenance
+areas other than the home headline, the featured boxes and the home categories,
+a wrong or resent login code, maintenance
 mode switched on (the suite pins it off; the gate is unit-tested in
 `src/app/(app)/(store)/layout.test.ts`), Zarinpal switched off at checkout (the
 suite pins it on; the disabled option is component-tested in
@@ -359,7 +366,10 @@ visual (RTL layout, Persian font rendering).
   nothing deletes a category's replaced or removed photo. The card-to-card spec leaves a
   `checkout.payment` content row equal to the default (it puts the old values
   back in a `finally`). The shipping-rate, headline and featured-box
-  specs put the old value back, the one-fee-for-all spec puts every province's
+  specs put the old value back, the two home-categories specs save the block
+  again from a tab they left untouched (the API has no read, and this restores the
+  picks' order too — on a fresh database it leaves a `home.categories` row
+  equal to the default), the one-fee-for-all spec puts every province's
   own fee back (through the API, all attempted before any failure is reported), the province spec switches its province
   off, and the catalog spec switches its product off (through the API), even when they fail.
 - **Leaked active test products break shelf pagination.** Shelves list

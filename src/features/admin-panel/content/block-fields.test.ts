@@ -123,12 +123,16 @@ describe('BLOCK_FIELDS', () => {
     }
   });
 
-  it('offers a picker for each of the 21 links, the 4 routine tabs and the featured boxes', () => {
+  it('offers a picker for each of the 21 links, the 4 routine tabs, the home strip and the featured boxes', () => {
     const fields = CONTENT_KEYS.flatMap((key) => BLOCK_FIELDS[key].fields);
     expect(fields.filter((field) => field.kind === 'link')).toHaveLength(21);
     expect(fields.filter((field) => field.kind === 'categories')).toHaveLength(
-      4,
+      5,
     );
+    // The home strip's is the one that fills its tiles, and nothing else does.
+    expect(
+      fields.filter((field) => field.homeTiles).map((field) => field.path),
+    ).toEqual(['categoryIds']);
     expect(fields.filter((field) => field.kind === 'products')).toHaveLength(1);
   });
 
