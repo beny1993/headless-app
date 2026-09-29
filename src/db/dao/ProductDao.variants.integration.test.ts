@@ -284,6 +284,284 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       expect(items[0].familyInStock).toBe(true);
     });
 
+    it('sorts a family with an in-stock member ahead of a newer sold-out product', async () => {
+      // The head's own stock is 0, so ordering on it would tie the two and put
+      // the newer sold-out one first. The card sells through its member.
+      const category = await makeCategory();
+      const at = (day: number) => new Date(Date.UTC(2026, 0, day));
+      const head = await insert(category, {
+        stock: 0,
+        variantLabel: '۵ کیلوگرم',
+        createdAt: at(1),
+      });
+      await insert(category, {
+        stock: 7,
+        variantOf: head.id,
+        variantLabel: '۱۰ کیلوگرم',
+        createdAt: at(1),
+      });
+      const soldOut = await insert(category, { stock: 0, createdAt: at(2) });
+
+      const { items } = await ProductDao.list({ categorySlug: category.slug });
+
+      expect(items.map((card) => card.id)).toEqual([head.id, soldOut.id]);
+    });
+
+    it('keeps a family whose member is in stock under the in-stock filter, and drops the rest', async () => {
+      const category = await makeCategory();
+      const sellsThroughMember = await insert(category, {
+        stock: 0,
+        variantLabel: '۵ کیلوگرم',
+      });
+      await insert(category, {
+        stock: 7,
+        variantOf: sellsThroughMember.id,
+        variantLabel: '۱۰ کیلوگرم',
+      });
+      const soldOutFamily = await insert(category, {
+        stock: 0,
+        variantLabel: 'قرمز',
+      });
+      await insert(category, {
+        stock: 0,
+        variantOf: soldOutFamily.id,
+        variantLabel: 'آبی',
+      });
+      await insert(category, { stock: 0 });
+      const standalone = await insert(category, { stock: 3 });
+
+      const only = await ProductDao.list({
+        categorySlug: category.slug,
+        inStock: true,
+      });
+      const all = await ProductDao.list({
+        categorySlug: category.slug,
+        inStock: false,
+      });
+
+      expect(only.items.map((card) => card.id).sort()).toEqual(
+        [sellsThroughMember.id, standalone.id].sort(),
+      );
+      expect(only.total).toBe(2);
+      expect(all.total).toBe(4);
+    });
+
+    it('asks the price window of the price the card prints — a buyable one', async () => {
+      // The sold-out 5kg is in the window and the 10kg has stock, but nothing
+      // a shopper can buy costs at most 200,000, and the card prints the
+      // 10kg's 400,000. Asked of any member, the card would sit on a shelf
+      // capped at 200,000 printing a number above the cap.
+      const category = await makeCategory();
+      const head = await insert(category, {
+        price: 150_000,
+        stock: 0,
+        variantLabel: '۵ کیلوگرم',
+      });
+      await insert(category, {
+        price: 400_000,
+        stock: 5,
+        variantOf: head.id,
+        variantLabel: '۱۰ کیلوگرم',
+      });
+      const ids = async (filters: {
+        minPrice?: number;
+        maxPrice?: number;
+        inStock?: boolean;
+      }) =>
+        (
+          await ProductDao.list({ categorySlug: category.slug, ...filters })
+        ).items.map((card) => card.id);
+
+      expect(await ids({ maxPrice: 200_000, inStock: true })).toEqual([]);
+      expect(await ids({ maxPrice: 200_000 })).toEqual([]);
+      expect(await ids({ minPrice: 300_000, inStock: true })).toEqual([
+        head.id,
+      ]);
+    });
+
+    it('prints the cheapest price a shopper can buy at, not a sold-out colour’s', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, {
+        price: 120_000,
+        variantLabel: 'آبی',
+      });
+      await insert(category, {
+        price: 100_000,
+        stock: 0,
+        variantOf: head.id,
+        variantLabel: 'قرمز',
+      });
+      await insert(category, {
+        price: 150_000,
+        variantOf: head.id,
+        variantLabel: 'سبز',
+      });
+
+      const [card] = (await ProductDao.list({ categorySlug: category.slug }))
+        .items;
+
+      expect(card.familyMinPrice).toBe(120_000);
+      expect(card.familyPricesVary).toBe(true);
+    });
+
+    it('prints the one colour left in stock, not the sold-out head beside it', async () => {
+      // Prices no longer vary among what can be bought, so the card takes its
+      // plain-price branch — which must print this, never the head's 139,000.
+      const category = await makeCategory();
+      const head = await insert(category, {
+        price: 139_000,
+        stock: 0,
+        variantLabel: 'لاوندر',
+      });
+      await insert(category, {
+        price: 149_000,
+        variantOf: head.id,
+        variantLabel: 'بدون بو',
+      });
+
+      const [card] = (await ProductDao.list({ categorySlug: category.slug }))
+        .items;
+
+      expect(card.familyMinPrice).toBe(149_000);
+      expect(card.familyPricesVary).toBe(false);
+    });
+
+    it('drops «از» when only one price is left to buy at', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, {
+        price: 185_000,
+        variantLabel: 'لاوندر',
+      });
+      await insert(category, {
+        price: 149_000,
+        stock: 0,
+        variantOf: head.id,
+        variantLabel: 'بدون بو',
+      });
+
+      const [card] = (await ProductDao.list({ categorySlug: category.slug }))
+        .items;
+
+      expect(card.familyMinPrice).toBe(185_000);
+      expect(card.familyPricesVary).toBe(false);
+    });
+
+    it('still prints a price for a family with nothing left to buy', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, {
+        price: 185_000,
+        stock: 0,
+        variantLabel: 'لاوندر',
+      });
+      await insert(category, {
+        price: 149_000,
+        stock: 0,
+        variantOf: head.id,
+        variantLabel: 'بدون بو',
+      });
+
+      const [card] = (await ProductDao.list({ categorySlug: category.slug }))
+        .items;
+
+      expect(card.familyInStock).toBe(false);
+      expect(card.familyMinPrice).toBe(149_000);
+      expect(card.familyPricesVary).toBe(true);
+    });
+
+    it('sorts by the buyable price, so a sold-out colour cannot pull the card up', async () => {
+      const category = await makeCategory();
+      const head = await insert(category, {
+        price: 50_000,
+        stock: 0,
+        variantLabel: 'قرمز',
+      });
+      await insert(category, {
+        price: 300_000,
+        variantOf: head.id,
+        variantLabel: 'آبی',
+      });
+      const standalone = await insert(category, { price: 200_000 });
+
+      const { items } = await ProductDao.list({
+        categorySlug: category.slug,
+        sort: 'price-asc',
+      });
+
+      expect(items.map((card) => card.id)).toEqual([standalone.id, head.id]);
+    });
+
+    describe('which member the card opens', () => {
+      it('opens the head while the head has stock, even beside a cheaper colour', async () => {
+        // Pins the head test itself: were `fam.id = products.id` to bind to
+        // `fam.id`, every member would look like the head and the cheaper
+        // colour would win on price.
+        const category = await makeCategory();
+        const head = await insert(category, {
+          price: 185_000,
+          variantLabel: 'لاوندر',
+        });
+        await insert(category, {
+          price: 149_000,
+          variantOf: head.id,
+          variantLabel: 'بدون بو',
+        });
+
+        const [card] = (await ProductDao.list({ categorySlug: category.slug }))
+          .items;
+
+        expect(card.familyOpenSlug).toBe(head.slug);
+      });
+
+      it('opens the cheapest colour in stock when the head is sold out', async () => {
+        const category = await makeCategory();
+        const head = await insert(category, {
+          price: 100_000,
+          stock: 0,
+          variantLabel: 'قرمز',
+        });
+        await insert(category, {
+          price: 150_000,
+          variantOf: head.id,
+          variantLabel: 'سبز',
+        });
+        const blue = await insert(category, {
+          price: 120_000,
+          variantOf: head.id,
+          variantLabel: 'آبی',
+        });
+
+        const [card] = (await ProductDao.list({ categorySlug: category.slug }))
+          .items;
+
+        expect(card.id).toBe(head.id);
+        expect(card.familyOpenSlug).toBe(blue.slug);
+      });
+
+      it('opens the head when nothing is in stock, and a standalone opens itself', async () => {
+        const category = await makeCategory();
+        const head = await insert(category, {
+          price: 185_000,
+          stock: 0,
+          variantLabel: 'لاوندر',
+        });
+        await insert(category, {
+          price: 149_000,
+          stock: 0,
+          variantOf: head.id,
+          variantLabel: 'بدون بو',
+        });
+        const standalone = await insert(category, { stock: 0 });
+
+        const cards = (await ProductDao.list({ categorySlug: category.slug }))
+          .items;
+        const openFor = (id: string) =>
+          cards.find((card) => card.id === id)?.familyOpenSlug;
+
+        expect(openFor(head.id)).toBe(head.slug);
+        expect(openFor(standalone.id)).toBe(standalone.slug);
+      });
+    });
+
     it('reports that a family has members even when the prices agree', async () => {
       const category = await makeCategory();
       const head = await insert(category, {
@@ -650,8 +928,8 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
 
       const found = await ProductDao.getBySlug(head.slug);
 
-      // The card advertises the family's cheapest member, so the page it links
-      // to has to say which member that is — and that it is sold out.
+      // Each chip prices its member and says whether it can be bought: the
+      // card advertises only what can be, so a sold-out one must say so here.
       expect(found?.variants.map((v) => [v.price, v.inStock])).toEqual([
         [185_000, true],
         [149_000, false],

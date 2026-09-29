@@ -53,6 +53,8 @@ export type ShopQuery = {
   /** A category *slug*, and at most one — the API takes a single category. */
   category?: string;
   pet?: ShopPet;
+  /** «فقط محصولات موجود». Off — `false` or absent — is the default. */
+  inStock?: boolean;
   /** Inclusive, integer Toman. */
   minPrice?: number;
   /** Inclusive, integer Toman. */
@@ -89,6 +91,7 @@ const shopQuerySchema = z.object({
   q: asAbsentWhenInvalid(productListQueryShape.q),
   category: asAbsentWhenInvalid(productListQueryShape.category),
   pet: asAbsentWhenInvalid(productListQueryShape.pet),
+  inStock: asAbsentWhenInvalid(productListQueryShape.inStock),
   minPrice: asAbsentWhenInvalid(productListQueryShape.minPrice),
   maxPrice: asAbsentWhenInvalid(productListQueryShape.maxPrice),
   sort: asAbsentWhenInvalid(productListQueryShape.sort),
@@ -161,6 +164,7 @@ export function parseShopQuery(params: ShopSearchParams): ShopQuery {
     q: readText(params, 'q'),
     category: readText(params, 'category'),
     pet: readText(params, 'pet'),
+    inStock: readText(params, 'inStock'),
     minPrice: readText(params, 'minPrice'),
     maxPrice: readText(params, 'maxPrice'),
     sort: readText(params, 'sort'),
@@ -183,6 +187,9 @@ export function buildShopHref(query: ShopQuery): string {
   if (query.q) params.set('q', query.q);
   if (query.category) params.set('category', query.category);
   if (query.pet) params.set('pet', query.pet);
+  // Written only when on: off is the default, and a switched-off link must be
+  // the plain shelf's, one URL for one screen.
+  if (query.inStock) params.set('inStock', 'true');
   // Compared against undefined, not truthiness: `minPrice=0` is a bound the
   // shopper typed, and `if (query.minPrice)` would quietly drop it.
   if (query.minPrice !== undefined) {

@@ -90,6 +90,18 @@ describe('the mobile sheet\u2019s badge', () => {
     expect(openButton().textContent).toContain('(۳)');
   });
 
+  it('counts the in-stock switch, which has a chip of its own', () => {
+    renderSheet({ inStock: 'true', pet: 'cat' });
+
+    expect(openButton().textContent).toContain('(۲)');
+  });
+
+  it('does not count a switched-off in-stock flag, which shows no chip', () => {
+    renderSheet({ inStock: 'false' });
+
+    expect(openButton().textContent).not.toContain('(');
+  });
+
   it('shows no number when nothing is filtering', () => {
     renderSheet();
 
@@ -174,11 +186,17 @@ describe('«پاک کردن همه»', () => {
   const clearAll = () => screen.getByText('پاک کردن همه');
 
   it('drops every filter it shows a chip for', () => {
-    renderFilters({ category: 'toys', pet: 'cat', minPrice: '100000' });
+    renderFilters({
+      inStock: 'true',
+      category: 'toys',
+      pet: 'cat',
+      minPrice: '100000',
+    });
 
     fireEvent.click(clearAll());
 
     const href = push.mock.calls[0][0] as string;
+    expect(href).not.toContain('inStock');
     expect(href).not.toContain('category');
     expect(href).not.toContain('pet');
     expect(href).not.toContain('minPrice');
@@ -440,5 +458,103 @@ describe('the price slider', () => {
     );
 
     expect(screen.queryByLabelText('کمترین قیمت')).toBeNull();
+  });
+});
+
+// A control that writes the URL and reads it back: the box shows what the URL
+// says, and a tick is a navigation, never local state.
+describe('the in-stock switch', () => {
+  const box = () =>
+    screen.getByLabelText('فقط محصولات موجود') as HTMLInputElement;
+
+  it('is off on a fresh shop, and on when the URL says so', () => {
+    renderFilters();
+    expect(box().checked).toBe(false);
+    cleanup();
+
+    renderFilters({ inStock: 'true' });
+    expect(box().checked).toBe(true);
+  });
+
+  it('turns on by navigating, keeping the other filters and going back to page one', () => {
+    renderFilters({ pet: 'cat', page: '3' });
+
+    fireEvent.click(box());
+
+    expect(push).toHaveBeenCalledTimes(1);
+    const href = push.mock.calls[0][0] as string;
+    expect(href).toContain('inStock=true');
+    expect(href).toContain('pet=cat');
+    expect(href).not.toContain('page=');
+  });
+
+  // The resync itself: Next keeps this component mounted when only the search
+  // params change, so the box must follow the `query` prop — the pushed URL,
+  // then the back button — and never hold a tick of its own.
+  it('shows the URL’s state, not its own, across navigations', () => {
+    const { rerender } = renderFilters({ pet: 'cat' });
+    const rerenderAt = (search: URLSearchParams | Record<string, string>) =>
+      rerender(
+        <ShopFilters
+          query={parseShopQuery(search)}
+          categories={OPTIONS}
+          priceBounds={BOUNDS}
+        />,
+      );
+
+    fireEvent.click(box());
+    // Until the navigation lands, the box still says what the URL says.
+    expect(box().checked).toBe(false);
+
+    rerenderAt(new URL(push.mock.calls[0][0], 'http://shop.test').searchParams);
+    expect(box().checked).toBe(true);
+
+    rerenderAt({ pet: 'cat' });
+    expect(box().checked).toBe(false);
+  });
+
+  it('turns off by dropping the parameter, not by writing false', () => {
+    renderFilters({ inStock: 'true', pet: 'cat' });
+
+    fireEvent.click(box());
+
+    expect(push.mock.calls[0][0]).toBe('/shop?pet=cat');
+  });
+
+  it('sits under the categories, before the pet type — Benyamin’s placement', () => {
+    renderFilters();
+
+    const categories = screen.getByText('دسته‌بندی').closest('fieldset')!;
+    const pets = screen.getByText('نوع حیوان').closest('fieldset')!;
+    const follows = Node.DOCUMENT_POSITION_FOLLOWING;
+
+    expect(categories.compareDocumentPosition(box()) & follows).toBeTruthy();
+    expect(box().compareDocumentPosition(pets) & follows).toBeTruthy();
+  });
+
+  it('lists its chip after the category’s, as the panel does', () => {
+    renderFilters({ inStock: 'true', category: 'toys', pet: 'cat' });
+
+    expect(
+      screen
+        .getAllByRole('button', { name: /^حذف فیلتر / })
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual([
+      'حذف فیلتر اسباب‌بازی',
+      'حذف فیلتر فقط محصولات موجود',
+      'حذف فیلتر گربه',
+    ]);
+  });
+
+  it('shows a chip that switches it off', () => {
+    renderFilters({ inStock: 'true', category: 'toys' });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'حذف فیلتر فقط محصولات موجود' }),
+    );
+
+    const href = push.mock.calls[0][0] as string;
+    expect(href).not.toContain('inStock');
+    expect(href).toContain('category=toys');
   });
 });

@@ -51,6 +51,7 @@ const shelfListing = (query: ShopQuery) =>
     JSON.stringify({
       categorySlug: query.category,
       petType: query.pet,
+      inStock: query.inStock,
       minPrice: query.minPrice,
       maxPrice: query.maxPrice,
       search: query.q,

@@ -190,6 +190,23 @@ describe('parseShopQuery', () => {
     });
   });
 
+  describe('in stock only', () => {
+    it('turns on for the values the API reads as true', () => {
+      expect(parseShopQuery({ inStock: 'true' }).inStock).toBe(true);
+      expect(parseShopQuery({ inStock: '1' }).inStock).toBe(true);
+    });
+
+    it('stays off for the values the API reads as false', () => {
+      expect(parseShopQuery({ inStock: 'false' }).inStock).toBe(false);
+      expect(parseShopQuery({ inStock: '0' }).inStock).toBe(false);
+    });
+
+    it('reads a value the API would refuse as absent', () => {
+      expect(parseShopQuery({ inStock: 'maybe' }).inStock).toBeUndefined();
+      expect(parseShopQuery({ inStock: ' ' }).inStock).toBeUndefined();
+    });
+  });
+
   describe('page', () => {
     it('keeps a one-based page', () => {
       expect(parseShopQuery({ page: '3' }).page).toBe(3);
@@ -343,6 +360,17 @@ describe('buildShopHref', () => {
     ).toBe(
       '/shop?category=dry-food&pet=dog&minPrice=50000&maxPrice=300000&sort=price-desc&page=2&limit=24',
     );
+  });
+
+  it('writes the in-stock switch after the pet, and only when it is on', () => {
+    const on = { ...DEFAULT_SHOP_QUERY, pet: 'cat' as const, inStock: true };
+
+    expect(buildShopHref({ ...on, minPrice: 50_000 })).toBe(
+      '/shop?pet=cat&inStock=true&minPrice=50000',
+    );
+    // Off is the default, so a switched-off link is the plain shelf's.
+    expect(buildShopHref({ ...on, inStock: false })).toBe('/shop?pet=cat');
+    expect(parseShopQuery(hrefParams(buildShopHref(on)))).toEqual(on);
   });
 
   it('writes the search term first, ahead of the filters', () => {

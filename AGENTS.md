@@ -244,7 +244,10 @@ covered by their pure modules' unit tests plus browser verification.
 `pnpm test:e2e` (Playwright, `e2e/`) is the regression walk QA used to do by
 hand, run at 1280px and again at 375px. Storefront: phone-OTP sign-in for a
 customer and an admin; home → shop → product → cart drawer (quantity, removal,
-empty state) and a sold-out product; the home page's category mosaic with no
+empty state) and a sold-out product; the sort control stepped through all
+three orderings on the sold-out product's pet shelf, every in-stock card
+listed before any sold-out one, and «فقط محصولات موجود» hiding it there
+until its chip is removed; the home page's category mosaic with no
 empty cell and its tall tiles two rows tall (three at 1280px, two at 375px); a
 both-pets product under either pet
 filter and under its sub-category's parent, reading «گربه و سگ» on its page —
@@ -255,8 +258,10 @@ names; a product
 in two categories listed once under that parent and once under each of its own,
 its breadcrumb naming parent then sub-category and both its categories linked
 in the spec row; a product family listed as **one** card reading «از …» with
-the cheapest member's price and an «انتخاب» link in place of the add button,
-its page headed title — label, its chips carrying the shopper to a sibling's
+the cheapest **in-stock** member's price (its head is seeded sold out and
+cheaper) and an «انتخاب» link in place of the add button that opens that
+member rather than the sold-out head, its page headed title — label, the
+head's chip reading «ناموجود», its chips carrying the shopper to a sibling's
 own slug and the cart line naming that member; checkout by card to card — Jalali date and `format.ts`-formatted numbers
 on the result page, the order in `/account` — and through the mock Zarinpal
 gateway (paid, and failed → retry → paid). Admin: anonymous visitors and
@@ -336,7 +341,9 @@ tracker loaded and check it still swaps the page in place — and anything
 visual (RTL layout, Persian font rendering).
 
 - **It starts its own server**: `next dev` on :3100, never a running :3000 —
-  that one may be another checkout on another branch. Before it: migrate,
+  that one may be another checkout on another branch. Worktrees running the
+  suite at the same time each pick their own with `E2E_PORT=3101 pnpm test:e2e`
+  (validated in `playwright.config.ts`; :3100 when unset). Before it: migrate,
   `seed-catalog` and `seed-shipping`, all idempotent (the seed also puts back
   the stock the specs spend). `webServer.env` pins console SMS with the code on
   the login page, mock Zarinpal switched on (`APP_CONFIG_ZARINPAL_ENABLED`,
@@ -347,6 +354,10 @@ visual (RTL layout, Persian font rendering).
   already running" — stop that server, or run the suite from a worktree.
 - **A worktree has no `.env`**:
   `DOTENV_CONFIG_PATH=<main checkout>/.env pnpm test:e2e`.
+- **Stop only the server you started (Benyamin, 2026-09-29).** A QA or cleanup
+  step ends a dev server by the PID it launched (or `lsof -ti :<its port>`),
+  never by pattern — `pkill -f next-server` also kills every other worktree's
+  server, and on 2026-09-29 it took down a parallel session's E2E run mid-suite.
 - **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
   customer and a fresh admin (`pnpm create-admin`) in through the real login
   page and saves their sessions; specs opt in with `test.use({ storageState })`
@@ -373,7 +384,7 @@ visual (RTL layout, Persian font rendering).
   own fee back (through the API, all attempted before any failure is reported), the province spec switches its province
   off, and the catalog spec switches its product off (through the API), even when they fail.
 - **Leaked active test products break shelf pagination.** Shelves list
-  newest-first, 12 a page, so a stray active `test-…`/`e2e-…` product pushes a
+  in-stock products first, then newest-first, 12 a page, so a stray active `test-…`/`e2e-…` product pushes a
   seeded one to a later page and a spec that looks for it on page one fails.
   The seed's sweep switches off any not updated for an hour.
 - **Leaked top-level test categories crowd the home strip.** It shows the
