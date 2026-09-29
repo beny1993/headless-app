@@ -6,7 +6,10 @@
 // Page-level input degrades rather than 400s (the always-zod rule for pages): a
 // bad value falls back to "no filter" via `.catch`, never throws.
 import { z } from 'zod';
-import { PET_TYPE_VALUES } from '@/lib/catalog/product-query';
+import {
+  PET_TYPE_VALUES,
+  productListQueryShape,
+} from '@/lib/catalog/product-query';
 import { PROTECTED_PATHS } from '@/lib/constant/paths';
 import { pageParamSchema } from '@/lib/pagination';
 
@@ -14,9 +17,12 @@ import { pageParamSchema } from '@/lib/pagination';
 const ACTIVE_VALUES = ['all', 'active', 'inactive'] as const;
 type ActiveValue = (typeof ACTIVE_VALUES)[number];
 
+// `q` and `category` are the storefront's own fields: the same length cap and
+// null-byte strip (Postgres rejects U+0000 in a parameter — a 500), since both
+// reach the same `search_text` and category scope.
 export const adminProductFilterSchema = z.object({
-  q: z.string().trim().min(1).optional().catch(undefined),
-  category: z.string().trim().min(1).optional().catch(undefined),
+  q: productListQueryShape.q.catch(undefined),
+  category: productListQueryShape.category.catch(undefined),
   pet: z.enum(PET_TYPE_VALUES).optional().catch(undefined),
   active: z.enum(ACTIVE_VALUES).catch('all'),
   page: pageParamSchema,

@@ -813,6 +813,22 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       expect(activeOnly.items.map((row) => row.id)).toEqual([active.id]);
       expect(activeOnly.total).toBe(1);
     });
+
+    it('searches `%`, `_` and `\\` as themselves, never as wildcards', async () => {
+      const category = await makeCategory();
+      const marked = await ProductDao.create(
+        makeProduct(category, { title: 'قلاده ۵۰%_تخفیف \\ ویژه' }),
+      );
+      await ProductDao.create(makeProduct(category));
+      const ids = async (search: string) =>
+        (
+          await ProductDao.pageForAdmin({ categorySlug: category.slug, search })
+        ).items.map((row) => row.id);
+
+      expect(await ids('%')).toEqual([marked.id]);
+      expect(await ids('_')).toEqual([marked.id]);
+      expect(await ids('\\')).toEqual([marked.id]);
+    });
   });
 
   describe('a product for one pet or both', () => {

@@ -2,6 +2,7 @@
 // pager writes back. Every filter the admin set has to survive a page step —
 // dropping one silently re-lists the whole catalog under the same heading.
 import { describe, expect, it } from 'vitest';
+import { MAX_SEARCH_TERM_LENGTH } from '@/lib/catalog/product-query';
 import { PROTECTED_PATHS } from '@/lib/constant/paths';
 import {
   activeToFilter,
@@ -21,6 +22,23 @@ describe('adminProductFilterSchema', () => {
       active: 'all',
       page: 1,
     });
+  });
+
+  it('never hands Postgres a null byte in the search or the category', () => {
+    // `pg` rejects U+0000 in a text parameter, and that throw is a 500.
+    const nul = String.fromCharCode(0);
+    const parsed = filters({ q: `${nul}${nul}`, category: nul });
+
+    expect(parsed.q).toBeFalsy();
+    expect(parsed.category).toBeFalsy();
+    expect(filters({ q: `غذا${nul}ی خشک` }).q).toBe('غذای خشک');
+  });
+
+  it('drops a search longer than the storefront’s cap', () => {
+    const atCap = 'ب'.repeat(MAX_SEARCH_TERM_LENGTH);
+
+    expect(filters({ q: atCap }).q).toBe(atCap);
+    expect(filters({ q: `${atCap}ب` }).q).toBeUndefined();
   });
 });
 
