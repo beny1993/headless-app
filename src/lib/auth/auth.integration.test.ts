@@ -263,6 +263,20 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
       );
     });
 
+    it('leaves the name blank for the shopper to fill in', async () => {
+      // Checkout prefills the recipient name from it, so the number here
+      // would put «۰۹۱۲…» where the name belongs.
+      const { phone, code } = await requestCode();
+
+      await post(VERIFY, { phoneNumber: phone, code });
+
+      const [user] = await testDb
+        .select()
+        .from(users)
+        .where(eq(users.phoneNumber, phone));
+      expect(user!.name).toBe('');
+    });
+
     it('signs a returning customer into the same account', async () => {
       const { phone, code } = await requestCode();
       await post(VERIFY, { phoneNumber: phone, code });

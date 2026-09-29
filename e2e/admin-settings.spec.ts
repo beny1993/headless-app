@@ -14,6 +14,7 @@ import {
   ADMIN_STATE,
   expect,
   openCheckout,
+  passRecipientStep,
   reachPayment,
   resultOrderId,
   test,
@@ -49,7 +50,7 @@ test('a shipping rate an admin changes is what checkout charges', async ({
   await saveFee(String(changed));
   try {
     await openCheckout(shopper);
-    await shopper.locator('[data-umami-event="checkout-step-next"]').click();
+    await passRecipientStep(shopper);
     await shopper
       .locator('[data-umami-event="checkout-province-change"]')
       .selectOption({ label: province });
@@ -138,7 +139,7 @@ test('one fee an admin applies to every province is what checkout charges', asyn
     }
 
     await openCheckout(shopper);
-    await shopper.locator('[data-umami-event="checkout-step-next"]').click();
+    await passRecipientStep(shopper);
     await shopper
       .locator('[data-umami-event="checkout-province-change"]')
       .selectOption({ label: province });

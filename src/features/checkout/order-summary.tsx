@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { ShoppingBag } from 'lucide-react';
 import { formatToman, toPersianDigits } from '@/lib/format';
 import { imageSrc } from '@/lib/storage/image-url';
@@ -72,7 +73,7 @@ export function OrderSummary({
             {line.imageKey ? (
               // `alt=""`: the title is announced right after, so a described
               // thumbnail would only repeat it.
-              <img
+              <Image
                 src={imageSrc(line.imageKey)}
                 alt=""
                 width={96}

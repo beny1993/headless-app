@@ -378,6 +378,10 @@ function PetAvatar({
       )}
     >
       {isHttpsUrl(photoUrl) ? (
+        // A URL the shopper pasted, not a key in our bucket. next/image
+        // refuses a host `remotePatterns` does not list, and listing any host
+        // would make `/_next/image` an open proxy.
+        // eslint-disable-next-line no-restricted-syntax
         <img
           src={photoUrl}
           alt=""

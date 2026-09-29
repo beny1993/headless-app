@@ -66,6 +66,19 @@ const config = [
       // own scopes (enums, type parameters, declaration merging).
       'no-shadow': 'off',
       '@typescript-eslint/no-shadow': 'error',
+      // Production's Liara bucket answers 404 to every browser User-Agent, so
+      // an `<img>` given `imageSrc(...)` is a broken image there — and only
+      // there: locally the key resolves root-relative and loads fine.
+      // `next/image` fetches it server-side under its own UA. A URL a user
+      // supplied is the exception (pets-tab.tsx): it stays a raw `<img>`.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "JSXOpeningElement[name.name='img']",
+          message:
+            'Use next/image: the production bucket 404s a browser loading it directly.',
+        },
+      ],
     },
     settings: {
       react: {

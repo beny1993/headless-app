@@ -232,12 +232,22 @@ export async function openCheckout(page: Page, product = IN_STOCK_PRODUCT) {
 }
 
 /**
+ * Step 1 of the open checkout wizard, the recipient. The phone arrives
+ * prefilled from the account, the name does not — a new account has none.
+ */
+export async function passRecipientStep(page: Page) {
+  await page
+    .locator('[data-umami-event="checkout-recipient-name"]')
+    .fill('سارا محمدی');
+  await page.locator('[data-umami-event="checkout-step-next"]').click();
+}
+
+/**
  * Walks the open checkout wizard to its payment step, delivering to the first
  * seeded province — for a spec that reads that step before submitting.
  */
 export async function reachPayment(page: Page) {
-  // Step 1, the recipient, arrives prefilled from the account.
-  await page.locator('[data-umami-event="checkout-step-next"]').click();
+  await passRecipientStep(page);
 
   await page
     .locator('[data-umami-event="checkout-province-change"]')

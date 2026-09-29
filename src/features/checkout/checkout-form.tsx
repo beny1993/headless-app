@@ -526,7 +526,8 @@ export function CheckoutForm({
               <div className="space-y-4">
                 <h2 className="mb-1 text-xl font-bold">اطلاعات مشتری</h2>
                 <p className="text-muted-foreground mb-5 text-sm">
-                  از حساب کاربری‌ات پیش‌فرض شده — در صورت نیاز ویرایش کن.
+                  نام گیرنده را بنویس — شماره تماس از حساب کاربری‌ات آمده و قابل
+                  ویرایش است.
                 </p>
                 {savedAddresses.length > 0 && (
                   <FieldShell
