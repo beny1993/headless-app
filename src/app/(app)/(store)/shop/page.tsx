@@ -142,7 +142,9 @@ export default async function ShopPage({
             <Link href={PATHS.HOME} className="hover:text-foreground">
               خانه
             </Link>
-            <span className="mx-1">/</span>
+            <span className="mx-1" aria-hidden="true">
+              /
+            </span>
             {shelf && (
               <>
                 <Link
@@ -152,7 +154,9 @@ export default async function ShopPage({
                 >
                   {SHOP_TITLE}
                 </Link>
-                <span className="mx-1">/</span>
+                <span className="mx-1" aria-hidden="true">
+                  /
+                </span>
               </>
             )}
             <span className="text-foreground" aria-current="page">

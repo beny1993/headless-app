@@ -1,10 +1,8 @@
 import type { MetadataRoute } from 'next';
-import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
-import { PET_TYPES } from '@/lib/catalog/product-query';
-import { shopPath } from '@/lib/constant/paths';
 import { sitemapEntries } from '@/lib/seo';
 import { getEnvFlag, VARS } from '@/lib/utils/env';
+import { listStockedShelves } from '@/logic/seo/stocked-shelves';
 
 /**
  * Built per request, like the pages it lists. Next caches `sitemap.ts` by
@@ -22,19 +20,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     return sitemapEntries([], []);
   }
 
-  const [products, categories] = await Promise.all([
+  const [products, shelves] = await Promise.all([
     ProductDao.listForSitemap(),
-    CategoryDao.list(),
+    listStockedShelves(),
   ]);
-  // A shelf that lists nothing answers with the empty state: noindexed, and a
-  // soft 404 to Google if the sitemap names it.
-  const stocked = await Promise.all(
-    categories.map((category) => ProductDao.hasShelfProducts(category.slug)),
-  );
-  return sitemapEntries(products, [
-    ...Object.values(PET_TYPES).map((pet) => shopPath({ pet })),
-    ...categories
-      .filter((_, index) => stocked[index])
-      .map((category) => shopPath({ category: category.slug })),
-  ]);
+  return sitemapEntries(products, shelves);
 }

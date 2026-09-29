@@ -1,8 +1,9 @@
 // What a search engine reads: the sitemap, each page's canonical, a product's
-// and the shop's structured data, a shelf's own title, and a search kept out
-// of the index. Head elements carry no `data-umami-event`, so these select the
-// way a crawler does: `link[rel="canonical"]`, `meta[name="robots"]` and
-// `script[type="application/ld+json"]`. Read-only, so it runs at both widths.
+// and the shop's structured data, a shelf's own title and breadcrumb, and a
+// search kept out of the index. Head elements carry no `data-umami-event`, so
+// these select the way a crawler does: `link[rel="canonical"]`,
+// `meta[name="robots"]` and `script[type="application/ld+json"]`. Read-only,
+// so it runs at both widths.
 import type { Page } from '@playwright/test';
 import { DEFAULT_SITE_NAME } from '@/constants';
 import {
@@ -10,10 +11,15 @@ import {
   SEED_PRODUCTS,
   SEED_SUBCATEGORIES,
 } from '@/db/seed/catalog-data';
+import { SHOP_TITLE } from '@/features/storefront/shop/shop-metadata';
 import { PRODUCT_SORTS } from '@/lib/catalog/product-query';
 import { displayTitle } from '@/lib/catalog/variant';
 import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
-import { absoluteUrl, rialForStructuredData } from '@/lib/seo';
+import {
+  absoluteUrl,
+  purchaseSentence,
+  rialForStructuredData,
+} from '@/lib/seo';
 import { expect, test } from './support';
 
 // Picked from the seed by what makes each one useful, never by index. The
@@ -150,7 +156,31 @@ test('a category shelf names its category in the tab, the heading and the share 
   );
 });
 
-test('a sorted view of a shelf stays out of the index, still titled by its shelf', async ({
+test('a shelf breadcrumb leads back to the whole shop, its slashes hidden from screen readers', async ({
+  page,
+}) => {
+  await page.goto(shopPath({ category: shelf.slug }));
+  const toShop = page.locator('[data-umami-event="shop-breadcrumb-shop"]');
+  const breadcrumb = page.locator('nav', { has: toShop });
+
+  // The slashes only draw the trail: read aloud, each one is a stray "slash"
+  // between two links. By text, since a role query cannot see hidden nodes.
+  const slashes = breadcrumb.getByText('/', { exact: true });
+  await expect(slashes).toHaveCount(2);
+  for (const slash of await slashes.all()) {
+    await expect(slash).toHaveAttribute('aria-hidden', 'true');
+  }
+
+  await toShop.click();
+  await expect(page).toHaveURL(
+    (url) => url.pathname === PATHS.SHOP && url.search === '',
+  );
+  await expect(
+    page.getByRole('heading', { level: 1, name: SHOP_TITLE }),
+  ).toBeVisible();
+});
+
+test('a sorted view of a shelf stays out of the index, still titled and described by its shelf', async ({
   page,
 }) => {
   const sorted = new URLSearchParams({
@@ -160,6 +190,11 @@ test('a sorted view of a shelf stays out of the index, still titled by its shelf
   await page.goto(`${PATHS.SHOP}?${sorted}`);
 
   await expect(page).toHaveTitle(`${shelf.title} | ${DEFAULT_SITE_NAME}`);
+  // What a shared link's preview prints under that title.
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+    'content',
+    purchaseSentence(shelf.title),
+  );
   await expect(robots(page)).toHaveAttribute('content', /noindex/);
   await expect(canonical(page)).toHaveCount(0);
 });
