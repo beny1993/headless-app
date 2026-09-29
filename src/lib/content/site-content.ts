@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { blankableText, boundedText } from '@/lib/validation/text';
 import { toAsciiDigits, toPersianDigits } from '@/lib/format';
 import { imageKeySchema } from '@/lib/storage/image-upload';
+import { HOME_CATEGORY_TILES } from '@/lib/catalog/category-tree';
 import { LINK_MESSAGES, linkSchema } from './link';
 
 /** One row per editable block. Fixed set — the structure lives in code, only the
@@ -89,24 +90,53 @@ const card = z.object({
   image: imageKeySchema,
   link,
 });
+// A picked list of 1–`max` distinct category ids, in the order they show. Unset
+// (never `[]`) means the section's code categories. The message spells its bound
+// in Persian digits, never an ASCII numeral.
+const categoryIds = (max: number) => {
+  const message = `یک تا ${toPersianDigits(max)} دسته‌بندی متفاوت انتخاب کن.`;
+  return z
+    .array(z.uuid(LINK_MESSAGES.category))
+    .min(1, { error: message })
+    .max(max, { error: message })
+    .refine((ids) => new Set(ids).size === ids.length, { error: message })
+    .optional();
+};
 // A «روتین روزانه» tab's two labels. Its emoji + category slugs are the same-index
 // entry in `ROUTINE_TARGETS`; a saved `categoryIds` (1–4 distinct ids) replaces the
-// slugs. The message spells its bound in Persian digits, never an ASCII numeral.
+// slugs.
 /** A routine tab's category tiles at most; the editor's picker stops there too. */
 export const MAX_ROUTINE_CATEGORIES = 4;
-const ROUTINE_CATEGORIES_MESSAGE = `یک تا ${toPersianDigits(MAX_ROUTINE_CATEGORIES)} دسته‌بندی متفاوت انتخاب کن.`;
 const routineSlot = z.object({
   label: t(30),
   sub: t(30),
-  categoryIds: z
-    .array(z.uuid(LINK_MESSAGES.category))
-    .min(1, { error: ROUTINE_CATEGORIES_MESSAGE })
-    .max(MAX_ROUTINE_CATEGORIES, { error: ROUTINE_CATEGORIES_MESSAGE })
-    .refine((ids) => new Set(ids).size === ids.length, {
-      error: ROUTINE_CATEGORIES_MESSAGE,
-    })
-    .optional(),
+  categoryIds: categoryIds(MAX_ROUTINE_CATEGORIES),
 });
+/**
+ * The «انتخاب‌های اسموکی» grid's cards — one row on desktop — and so the most
+ * boxes an admin can pick a product for. The storefront rule, the editor's
+ * picker and the schema below all read it from here.
+ */
+export const FEATURED_COUNT = 4;
+// A «انتخاب‌های اسموکی» box: the product the admin picked for it, stored by id,
+// or `null` for «خودکار» — the box then takes the next product the automatic
+// rule offers (`selectFeatured`). Up to FEATURED_COUNT entries, box by box: a
+// shorter list leaves the later boxes on «خودکار», so growing the grid never
+// turns a saved row invalid (which would reset the whole block to its default).
+// One product fills one box.
+const featuredPick = z.uuid(LINK_MESSAGES.product).nullable();
+const FEATURED_BOXES_MESSAGE = `حداکثر ${toPersianDigits(FEATURED_COUNT)} کارت قابل انتخاب است.`;
+const FEATURED_PICKS_MESSAGE = 'هر محصول را فقط در یک کارت انتخاب کن.';
+const featuredPicks = z
+  .array(featuredPick)
+  .max(FEATURED_COUNT, { error: FEATURED_BOXES_MESSAGE })
+  .refine(
+    (ids) => {
+      const picked = ids.filter((id) => id !== null);
+      return new Set(picked).size === picked.length;
+    },
+    { error: FEATURED_PICKS_MESSAGE },
+  );
 // The header's three nav labels; `navLinks` holds their destinations.
 const nav = z.tuple([t(30), t(30), t(30)]);
 
@@ -224,6 +254,8 @@ export const CONTENT_SCHEMAS = {
     eyebrow: t(60),
     headline: t(120),
     body: t(200),
+    // The product in each box (unset: every box «خودکار»).
+    productIds: featuredPicks.optional(),
     visible,
   }),
   'home.journey': z.object({
@@ -260,6 +292,9 @@ export const CONTENT_SCHEMAS = {
     // The «همه دسته‌بندی‌ها» link label and destination (unset: the bare shop).
     cta: t(40),
     ctaLink: link,
+    // The main categories the strip shows first, in this order; the rest of
+    // its tiles fill by display order (`homeTiles`). Unset: display order alone.
+    categoryIds: categoryIds(HOME_CATEGORY_TILES),
     visible,
   }),
   'home.philosophy': z.object({

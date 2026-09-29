@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useSyncExternalStore } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { Minus, Plus, ShoppingBag, Trash2, X } from 'lucide-react';
 import { subscribeToCartDrawer } from './drawer-open';
@@ -189,18 +190,16 @@ function CartLineRow({
         // thumbnail would only repeat it. `imageKey` is a storage key —
         // `imageSrc` resolves bundled `products/…` from public/, an `uploads/…`
         // object from the bucket.
-        <img
+        //
+        // `next/image`'s default `lazy` matters here: the drawer is a
+        // `<dialog>` that sits in the DOM of every storefront page, closed and
+        // `display: none` — which hides these thumbnails without stopping an
+        // eager fetch.
+        <Image
           src={imageSrc(line.imageKey)}
           alt=""
           width={96}
           height={96}
-          // Lazy, unlike a plain `<img>`'s eager default: the drawer is a
-          // `<dialog>` that sits in the DOM of every storefront page, closed
-          // and `display: none` — which hides these thumbnails without
-          // stopping the browser fetching them. Off-screen until the drawer
-          // opens is exactly what `lazy` is for, and it is the LCP element of
-          // nothing.
-          loading="lazy"
           className="bg-muted size-20 rounded-lg object-cover sm:size-24"
         />
       ) : (

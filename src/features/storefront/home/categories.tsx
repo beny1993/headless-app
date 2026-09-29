@@ -1,10 +1,11 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
-import { HOME_CATEGORY_TILES } from '@/lib/catalog/category-tree';
+import { homeTiles } from '@/lib/catalog/category-tree';
 import type { ContentValue } from '@/lib/content/site-content';
 import { shopPath } from '@/lib/constant/paths';
 import { imageSrc } from '@/lib/storage/image-url';
+import { cn } from '@/lib/utils';
 import { ContentLink } from '@/features/storefront/content-link';
 import { resolveLink, type LinkTargets } from '@/lib/content/link';
 
@@ -19,11 +20,13 @@ export type CategoryTile = {
 /**
  * The category strip. The section heading and the «همه دسته‌بندی‌ها» label are
  * admin content (`home.categories`), and so is where that label goes (unset: the
- * bare shop); the tiles themselves are catalog rows — title, slug and photo, all
- * set in the admin panel. A category added there appears here without a code
- * change — the first six of them, since the mosaic is built for exactly that
- * many and the rest are one «همه دسته‌بندی‌ها» click away. One with no photo
- * falls back to a plain surface rather than a broken image.
+ * bare shop) and which categories come first (`categoryIds`); the tiles
+ * themselves are catalog rows — title, slug and photo, all set in the admin
+ * panel. `categories` is every main category in display order, and `homeTiles`
+ * takes six of them: the picked ones, then the rest by display order, since the
+ * mosaic is built for exactly that many and the others are one «همه
+ * دسته‌بندی‌ها» click away. One with no photo falls back to a plain surface
+ * rather than a broken image.
  *
  * Real `<Link>`s, not clickable `<div>`s (design review) — keyboard-reachable,
  * cmd-clickable, and crawlable.
@@ -55,19 +58,26 @@ export function CategoriesSection({
           <h2 className="text-4xl font-black">{content.headline}</h2>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-          {categories.slice(0, HOME_CATEGORY_TILES).map((category, index) => {
+        {/* Rows are a fixed 10rem, never sized by the tiles: at three columns
+            the middle row holds only tall tiles, and with nothing short in it
+            to size it, it collapses and the tall tiles come out one row high. */}
+        <div className="grid auto-rows-[10rem] grid-cols-2 gap-4 md:grid-cols-3">
+          {homeTiles(categories, content.categoryIds).map((category, index) => {
             const image = category.imageKey && imageSrc(category.imageKey);
-            // The first and fourth tiles run tall, as in the design's mosaic.
-            const tall = index === 0 || index === 3;
 
             return (
               <Link
                 key={category.slug}
                 href={shopPath({ category: category.slug })}
-                className={`group bg-secondary relative block min-h-40 overflow-hidden rounded-2xl ${
-                  tall ? 'row-span-2' : ''
-                }`}
+                className={cn(
+                  'group bg-secondary relative block overflow-hidden rounded-2xl',
+                  // The first and fourth tiles run tall, as in the design's
+                  // mosaic: that fills two columns' eight cells exactly, but
+                  // leaves the ninth of three columns empty, so the fifth
+                  // runs tall there too.
+                  (index === 0 || index === 3) && 'row-span-2',
+                  index === 4 && 'md:row-span-2',
+                )}
                 data-umami-event="home-category-click"
               >
                 {image && (
@@ -79,7 +89,11 @@ export function CategoriesSection({
                     className="object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                 )}
-                <div className="absolute inset-0 bg-black/40 transition-colors group-hover:bg-black/30" />
+                {/* Dark only in a band behind the title, so the photo keeps
+                    its colour: a product shot on white went grey under the
+                    design's full-tile veil. A fixed band, so a tall tile
+                    darkens no more of its photo than a short one. */}
+                <div className="absolute inset-x-0 bottom-0 h-28 bg-linear-to-t from-black/70 via-black/40 to-transparent" />
                 <h3 className="absolute end-4 bottom-4 text-xl font-black text-white">
                   {category.title}
                 </h3>

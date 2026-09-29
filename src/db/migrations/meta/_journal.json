@@ -127,6 +127,13 @@
       "when": 1790502481776,
       "tag": "0017_category_image_key",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790676878272,
+      "tag": "0018_blank_phone_names",
+      "breakpoints": true
     }
   ]
 }

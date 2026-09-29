@@ -14,7 +14,7 @@
 // and is unit-tested there.
 import { faker } from '@faker-js/faker';
 import { inArray } from 'drizzle-orm';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   categories,
   PET_TYPES,
@@ -23,10 +23,21 @@ import {
   type Category,
   type NewProduct,
 } from '@/db/schema/catalog';
+import { JsonLd } from '@/components/json-ld';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { formatToman } from '@/lib/format';
-import { shopPath } from '@/lib/constant/paths';
+import { PATHS, shopPath } from '@/lib/constant/paths';
 import { ProductGallery } from '@/features/storefront/product/product-gallery';
+import { SHOP_TITLE } from '@/features/storefront/shop/shop-metadata';
+
+// The shop crumb reads whatever the shop page calls itself. A stand-in title
+// shows this page takes it from there rather than typing a copy of its own.
+vi.mock('@/features/storefront/shop/shop-metadata', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('@/features/storefront/shop/shop-metadata')
+  >()),
+  SHOP_TITLE: 'عنوان آزمایشی فروشگاه',
+}));
 
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
 const page = await importWithDb(() => import('./page'));
@@ -57,6 +68,9 @@ function collect(node: unknown, found: string[] = []): string[] {
     return found;
   }
   if (typeof node !== 'object' || node === null) return found;
+  // Structured data is not what the page shows: a crumb that only it names
+  // would satisfy a check meant for the visible trail.
+  if ((node as { type?: unknown }).type === JsonLd) return found;
 
   // An element's strings live under `props`; the tab descriptors the page
   // builds are plain objects whose `content` holds a whole element of its own,
@@ -236,6 +250,17 @@ describe.skipIf(!databaseReachable)('the product page', () => {
 
       expect(text).toContain(shopPath({ category: category.slug }));
       expect(text).toContain(category.title);
+    });
+
+    it('names the shop crumb as the shop page names itself', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+
+      const text = await renderedText(product.slug);
+
+      // Nothing else on a product page prints the shop's title.
+      expect(text).toContain(SHOP_TITLE);
+      expect(text).toContain(PATHS.SHOP);
     });
 
     it('puts the parent crumb before the sub-category’s, both linked', async () => {

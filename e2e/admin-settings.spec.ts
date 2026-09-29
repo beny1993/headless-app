@@ -1,7 +1,9 @@
-import type { Dialog } from '@playwright/test';
-import { SEED_CATEGORIES } from '@/db/seed/catalog-data';
+import type { Dialog, Page } from '@playwright/test';
+import { SEED_CATEGORIES, SEED_PRODUCTS } from '@/db/seed/catalog-data';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
+import { FEATURED_COUNT } from '@/lib/content/site-content';
 import {
+  API_PATHS,
   PATHS,
   PROTECTED_PATHS,
   adminContentAreaPath,
@@ -14,6 +16,7 @@ import {
   ADMIN_STATE,
   expect,
   openCheckout,
+  passRecipientStep,
   reachPayment,
   resultOrderId,
   test,
@@ -49,7 +52,7 @@ test('a shipping rate an admin changes is what checkout charges', async ({
   await saveFee(String(changed));
   try {
     await openCheckout(shopper);
-    await shopper.locator('[data-umami-event="checkout-step-next"]').click();
+    await passRecipientStep(shopper);
     await shopper
       .locator('[data-umami-event="checkout-province-change"]')
       .selectOption({ label: province });
@@ -138,7 +141,7 @@ test('one fee an admin applies to every province is what checkout charges', asyn
     }
 
     await openCheckout(shopper);
-    await shopper.locator('[data-umami-event="checkout-step-next"]').click();
+    await passRecipientStep(shopper);
     await shopper
       .locator('[data-umami-event="checkout-province-change"]')
       .selectOption({ label: province });
@@ -184,6 +187,274 @@ test('a headline an admin edits is what the home page shows', async ({
     );
   } finally {
     await saveHeadline(original);
+  }
+});
+
+/** The home content's «دسته‌بندی‌ها» block, in whichever tab holds it. */
+const homeCategories = (tab: Page) =>
+  tab.locator('form', {
+    has: tab.getByRole('heading', { name: 'دسته‌بندی‌ها', exact: true }),
+  });
+
+const saveHomeCategories = async (tab: Page) => {
+  await homeCategories(tab)
+    .locator('[data-umami-event="admin-panel-content-save"]')
+    .click();
+  await expect(homeCategories(tab).getByText('ذخیره شد')).toBeVisible();
+};
+
+/** Unticks every home pick the block holds, whatever this database had. */
+const untickHomeCategories = async (tab: Page) => {
+  const ticked = homeCategories(tab).locator(
+    '[data-umami-event="admin-panel-content-home-category-toggle"]:checked',
+  );
+  while ((await ticked.count()) > 0) await ticked.first().uncheck();
+};
+
+type Point = { x: number; y: number };
+
+/** The middle of a box `boundingBox()` returned. */
+const centre = (box: Point & { width: number; height: number }): Point => ({
+  x: box.x + box.width / 2,
+  y: box.y + box.height / 2,
+});
+
+/**
+ * Presses at `from`, slides onto `onto` in twelve steps and lets go, running
+ * `midway` while still pressed. With `finger`, a touch through Chrome's own
+ * input — Playwright's touchscreen only taps — so the browser, not the spec,
+ * decides whether the slide drags the row or scrolls the page. Otherwise the
+ * mouse.
+ */
+async function slide(
+  page: Page,
+  from: Point,
+  onto: Point,
+  finger: boolean,
+  midway: () => Promise<void>,
+) {
+  const steps = 12;
+  if (!finger) {
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(onto.x, onto.y, { steps });
+    await midway();
+    await page.mouse.up();
+    return;
+  }
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (
+    type: 'touchStart' | 'touchMove' | 'touchEnd',
+    touchPoints: Point[],
+  ) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
+  try {
+    await touch('touchStart', [from]);
+    for (let step = 1; step <= steps; step++) {
+      await touch('touchMove', [
+        {
+          x: from.x + ((onto.x - from.x) * step) / steps,
+          y: from.y + ((onto.y - from.y) * step) / steps,
+        },
+      ]);
+    }
+    await midway();
+    await touch('touchEnd', []);
+  } finally {
+    await cdp.detach();
+  }
+}
+
+test('the home categories an admin picks lead the strip, in the order picked', async ({
+  page,
+  shopper,
+}) => {
+  // Two seeded main categories, picked last one first: the strip must follow
+  // the picking order, not the display order.
+  const [first, second] = [...SEED_CATEGORIES].reverse();
+
+  // This tab holds the saved value untouched. Saving it again at the end puts
+  // back exactly what was there, picks and their order included — the API has
+  // no read to take a copy from.
+  await page.goto(adminContentAreaPath('home'));
+  await expect(homeCategories(page)).toBeVisible();
+
+  const editor = await page.context().newPage();
+  try {
+    await editor.goto(adminContentAreaPath('home'));
+    await untickHomeCategories(editor);
+    await homeCategories(editor)
+      .getByLabel(first.title, { exact: true })
+      .check();
+    await homeCategories(editor)
+      .getByLabel(second.title, { exact: true })
+      .check();
+    await saveHomeCategories(editor);
+
+    await shopper.goto(PATHS.HOME);
+    const tiles = shopper.locator('[data-umami-event="home-category-click"]');
+    await expect(tiles.nth(0)).toHaveAttribute(
+      'href',
+      shopPath({ category: first.slug }),
+    );
+    await expect(tiles.nth(1)).toHaveAttribute(
+      'href',
+      shopPath({ category: second.slug }),
+    );
+  } finally {
+    await editor.close();
+    await saveHomeCategories(page);
+  }
+});
+
+test('the home categories an admin drags into order lead the strip in that order', async ({
+  page,
+  shopper,
+  isMobile,
+}) => {
+  // Ticked in display order, then the second dragged above the first. Tick
+  // order and display order both lead with `first`, so only the drag — saved —
+  // puts `second` in front.
+  const [first, second] = SEED_CATEGORIES;
+  const gripOf = (category: { title: string }) => `جابه‌جایی ${category.title}`;
+
+  // The saved value, untouched, to save again at the end — the API has no
+  // read. A tab of its own, so the drag runs in `page`, which the fixture
+  // watches for console errors and failed requests.
+  const snapshot = await page.context().newPage();
+  await snapshot.goto(adminContentAreaPath('home'));
+  await expect(homeCategories(snapshot)).toBeVisible();
+
+  try {
+    await page.goto(adminContentAreaPath('home'));
+    const block = homeCategories(page);
+    await untickHomeCategories(page);
+    await block.getByLabel(first.title, { exact: true }).check();
+    await block.getByLabel(second.title, { exact: true }).check();
+    const grips = block.locator(
+      '[data-umami-event="admin-panel-content-home-category-reorder"]',
+    );
+    await expect(grips).toHaveCount(2);
+    await expect(grips.nth(0)).toHaveAccessibleName(gripOf(first));
+
+    // A real pointer: the second grip dragged onto the first row — a finger at
+    // phone width, where only the grip's `touch-none` stops the slide becoming
+    // a scroll that cancels the drag, and a mouse on the desktop.
+    // `scrollIntoViewIfNeeded` because `boundingBox()` does not scroll.
+    await grips.nth(1).scrollIntoViewIfNeeded();
+    const from = await grips.nth(1).boundingBox();
+    const onto = await grips.nth(0).boundingBox();
+    if (!from || !onto) throw new Error('a category grip has no box to drag');
+    await slide(page, centre(from), centre(onto), isMobile, async () => {
+      // Marked mid-drag, so the count of zero after the release means something.
+      await expect(block.locator('[data-category-dragging]')).toHaveCount(1);
+    });
+    await expect(block.locator('[data-category-dragging]')).toHaveCount(0);
+    await expect(grips.nth(0)).toHaveAccessibleName(gripOf(second));
+
+    // The arrow keys, in Chrome. ArrowDown moves the focused grip's own row,
+    // the move that drops focus in a browser; the grip that moved has to hold
+    // it afterwards. ArrowUp then restores the dragged order.
+    await grips.nth(0).focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(grips.nth(1)).toHaveAccessibleName(gripOf(second));
+    await expect(grips.nth(1)).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(grips.nth(0)).toHaveAccessibleName(gripOf(second));
+    await expect(grips.nth(0)).toBeFocused();
+
+    await saveHomeCategories(page);
+    // Reopened, the editor lists the saved order.
+    await page.reload();
+    await expect(grips.nth(0)).toHaveAccessibleName(gripOf(second));
+    await expect(grips.nth(1)).toHaveAccessibleName(gripOf(first));
+
+    await shopper.goto(PATHS.HOME);
+    const tiles = shopper.locator('[data-umami-event="home-category-click"]');
+    await expect(tiles.nth(0)).toHaveAttribute(
+      'href',
+      shopPath({ category: second.slug }),
+    );
+    await expect(tiles.nth(1)).toHaveAttribute(
+      'href',
+      shopPath({ category: first.slug }),
+    );
+  } finally {
+    await saveHomeCategories(snapshot);
+    await snapshot.close();
+  }
+});
+
+test('a product an admin picks for the first «انتخاب‌های اسموکی» box is what the home page shows there, and only there', async ({
+  page,
+  shopper,
+}) => {
+  await page.goto(adminContentAreaPath('home'));
+  const block = page.locator('form', {
+    has: page.getByRole('heading', { name: 'انتخاب‌های اسموکی', exact: true }),
+  });
+  const headline = await block
+    .getByLabel('سرتیتر', { exact: true })
+    .inputValue();
+  const first = block
+    .locator('[data-umami-event="admin-panel-content-featured-product-change"]')
+    .first();
+  const original = await first.inputValue();
+
+  // The seeded family is offered once, by its head's own row — never a
+  // member's, whose pick the storefront would silently drop. Matched by id,
+  // not by title: the members share the head's title.
+  const member = SEED_PRODUCTS.find((product) => product.variantOfSku)!;
+  const head = SEED_PRODUCTS.find(
+    (product) => product.sku === member.variantOfSku,
+  )!;
+  const family = (
+    (await (
+      await page.request.get(`${API_PATHS.PRODUCTS}/${head.slug}`)
+    ).json()) as { data: { id: string; variants: { id: string }[] } }
+  ).data;
+  const offered = await first
+    .locator('option')
+    .evaluateAll((options) =>
+      options.map((option) => (option as HTMLOptionElement).value),
+    );
+  expect(offered).toContain(family.id);
+  for (const variant of family.variants) {
+    if (variant.id !== family.id) expect(offered).not.toContain(variant.id);
+  }
+
+  // The grid as it stands. The pick is its SECOND card — a product the
+  // automatic rule already shows — so a rule that offered a pick again would
+  // show it twice.
+  await shopper.goto(PATHS.HOME);
+  const grid = shopper.locator('section', {
+    has: shopper.getByRole('heading', { name: headline, exact: true }),
+  });
+  const cards = grid.locator('[data-umami-event="product-card-open"]');
+  await expect(cards).toHaveCount(FEATURED_COUNT);
+  const pick = (await cards.allTextContents())[1];
+
+  const save = async (option: string | { label: string }) => {
+    await first.selectOption(option);
+    await block
+      .locator('[data-umami-event="admin-panel-content-save"]')
+      .click();
+    await expect(block.getByText('ذخیره شد')).toBeVisible();
+  };
+
+  // From the first write on: if the save lands but its confirmation does not,
+  // the `finally` still puts box one back.
+  try {
+    await save({ label: pick });
+    await shopper.reload();
+    await expect(cards.first()).toHaveText(pick);
+    // Only box one changed hands: every other box is still filled, and the
+    // pick is not offered a second time by the automatic rule.
+    await expect(cards).toHaveCount(FEATURED_COUNT);
+    expect(
+      (await cards.allTextContents()).filter((title) => title === pick),
+    ).toHaveLength(1);
+  } finally {
+    await save(original);
   }
 });
 
