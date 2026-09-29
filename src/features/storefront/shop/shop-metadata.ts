@@ -52,7 +52,13 @@ export function shopMetadata(
   listed: boolean,
 ): Metadata {
   const shelf = shelfTitle(query, categories);
-  const title = shelf ?? SHOP_TITLE;
+  // Indexed or not, the page names its shelf: the tab, and a shared link's
+  // preview. The plain shop keeps the site description, which already says it
+  // all.
+  const named: Metadata = {
+    title: shelf ?? SHOP_TITLE,
+    ...(shelf && { description: purchaseSentence(shelf) }),
+  };
 
   // The shelf this URL shows, with the search and every view parameter reset,
   // written by the shop's own URL builder: the canonical is the very URL the
@@ -66,13 +72,8 @@ export function shopMetadata(
   // No canonical here: a noindexed page whose canonical points elsewhere
   // sends Google two signals that contradict each other.
   if (!listed || buildShopHref(query) !== shelfHref) {
-    return { title, robots: NOT_INDEXED };
+    return { ...named, robots: NOT_INDEXED };
   }
 
-  return {
-    title,
-    // The plain shop keeps the site description, which already says it all.
-    ...(shelf && { description: purchaseSentence(shelf) }),
-    alternates: { canonical: absoluteUrl(shelfHref) },
-  };
+  return { ...named, alternates: { canonical: absoluteUrl(shelfHref) } };
 }

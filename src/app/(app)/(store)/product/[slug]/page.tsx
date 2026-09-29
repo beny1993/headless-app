@@ -17,6 +17,7 @@ import { ProductTabs } from '@/features/storefront/product/product-tabs';
 import { Spec } from '@/features/storefront/product/spec-row';
 import { StockNotice } from '@/features/storefront/product/stock-notice';
 import { VariantChips } from '@/features/storefront/product/variant-chips';
+import { SHOP_TITLE } from '@/features/storefront/shop/shop-metadata';
 import { formatPetTypes, productSlugSchema } from '@/lib/catalog/product-query';
 import { displayTitle } from '@/lib/catalog/variant';
 import type { ProductDetail } from '@/db/schema/catalog';
@@ -109,7 +110,7 @@ export default async function ProductDetailPage({ params }: Params) {
   // this page, shown as text.
   const trail: { name: string; path: string; umamiEvent?: string }[] = [
     { name: 'خانه', path: PATHS.HOME },
-    { name: 'فروشگاه', path: PATHS.SHOP },
+    { name: SHOP_TITLE, path: PATHS.SHOP },
     ...(parentCategory
       ? [
           {

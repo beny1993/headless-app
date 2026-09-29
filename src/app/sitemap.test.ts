@@ -1,24 +1,20 @@
 // The sitemap route's own decisions: what it hands crawlers while the shop is
-// open, and what it holds back while the maintenance gate hides the store. The
-// DAOs are mocked at the module edge; the route's choices run for real.
+// open, and what it holds back while the maintenance gate hides the store. Its
+// reads are mocked at the module edge — which shelves list something is
+// `listStockedShelves`'s to decide, pinned in its own suite.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PET_TYPES } from '@/lib/catalog/product-query';
 import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
 import { absoluteUrl } from '@/lib/seo';
 
-const dao = vi.hoisted(() => ({
+const read = vi.hoisted(() => ({
   listForSitemap: vi.fn(),
-  hasShelfProducts: vi.fn(),
-  listCategories: vi.fn(),
+  listStockedShelves: vi.fn(),
 }));
 vi.mock('@/db/dao/ProductDao', () => ({
-  ProductDao: {
-    listForSitemap: dao.listForSitemap,
-    hasShelfProducts: dao.hasShelfProducts,
-  },
+  ProductDao: { listForSitemap: read.listForSitemap },
 }));
-vi.mock('@/db/dao/CategoryDao', () => ({
-  CategoryDao: { list: dao.listCategories },
+vi.mock('@/logic/seo/stocked-shelves', () => ({
+  listStockedShelves: read.listStockedShelves,
 }));
 
 const { default: sitemap } = await import('./sitemap');
@@ -27,16 +23,13 @@ const urlsOf = async () => (await sitemap()).map((entry) => entry.url);
 
 describe('sitemap.xml', () => {
   beforeEach(() => {
-    dao.listForSitemap.mockResolvedValue([
+    read.listForSitemap.mockResolvedValue([
       { slug: 'royal-canin', updatedAt: new Date('2026-09-20T10:00:00Z') },
     ]);
-    dao.listCategories.mockResolvedValue([
-      { slug: 'dry-food' },
-      { slug: 'emptied' },
+    read.listStockedShelves.mockResolvedValue([
+      shopPath({ pet: 'cat' }),
+      shopPath({ category: 'dry-food' }),
     ]);
-    dao.hasShelfProducts.mockImplementation(
-      async (slug: string) => slug !== 'emptied',
-    );
   });
 
   afterEach(() => {
@@ -44,17 +37,15 @@ describe('sitemap.xml', () => {
     vi.clearAllMocks();
   });
 
-  it('lists the catalogue while the shop is open, and only shelves that list something', async () => {
+  it('lists every product page and every stocked shelf while the shop is open', async () => {
     vi.stubEnv('APP_CONFIG_MAINTENANCE_MODE', '');
     const urls = await urlsOf();
 
     expect(urls).toContain(absoluteUrl(productPath('royal-canin')));
+    expect(urls).toContain(absoluteUrl(shopPath({ pet: 'cat' })));
     expect(urls).toContain(absoluteUrl(shopPath({ category: 'dry-food' })));
-    for (const pet of Object.values(PET_TYPES)) {
-      expect(urls).toContain(absoluteUrl(shopPath({ pet })));
-    }
-    // Its page answers with an empty state: a soft 404 to Google.
-    expect(urls).not.toContain(absoluteUrl(shopPath({ category: 'emptied' })));
+    // Nothing the shelf check left out comes back some other way.
+    expect(urls).not.toContain(absoluteUrl(shopPath({ pet: 'dog' })));
   });
 
   it('holds the catalogue back while the shop is closed', async () => {
@@ -67,7 +58,7 @@ describe('sitemap.xml', () => {
       absoluteUrl(PATHS.SHOP),
       absoluteUrl(PATHS.ABOUT),
     ]);
-    expect(dao.listForSitemap).not.toHaveBeenCalled();
-    expect(dao.hasShelfProducts).not.toHaveBeenCalled();
+    expect(read.listForSitemap).not.toHaveBeenCalled();
+    expect(read.listStockedShelves).not.toHaveBeenCalled();
   });
 });

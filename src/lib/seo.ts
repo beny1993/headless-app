@@ -165,8 +165,10 @@ export const SITE_JSON_LD = {
 /**
  * `sitemap.xml` entries: the fixed pages, the shelves given (as paths) and the
  * product pages given. Which shelves and products that is, is the route's call
- * (`src/app/sitemap.ts`). A product is dated by its last change; nothing else
- * has a date, since Google trusts `<lastmod>` only while it is accurate.
+ * (`src/app/sitemap.ts`, its shelves from `listStockedShelves` in
+ * `src/logic/seo/stocked-shelves.ts`). A product is dated by its last change;
+ * nothing else has a date, since Google trusts `<lastmod>` only while it is
+ * accurate.
  */
 export function sitemapEntries(
   products: { slug: string; updatedAt: Date }[],

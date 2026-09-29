@@ -106,8 +106,9 @@ describe('shopMetadata', () => {
 
       expect(metadata.robots).toEqual(NOT_INDEXED);
       expect(metadata).not.toHaveProperty('alternates');
-      // Still the shelf in the tab.
+      // Still the shelf in the tab, and in a shared link's preview.
       expect(metadata.title).toBe('غذای خشک');
+      expect(metadata.description).toBe(purchaseSentence('غذای خشک'));
     },
   );
 
@@ -116,19 +117,20 @@ describe('shopMetadata', () => {
 
     expect(metadata.robots).toEqual(NOT_INDEXED);
     expect(metadata).not.toHaveProperty('alternates');
+    expect(metadata.description).toBe(purchaseSentence('غذای خشک'));
   });
 
   it('keeps a page that lists nothing out of the index: an emptied shelf, a page past the end', () => {
-    const empty: Record<string, string>[] = [
-      { category: 'dry-food' },
-      { page: '999' },
-    ];
-    for (const params of empty) {
-      const metadata = metadataFor(params, false);
+    const emptied = metadataFor({ category: 'dry-food' }, false);
+    const pastTheEnd = metadataFor({ page: '999' }, false);
 
+    for (const metadata of [emptied, pastTheEnd]) {
       expect(metadata.robots).toEqual(NOT_INDEXED);
       expect(metadata).not.toHaveProperty('alternates');
     }
+    expect(emptied.description).toBe(purchaseSentence('غذای خشک'));
+    // The whole shop, as on its first page: the site description.
+    expect(pastTheEnd).not.toHaveProperty('description');
   });
 
   it('keeps an unknown category out of the index, under the shop title', () => {
@@ -136,5 +138,6 @@ describe('shopMetadata', () => {
 
     expect(metadata.robots).toEqual(NOT_INDEXED);
     expect(metadata.title).toBe(SHOP_TITLE);
+    expect(metadata).not.toHaveProperty('description');
   });
 });
