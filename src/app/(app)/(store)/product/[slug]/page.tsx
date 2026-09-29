@@ -1,13 +1,18 @@
-import { cache } from 'react';
+import { cache, Fragment } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Check } from 'lucide-react';
+import { JsonLd } from '@/components/json-ld';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { availability } from '@/features/storefront/product/availability';
 import { ProductGallery } from '@/features/storefront/product/product-gallery';
 import { ProductPurchase } from '@/features/storefront/product/product-purchase';
+import {
+  productJsonLd,
+  productMetadata,
+} from '@/features/storefront/product/product-seo';
 import { ProductTabs } from '@/features/storefront/product/product-tabs';
 import { Spec } from '@/features/storefront/product/spec-row';
 import { StockNotice } from '@/features/storefront/product/stock-notice';
@@ -15,8 +20,9 @@ import { VariantChips } from '@/features/storefront/product/variant-chips';
 import { formatPetTypes, productSlugSchema } from '@/lib/catalog/product-query';
 import { displayTitle } from '@/lib/catalog/variant';
 import type { ProductDetail } from '@/db/schema/catalog';
-import { PATHS, shopPath } from '@/lib/constant/paths';
+import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
 import { formatToman } from '@/lib/format';
+import { breadcrumbJsonLd } from '@/lib/seo';
 
 /**
  * The product detail page, ported from `design/src/app/App.tsx`.
@@ -64,7 +70,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
   const product = await findProduct(slug);
 
-  return product ? { title: displayTitle(product) } : {};
+  return product ? productMetadata(product) : {};
 }
 
 export default async function ProductDetailPage({ params }: Params) {
@@ -98,48 +104,60 @@ export default async function ProductDetailPage({ params }: Params) {
   );
   const state = availability(product.stock);
 
+  // One trail for the nav and for its structured data, so the markup Google
+  // reads can never name a crumb the page does not show. The last crumb is
+  // this page, shown as text.
+  const trail: { name: string; path: string; umamiEvent?: string }[] = [
+    { name: 'خانه', path: PATHS.HOME },
+    { name: 'فروشگاه', path: PATHS.SHOP },
+    ...(parentCategory
+      ? [
+          {
+            name: parentCategory.title,
+            path: shopPath({ category: parentCategory.slug }),
+            umamiEvent: 'product-breadcrumb-parent-category',
+          },
+        ]
+      : []),
+    ...(category
+      ? [
+          {
+            name: category.title,
+            path: shopPath({ category: category.slug }),
+            umamiEvent: 'product-breadcrumb-category',
+          },
+        ]
+      : []),
+    { name: displayTitle(product), path: productPath(product.slug) },
+  ];
+
   return (
     <main className="min-h-screen">
+      <JsonLd data={productJsonLd(product, category?.title)} />
+      <JsonLd data={breadcrumbJsonLd(trail)} />
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-8">
         <nav
           aria-label="مسیر صفحه"
           className="text-muted-foreground mb-8 flex flex-wrap items-center gap-2 text-sm"
         >
-          <Link href={PATHS.HOME} className="hover:text-foreground">
-            خانه
-          </Link>
-          <span aria-hidden="true">/</span>
-          <Link href={PATHS.SHOP} className="hover:text-foreground">
-            فروشگاه
-          </Link>
-          {parentCategory && (
-            <>
-              <span aria-hidden="true">/</span>
-              <Link
-                href={shopPath({ category: parentCategory.slug })}
-                className="hover:text-foreground"
-                data-umami-event="product-breadcrumb-parent-category"
-              >
-                {parentCategory.title}
-              </Link>
-            </>
-          )}
-          {category && (
-            <>
-              <span aria-hidden="true">/</span>
-              <Link
-                href={shopPath({ category: category.slug })}
-                className="hover:text-foreground"
-                data-umami-event="product-breadcrumb-category"
-              >
-                {category.title}
-              </Link>
-            </>
-          )}
-          <span aria-hidden="true">/</span>
-          <span className="text-foreground" aria-current="page">
-            {displayTitle(product)}
-          </span>
+          {trail.map((crumb, index) => (
+            <Fragment key={crumb.path}>
+              {index > 0 && <span aria-hidden="true">/</span>}
+              {index < trail.length - 1 ? (
+                <Link
+                  href={crumb.path}
+                  className="hover:text-foreground"
+                  data-umami-event={crumb.umamiEvent}
+                >
+                  {crumb.name}
+                </Link>
+              ) : (
+                <span className="text-foreground" aria-current="page">
+                  {crumb.name}
+                </span>
+              )}
+            </Fragment>
+          ))}
         </nav>
 
         <div className="mb-16 grid grid-cols-1 gap-12 lg:grid-cols-2">
