@@ -67,8 +67,15 @@ describe.skipIf(!databaseReachable)('the new-order alert hooks', () => {
   const fx = new OrderFixtures();
   const provinceIds: number[] = [];
 
-  beforeEach(() => mocks.notify.mockClear());
+  beforeEach(() => {
+    mocks.notify.mockClear();
+    // Online payment is off by default, and createOrder refuses a Zarinpal
+    // order while it is — which would pass every «no alert» case here for
+    // the wrong reason, or fail it before the hook is reached.
+    vi.stubEnv('APP_CONFIG_ZARINPAL_ENABLED', 'true');
+  });
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fx.cleanup();
     if (provinceIds.length > 0) {
       await testDb

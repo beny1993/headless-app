@@ -43,6 +43,7 @@ describe.skipIf(!databaseReachable)('createOrder rate cap', () => {
 
   beforeEach(() => mocks.notify.mockClear());
   afterEach(async () => {
+    vi.unstubAllEnvs();
     // Belt and braces: a test that expects a refusal has no order id to
     // remember, so if the cap ever stops refusing (a revert, a regression) the
     // order it wrongly created would otherwise be left behind to block the
@@ -153,14 +154,19 @@ describe.skipIf(!databaseReachable)('createOrder rate cap', () => {
   it('refuses a Zarinpal checkout on the same cap', async () => {
     // The open-order cap only ever counted `pending_payment`; this one counts
     // every order, so neither payment method is a way around the other's guard.
+    // Online payment has to be on: switched off, createOrder refuses every
+    // Zarinpal order first — the same CheckoutError on the same field — and
+    // this case would pass with the cap gone.
+    vi.stubEnv('APP_CONFIG_ZARINPAL_ENABLED', 'true');
     const { user, input } = await scenario({
       paymentMethod: PAYMENT_METHODS.ZARINPAL,
     });
     await seedOrders(user, MAX_ORDERS_PER_WINDOW);
 
-    await expect(createOrder(user.id, input)).rejects.toBeInstanceOf(
-      CheckoutError,
-    );
+    const error = await createOrder(user.id, input).catch((e) => e);
+    expect(error).toBeInstanceOf(CheckoutError);
+    // The cap's own refusal, not the open-order cap's or the gateway's.
+    expect(error.message).toContain('یک ساعت گذشته');
   });
 
   it('still allows the last order below the cap', async () => {
