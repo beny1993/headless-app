@@ -33,17 +33,23 @@ const TOYS = {
   title: 'اسباب‌بازی',
   slug: 'toys',
 };
+const BALL = {
+  id: '9d8c7b6a-5f4e-4d3c-8b2a-0f1e2d3c4b5a',
+  title: 'توپ گربه',
+  slug: 'cat-ball',
+};
+const FOOD = {
+  id: '3a4b5c6d-7e8f-4a0b-9c1d-2e3f4a5b6c7d',
+  title: 'غذای خشک گربه',
+  slug: 'cat-dry-food',
+};
 /** A category or product id the catalog no longer has. */
 const DELETED_ID = '11111111-2222-4333-8444-555555555555';
 const OPTIONS: LinkOptions = {
   categories: [DRY, TOYS],
-  products: [
-    {
-      id: '9d8c7b6a-5f4e-4d3c-8b2a-0f1e2d3c4b5a',
-      title: 'توپ گربه',
-      slug: 'cat-ball',
-    },
-  ],
+  mainCategories: [DRY, TOYS],
+  products: [BALL],
+  cards: [BALL, FOOD],
 };
 
 const { putData, toast } = vi.hoisted(() => ({
@@ -240,6 +246,10 @@ describe('content editor destinations', () => {
       fireEvent.click(screen.getByRole('button', { name: 'ذخیره' }));
     });
   const sentBody = () => putData.mock.calls[0][1] as Record<string, unknown>;
+  /** The text a control's `aria-describedby` points at — what a screen reader hears. */
+  const describedBy = (control: HTMLElement) =>
+    document.getElementById(control.getAttribute('aria-describedby') ?? '')
+      ?.textContent;
 
   it('saves a picked destination with its block, previewing where it goes', async () => {
     putData.mockResolvedValue({
@@ -361,6 +371,9 @@ describe('content editor destinations', () => {
       name: LINK_PICKER_LABELS.category,
     }) as HTMLSelectElement;
     expect(category.value).toBe(DELETED_ID);
+    // …and a screen reader hears why, not just a red border.
+    expect(category.getAttribute('aria-invalid')).toBe('true');
+    expect(describedBy(category)).toContain(LINK_MESSAGES.missingCategory);
   });
 
   it('saves a product destination, starting from the first active product', async () => {
@@ -512,6 +525,170 @@ describe('content editor destinations', () => {
     ]);
   });
 
+  it('picks the home strip from the main categories, listing the six tiles it shows', async () => {
+    // Seven main categories in display order, and a sub-category.
+    const main = [
+      DRY,
+      TOYS,
+      {
+        id: '7e6d5c4b-3a2f-4e1d-9c0b-a9f8e7d6c5b4',
+        title: 'تشویقی',
+        slug: 'treats',
+      },
+      {
+        id: '2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f',
+        title: 'مکمل',
+        slug: 'supplements',
+      },
+      {
+        id: '8f7e6d5c-4b3a-4f2e-8d1c-0b9a8f7e6d5c',
+        title: 'بهداشت',
+        slug: 'hygiene',
+      },
+      {
+        id: '4a5b6c7d-8e9f-4a0b-9c1d-2e3f4a5b6c7d',
+        title: 'غذای تر',
+        slug: 'wet-food',
+      },
+      {
+        id: '9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a',
+        title: 'قلاده',
+        slug: 'collars',
+      },
+    ];
+    const shampoo = {
+      id: '6e5d4c3b-2a1f-4e0d-9c8b-7a6f5e4d3c2b',
+      title: 'شامپو',
+      slug: 'shampoo',
+    };
+    putData.mockResolvedValue({
+      key: 'home.categories',
+      value: DEFAULT_CONTENT['home.categories'],
+    });
+    render(
+      <ContentEditor
+        options={{
+          ...OPTIONS,
+          categories: [...main, shampoo],
+          mainCategories: main,
+        }}
+        keys={['home.categories']}
+        values={{ 'home.categories': DEFAULT_CONTENT['home.categories'] }}
+      />,
+    );
+    const picker = pickerFor('home.categories', 'categoryIds');
+    const box = (category: { title: string }) =>
+      picker.getByRole('checkbox', {
+        name: category.title,
+      }) as HTMLInputElement;
+    // Each tile the list shows, as its number and title, and «خودکار» for a
+    // slot the display order fills.
+    const tiles = () =>
+      within(picker.getByRole('list'))
+        .getAllByRole('listitem')
+        .map((row) =>
+          [...row.children]
+            .map((part) => part.textContent)
+            .filter(Boolean)
+            .join(' '),
+        );
+
+    // A sub-category never reaches the strip, so it is not offered.
+    expect(picker.queryByRole('checkbox', { name: shampoo.title })).toBeNull();
+    // Nothing picked: the first six in display order.
+    expect(tiles()).toEqual([
+      '۱ غذای خشک خودکار',
+      '۲ اسباب‌بازی خودکار',
+      '۳ تشویقی خودکار',
+      '۴ مکمل خودکار',
+      '۵ بهداشت خودکار',
+      '۶ غذای تر خودکار',
+    ]);
+
+    // Picked out of order: those first, in picking order, the rest behind.
+    fireEvent.click(box(main[6]));
+    fireEvent.click(box(main[2]));
+    expect(tiles()).toEqual([
+      '۱ قلاده',
+      '۲ تشویقی',
+      '۳ غذای خشک خودکار',
+      '۴ اسباب‌بازی خودکار',
+      '۵ مکمل خودکار',
+      '۶ بهداشت خودکار',
+    ]);
+
+    // Six at most — the strip's own count, not a routine tab's four.
+    for (const category of [main[0], main[1], main[3], main[4]]) {
+      fireEvent.click(box(category));
+    }
+    expect(box(main[5]).disabled).toBe(true);
+
+    await save();
+    expect(sentBody().categoryIds).toEqual([
+      main[6].id,
+      main[2].id,
+      main[0].id,
+      main[1].id,
+      main[3].id,
+      main[4].id,
+    ]);
+  });
+
+  // What is saved is the list, whatever order the boxes were ticked in. The
+  // grips are found by their event names — the E2E suite selects them so too.
+  const reorderGrips = (event: string) =>
+    document.querySelectorAll(`[data-umami-event="${event}"]`);
+
+  it('saves the home picks in the list’s order, not the order they were ticked', async () => {
+    putData.mockResolvedValue({
+      key: 'home.categories',
+      value: DEFAULT_CONTENT['home.categories'],
+    });
+    render(
+      <ContentEditor
+        options={OPTIONS}
+        keys={['home.categories']}
+        values={{ 'home.categories': DEFAULT_CONTENT['home.categories'] }}
+      />,
+    );
+    const picker = pickerFor('home.categories', 'categoryIds');
+    fireEvent.click(picker.getByRole('checkbox', { name: DRY.title }));
+    fireEvent.click(picker.getByRole('checkbox', { name: TOYS.title }));
+    const grips = reorderGrips('admin-panel-content-home-category-reorder');
+    expect(grips).toHaveLength(2);
+
+    // Ticked second, moved above the first.
+    fireEvent.keyDown(grips[1], { key: 'ArrowUp' });
+
+    await save();
+    expect(sentBody().categoryIds).toEqual([TOYS.id, DRY.id]);
+  });
+
+  it('saves a routine tab’s picks in the list’s order, not the order they were ticked', async () => {
+    putData.mockResolvedValue({
+      key: 'home.routine',
+      value: DEFAULT_CONTENT['home.routine'],
+    });
+    render(
+      <ContentEditor
+        options={OPTIONS}
+        keys={['home.routine']}
+        values={{ 'home.routine': DEFAULT_CONTENT['home.routine'] }}
+      />,
+    );
+    const picker = pickerFor('home.routine', 'slots.0.categoryIds');
+    fireEvent.click(picker.getByRole('checkbox', { name: DRY.title }));
+    fireEvent.click(picker.getByRole('checkbox', { name: TOYS.title }));
+    const grips = reorderGrips('admin-panel-content-routine-category-reorder');
+    expect(grips).toHaveLength(2);
+
+    fireEvent.keyDown(grips[1], { key: 'ArrowUp' });
+
+    await save();
+    const slots = sentBody().slots as { categoryIds?: string[] }[];
+    expect(slots[0].categoryIds).toEqual([TOYS.id, DRY.id]);
+  });
+
   it('clears a routine tab back to its code categories when every pick is removed', async () => {
     putData.mockResolvedValue({
       key: 'home.routine',
@@ -584,11 +761,88 @@ describe('content editor destinations', () => {
     await save();
     expect(tab(0).getByText(LINK_MESSAGES.missingCategory)).toBeTruthy();
     expect(tab(1).getByText(LINK_MESSAGES.missingCategory)).toBeTruthy();
+    expect(
+      describedBy(tab(0).getByRole('checkbox', { checked: true })),
+    ).toContain(LINK_MESSAGES.missingCategory);
 
     // Removing the deleted pick clears that tab's error and leaves the other's.
     fireEvent.click(tab(0).getByRole('checkbox', { checked: true }));
     expect(tab(0).queryByText(LINK_MESSAGES.missingCategory)).toBeNull();
     expect(tab(1).getByText(LINK_MESSAGES.missingCategory)).toBeTruthy();
+  });
+
+  describe('the «انتخاب‌های اسموکی» boxes', () => {
+    const recommends = DEFAULT_CONTENT['home.recommends'];
+    const renderBoxes = (value: typeof recommends = recommends) => {
+      render(
+        <ContentEditor
+          options={OPTIONS}
+          keys={['home.recommends']}
+          values={{ 'home.recommends': value }}
+        />,
+      );
+      return pickerFor('home.recommends', 'productIds');
+    };
+    const box = (picker: ReturnType<typeof within>, n: string) =>
+      picker.getByRole('combobox', { name: `کارت ${n}` }) as HTMLSelectElement;
+    const optionIn = (select: HTMLSelectElement, id: string) =>
+      [...select.options].find((option) => option.value === id);
+
+    it('saves each pick in its own box, «خودکار» ones as null, a product in one box only', async () => {
+      putData.mockResolvedValue({ key: 'home.recommends', value: recommends });
+      const picker = renderBoxes();
+      choose(picker, 'کارت ۲', FOOD.id);
+      choose(picker, 'کارت ۴', BALL.id);
+
+      // A product already in a box cannot be picked into another one…
+      expect(optionIn(box(picker, '۱'), FOOD.id)?.disabled).toBe(true);
+      // …and stays picked, and pickable, in its own.
+      expect(optionIn(box(picker, '۲'), FOOD.id)?.disabled).toBe(false);
+
+      await save();
+      expect(sentBody().productIds).toEqual([null, FOOD.id, null, BALL.id]);
+    });
+
+    it('stores nothing once every box is back on «خودکار»', async () => {
+      putData.mockResolvedValue({ key: 'home.recommends', value: recommends });
+      const picker = renderBoxes({
+        ...recommends,
+        productIds: [FOOD.id, null, null, null],
+      });
+      expect(box(picker, '۱').value).toBe(FOOD.id);
+      choose(picker, 'کارت ۱', '');
+
+      await save();
+      // Unset, not four nulls: the block reads as it did before any pick.
+      expect(sentBody().productIds).toBeUndefined();
+    });
+
+    it('keeps a saved pick the shop no longer offers selected, and shows its refusal until re-pointed', async () => {
+      putData.mockRejectedValue(
+        new ApiRequestError(400, 'ورودی نامعتبر است.', [
+          `productIds: ${LINK_MESSAGES.missingCard}`,
+        ]),
+      );
+      const picker = renderBoxes({
+        ...recommends,
+        productIds: [null, DELETED_ID, null, null],
+      });
+      // Selected under an option of its own, not silently shown as «خودکار».
+      expect(box(picker, '۲').value).toBe(DELETED_ID);
+
+      await save();
+      expect(picker.getByText(LINK_MESSAGES.missingCard)).toBeTruthy();
+      // Every box is marked, and a screen reader on any of them hears why.
+      for (const n of ['۱', '۲', '۳', '۴']) {
+        expect(box(picker, n).getAttribute('aria-invalid')).toBe('true');
+        expect(describedBy(box(picker, n))).toContain(
+          LINK_MESSAGES.missingCard,
+        );
+      }
+      choose(picker, 'کارت ۲', FOOD.id);
+      expect(picker.queryByText(LINK_MESSAGES.missingCard)).toBeNull();
+      expect(box(picker, '۲').getAttribute('aria-invalid')).toBe('false');
+    });
   });
 
   it('clears a saved destination back to its code default', async () => {

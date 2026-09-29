@@ -7,8 +7,10 @@ import { z } from 'zod';
 import { DEFAULT_ERROR_MESSAGE, putData } from '@/lib/api-client';
 import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
 import { apiAdminContentPath } from '@/lib/constant/paths';
+import { HOME_CATEGORY_TILES, homeTiles } from '@/lib/catalog/category-tree';
 import {
   CONTENT_SCHEMAS,
+  MAX_ROUTINE_CATEGORIES,
   type ContentKey,
   type ContentValues,
 } from '@/lib/content/site-content';
@@ -26,7 +28,12 @@ import {
   setPath,
   type FieldDescriptor,
 } from './block-fields';
-import { CategoryPicker, LinkPicker, type LinkOptions } from './link-picker';
+import {
+  CategoryPicker,
+  LinkPicker,
+  ProductPicker,
+  type LinkOptions,
+} from './link-picker';
 
 /**
  * The storefront content editor for one area: one independent form per block in
@@ -35,7 +42,8 @@ import { CategoryPicker, LinkPicker, type LinkOptions } from './link-picker';
  * send + `putData` + the shared `requestFieldErrors` for server refusals — so there is
  * no form library and no new mechanism here; the block-specific part is entirely
  * data (BLOCK_FIELDS). The `[area]` page hands it just its own area's keys, and
- * the categories and active products its destination pickers offer.
+ * the categories and active products its destination pickers offer — plus the
+ * listed ones, for the featured boxes.
  */
 export function ContentEditor<K extends ContentKey>({
   keys,
@@ -269,6 +277,23 @@ function BlockForm({
                 error={errorUnder(fieldErrors, field.path)}
                 onChange={(next) => setDestination(field.path, next)}
               />
+            ) : field.kind === 'categories' && field.homeTiles ? (
+              <CategoryPicker
+                key={field.path}
+                id={fid(field.path)}
+                label={field.label}
+                value={getPath(value, field.path) as string[] | undefined}
+                fallback={field.fallback ?? ''}
+                categories={options.mainCategories}
+                max={HOME_CATEGORY_TILES}
+                umami={{
+                  toggle: 'admin-panel-content-home-category-toggle',
+                  reorder: 'admin-panel-content-home-category-reorder',
+                }}
+                shows={(picked) => homeTiles(options.mainCategories, picked)}
+                error={errorUnder(fieldErrors, field.path)}
+                onChange={(next) => setDestination(field.path, next)}
+              />
             ) : field.kind === 'categories' ? (
               <CategoryPicker
                 key={field.path}
@@ -277,6 +302,24 @@ function BlockForm({
                 value={getPath(value, field.path) as string[] | undefined}
                 fallback={field.fallback ?? ''}
                 categories={options.categories}
+                max={MAX_ROUTINE_CATEGORIES}
+                umami={{
+                  toggle: 'admin-panel-content-routine-category-toggle',
+                  reorder: 'admin-panel-content-routine-category-reorder',
+                }}
+                error={errorUnder(fieldErrors, field.path)}
+                onChange={(next) => setDestination(field.path, next)}
+              />
+            ) : field.kind === 'products' ? (
+              <ProductPicker
+                key={field.path}
+                id={fid(field.path)}
+                label={field.label}
+                value={
+                  getPath(value, field.path) as (string | null)[] | undefined
+                }
+                fallback={field.fallback ?? ''}
+                products={options.cards}
                 error={errorUnder(fieldErrors, field.path)}
                 onChange={(next) => setDestination(field.path, next)}
               />

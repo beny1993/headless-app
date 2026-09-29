@@ -6,9 +6,10 @@ import { shopPath } from '@/lib/constant/paths';
 
 /**
  * «انتخاب‌های اسموکی» — the featured grid. The section's chrome (eyebrow,
- * headline, intro) is admin content; the products themselves come from the
- * database (see `featured.ts` for which four and why) and the empty state stays
- * in code — both are catalog/state, not editable copy.
+ * headline, intro) is admin content, and so is which product fills each box;
+ * the products themselves come from the database — the admin's picks where
+ * there are any, the automatic rule in every other box (see `featured.ts` for
+ * which and why) — and the empty state stays in code.
  *
  * An empty list is a real state, not an error: a catalog that has not been
  * seeded yet, or a shop where everything in the first page is out of stock.

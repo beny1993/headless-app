@@ -30,10 +30,11 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/lib/hono/` | API app, router factory, response envelope, routes |
 | `src/lib/hono/middleware/` | Cross-cutting middleware: the `requireAdmin`/`requireAuth` guards, and the `/api/*` rate limiter (the one deliberate `app.use('*')` — see its mount comment) |
 | `src/lib/auth/`, `src/lib/utils/env.ts` | Better Auth, env accessor |
+| `src/lib/seo.ts` | What search engines read: the root metadata, `absoluteUrl` (every canonical, sitemap `<loc>` and JSON-LD link goes through it, so a page's canonical and its sitemap entry match; the root aside, which Next writes without its slash, and the two are one URL), `purchaseSentence` (the one generated meta description), the site's JSON-LD, the breadcrumb builder and the `sitemap.xml` entries. The site share cards carry no title or description, so Next fills each page's from its own; a page that sets its own `openGraph`/`twitter` spreads `SITE_OPEN_GRAPH`/`SITE_TWITTER` back in, since Next *replaces* a nested metadata object rather than merging it. Never put `alternates.canonical` in a layout, or every page without its own claims to be that one. `src/app/sitemap.ts` lists only shelves that show products, the pet shelves included (`listStockedShelves` in `src/logic/seo/stocked-shelves.ts`, through `ProductDao.hasShelfProducts`), and, while maintenance mode is on, only the fixed pages. A product's metadata and `Product` JSON-LD live in `src/features/storefront/product/product-seo.ts`; a shop URL's title, heading and index rules in `src/features/storefront/shop/shop-metadata.ts` (`shelfTitle`; a search, a sorted/filtered/resized view and a page that lists nothing are `noindex` with no canonical, still titled and described by their shelf; the canonical is `buildShopHref`'s); `<JsonLd>` (`src/components/json-ld.tsx`) renders the JSON-LD escaped |
 | `src/lib/sentry.ts` | The one `Sentry.init` options object, shared by all three runtimes (`register()` in `src/instrumentation.ts` for Node and edge, `src/instrumentation-client.ts` for the browser). Owns the privacy contract: explicit `dataCollection` opt-outs and the removal of the console-breadcrumb integration, without which every OTP in the server log rides along on the next event |
 | `src/lib/content/` | Storefront editorial content: the client-safe zod schemas + key enum + area map + `isVisible` (`site-content.ts`), the saved-link contract + `resolveLink` (`link.ts`; its id → slug targets load in `src/logic/content/link-targets.ts`), the typed defaults + `resolveContent` fallback (`defaults.ts`), and the header/footer request-time read `readSiteChrome` (`chrome.ts`, `await connection()`). Values live in the `site_content` table; the page-organized admin editor is `/admin-panel/content/[area]` |
 | `src/features/<area>/<feature>/` | Feature components; route files stay thin |
-| `src/hooks/` | Shared client hooks (`@/hooks`). `use-modal-dialog.ts` is the one wiring for every native modal `<dialog>` — mobile menu, cart drawer, shop filter sheet |
+| `src/hooks/` | Shared client hooks (`@/hooks`). `use-modal-dialog.ts` is the one wiring for every native modal `<dialog>` — mobile menu, cart drawer, shop filter sheet. `use-drag-reorder.ts` is the one drag-to-reorder — the product gallery's photos and the content editor's category picks: the pointer gesture carried by `window` listeners, the RTL arrow keys, focus following the moved handle and one polite live region, each trap documented beside its code |
 | `src/lib/catalog/variant.ts` | Product families: `displayTitle` (the **single** derivation used by the product heading, the admin list and the `order_items` snapshot), the label cap and the Persian refusals. A family is `products.variant_of` + `variant_label` — a member is an ordinary product row, so the cart, the stock decrement and `order_items` are untouched; the storefront lists `variant_of is null` and reaches members from the head's page |
 | `design/` | **Canonical design reference** — vendored Figma prototype (own deps, own `pnpm dev` on :5173). FE stories port from it. Never imported by the app. |
 | `scripts/create-admin.ts` | Grant admin by phone (`pnpm create-admin <phone> [name]`) — creates or promotes |
@@ -95,7 +96,9 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 ## Non-negotiables (from the vault note — these affect code, not just docs)
 
 - **Money is integer Toman** stored as `bigint`. No floats, no decimals; convert
-  only at the payment-gateway boundary.
+  only at the payment-gateway boundary — and in Google's structured data, which
+  needs ISO 4217 `IRR` because Toman has no code: `rialForStructuredData` in
+  `src/lib/seo.ts`, display-only and never a gateway amount.
 - **Timestamps are UTC `timestamptz`**; render Jalali with
   `Intl.DateTimeFormat('fa-IR', { calendar: 'persian' })` — no date dependency.
 - **Products soft-delete** (`is_active`), never hard-delete.
@@ -241,7 +244,9 @@ covered by their pure modules' unit tests plus browser verification.
 `pnpm test:e2e` (Playwright, `e2e/`) is the regression walk QA used to do by
 hand, run at 1280px and again at 375px. Storefront: phone-OTP sign-in for a
 customer and an admin; home → shop → product → cart drawer (quantity, removal,
-empty state) and a sold-out product; a both-pets product under either pet
+empty state) and a sold-out product; the home page's category mosaic with no
+empty cell and its tall tiles two rows tall (three at 1280px, two at 375px); a
+both-pets product under either pet
 filter and under its sub-category's parent, reading «گربه و سگ» on its page —
 each of those shelves also checked for a product it must *not* list; the one
 seeded product with a gallery walked at both widths, its last thumbnail — two
@@ -287,8 +292,25 @@ charges, and one fee applied to every province at once (a dot-grouped
 confirm, then confirmed) that checkout then charges; a province an admin adds, that checkout and the address book then
 offer and, once it is switched off, no longer offer — a saved address on it
 flagged in both — until it is switched back on; a home headline that the
-storefront then shows. Every page a spec opens is also checked for console
-errors, failed requests and requests to any host but the app's own (the `test`
+storefront then shows; a product the home grid already shows, picked for the
+first «انتخاب‌های اسموکی» box — the seeded family offered by its head's row and
+never a member's (matched by id) — that the grid then shows first and only
+there, every other box still filled; home categories an admin picks in the
+content editor, leading the strip in the order picked, and two more dragged
+into the opposite order — by mouse at 1280px, by a finger through Chrome's own
+touch input at 375px, where the grip's `touch-none` is all that keeps the drag
+from turning into a scroll — the grip's row marked while the gesture runs and
+none after, the arrow keys leaving focus on the grip that moved, then listed
+so by the reopened editor and led with by the strip. For search engines: `sitemap.xml` listing a seeded
+product, a family member and their shelves by the URL each page names as its
+canonical; a product page's `Product` JSON-LD priced in Rial and its
+breadcrumb, both in the HTML the server sends; the home page's canonical,
+share card and `Organization`; a category shelf named by its category in the
+tab, its heading and its share card, its breadcrumb leading back to the whole
+shop with the slashes hidden from screen readers; a sorted view of it (still
+described by its shelf), a search and a page past the end kept out of the
+index with no canonical; and the about page's canonical and share card. Every
+page a spec opens is also checked for console errors, failed requests and requests to any host but the app's own (the `test`
 fixture in `e2e/support.ts`). QA runs it instead of re-walking those flows and
 drives the browser only for a story's new behaviour.
 
@@ -301,7 +323,8 @@ fail, restore. Only a change with no user-facing flow (a helper, a migration,
 docs) is exempt.
 
 **Not covered — still walked by hand when a story touches them:** content
-areas other than the home headline, a wrong or resent login code, maintenance
+areas other than the home headline, the featured boxes and the home categories,
+a wrong or resent login code, maintenance
 mode switched on (the suite pins it off; the gate is unit-tested in
 `src/app/(app)/(store)/layout.test.ts`), Zarinpal switched off at checkout (the
 suite pins it on; the disabled option is component-tested in
@@ -342,8 +365,11 @@ visual (RTL layout, Persian font rendering).
   spec — whose two photo files stay under `uploads/`, per width per run, since
   nothing deletes a category's replaced or removed photo. The card-to-card spec leaves a
   `checkout.payment` content row equal to the default (it puts the old values
-  back in a `finally`). The shipping-rate and headline
-  specs put the old value back, the one-fee-for-all spec puts every province's
+  back in a `finally`). The shipping-rate, headline and featured-box
+  specs put the old value back, the two home-categories specs save the block
+  again from a tab they left untouched (the API has no read, and this restores the
+  picks' order too — on a fresh database it leaves a `home.categories` row
+  equal to the default), the one-fee-for-all spec puts every province's
   own fee back (through the API, all attempted before any failure is reported), the province spec switches its province
   off, and the catalog spec switches its product off (through the API), even when they fail.
 - **Leaked active test products break shelf pagination.** Shelves list
