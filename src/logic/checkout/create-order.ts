@@ -80,7 +80,7 @@ export const MAX_OPEN_ORDERS = 5;
  * that, for both payment methods at once.
  *
  * 30/hour is far above any real shopper — and above the machines: the E2E
- * suite's single throwaway customer places about 15 orders a run (AGENTS.md,
+ * suite's single throwaway customer places 17 orders a run (AGENTS.md,
  * «Checkout is rate-capped per account»). Keep that headroom if the suite grows.
  *
  * Deliberately NOT status-aware: cancelling an order must not give the quota

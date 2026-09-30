@@ -367,9 +367,10 @@ visual (RTL layout, Persian font rendering).
   server, and on 2026-09-29 it took down a parallel session's E2E run mid-suite.
 - **Checkout is rate-capped per account** (`MAX_ORDERS_PER_WINDOW` in
   `src/logic/checkout/create-order.ts`, 30 orders an hour, any status). One
-  run's throwaway customer places about 15 across both viewports, so a spec
-  that adds checkouts eats into that headroom — raise the constant before the
-  suite trips it with a 422 mid-run.
+  run's throwaway customer places 17 across both viewports (`checkout` 6,
+  `admin` 6, `admin-users` 2, `admin-settings` 2, `admin-catalog` 1 at 1280px
+  only), so a spec that adds checkouts eats into that headroom — raise the
+  constant before the suite trips it with a 422 mid-run.
 - **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
   customer and a fresh admin (`pnpm create-admin`) in through the real login
   page and saves their sessions, plus the customer's number
@@ -377,10 +378,10 @@ visual (RTL layout, Persian font rendering).
   `test.use({ storageState })` (`e2e/support.ts`). send-otp allows 3 a minute
   for the whole machine, so a run started within a minute of the last one
   waits about a minute.
-- **What a run leaves in the dev database:** two throwaway `0999…` accounts, a
-  few orders (the users spec places one card-to-card order per width, to walk
-  from the account to it), one inactive `e2e-…` product (it is given three
-  photos and has two of them removed again, so one file stays under `uploads/`)
+- **What a run leaves in the dev database:** two throwaway `0999…` accounts,
+  the 17 orders counted under «Checkout is rate-capped per account», one
+  inactive `e2e-…` product (it is given three photos and has two of them
+  removed again, so one file stays under `uploads/`)
   filed under a seeded sub-category and a seeded second category — seeded, and
   never one the spec made, because the junction's restricting foreign key would
   pin that category for good — one switched-off `E2E…` discount code and one
