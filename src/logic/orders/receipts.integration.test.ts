@@ -47,6 +47,7 @@ const { receiptUploadGate, uploadReceipt, readReceipt } = await importWithDb(
 const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
 const { PaymentDao } = await importWithDb(() => import('@/db/dao/PaymentDao'));
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
+const { ReceiptDao } = await importWithDb(() => import('@/db/dao/ReceiptDao'));
 const { transitionOrder } = await importWithDb(
   () => import('@/logic/orders/state-machine'),
 );
@@ -382,6 +383,21 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
       expect(await receiptRows(order.id)).toHaveLength(0);
       expect(await statusOf(order.id)).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
       expect(mocks.notify).not.toHaveBeenCalled();
+    });
+
+    it('takes the stored file back out when the database write throws', async () => {
+      // A receipt is someone's bank details: one the database never recorded
+      // must not stay in storage with nothing that could ever find it.
+      const { order } = await placed();
+      const failure = new Error('connection reset');
+      vi.spyOn(ReceiptDao, 'insertUnderCap').mockRejectedValue(failure);
+
+      await expect(
+        uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg'),
+      ).rejects.toBe(failure);
+
+      expect(await storedFiles()).toEqual([]);
+      expect(await statusOf(order.id)).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
     });
   });
 
