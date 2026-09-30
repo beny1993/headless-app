@@ -127,8 +127,11 @@ export class UserDao {
    *
    * `FOR NO KEY UPDATE`, not `FOR UPDATE`: two checkouts still conflict, but
    * the `FOR KEY SHARE` a foreign-key check takes on this row does not, so an
-   * insert that references the user (a login's session row) never waits for a
-   * checkout to finish.
+   * insert that references the user (a new session row) does not wait for a
+   * checkout. A sign-in still can: Better Auth's verify step also UPDATEs
+   * this row (`phone_number_verified`, `updated_at`), which conflicts with
+   * this lock, so an account's sign-in queues behind that same account's
+   * in-flight checkout — one short transaction, never another account's.
    *
    * It must be the transaction's FIRST lock. Product rows are only ever locked
    * after it, in `byProductId` order, so no two transactions can hold these in
