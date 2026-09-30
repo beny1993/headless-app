@@ -1,6 +1,7 @@
 // Shared by the specs. Not a spec itself: Playwright only collects `*.spec.ts`
 // here, plus `*.setup.ts` for the setup project.
 import { randomInt } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import {
   expect,
   test as base,
@@ -20,6 +21,11 @@ export { expect };
 /** Sessions saved by auth.setup.ts, one per role. Gitignored. */
 export const CUSTOMER_STATE = 'e2e/.auth/customer.json';
 export const ADMIN_STATE = 'e2e/.auth/admin.json';
+/** The customer's phone as they typed it (`0999…`), saved beside their session. */
+export const CUSTOMER_PHONE = 'e2e/.auth/customer-phone.txt';
+
+/** The phone the customer session signed in with, in local `09…` form. */
+export const customerPhone = () => readFileSync(CUSTOMER_PHONE, 'utf8').trim();
 
 /** Unique per run, so a re-run never collides on a slug, SKU, code or name. */
 export const runId = () => randomInt(2 ** 40).toString(36);

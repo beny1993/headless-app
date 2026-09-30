@@ -18,6 +18,7 @@ import {
   Settings,
   ShoppingCart,
   Tag,
+  Users,
   X,
 } from 'lucide-react';
 import {
@@ -71,6 +72,13 @@ const NAV_ITEMS: NavItem[] = [
     href: PROTECTED_PATHS.CATEGORIES,
     label: 'دسته‌بندی‌ها',
     icon: Layers,
+    match: 'prefix',
+  },
+  // Every account, admins included, so «کاربران» rather than «مشتریان».
+  {
+    href: PROTECTED_PATHS.USERS,
+    label: 'کاربران',
+    icon: Users,
     match: 'prefix',
   },
   {

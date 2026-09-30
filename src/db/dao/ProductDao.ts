@@ -25,6 +25,7 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import { db, type Executor } from '@/db';
+import { escapeLike } from '@/db/dao/like-pattern';
 import {
   DEFAULT_PRODUCT_PAGE_SIZE,
   PRODUCT_SORTS,
@@ -450,7 +451,7 @@ export class ProductDao {
     // same way the column was written, so Arabic vs. Persian yeh/kaf still match.
     const search = filters.search ? normalizeSearchText(filters.search) : '';
     if (search) {
-      where.push(ilike(products.searchText, `%${search}%`));
+      where.push(ilike(products.searchText, `%${escapeLike(search)}%`));
     }
     return where.length > 0 ? and(...where) : undefined;
   }

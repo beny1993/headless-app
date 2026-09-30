@@ -93,8 +93,12 @@ const REVENUE_ORDER_STATUSES: readonly OrderStatus[] = [
  */
 const hasPaidPayment = sql<boolean>`exists (select 1 from ${payments} where ${payments.orderId} = ${orders.id} and ${payments.status} = ${PAYMENT_STATUSES.PAID})`;
 
-/** The full revenue predicate: a booked status AND a settled payment. */
-const isRevenueOrder = () =>
+/**
+ * The full revenue predicate: a booked status AND a settled payment. Exported
+ * for `UserDao`'s per-customer «مجموع خرید», so the admin users list and the
+ * dashboard count the same sales; nothing else may restate the rule.
+ */
+export const isRevenueOrder = () =>
   and(inArray(orders.status, REVENUE_ORDER_STATUSES), hasPaidPayment);
 
 /** One line of an order at creation time — the snapshot the item will keep. */

@@ -7,6 +7,7 @@
 // connections, and every extra signal is bundle weight and quota for data we
 // have no way to read yet (see the sanctions note in `docs/DEPLOY.md`).
 import type * as Sentry from '@sentry/nextjs';
+import { stripAdminQuery } from '@/lib/admin-url';
 import { getEnvVariable, VARS } from '@/lib/utils/env';
 
 /**
@@ -152,6 +153,57 @@ export const sanitizeDatabaseError = (
 };
 
 /**
+ * Admin URLs without their query, wherever the SDK puts a URL on an error.
+ *
+ * The users search puts a customer's phone or name in an admin page's `?q=`.
+ * `urlQueryParams: false` above only drops the separate `query_string`: the SDK
+ * still sends the page URL whole as `request.url` (and as `Referer`), and
+ * records navigations and fetches, query included, as breadcrumbs.
+ */
+export const withoutAdminQuery = (
+  event: Sentry.ErrorEvent,
+): Sentry.ErrorEvent => {
+  const { request } = event;
+  if (!request) return event;
+  return {
+    ...event,
+    request: {
+      ...request,
+      url: request.url && stripAdminQuery(request.url),
+      headers:
+        request.headers &&
+        Object.fromEntries(
+          Object.entries(request.headers).map(([name, value]) => [
+            name,
+            name.toLowerCase() === 'referer' ? stripAdminQuery(value) : value,
+          ]),
+        ),
+    },
+  };
+};
+
+/** Where a breadcrumb keeps a URL: navigation's `from`/`to`, fetch's `url`. */
+const BREADCRUMB_URL_KEYS = new Set(['from', 'to', 'url']);
+
+/** {@link withoutAdminQuery} for a breadcrumb. */
+export const withoutAdminQueryBreadcrumb = (
+  breadcrumb: Sentry.Breadcrumb,
+): Sentry.Breadcrumb =>
+  breadcrumb.data
+    ? {
+        ...breadcrumb,
+        data: Object.fromEntries(
+          Object.entries(breadcrumb.data).map(([key, value]) => [
+            key,
+            BREADCRUMB_URL_KEYS.has(key) && typeof value === 'string'
+              ? stripAdminQuery(value)
+              : value,
+          ]),
+        ),
+      }
+    : breadcrumb;
+
+/**
  * Shared `Sentry.init` options.
  *
  * A function, not a constant: the DSN and environment are read from `process.env`,
@@ -178,7 +230,9 @@ export function sentryOptions() {
     // spends a shared event quota on data nobody here reads. Errors are the
     // whole point. One line to turn back on if that ever changes.
     dataCollection,
-    beforeSend: sanitizeDatabaseError,
+    beforeSend: (event: Sentry.ErrorEvent, hint: Sentry.EventHint) =>
+      withoutAdminQuery(sanitizeDatabaseError(event, hint)),
+    beforeBreadcrumb: withoutAdminQueryBreadcrumb,
     integrations: withoutConsoleBreadcrumbs,
   };
 }
