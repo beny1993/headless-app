@@ -69,12 +69,19 @@ type UploadResult =
 /**
  * Takes a file nothing will ever reference back out. A failure is reported —
  * an orphaned receipt is someone's bank details sitting in storage — but never
- * thrown: the answer the shopper gets does not depend on it.
+ * thrown: the answer the shopper gets does not depend on it. Reported by the
+ * order and the error's code alone: a filesystem error's message names the
+ * file, and the file's name is the receipt's key.
  */
 const deleteQuietly = (driver: StorageDriver, key: string, orderId: string) =>
   driver.delete(key).catch((error: unknown) => {
-    console.warn('[receipts] removing a refused receipt failed', error);
-    Sentry.captureException(error, { extra: { orderId } });
+    const code = (error as NodeJS.ErrnoException).code ?? (error as Error).name;
+    console.warn(
+      `[receipts] removing a refused receipt of order ${orderId} failed: ${code}`,
+    );
+    Sentry.captureMessage('[receipts] removing a refused receipt failed', {
+      extra: { orderId, code },
+    });
   });
 
 /**

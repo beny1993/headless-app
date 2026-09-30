@@ -35,10 +35,18 @@ import {
 import { MAX_RECEIPTS_PER_ORDER } from '@/lib/orders/receipt';
 import { VARS } from '@/lib/utils/env';
 
-const mocks = vi.hoisted(() => ({ notify: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  notify: vi.fn(),
+  captureMessage: vi.fn(),
+  captureException: vi.fn(),
+}));
 vi.mock('@/logic/orders/notify-new-order', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/logic/orders/notify-new-order')>()),
   notifyAdminsOfNewOrder: mocks.notify,
+}));
+vi.mock('@sentry/nextjs', () => ({
+  captureMessage: mocks.captureMessage,
+  captureException: mocks.captureException,
 }));
 
 const { receiptUploadGate, uploadReceipt, readReceipt } = await importWithDb(
@@ -132,7 +140,11 @@ const storedFiles = async () =>
 describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
   const fx = new OrderFixtures();
 
-  beforeEach(() => mocks.notify.mockClear());
+  beforeEach(() => {
+    mocks.notify.mockClear();
+    mocks.captureMessage.mockClear();
+    mocks.captureException.mockClear();
+  });
   afterEach(async () => {
     vi.restoreAllMocks();
     await fx.cleanup();
@@ -415,6 +427,37 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
       expect(await receiptRows(order.id)).toHaveLength(0);
       expect(await statusOf(order.id)).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
       expect(mocks.notify).not.toHaveBeenCalled();
+    });
+
+    it('reports a failed clean-up by its code alone — never the key or the path', async () => {
+      // Refused after the object is written, and the clean-up delete then
+      // fails with the error a filesystem gives: its message names the file.
+      const { order } = await placed();
+      vi.spyOn(ReceiptDao, 'insertUnderCap').mockResolvedValue(null);
+      const leaky = Object.assign(
+        new Error(
+          `EACCES: permission denied, unlink '${root}/receipts/secret-key.jpg'`,
+        ),
+        { code: 'EACCES' },
+      );
+      vi.spyOn(localDriver, 'delete').mockRejectedValue(leaky);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      expect(
+        await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg'),
+      ).toEqual({ outcome: 'cap_reached' });
+
+      expect(mocks.captureException).not.toHaveBeenCalled();
+      expect(mocks.captureMessage).toHaveBeenCalledWith(
+        '[receipts] removing a refused receipt failed',
+        { extra: { orderId: order.id, code: 'EACCES' } },
+      );
+      const said = JSON.stringify([
+        warn.mock.calls,
+        mocks.captureMessage.mock.calls,
+      ]);
+      expect(said).not.toContain('receipts/');
+      expect(said).not.toContain(root);
     });
 
     it('takes the stored file back out when the database write throws', async () => {
