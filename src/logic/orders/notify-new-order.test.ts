@@ -6,11 +6,7 @@
 // The DAOs and the SMS seam are mocked at the module edge; the database-backed
 // proof that the hooks fire lives in the two integration suites next door.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  ORDER_STATUSES,
-  PAYMENT_METHODS,
-  type PaymentMethod,
-} from '@/lib/orders/order-status';
+import { PAYMENT_METHODS, type PaymentMethod } from '@/lib/orders/order-status';
 import { SMS_TEMPLATES } from '@/lib/sms';
 
 const mocks = vi.hoisted(() => ({
@@ -33,12 +29,8 @@ vi.mock('@sentry/nextjs', () => ({
   captureMessage: vi.fn(),
 }));
 
-const {
-  newOrderAlert,
-  notifiesOnCreate,
-  notifiesOnSettle,
-  notifyAdminsOfNewOrder,
-} = await import('./notify-new-order');
+const { newOrderAlert, notifiesOnSettle, notifyAdminsOfNewOrder } =
+  await import('./notify-new-order');
 
 const ORDER = {
   id: 'order-uuid',
@@ -90,31 +82,6 @@ describe('newOrderAlert', () => {
   it('formats a zero total rather than throwing on it', () => {
     // A fully discounted order is still an order the admin has to pack.
     expect(parametersOf({ ...ORDER, total: 0 }).AMOUNT).toBe('۰ تومان');
-  });
-});
-
-describe('notifiesOnCreate', () => {
-  it('says nothing for a card-to-card order at checkout — it waits for its receipt', () => {
-    // Its alert comes when the first receipt accepts it (uploadReceipt).
-    expect(notifiesOnCreate(ORDER_STATUSES.AWAITING_RECEIPT)).toBe(false);
-  });
-
-  it('says nothing for pending_payment — an unfinished checkout', () => {
-    // The Zarinpal order that has only been created. Its alert, if the shopper
-    // ever pays, comes from the settle instead.
-    expect(notifiesOnCreate(ORDER_STATUSES.PENDING_PAYMENT)).toBe(false);
-  });
-
-  it.each(
-    Object.values(ORDER_STATUSES).filter(
-      (status) =>
-        status !== ORDER_STATUSES.PENDING_PAYMENT &&
-        status !== ORDER_STATUSES.AWAITING_RECEIPT,
-    ),
-  )('treats %j as a real order', (status) => {
-    // Exhaustive over the domain: a status added later is a real order unless
-    // somebody says otherwise here, which is the safe default for an alert.
-    expect(notifiesOnCreate(status)).toBe(true);
   });
 });
 

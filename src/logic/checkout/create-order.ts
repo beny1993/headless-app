@@ -36,10 +36,6 @@ import {
   DISCOUNT_FIELD,
   assertDiscountApplicable,
 } from '@/logic/checkout/discount';
-import {
-  notifiesOnCreate,
-  notifyAdminsOfNewOrder,
-} from '@/logic/orders/notify-new-order';
 
 // Persian, customer-facing. The `errors[]` detail the route builds is
 // `${field}: ${message}`, per the design note.
@@ -194,7 +190,7 @@ export const createOrder = async (
     .sort(byProductId);
 
   try {
-    const result = await db.transaction(async (tx) => {
+    return await db.transaction(async (tx) => {
       // 3a. One checkout per account at a time. This account's user row is the
       // transaction's FIRST lock — product rows are locked only after it, in
       // productId order — so a second checkout of the same account waits here
@@ -215,7 +211,7 @@ export const createOrder = async (
           idempotencyKey,
           tx,
         );
-        if (existing) return { order: existing, replayed: true };
+        if (existing) return existing;
       }
 
       // 3c. The rolling creation cap: every order this user created in the
@@ -377,25 +373,12 @@ export const createOrder = async (
         );
       }
 
-      return { order, replayed: false };
+      return order;
     });
-
-    // Tell the admins — AFTER the commit, and only for an order this call
-    // created and only if it is already a sale (`notifiesOnCreate`): a
-    // card-to-card order waits for its receipt, whose first upload sends this
-    // alert instead (`uploadReceipt`). The fast path above and the
-    // unique-violation catch below return before this line, and a re-check hit
-    // under the lock comes back `replayed` — so a double-submit sends one SMS.
-    // Deliberately un-awaited and never `await`ed anywhere:
-    // `notifyAdminsOfNewOrder` catches everything and never rejects, so the
-    // shopper's response cannot be delayed or failed by a wedged SMS provider.
-    // Not Next's `after()` — the reconcile sweep and the tests call this
-    // function with no request scope at all.
-    if (!result.replayed && notifiesOnCreate(result.order.status)) {
-      void notifyAdminsOfNewOrder(result.order.id);
-    }
-
-    return result.order;
+    // No admin alert here: every checkout is born open, and an unfinished
+    // checkout never wakes an admin. A card-to-card order's alert comes when its
+    // first receipt accepts it (`uploadReceipt`); a Zarinpal order's when its
+    // payment settles (`settlePendingPayment`).
   } catch (error) {
     // A backstop since the account lock, which makes same-key requests queue.
     // A concurrent request with the same key won the race: its insert committed

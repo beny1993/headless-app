@@ -23,9 +23,7 @@ import { OrderDao } from '@/db/dao/OrderDao';
 import { UserDao } from '@/db/dao/UserDao';
 import { formatToman, toPersianDigits } from '@/lib/format';
 import {
-  OPEN_ORDER_STATUSES,
   PAYMENT_METHOD_LABELS,
-  type OrderStatus,
   type PaymentMethod,
 } from '@/lib/orders/order-status';
 import { newOrderSms, sendSms } from '@/lib/sms';
@@ -50,18 +48,6 @@ export const newOrderAlert = (order: {
     // page read the same.
     METHOD: PAYMENT_METHOD_LABELS[order.paymentMethod],
   });
-
-/**
- * Whether a freshly created order is news to an admin. Pure, and the whole of
- * the decision at the `createOrder` hook: only an order born past waiting is.
- *
- * Today no checkout is. A card-to-card order is born `awaiting_receipt` — its
- * alert comes when the shopper's first receipt accepts it; a Zarinpal order is
- * born `pending_payment` — its alert comes from the settle, if the shopper ever
- * pays. An unfinished checkout never wakes an admin.
- */
-export const notifiesOnCreate = (status: OrderStatus): boolean =>
-  !OPEN_ORDER_STATUSES.includes(status);
 
 /**
  * Whether a settled payment is news to an admin. Pure, and the whole of the
