@@ -72,10 +72,12 @@ const PROBE_TIMEOUT_MS = 5_000;
 
 /**
  * Whether the bucket serves `url` to a stranger. Only a 200 or a 206 (the one
- * byte asked for) is exposure; every refusal, and every failure to reach the
- * bucket at all, is not — a shopper is never turned away because Liara was
- * unreachable. Redirects are followed: whatever finally answers 2xx for this
- * URL is somewhere a stranger can read it.
+ * byte asked for) is exposure; every refusal is not. A probe that cannot run
+ * at all (unreachable, timed out) is not either — card to card is the only way
+ * to pay, and a shopper is never turned away because Liara was unreachable —
+ * but it is no proof of privacy, so it is reported: a warning with the error's
+ * name, never the key. Redirects are followed: whatever finally answers 2xx
+ * for this URL is somewhere a stranger can read it.
  */
 const readableByAnyone = async (url: string): Promise<boolean> => {
   try {
@@ -86,7 +88,11 @@ const readableByAnyone = async (url: string): Promise<boolean> => {
     });
     await response.body?.cancel();
     return response.status === 200 || response.status === 206;
-  } catch {
+  } catch (error) {
+    Sentry.captureMessage('[storage] receipt privacy probe could not run', {
+      level: 'warning',
+      extra: { reason: (error as Error).name },
+    });
     return false;
   }
 };
@@ -142,11 +148,25 @@ export const s3Driver: StorageDriver = {
     );
 
     if (receipt && (await readableByAnyone(`${base.trim()}/${key}`))) {
-      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
-      // The key alone: no bytes, no customer, no host.
-      Sentry.captureMessage(
-        '[storage] a receipt was readable anonymously and was deleted',
-        { level: 'error', extra: { key } },
+      // The alarm first, and keyless: whatever the delete does next, it has
+      // been raised.
+      Sentry.captureMessage('[storage] a receipt was readable anonymously', {
+        level: 'error',
+      });
+      let deleted = false;
+      try {
+        await client.send(
+          new DeleteObjectCommand({ Bucket: bucket, Key: key }),
+        );
+        deleted = true;
+      } catch {
+        // Said below, with the key. The upload is refused either way.
+      }
+      // The key, for whoever follows the alarm up, on the server's own console
+      // only: src/lib/sentry.ts removes the integration that would carry
+      // console output to the error tracker.
+      console.error(
+        `[storage] receipt readable anonymously: ${key}; deleted: ${deleted}`,
       );
       throw new ReceiptExposedError(key);
     }

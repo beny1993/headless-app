@@ -125,10 +125,13 @@ applied only with Benyamin's explicit go at that moment.**
 **Rollback** (product photos stop loading): set the bucket public again in the
 Liara panel. **Never flip that toggle otherwise** — it silently restores
 whole-bucket public read. The app notices: every receipt upload probes its own
-object anonymously and, if the bucket serves it, deletes it, reports the key to
-GlitchTip and refuses the upload with a 503 until the policy is re-applied. A
-missing `NEXT_PUBLIC_STORAGE_BASE_URL` (nothing to probe with) refuses the same
-way. If Liara will not keep the policy at all, the fallback is encrypting each
+object anonymously and, if the bucket serves it, raises an error in GlitchTip
+(«a receipt was readable anonymously», no key), deletes it, writes the key and
+whether the delete worked to the server log, and refuses the upload with a 503
+until the policy is re-applied. A probe that cannot reach the bucket lets the
+upload through and leaves a GlitchTip warning («receipt privacy probe could not
+run»). A missing `NEXT_PUBLIC_STORAGE_BASE_URL` (nothing to probe with) refuses
+the upload outright. If Liara will not keep the policy at all, the fallback is encrypting each
 receipt in the app (design note §1e): one new secret env var that must be backed
 up off-box.
 
