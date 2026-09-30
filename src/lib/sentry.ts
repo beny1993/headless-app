@@ -217,6 +217,28 @@ export const withoutAdminQueryBreadcrumb = (
     : breadcrumb;
 
 /**
+ * An element's screen-reader text, as the browser SDK writes it into a `ui.*`
+ * breadcrumb's element path: `body > a.view[aria-label="…"]`. The users list
+ * labels each row's view link with the customer's name and phone number, the
+ * pets tab labels its buttons with a pet's name, the addresses tab with an
+ * address title. The SDK writes the value unescaped, so a `"]` inside it cannot
+ * be told from its end: everything from the first such attribute on is
+ * dropped, the rest of the path with it, and only the attribute's name stays.
+ */
+const SCREEN_READER_TEXT = /\[(aria-label|title|alt)="[\s\S]*$/;
+
+/** A `ui.*` breadcrumb without its {@link SCREEN_READER_TEXT}. */
+export const withoutScreenReaderText = (
+  breadcrumb: Sentry.Breadcrumb,
+): Sentry.Breadcrumb =>
+  breadcrumb.category?.startsWith('ui.') && breadcrumb.message
+    ? {
+        ...breadcrumb,
+        message: breadcrumb.message.replace(SCREEN_READER_TEXT, '[$1]'),
+      }
+    : breadcrumb;
+
+/**
  * Shared `Sentry.init` options.
  *
  * A function, not a constant: the DSN and environment are read from `process.env`,
@@ -245,7 +267,8 @@ export function sentryOptions() {
     dataCollection,
     beforeSend: (event: Sentry.ErrorEvent, hint: Sentry.EventHint) =>
       withoutAdminQuery(sanitizeDatabaseError(event, hint)),
-    beforeBreadcrumb: withoutAdminQueryBreadcrumb,
+    beforeBreadcrumb: (breadcrumb: Sentry.Breadcrumb) =>
+      withoutScreenReaderText(withoutAdminQueryBreadcrumb(breadcrumb)),
     integrations: withoutConsoleBreadcrumbs,
   };
 }
