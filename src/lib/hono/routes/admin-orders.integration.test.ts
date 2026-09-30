@@ -7,9 +7,10 @@
 //   · the authz matrix — 401 anon, 403 customer, on every verb;
 //   · the admin projection — authority/refId/method/amount reach the admin, the
 //     raw `gatewayResponse` never does;
-//   · the full 7×7 transition matrix — every legal admin edge succeeds and every
+//   · the full 8×8 transition matrix — every legal admin edge succeeds and every
 //     other pair is refused SERVER-SIDE, including `pending_payment → paid/failed`
-//     (a legal machine edge the admin must not be able to trigger).
+//     (a legal machine edge the admin must not be able to trigger);
+//   · a cancel always carries a reason — refused without one, stored with one.
 import { eq, inArray } from 'drizzle-orm';
 import {
   afterAll,
@@ -28,11 +29,14 @@ import { API_PATHS, apiAdminOrderTransitionsPath } from '@/lib/constant/paths';
 import type { ApiResponse } from '@/lib/hono/envelope';
 import {
   adminNextStatuses,
+  CANCELLATION_REASON_MAX,
+  CANCELLATION_REASON_REQUIRED_MESSAGE,
   ORDER_STATUS_VALUES,
   ORDER_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
   type OrderStatus,
+  type PaymentMethod,
 } from '@/lib/orders/order-status';
 
 const mocks = vi.hoisted(() => ({ getSession: vi.fn() }));
@@ -136,7 +140,7 @@ describe.skipIf(!databaseReachable)('admin order API', () => {
   /** Seed one Zarinpal order directly in `status` (no walking the machine). */
   const seedOrder = async (
     status: OrderStatus,
-    method = PAYMENT_METHODS.ZARINPAL,
+    method: PaymentMethod = PAYMENT_METHODS.ZARINPAL,
   ) => {
     const order = await OrderDao.create({
       userId: createdUserIds[0],
@@ -275,8 +279,8 @@ describe.skipIf(!databaseReachable)('admin order API', () => {
       ORDER_STATUS_VALUES.map((to) => [from, to] as const),
     );
 
-    it('covers all 49 ordered (from, to) pairs', () => {
-      expect(pairs).toHaveLength(49);
+    it('covers all 64 ordered (from, to) pairs', () => {
+      expect(pairs).toHaveLength(64);
     });
 
     it.each(pairs)(
@@ -284,8 +288,11 @@ describe.skipIf(!databaseReachable)('admin order API', () => {
       async (from, to) => {
         const order = await seedOrder(from);
         asAdmin();
+        // Every request carries a reason, so a legal cancel is refused for the
+        // edge alone — never for the reason it now needs.
         const res = await json(apiAdminOrderTransitionsPath(order.id), 'POST', {
           to,
+          reason: 'دلیل آزمایشی',
         });
         const legal = adminNextStatuses(from).includes(to);
         expect(res.status).toBe(legal ? 200 : 400);
@@ -339,6 +346,90 @@ describe.skipIf(!databaseReachable)('admin order API', () => {
       if (body.status !== 'success') throw new Error(body.message);
       expect(body.data.status).toBe(ORDER_STATUSES.PROCESSING);
       expect(JSON.stringify(body)).not.toContain('SECRET_BLOB_MARKER');
+    });
+
+    describe('the cancellation reason', () => {
+      const cancel = (id: string, reason?: string) =>
+        json(apiAdminOrderTransitionsPath(id), 'POST', {
+          to: ORDER_STATUSES.CANCELLED,
+          ...(reason === undefined ? {} : { reason }),
+        });
+
+      const reasonOf = async (id: string) =>
+        (
+          await testDb
+            .select({
+              status: orders.status,
+              reason: orders.cancellationReason,
+            })
+            .from(orders)
+            .where(eq(orders.id, id))
+            .limit(1)
+        )[0];
+
+      it.each([
+        ['no reason', undefined],
+        ['a blank reason', ''],
+        ['a reason of spaces', '   '],
+      ])(
+        'refuses a cancel with %s — Persian, order untouched',
+        async (_, reason) => {
+          const order = await seedOrder(
+            ORDER_STATUSES.AWAITING_RECEIPT,
+            PAYMENT_METHODS.COD,
+          );
+          asAdmin();
+          const { status, body } = await parse(await cancel(order.id, reason));
+          expect(status).toBe(400);
+          expect(body).toEqual({
+            status: 'error',
+            message: CANCELLATION_REASON_REQUIRED_MESSAGE,
+          });
+          expect(await reasonOf(order.id)).toEqual({
+            status: ORDER_STATUSES.AWAITING_RECEIPT,
+            reason: null,
+          });
+        },
+      );
+
+      it.each([
+        ['one past the cap', 'ر'.repeat(CANCELLATION_REASON_MAX + 1)],
+        ['a right-to-left mark', `دلیل${String.fromCharCode(0x200f)}۱`],
+        ['a NUL', `دلیل${String.fromCharCode(0)}`],
+      ])('refuses a reason carrying %s', async (_, reason) => {
+        const order = await seedOrder(
+          ORDER_STATUSES.PROCESSING,
+          PAYMENT_METHODS.COD,
+        );
+        asAdmin();
+        const res = await cancel(order.id, reason);
+        expect(res.status).toBe(400);
+        expect((await reasonOf(order.id)).status).toBe(
+          ORDER_STATUSES.PROCESSING,
+        );
+      });
+
+      it('stores the reason and answers with it', async () => {
+        const order = await seedOrder(
+          ORDER_STATUSES.PROCESSING,
+          PAYMENT_METHODS.COD,
+        );
+        asAdmin();
+        const { status, body } = await parse<{
+          status: string;
+          cancellationReason: string | null;
+        }>(await cancel(order.id, '  مبلغ واریزی کمتر از سفارش است  '));
+        expect(status).toBe(200);
+        if (body.status !== 'success') throw new Error(body.message);
+        expect(body.data.status).toBe(ORDER_STATUSES.CANCELLED);
+        expect(body.data.cancellationReason).toBe(
+          'مبلغ واریزی کمتر از سفارش است',
+        );
+        expect(await reasonOf(order.id)).toEqual({
+          status: ORDER_STATUSES.CANCELLED,
+          reason: 'مبلغ واریزی کمتر از سفارش است',
+        });
+      });
     });
 
     it('400s a malformed target status', async () => {

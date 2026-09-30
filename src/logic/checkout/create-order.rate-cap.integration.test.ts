@@ -185,7 +185,7 @@ describe.skipIf(!databaseReachable)('createOrder rate cap', () => {
     const order = await createOrder(user.id, input);
     fx.remember(order.id);
 
-    expect(order.status).toBe(ORDER_STATUSES.PROCESSING);
+    expect(order.status).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
   });
 
   it('counts orders the shopper has cancelled', async () => {

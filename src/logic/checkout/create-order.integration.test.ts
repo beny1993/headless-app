@@ -11,8 +11,9 @@
 //   · oversell is impossible under concurrency; a mid-cart failure rolls the
 //     whole order back and restores every earlier line's stock
 //   · the shipping fee + province name are snapshotted from the SERVER lookup
-//   · status comes from initialStatusFor(method), never the client; the COD
-//     payment row is created `pending`; a Zarinpal order gets no payment row yet
+//   · status comes from initialStatusFor(method), never the client — a COD
+//     order waits for its receipt; the COD payment row is created `pending`; a
+//     Zarinpal order gets no payment row yet
 import { eq, inArray } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { orders, payments } from '@/db/schema/orders';
@@ -348,7 +349,7 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
   });
 
   describe('payment method drives entry status', () => {
-    it('COD enters at processing with a pending COD payment row for the total', async () => {
+    it('COD enters waiting for its receipt, with a pending COD payment row for the total', async () => {
       const user = await fx.user();
       const category = await fx.category();
       const product = await fx.product(category, { price: 80_000, stock: 5 });
@@ -362,7 +363,7 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       );
       fx.remember(order.id);
 
-      expect(order.status).toBe(ORDER_STATUSES.PROCESSING);
+      expect(order.status).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
       const [payment] = await testDb
         .select()
         .from(payments)
@@ -555,7 +556,7 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       );
       fx.remember(order.id);
 
-      expect(order.status).toBe(ORDER_STATUSES.PROCESSING);
+      expect(order.status).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
       expect(await stockOf(product.id)).toBe(3);
     });
 
@@ -665,7 +666,7 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       expect(order.status).toBe(ORDER_STATUSES.PENDING_PAYMENT);
     });
 
-    it('never blocks a COD checkout, even at the cap (COD enters at processing)', async () => {
+    it('never blocks a COD checkout, even at the cap', async () => {
       const user = await fx.user();
       const category = await fx.category();
       const product = await fx.product(category, { stock: 5 });
@@ -680,7 +681,7 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       );
       fx.remember(order.id);
 
-      expect(order.status).toBe(ORDER_STATUSES.PROCESSING);
+      expect(order.status).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
     });
   });
 

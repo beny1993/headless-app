@@ -31,14 +31,16 @@ type ResultView = {
  * `Record` type forces every status to be listed), so a status added later fails
  * the compile here rather than silently falling through to a wrong view.
  *
- *  · paid / processing / shipped / delivered → success (money settled or COD
- *    confirmed; the order is live).
+ *  · awaiting_receipt / paid / processing / shipped / delivered → success
+ *    (the order is placed and live; a card-to-card one asks for its receipt).
  *  · pending_payment → pending, with retry (the shopper never completed the
  *    gateway, or a transient verify error left it open).
  *  · failed / cancelled → failed (payment never completed and the order expired,
  *    or it was cancelled) — an explicit "منقضی/ناموفق" view, never a retry.
  */
 const VIEW_BY_STATUS: Record<OrderStatus, ResultView> = {
+  // «سفارش ثبت شد!» holds before the receipt as after it.
+  [ORDER_STATUSES.AWAITING_RECEIPT]: { kind: 'success', showRetry: false },
   [ORDER_STATUSES.PAID]: { kind: 'success', showRetry: false },
   [ORDER_STATUSES.PROCESSING]: { kind: 'success', showRetry: false },
   [ORDER_STATUSES.SHIPPED]: { kind: 'success', showRetry: false },

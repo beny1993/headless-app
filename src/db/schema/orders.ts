@@ -35,6 +35,7 @@ import {
   PAYMENT_METHOD_VALUES,
   PAYMENT_STATUS_VALUES,
 } from '@/lib/orders/order-status';
+import { MAX_RECEIPT_BYTES } from '@/lib/orders/receipt';
 import { products } from '@/db/schema/catalog';
 import { provinces } from '@/db/schema/shipping';
 import { users } from '@/db/schema/auth';
@@ -110,6 +111,13 @@ export const orders = pgTable(
      * not supply one — Postgres lets a partial-unique column hold many NULLs.
      */
     idempotencyKey: uuid('idempotency_key'),
+    /**
+     * Why an admin cancelled the order, in their words — shown to the shopper on
+     * their order page. Written by the same CAS that moves the order into
+     * `cancelled`; null for every order nobody cancelled, and for those
+     * cancelled before a reason was asked for.
+     */
+    cancellationReason: text('cancellation_reason'),
     createdAt,
     updatedAt,
   },
@@ -227,11 +235,50 @@ export const payments = pgTable(
   ],
 );
 
+/**
+ * The card-to-card transfer receipts a shopper uploaded for an order. The row is
+ * metadata only: the bytes live in storage under `receipts/<uuid>.<ext>`, a key
+ * no public URL serves — the authenticated receipt routes read it back for the
+ * order's owner and the admins, and nobody else.
+ *
+ * Append-only, like the order it belongs to: nothing updates or deletes a
+ * receipt, and `MAX_RECEIPTS_PER_ORDER` is enforced under the order's row lock
+ * (`ReceiptDao.insertUnderCap`). No review state of its own — rejecting a
+ * receipt is cancelling its order.
+ */
+export const paymentReceipts = pgTable(
+  'payment_receipts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** `cascade`: a receipt belongs to its order. */
+    orderId: uuid('order_id')
+      .notNull()
+      .references(() => orders.id, { onDelete: 'cascade' }),
+    /** `receipts/<uuid>.<ext>`, minted on the server from the sniffed type. */
+    objectKey: text('object_key').notNull().unique(),
+    /** The sniffed type — what the receipt routes answer with, never the client's. */
+    contentType: text('content_type').notNull(),
+    /** Bytes. */
+    size: integer('size').notNull(),
+    createdAt,
+  },
+  (table) => [
+    // The cap as a literal: a bare `${MAX_RECEIPT_BYTES}` would be a bound
+    // parameter, and drizzle-kit has emitted `$1` into DDL before.
+    check(
+      'payment_receipts_size_bounds',
+      sql`${table.size} > 0 AND ${table.size} <= ${sql.raw(String(MAX_RECEIPT_BYTES))}`,
+    ),
+    index('payment_receipts_order_id_idx').on(table.orderId),
+  ],
+);
+
 export type Order = typeof orders.$inferSelect;
 export type NewOrder = typeof orders.$inferInsert;
 export type OrderItem = typeof orderItems.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type NewPayment = typeof payments.$inferInsert;
+export type PaymentReceipt = typeof paymentReceipts.$inferSelect;
 
 /** An order with its line items, as order display and admin read it. */
 export type OrderWithItems = Order & { items: OrderItem[] };

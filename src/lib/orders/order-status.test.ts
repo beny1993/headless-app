@@ -5,23 +5,31 @@ import {
   ALLOWED_TRANSITIONS,
   byProductId,
   adminNextStatuses,
+  adminTransitionBodySchema,
   adminTransitionTargetSchema,
+  CANCELLATION_REASON_MAX,
   canTransition,
   GATEWAY_OWNED_STATUSES,
   initialStatusFor,
+  OPEN_ORDER_STATUSES,
   ORDER_STATUS_VALUES,
   ORDER_STATUSES,
+  PAYMENT_METHOD_VALUES,
   PAYMENT_METHODS,
   type OrderStatus,
 } from '@/lib/orders/order-status';
 
-// The eight legal edges from the design note's diagram, spelled out here so this
+// The ten legal edges from the design notes' diagrams, spelled out here so this
 // test is an independent statement of the contract, not a re-read of the map it
-// checks. If the map and this list disagree, one of them is wrong.
+// checks. If the map and this list disagree, one of them is wrong. The two out
+// of `awaiting_receipt` are the card-to-card receipt story's: the first receipt
+// (or the admin's hand) accepts the order, or the admin cancels it.
 const LEGAL_EDGES: ReadonlyArray<[OrderStatus, OrderStatus]> = [
   [ORDER_STATUSES.PENDING_PAYMENT, ORDER_STATUSES.PAID],
   [ORDER_STATUSES.PENDING_PAYMENT, ORDER_STATUSES.CANCELLED],
   [ORDER_STATUSES.PENDING_PAYMENT, ORDER_STATUSES.FAILED],
+  [ORDER_STATUSES.AWAITING_RECEIPT, ORDER_STATUSES.PROCESSING],
+  [ORDER_STATUSES.AWAITING_RECEIPT, ORDER_STATUSES.CANCELLED],
   [ORDER_STATUSES.PAID, ORDER_STATUSES.PROCESSING],
   [ORDER_STATUSES.PAID, ORDER_STATUSES.CANCELLED],
   [ORDER_STATUSES.PROCESSING, ORDER_STATUSES.SHIPPED],
@@ -33,24 +41,40 @@ const edgeKey = (from: OrderStatus, to: OrderStatus) => `${from}->${to}`;
 const legalKeys = new Set(LEGAL_EDGES.map(([f, t]) => edgeKey(f, t)));
 
 describe('order state machine transition rules', () => {
-  it('has exactly the eight legal edges the design defines', () => {
+  it('has exactly the ten legal edges the design defines', () => {
     const mapped = ORDER_STATUS_VALUES.flatMap((from) =>
       ALLOWED_TRANSITIONS[from].map((to) => edgeKey(from, to)),
     );
     expect(mapped.sort()).toEqual([...legalKeys].sort());
   });
 
-  // Every ordered pair of the 7 statuses (7 * 6 = 42 distinct-pair permutations)
-  // plus the 7 self-pairs: canTransition must pass iff the pair is one of the
-  // eight legal edges, and never for a self-transition. This is the exhaustive
+  // Every ordered pair of the 8 statuses (8 * 7 = 56 distinct-pair permutations)
+  // plus the 8 self-pairs: canTransition must pass iff the pair is one of the
+  // ten legal edges, and never for a self-transition. This is the exhaustive
   // legal/illegal matrix the testing standard asks money/state logic to carry.
   const pairs = ORDER_STATUS_VALUES.flatMap((from) =>
     ORDER_STATUS_VALUES.map((to) => [from, to] as const),
   );
 
-  it('covers the full 7x7 matrix (49 ordered pairs, 42 non-self)', () => {
-    expect(pairs).toHaveLength(49);
-    expect(pairs.filter(([f, t]) => f !== t)).toHaveLength(42);
+  it('covers the full 8x8 matrix (64 ordered pairs, 56 non-self)', () => {
+    expect(pairs).toHaveLength(64);
+    expect(pairs.filter(([f, t]) => f !== t)).toHaveLength(56);
+  });
+
+  it('lets a waiting card-to-card order reach neither paid nor failed', () => {
+    // `paid` and `failed` stay the gateway's: the waiting state's only exits are
+    // acceptance and cancellation, so no receipt can ever book money.
+    for (const to of [ORDER_STATUSES.PAID, ORDER_STATUSES.FAILED]) {
+      expect(canTransition(ORDER_STATUSES.AWAITING_RECEIPT, to)).toBe(false);
+    }
+  });
+
+  it('lets nothing move an order back into awaiting_receipt', () => {
+    // A pre-upload state: once accepted or cancelled, an order never waits for
+    // its receipt again.
+    for (const from of ORDER_STATUS_VALUES) {
+      expect(canTransition(from, ORDER_STATUSES.AWAITING_RECEIPT)).toBe(false);
+    }
   });
 
   it.each(pairs)(
@@ -84,6 +108,11 @@ describe('adminNextStatuses (admin-triggerable subset)', () => {
   // the derived map disagree, one is wrong.
   const ADMIN_NEXT: Record<OrderStatus, OrderStatus[]> = {
     [ORDER_STATUSES.PENDING_PAYMENT]: [ORDER_STATUSES.CANCELLED],
+    // Acceptance by hand (a receipt sent by DM) or cancellation — never paid.
+    [ORDER_STATUSES.AWAITING_RECEIPT]: [
+      ORDER_STATUSES.PROCESSING,
+      ORDER_STATUSES.CANCELLED,
+    ],
     [ORDER_STATUSES.PAID]: [
       ORDER_STATUSES.PROCESSING,
       ORDER_STATUSES.CANCELLED,
@@ -139,9 +168,10 @@ describe('adminNextStatuses (admin-triggerable subset)', () => {
 });
 
 describe('initialStatusFor', () => {
-  it('starts a COD order in processing — no gateway step', () => {
+  it('starts a card-to-card order waiting for its receipt, not in processing', () => {
+    // The shopper's first receipt accepts it; until then nothing is fulfilled.
     expect(initialStatusFor(PAYMENT_METHODS.COD)).toBe(
-      ORDER_STATUSES.PROCESSING,
+      ORDER_STATUSES.AWAITING_RECEIPT,
     );
   });
 
@@ -149,6 +179,106 @@ describe('initialStatusFor', () => {
     expect(initialStatusFor(PAYMENT_METHODS.ZARINPAL)).toBe(
       ORDER_STATUSES.PENDING_PAYMENT,
     );
+  });
+});
+
+describe('OPEN_ORDER_STATUSES (the open-order cap)', () => {
+  it.each(PAYMENT_METHOD_VALUES)(
+    'counts a freshly created %s order against the cap',
+    (method) => {
+      // Both birth states hold reserved stock with no automatic release —
+      // Zarinpal's until the reconcile sweep, card-to-card's until an upload or
+      // an admin — so every new order must count, whichever way it is paid.
+      expect(OPEN_ORDER_STATUSES).toContain(initialStatusFor(method));
+    },
+  );
+
+  it.each([
+    ORDER_STATUSES.PAID,
+    ORDER_STATUSES.PROCESSING,
+    ORDER_STATUSES.SHIPPED,
+    ORDER_STATUSES.DELIVERED,
+    ORDER_STATUSES.CANCELLED,
+    ORDER_STATUSES.FAILED,
+  ])('does not count a %s order', (status) => {
+    // Accepted, fulfilled or closed: the stock is sold or already back.
+    expect(OPEN_ORDER_STATUSES).not.toContain(status);
+  });
+});
+
+describe('adminTransitionBodySchema', () => {
+  // Constructed, never typed: the project's control-character rule.
+  const NUL = String.fromCharCode(0);
+  const RLM = String.fromCharCode(0x200f);
+  const RLO = String.fromCharCode(0x202e);
+
+  it('takes a target with no reason — acceptance and shipping carry none', () => {
+    expect(
+      adminTransitionBodySchema.parse({ to: ORDER_STATUSES.PROCESSING }),
+    ).toEqual({ to: ORDER_STATUSES.PROCESSING });
+  });
+
+  it('keeps a trimmed Persian reason', () => {
+    expect(
+      adminTransitionBodySchema.parse({
+        to: ORDER_STATUSES.CANCELLED,
+        reason: '  رسید با مبلغ سفارش نمی‌خواند  ',
+      }),
+    ).toEqual({
+      to: ORDER_STATUSES.CANCELLED,
+      reason: 'رسید با مبلغ سفارش نمی‌خواند',
+    });
+  });
+
+  it.each(['', '   '])(
+    'turns a blank reason (%j) into no reason at all',
+    (reason) => {
+      // The server's `reason_required` is what then refuses a cancel: a blank
+      // field is «no reason», never a stored empty string the shopper reads.
+      expect(
+        adminTransitionBodySchema.parse({
+          to: ORDER_STATUSES.CANCELLED,
+          reason,
+        }).reason,
+      ).toBeUndefined();
+    },
+  );
+
+  it('accepts a reason exactly at the cap and refuses one past it', () => {
+    const at = 'ر'.repeat(CANCELLATION_REASON_MAX);
+    expect(
+      adminTransitionBodySchema.safeParse({
+        to: ORDER_STATUSES.CANCELLED,
+        reason: at,
+      }).success,
+    ).toBe(true);
+    expect(
+      adminTransitionBodySchema.safeParse({
+        to: ORDER_STATUSES.CANCELLED,
+        reason: `${at}ر`,
+      }).success,
+    ).toBe(false);
+  });
+
+  it.each([
+    ['a NUL', `دلیل${NUL}`],
+    ['a right-to-left mark', `دلیل${RLM}۱۲۳`],
+    ['a right-to-left override', `${RLO}دلیل`],
+  ])('refuses a reason carrying %s', (_, reason) => {
+    // Admin text a shopper reads: a bidi control would reorder their screen.
+    expect(
+      adminTransitionBodySchema.safeParse({
+        to: ORDER_STATUSES.CANCELLED,
+        reason,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('refuses a target that is not a status', () => {
+    expect(
+      adminTransitionBodySchema.safeParse({ to: 'nonsense', reason: 'x' })
+        .success,
+    ).toBe(false);
   });
 });
 

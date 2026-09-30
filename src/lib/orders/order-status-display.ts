@@ -23,6 +23,12 @@ const ORDER_STATUS_DISPLAY: Record<OrderStatus, StatusBadge> = {
     label: 'در انتظار پرداخت',
     badge: 'bg-warning-soft text-warning',
   },
+  // Not «…پرداخت»: the Zarinpal badge and heading say that, and a locator —
+  // or a shopper — must never mistake one wait for the other.
+  [ORDER_STATUSES.AWAITING_RECEIPT]: {
+    label: 'در انتظار رسید واریز',
+    badge: 'bg-warning-soft text-warning',
+  },
   [ORDER_STATUSES.PAID]: {
     label: 'پرداخت شده',
     badge: 'bg-info-soft text-info',

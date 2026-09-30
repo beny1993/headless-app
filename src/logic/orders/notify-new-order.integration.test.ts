@@ -235,12 +235,12 @@ describe.skipIf(!databaseReachable)('the new-order alert', () => {
 
     // The shopper's answer, and the database behind it, are what they would
     // have been with no alert at all.
-    expect(order.status).toBe(ORDER_STATUSES.PROCESSING);
+    expect(order.status).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
     const [row] = await testDb
       .select()
       .from(orders)
       .where(eq(orders.id, order.id));
-    expect(row.status).toBe(ORDER_STATUSES.PROCESSING);
+    expect(row.status).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
     const [stocked] = await testDb
       .select()
       .from(products)
@@ -287,7 +287,7 @@ describe.skipIf(!databaseReachable)('the new-order alert', () => {
     const order = await createOrder(user.id, input);
     fx.remember(order.id);
 
-    expect(order.status).toBe(ORDER_STATUSES.PROCESSING);
+    expect(order.status).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
     await vi.waitFor(() => expect(mocks.sendSms).toHaveBeenCalled());
     // Nothing was reported: a slow provider is not a failure.
     expect(mocks.captureException).not.toHaveBeenCalled();

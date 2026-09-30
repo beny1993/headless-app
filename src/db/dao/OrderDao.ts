@@ -193,16 +193,24 @@ export class OrderDao {
    * turns that `null` into an `InvalidTransitionError`. Always run inside the
    * transaction that also performs the transition's side effects, so the status
    * change and the restock / payment flip commit together or not at all.
+   *
+   * `cancellationReason`, when given, is written by the same UPDATE — a reason
+   * can never land on an order whose cancel lost the race.
    */
   static async casStatus(
     tx: Tx,
     id: string,
     from: OrderStatus,
     to: OrderStatus,
+    cancellationReason?: string,
   ): Promise<Order | null> {
     const [row] = await tx
       .update(orders)
-      .set({ status: to })
+      .set(
+        cancellationReason === undefined
+          ? { status: to }
+          : { status: to, cancellationReason },
+      )
       .where(and(eq(orders.id, id), eq(orders.status, from)))
       .returning();
     return row ?? null;

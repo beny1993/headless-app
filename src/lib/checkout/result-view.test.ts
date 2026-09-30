@@ -12,6 +12,15 @@ describe('resultView', () => {
     }
   });
 
+  it('maps a card-to-card order waiting for its receipt to the success view', () => {
+    // «سفارش ثبت شد!» is true before the upload as after it; the page asks for
+    // the transfer and the receipt, never for a gateway retry.
+    expect(resultView(ORDER_STATUSES.AWAITING_RECEIPT)).toEqual({
+      kind: 'success',
+      showRetry: false,
+    });
+  });
+
   it('maps shipped and delivered to the success view (a live/completed order)', () => {
     for (const status of [
       ORDER_STATUSES.SHIPPED,
