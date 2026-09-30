@@ -10,18 +10,13 @@
 // resolved path stays inside the storage root. `Content-Type` is set from that
 // whitelisted extension and never sniffed by the browser.
 import {
-  IMAGE_EXTENSIONS,
+  contentTypeOfKey,
   UPLOAD_FILENAME_PATTERN,
 } from '@/lib/storage/image-upload';
 import { readLocalUpload } from '@/lib/storage/local-driver';
 
 // Reads the filesystem per request; never fold into the build output.
 export const dynamic = 'force-dynamic';
-
-/** Extension → response content type, inverted from the accepted-type map. */
-const CONTENT_TYPE_BY_EXTENSION = Object.fromEntries(
-  Object.entries(IMAGE_EXTENSIONS).map(([type, ext]) => [ext, type]),
-) as Record<string, string>;
 
 const notFound = () => new Response('Not found', { status: 404 });
 
@@ -37,8 +32,7 @@ export async function GET(
   // the filesystem.
   if (!UPLOAD_FILENAME_PATTERN.test(filename)) return notFound();
 
-  const extension = filename.slice(filename.lastIndexOf('.') + 1);
-  const contentType = CONTENT_TYPE_BY_EXTENSION[extension];
+  const contentType = contentTypeOfKey(filename);
   if (!contentType) return notFound();
 
   const bytes = await readLocalUpload(filename);

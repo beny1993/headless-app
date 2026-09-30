@@ -25,6 +25,7 @@ import {
   type StorageDriver,
 } from '@/lib/storage';
 import {
+  contentTypeOfKey,
   objectKeyFor,
   RECEIPT_KEY_PREFIX,
   type AcceptedImageType,
@@ -144,11 +145,12 @@ export const uploadReceipt = async (
 };
 
 /**
- * The bytes of receipt `receiptId` of order `orderId`, with the type they were
- * sniffed as — for the order's owner (`{ userId }`, from the session) or for an
- * admin. `null` for a missing receipt, another customer's, one filed under a
- * different order, and one whose object is gone: the routes answer all four
- * with the same 404.
+ * The bytes of receipt `receiptId` of order `orderId`, with the type its key
+ * names (minted from the sniffed bytes; the row's `content_type` column is
+ * never served) — for the order's owner (`{ userId }`, from the session) or
+ * for an admin. `null` for a missing receipt, another customer's, one filed
+ * under a different order, and one whose object is gone: the routes answer
+ * all four with the same 404.
  */
 export const readReceipt = async (
   orderId: string,
@@ -160,7 +162,8 @@ export const readReceipt = async (
     orderId,
     scope === 'admin' ? undefined : scope.userId,
   );
-  if (!receipt) return null;
+  const contentType = receipt && contentTypeOfKey(receipt.objectKey);
+  if (!receipt || !contentType) return null;
   const bytes = await getStorageDriver().get(receipt.objectKey);
-  return bytes && { contentType: receipt.contentType, bytes };
+  return bytes && { contentType, bytes };
 };

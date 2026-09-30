@@ -327,6 +327,27 @@ describe.skipIf(!databaseReachable)('receipt routes', () => {
       expect(new Uint8Array(await res.arrayBuffer())).toEqual(jpeg(90));
     });
 
+    it('serves the type its key names, whatever the row says', async () => {
+      // The row's content_type is a plain text column; the key's extension
+      // was minted from the sniffed bytes and is the one the public route
+      // trusts too.
+      const { user, order, receiptId } = await withReceipt();
+      await testDb
+        .update(paymentReceipts)
+        .set({ contentType: 'text/html' })
+        .where(eq(paymentReceipts.id, receiptId));
+      as(user.id);
+
+      const owner = await app.request(apiOrderReceiptPath(order.id, receiptId));
+      as('admin-1', 'admin');
+      const admin = await app.request(
+        apiAdminOrderReceiptPath(order.id, receiptId),
+      );
+
+      expect(owner.headers.get('Content-Type')).toBe('image/jpeg');
+      expect(admin.headers.get('Content-Type')).toBe('image/jpeg');
+    });
+
     it('answers 401 without a session — exactly', async () => {
       const { order, receiptId } = await withReceipt();
       anon();

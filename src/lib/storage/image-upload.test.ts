@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACCEPTED_IMAGE_TYPES,
+  contentTypeOfKey,
   IMAGE_EXTENSIONS,
   IMAGE_KEY_ERROR,
   imageKeySchema,
@@ -108,6 +109,23 @@ describe('objectKeyFor', () => {
       /^receipts\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/,
     );
   });
+});
+
+describe('contentTypeOfKey', () => {
+  it.each([
+    ['receipts/a.jpg', 'image/jpeg'],
+    ['uploads/a.png', 'image/png'],
+    ['receipts/a.webp', 'image/webp'],
+  ])('serves %s as %s', (key, type) => {
+    expect(contentTypeOfKey(key)).toBe(type);
+  });
+
+  it.each(['receipts/a.svg', 'receipts/a.html', 'receipts/a', 'a.constructor'])(
+    'has no type for %s',
+    (key) => {
+      expect(contentTypeOfKey(key)).toBeNull();
+    },
+  );
 });
 
 describe('UPLOAD_FILENAME_PATTERN', () => {

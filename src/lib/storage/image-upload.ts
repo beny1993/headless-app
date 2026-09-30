@@ -27,6 +27,22 @@ export const ACCEPTED_IMAGE_TYPES = Object.keys(
   IMAGE_EXTENSIONS,
 ) as AcceptedImageType[];
 
+const TYPE_BY_EXTENSION = new Map<string, AcceptedImageType>(
+  Object.entries(IMAGE_EXTENSIONS).map(([type, extension]) => [
+    extension,
+    type as AcceptedImageType,
+  ]),
+);
+
+/**
+ * The content type a stored key is served with, from its extension — which
+ * `objectKeyFor` minted from the sniffed bytes — or `null` for any other
+ * extension. What the serving routes answer with, never a stored or declared
+ * type.
+ */
+export const contentTypeOfKey = (key: string): AcceptedImageType | null =>
+  TYPE_BY_EXTENSION.get(key.slice(key.lastIndexOf('.') + 1)) ?? null;
+
 /**
  * The multipart field the image arrives in. Shared by the upload route (which
  * reads it) and the admin form (which sets it) — here rather than in the route
