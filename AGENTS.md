@@ -107,6 +107,20 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   is one atomic `UPDATE … WHERE stock >= qty RETURNING`.
 - **Payments** are keyed by gateway authority id; verification is server-side and
   idempotent (Zarinpal redirect → callback → verify; no webhooks).
+- **Card to card waits for its receipt.** A card-to-card order is born
+  `awaiting_receipt`; the shopper's first receipt accepts it into `processing`
+  (`src/logic/orders/receipts.ts`, under the order's row lock), and the admins'
+  new-order SMS goes out then, never at checkout. The admin checks the receipt
+  and ships, or cancels — every admin cancel carries a reason the shopper reads.
+  The payment row still flips to `paid` only at delivery.
+- **A receipt is never public.** Receipts live under `receipts/` in the same
+  storage as the photos, and no URL exists for one: `imageSrc` and every
+  driver's `url()` throw on a receipt key. The only readers are the
+  authenticated routes (the order's owner, 404 to any other customer; an
+  admin), answering `private, no-store`; render one with a plain `<img>` on
+  that route, never `next/image`. On s3 the bucket's anonymous read is narrowed
+  to `uploads/` by policy, and the driver probes every receipt it stores
+  (docs/DEPLOY.md §3).
 - **Cart is client-side** (localStorage) until checkout; the server re-prices and
   validates at order creation.
 - **Rate limits**: every `/api/*` route is budgeted per caller per minute by
