@@ -110,6 +110,9 @@ const isUniqueViolation = (error: unknown, constraint: string): boolean => {
   return pg?.code === '23505' && pg.constraint === constraint;
 };
 
+/** The checkout transaction's isolation level, pinned: see step 3a. */
+const READ_COMMITTED = { isolationLevel: 'read committed' } as const;
+
 /**
  * Creates an order for `userId` from a validated checkout body.
  *
@@ -195,7 +198,11 @@ export const createOrder = async (
       // transaction's FIRST lock — product rows are locked only after it, in
       // productId order — so a second checkout of the same account waits here
       // until the first has committed, and the caps below count every order
-      // that came before it, however many requests arrived at once.
+      // that came before it, however many requests arrived at once. That needs
+      // READ COMMITTED, pinned as this transaction's config rather than
+      // inherited from `default_transaction_isolation` (as `OtpSendLogDao`
+      // does): a snapshot level takes its snapshot at this lock, before the
+      // wait, so the caps and 3b would miss the very orders they waited for.
       // ponytail: a burst from one account queues on its own row, each waiting
       // request holding a pool connection until its turn; the /api/* rate limit
       // bounds that queue. The caps stay per account: N verified phones still
@@ -377,7 +384,7 @@ export const createOrder = async (
       }
 
       return { order, replayed: false };
-    });
+    }, READ_COMMITTED);
 
     // Tell the admins — AFTER the commit, and only for an order this call
     // created: the fast path above and the unique-violation catch below return

@@ -123,7 +123,9 @@ export class UserDao {
    * Holds this user's row until `tx` ends — checkout's one-at-a-time lock per
    * account (`src/logic/checkout/create-order.ts`). A second checkout by the
    * same account waits here until the first has committed, so the caps it
-   * counts next include that order.
+   * counts next include that order. That holds only under READ COMMITTED,
+   * which the caller must pin: under a snapshot level every read after the
+   * wait still sees the world from before it.
    *
    * `FOR NO KEY UPDATE`, not `FOR UPDATE`: two checkouts still conflict, but
    * the `FOR KEY SHARE` a foreign-key check takes on this row does not, so an
