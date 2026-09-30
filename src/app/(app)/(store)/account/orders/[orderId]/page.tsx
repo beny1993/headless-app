@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ChevronRight, Clock } from 'lucide-react';
+import { ChevronRight, Clock, XCircle } from 'lucide-react';
 import { CardToCardPanel } from '@/features/checkout/card-to-card';
 import {
   loadOwnedOrder,
@@ -10,27 +10,29 @@ import {
   OrderSummary,
   toSummaryLines,
 } from '@/features/checkout/order-summary';
+import { ReceiptBox } from '@/features/checkout/receipt-box';
 import { RetryPaymentButton } from '@/features/checkout/retry-payment-button';
-import { resultView } from '@/lib/checkout/result-view';
+import { cancellationNote, resultView } from '@/lib/checkout/result-view';
 import { accountOrderPath, PATHS } from '@/lib/constant/paths';
 import { formatJalali, toPersianDigits } from '@/lib/format';
 import {
   ORDER_STATUSES,
   PAYMENT_METHOD_LABELS,
-  PAYMENT_METHODS,
   PAYMENT_STATUSES,
 } from '@/lib/orders/order-status';
 import {
   orderStatusBadge,
   paymentStatusBadge,
 } from '@/lib/orders/order-status-display';
+import { acceptsReceipts, showsReceipts } from '@/lib/orders/receipt';
 
 export const metadata: Metadata = { title: 'جزئیات سفارش' };
 
 /**
  * One of the customer's own orders, in full: snapshotted items and totals, the
  * delivery address, and the payment method/status — plus a "pay now" banner while
- * the order is still `pending_payment`.
+ * the order is still `pending_payment`, the card-to-card details and receipt box
+ * while it takes receipts, and the reason once an admin has cancelled it.
  *
  * A server component, owner-scoped by the session id through `getOwnedOrder`: a
  * missing order and one that belongs to someone else are the same `notFound()`,
@@ -47,22 +49,20 @@ export default async function Page({
 
   const status = orderStatusBadge(order.status);
   const view = resultView(order.status);
-  const isCod = order.paymentMethod === PAYMENT_METHODS.COD;
 
   // A representative payment for the status line: a settled one if there is one,
   // else the most recent attempt. COD before delivery has a single pending row.
   const payment =
     order.payments.find((p) => p.status === PAYMENT_STATUSES.PAID) ??
     order.payments.at(-1);
-  // Where to send the money, for a card-to-card order still waiting on the
-  // transfer — the one page a shopper can come back to for the card number. A
-  // COD order starts in `processing`; shipping it is the shop's confirmation,
-  // and its payment row flips to `paid` only on delivery, so the order status
-  // is the gate, not the payment status.
-  const cardToCard =
-    isCod && order.status === ORDER_STATUSES.PROCESSING
-      ? await readCardToCardPayment()
-      : null;
+  // Where to send the money, for as long as the order takes a receipt — the
+  // one page a shopper comes back to for the card number and the upload. The
+  // card-to-card payment row flips to `paid` only on delivery, so the order
+  // status is the gate, not the payment status.
+  const cardToCard = acceptsReceipts(order)
+    ? await readCardToCardPayment()
+    : null;
+  const cancelled = order.status === ORDER_STATUSES.CANCELLED;
 
   return (
     <main className="min-h-screen pt-4">
@@ -111,8 +111,38 @@ export default async function Page({
           </div>
         )}
 
+        {cancelled && (
+          <div className="bg-destructive-soft border-destructive/30 mb-5 flex items-start gap-3 rounded-2xl border p-4">
+            <XCircle
+              size={18}
+              className="text-destructive mt-0.5 shrink-0"
+              aria-hidden="true"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">این سفارش لغو شد.</p>
+              {cancellationNote(order) && (
+                <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
+                  {cancellationNote(order)}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {cardToCard && (
           <CardToCardPanel payment={cardToCard} className="mb-5" />
+        )}
+
+        {showsReceipts(order, order.receipts.length) && (
+          <ReceiptBox
+            orderId={order.id}
+            orderStatus={order.status}
+            receipts={order.receipts.map((receipt) => ({
+              id: receipt.id,
+              uploadedAt: formatJalali(receipt.createdAt),
+            }))}
+            eventPrefix="account-order"
+          />
         )}
 
         <div className="bg-card border-border mb-5 rounded-2xl border p-5">

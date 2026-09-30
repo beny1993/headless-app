@@ -83,8 +83,18 @@ describe('CardToCardPanel', () => {
     render(<CardToCardPanel payment={empty} />);
     expect(screen.getByText(base.note)).toBeTruthy();
     // The sentence is intact, its platform names plain words, not links.
-    expect(screen.getByText(/از طریق اینستاگرام یا تلگرام با ما/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        'برای هماهنگی، از طریق اینستاگرام یا تلگرام با ما در تماس باش.',
+      ),
+    ).toBeTruthy();
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
     expect(screen.queryAllByRole('link')).toHaveLength(0);
+  });
+
+  it('no longer asks for the receipt by DM — it is uploaded in the app', () => {
+    render(<CardToCardPanel payment={filled} />);
+    expect(document.body.textContent).not.toContain('ارسال رسید');
+    expect(document.body.textContent).not.toContain('رسید را برای ما بفرست');
   });
 });

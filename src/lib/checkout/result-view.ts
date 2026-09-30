@@ -9,7 +9,13 @@
 // The status is read from GET /api/orders/:id (server-side, owner-scoped), NEVER
 // from the callback's query params — the callback strips `Authority`/`Status`
 // from its redirect target.
-import { ORDER_STATUSES, type OrderStatus } from '@/lib/orders/order-status';
+import { formatNumber } from '@/lib/format';
+import {
+  ORDER_STATUSES,
+  PAYMENT_METHODS,
+  type OrderStatus,
+  type PaymentMethod,
+} from '@/lib/orders/order-status';
 
 /** Which of the three result views an order status renders. */
 type ResultKind = 'success' | 'pending' | 'failed';
@@ -52,3 +58,84 @@ const VIEW_BY_STATUS: Record<OrderStatus, ResultView> = {
 
 export const resultView = (status: OrderStatus): ResultView =>
   VIEW_BY_STATUS[status];
+
+/** A shopper's way back to money they may have transferred for a dead order. */
+const REFUND_SENTENCE =
+  'اگر مبلغی واریز کرده‌ای، برای بازگشت وجه با پشتیبانی تماس بگیر.';
+
+/**
+ * What a cancelled order tells its shopper, beyond «لغو شد»: the admin's
+ * reason, when there is one, and — for card to card, where the shopper may
+ * well have transferred the money already — where to get it back. The one
+ * sentence both the result page and the account order page show.
+ */
+export const cancellationNote = ({
+  paymentMethod,
+  cancellationReason,
+}: {
+  paymentMethod: PaymentMethod;
+  cancellationReason: string | null;
+}): string =>
+  [
+    cancellationReason &&
+      `دلیل: ${cancellationReason}${/[.!?؟…]$/.test(cancellationReason) ? '' : '.'}`,
+    paymentMethod === PAYMENT_METHODS.COD && REFUND_SENTENCE,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+type ResultCopy = { kind: ResultKind; title: string; sub: string };
+
+const COD_SUB_BY_STATUS: Partial<Record<OrderStatus, string>> = {
+  [ORDER_STATUSES.AWAITING_RECEIPT]:
+    'مبلغ سفارش را کارت به کارت کن و رسید را پایین همین صفحه بارگذاری کن تا سفارش پذیرفته شود.',
+  [ORDER_STATUSES.PROCESSING]:
+    'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.',
+};
+
+/**
+ * The result page's heading and sub-copy for an order. Split on the method and
+ * the SERVER status, never on the gateway callback's query.
+ *
+ * Card to card keeps «سفارش ثبت شد!» while the order is live — true before the
+ * receipt as after it — and says what happens next under it. Cancelled, it says
+ * so, with the admin's reason and the way back to a transfer: never the
+ * gateway's «مبلغی از حساب شما کسر نشده است», which is false for a shopper who
+ * transferred and was turned down.
+ */
+export const resultCopy = (order: {
+  status: OrderStatus;
+  paymentMethod: PaymentMethod;
+  cancellationReason: string | null;
+}): ResultCopy => {
+  const { kind } = resultView(order.status);
+
+  if (order.paymentMethod === PAYMENT_METHODS.COD) {
+    if (kind === 'success') {
+      return {
+        kind,
+        title: 'سفارش ثبت شد!',
+        sub: COD_SUB_BY_STATUS[order.status] ?? 'سفارش پذیرفته شد.',
+      };
+    }
+    return { kind, title: 'سفارش لغو شد', sub: cancellationNote(order) };
+  }
+
+  return {
+    success: {
+      kind,
+      title: 'پرداخت موفق بود!',
+      sub: 'پرداخت شما با موفقیت تایید شد.',
+    },
+    pending: {
+      kind,
+      title: 'در انتظار تایید پرداخت',
+      sub: `پرداخت این سفارش هنوز کامل نشده است. اگر مبلغ از حسابت کم شده تا ${formatNumber(72)} ساعت تسویه می‌شود؛ در غیر این صورت می‌توانی دوباره برای پرداخت اقدام کنی.`,
+    },
+    failed: {
+      kind,
+      title: 'پرداخت ناموفق یا منقضی شد',
+      sub: 'پرداخت این سفارش کامل نشد و مبلغی از حساب شما کسر نشده است. برای خرید می‌توانی دوباره اقدام کنی.',
+    },
+  }[kind];
+};

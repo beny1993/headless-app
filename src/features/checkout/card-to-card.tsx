@@ -28,8 +28,9 @@ const social = (href: string) =>
  * the admin's note, the filled card slots (an empty slot is simply absent) with a
  * copy button each, and the contact sentence — always there, with «اینستاگرام»
  * and «تلگرام» in it linking to the shop's accounts while their handles are set
- * (plain words otherwise). A client component only for the copy button; server
- * pages render it with the block they read.
+ * (plain words otherwise). It asks for coordination only: the receipt itself is
+ * uploaded in the app, on the order's page. A client component only for the copy
+ * button; server pages render it with the block they read.
  */
 export function CardToCardPanel({
   payment,
@@ -76,7 +77,7 @@ export function CardToCardPanel({
       )}
 
       <p className="mt-4 text-sm leading-relaxed">
-        برای هماهنگی و ارسال رسید، از طریق{' '}
+        برای هماهنگی، از طریق{' '}
         <ContactLink
           handle={payment.instagram}
           url={instagramUrl}

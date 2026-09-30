@@ -224,7 +224,7 @@ export const DEFAULT_CONTENT: ContentValues = {
   // slots. A row saved before the handles were known keeps its own `''`: on
   // staging the admin fills the two fields once.
   'checkout.payment': {
-    note: 'مبلغ سفارش را به یکی از کارت‌های زیر واریز کن و رسید را برای ما بفرست. سفارش پس از تأیید واریز ارسال می‌شود.',
+    note: 'مبلغ سفارش را به یکی از کارت‌های زیر واریز کن. رسید را بعد از «ثبت سفارش»، در همین سایت روی صفحه‌ی سفارش بارگذاری کن؛ با دریافت رسید، سفارش پذیرفته و پس از بررسی ارسال می‌شود.',
     bankCards: [
       { bank: '', number: '6129861927666866', holder: '' },
       { bank: '', number: '', holder: '' },

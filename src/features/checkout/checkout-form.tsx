@@ -708,7 +708,7 @@ export function CheckoutForm({
                       {
                         id: PAYMENT_METHODS.COD,
                         label: 'پرداخت توسط کارت به کارت',
-                        sub: 'واریز به کارت فروشگاه و ارسال رسید',
+                        sub: 'واریز به کارت فروشگاه و بارگذاری رسید',
                         icon: <Wallet size={18} aria-hidden="true" />,
                         disabled: false,
                       },
