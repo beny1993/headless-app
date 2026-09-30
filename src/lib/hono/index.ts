@@ -95,6 +95,7 @@ import { orderDetailHandler, orderDetailRoute } from './routes/orders';
 import {
   adminOrderReceiptHandler,
   orderReceiptHandler,
+  orderReceiptUploadGate,
   orderReceiptUploadHandler,
 } from './routes/receipts';
 import {
@@ -196,18 +197,8 @@ authed.use('/checkout/preview', requireAuth);
 // way: nothing public lives under an order, and a receipt route that slipped
 // past the guard would be serving someone's bank details. Hono's `/:id/*` also
 // matches `/:id` itself, so this one mount guards the order read too — an exact
-// mount beside it would look the session up twice. The body limit comes after
-// the guard, so an anonymous body is never buffered; it allows the multipart
-// envelope on top of the file, and `readImageUpload` holds the file itself to
-// exactly MAX_RECEIPT_BYTES.
+// mount beside it would look the session up twice.
 authed.use('/orders/:id/*', requireAuth);
-authed.use(
-  '/orders/:id/receipts',
-  bodyLimit({
-    maxSize: MAX_RECEIPT_BYTES + MULTIPART_ENVELOPE_BYTES,
-    onError: (c) => c.json(apiError(IMAGE_TOO_LARGE_MESSAGE), 413),
-  }),
-);
 authed.use('/payments/zarinpal/request', requireAuth);
 // The `/me/*` family (order history + owner-scoped pet/address CRUD) is entirely
 // authenticated, so one wildcard mount guards it — legible as "everything under
@@ -219,7 +210,21 @@ authed.use('/me/*', requireAuth);
 authed.openapi(checkoutRoute, checkoutHandler);
 authed.openapi(checkoutPreviewRoute, checkoutPreviewHandler);
 authed.openapi(orderDetailRoute, orderDetailHandler);
-authed.post('/orders/:id/receipts', orderReceiptUploadHandler);
+// The upload, in the order that keeps a refused body unread: the session
+// guard (the wildcard above), then who owns the order and whether it takes a
+// receipt, then the body limit — which reads a body with no Content-Length in
+// full before it lets the request on — and only then the handler. The limit
+// allows the multipart envelope on top of the file; `readImageUpload` holds
+// the file itself to exactly MAX_RECEIPT_BYTES.
+authed.post(
+  '/orders/:id/receipts',
+  orderReceiptUploadGate,
+  bodyLimit({
+    maxSize: MAX_RECEIPT_BYTES + MULTIPART_ENVELOPE_BYTES,
+    onError: (c) => c.json(apiError(IMAGE_TOO_LARGE_MESSAGE), 413),
+  }),
+  orderReceiptUploadHandler,
+);
 authed.get('/orders/:id/receipts/:receiptId', orderReceiptHandler);
 authed.openapi(paymentRequestRoute, paymentRequestHandler);
 authed.openapi(meOrdersRoute, meOrdersHandler);

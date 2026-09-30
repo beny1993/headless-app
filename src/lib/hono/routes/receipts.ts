@@ -10,7 +10,7 @@
 // database, and the guards are the mounts in ../index.ts — `requireAuth` on
 // `/orders/:id/*` (the owner's id is `c.get('user').id`, never the URL or the
 // body), `requireAdmin` on `/admin/*`, and a body limit on the upload.
-import type { Context, Env } from 'hono';
+import type { Context, Env, MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import { MAX_RECEIPT_BYTES, RECEIPT_CAP_MESSAGE } from '@/lib/orders/receipt';
 import {
@@ -36,17 +36,19 @@ const orderIdSchema = z.uuid();
 const receiptParamsSchema = z.object({ id: z.uuid(), receiptId: z.uuid() });
 
 /**
- * `POST /orders/{id}/receipts` — the order's owner adds a receipt. Checked in
- * the order that keeps a refused body from ever being buffered: the id's
- * shape, then who owns the order and whether it takes one more receipt
- * (`receiptUploadGate`), and only then the body (sniffed, capped). The store
- * itself re-checks all of it under the order's lock.
+ * `POST /orders/{id}/receipts`, first step: the id's shape, who owns the order
+ * and whether it takes one more receipt (`receiptUploadGate`). Mounted as the
+ * route's own middleware AHEAD of its body limit (../index.ts), because the
+ * body limit reads a body with no Content-Length in full before it lets the
+ * request on: a refused upload must not cost its body.
  */
-export const orderReceiptUploadHandler = async (
-  c: AuthedContext,
-): Promise<Response> => {
+export const orderReceiptUploadGate: MiddlewareHandler<
+  Env & AuthedEnv
+> = async (c, next) => {
   const orderId = orderIdSchema.safeParse(c.req.param('id'));
-  if (!orderId.success) return c.json(apiError(ORDER_NOT_FOUND_MESSAGE), 400);
+  if (!orderId.success) {
+    return c.json(apiError(ORDER_NOT_FOUND_MESSAGE), 400);
+  }
 
   const gate = await receiptUploadGate(orderId.data, c.get('user').id);
   switch (gate.outcome) {
@@ -57,6 +59,19 @@ export const orderReceiptUploadHandler = async (
     case 'cap_reached':
       return c.json(apiError(RECEIPT_CAP_MESSAGE), 409);
   }
+  await next();
+};
+
+/**
+ * `POST /orders/{id}/receipts`, last step, behind the gate and the body limit:
+ * the body is read (sniffed, capped at exactly MAX_RECEIPT_BYTES) and stored.
+ * The store re-checks the gate's answer under the order's lock.
+ */
+export const orderReceiptUploadHandler = async (
+  c: AuthedContext,
+): Promise<Response> => {
+  const orderId = orderIdSchema.safeParse(c.req.param('id'));
+  if (!orderId.success) return c.json(apiError(ORDER_NOT_FOUND_MESSAGE), 400);
 
   const { bytes, type } = await readImageUpload(c, MAX_RECEIPT_BYTES);
 
