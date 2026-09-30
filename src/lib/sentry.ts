@@ -56,11 +56,17 @@ export const withoutConsoleBreadcrumbs = (integrations: SentryIntegration[]) =>
 /**
  * What the SDK is allowed to collect on its own.
  *
- * Every category is set explicitly. `dataCollection` is opt-*out*: passing the
- * object at all — even `{}` — resolves each omitted category to its permissive
- * default (cookies, request bodies and stack-frame locals all `true`), and for a
- * phone-OTP app those three are, respectively, the session cookie, the OTP in
- * the sign-in POST body, and the plaintext code sitting in a local variable.
+ * Every category that can hold a customer's data is set explicitly; SDK 10.73.0
+ * also has `graphQL`, `genAI` and `frameContextLines`, left at their defaults
+ * (no GraphQL or AI client here, and context lines are our own source).
+ * `dataCollection` is opt-*out*: passing the object at all — even `{}` —
+ * resolves each omitted category to its permissive default (cookies, request
+ * bodies and stack-frame locals all `true`), and for a phone-OTP app those
+ * three are, respectively, the session cookie, the OTP in the sign-in POST
+ * body, and the plaintext code sitting in a local variable.
+ *
+ * `httpBodies: []` does not keep every body out, though: see
+ * {@link withoutRequestBody}.
  *
  * The deprecated `sendDefaultPii: false` would cover the same ground today, but
  * it is removed in SDK v11 — and it is a single switch where this is a list you
@@ -195,6 +201,25 @@ export const withoutAdminQuery = (
   };
 };
 
+/**
+ * The event without the HTTP request body the SDK attached to it.
+ *
+ * `httpBodies: []` above does not stop that: in SDK 10.73.0 the Node `Http`
+ * integration records an incoming body read through `req.on('data')` without
+ * consulting the list, and the request-data integration attaches it to every
+ * error captured in that request (`@sentry/core`
+ * `integrations/http/server-subscription.js`, `integrations/requestdata.js`).
+ * With tracing on, the same body would ride on spans as
+ * `http.request.body.data`, which this does not reach.
+ */
+export const withoutRequestBody = (
+  event: Sentry.ErrorEvent,
+): Sentry.ErrorEvent => {
+  if (event.request?.data === undefined) return event;
+  const { data: _data, ...request } = event.request;
+  return { ...event, request };
+};
+
 /** Where a breadcrumb keeps a URL: navigation's `from`/`to`, fetch's `url`. */
 const BREADCRUMB_URL_KEYS = new Set(['from', 'to', 'url']);
 
@@ -266,7 +291,7 @@ export function sentryOptions() {
     // whole point. One line to turn back on if that ever changes.
     dataCollection,
     beforeSend: (event: Sentry.ErrorEvent, hint: Sentry.EventHint) =>
-      withoutAdminQuery(sanitizeDatabaseError(event, hint)),
+      withoutRequestBody(withoutAdminQuery(sanitizeDatabaseError(event, hint))),
     // Console breadcrumbs go whole, in the browser too, whose `Breadcrumbs`
     // integration keeps them: Next logs a failed navigation's RSC fetch with
     // its full URL, admin search included. Whole, for the reason the server

@@ -1,5 +1,7 @@
 // @vitest-environment node
+import { createServer, type Server } from 'node:http';
 import { createRequire } from 'node:module';
+import type { AddressInfo } from 'node:net';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sentryOptions } from './sentry';
@@ -183,5 +185,57 @@ describe('admin query string privacy', () => {
     const { requestPath } = await captureRequestError('/shop?q=royal', '/shop');
 
     expect(requestPath).toBe('/shop?q=royal');
+  });
+});
+
+// `httpBodies: []` is not the whole of it: the Node `Http` integration records
+// an incoming body read through `req.on('data')` without consulting that list.
+describe('request body privacy', () => {
+  let server: Server;
+  let origin = '';
+
+  beforeAll(async () => {
+    server = createServer((request, response) => {
+      void (async () => {
+        // Read as a stream consumer (`pipe`, busboy) reads it, then fail
+        // inside the request, as a handler that awaits its body would.
+        await new Promise<void>((resolve) => {
+          request.on('data', () => {});
+          request.on('end', resolve);
+        });
+        Sentry.captureException(new Error('Sign-in failed'));
+        response.end();
+      })();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('sends no body the server read', async () => {
+    captured = undefined;
+    const url = `${origin}/api/auth/phone-number/verify`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phoneNumber: '+989121234567', code: '482913' }),
+    });
+    await response.text();
+    await Sentry.flush(2000);
+
+    expect(captured).toBeDefined();
+    const [, [[, event]]] = JSON.parse(captured!) as [
+      unknown,
+      [[unknown, { request?: { url?: string; data?: unknown } }]],
+    ];
+    // The request's own scope was on the event: its body had a way in.
+    expect(event.request?.url).toBe(url);
+    expect(event.request?.data).toBeUndefined();
+    expect(captured).not.toContain('9121234567');
+    expect(captured).not.toContain('482913');
   });
 });
