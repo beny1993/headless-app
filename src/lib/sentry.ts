@@ -207,10 +207,12 @@ export const withoutAdminQuery = (
  * `httpBodies: []` above does not stop that: in SDK 10.73.0 the Node `Http`
  * integration records an incoming body read through `req.on('data')` without
  * consulting the list, and the request-data integration attaches it to every
- * error captured in that request (`@sentry/core`
- * `integrations/http/server-subscription.js`, `integrations/requestdata.js`).
- * With tracing on, the same body would ride on spans as
- * `http.request.body.data`, which this does not reach.
+ * event captured in that request, transactions as well as errors
+ * (`@sentry/core` `integrations/http/server-subscription.js`,
+ * `integrations/requestdata.js`). This reaches only the errors; the
+ * transactions are dropped whole by `beforeSendTransaction`. Span streaming
+ * (`traceLifecycle: 'stream'`, not set here) would put the body on spans as
+ * `http.request.body.data`, where neither reaches.
  */
 export const withoutRequestBody = (
   event: Sentry.ErrorEvent,
@@ -284,11 +286,14 @@ export function sentryOptions() {
     environment:
       getEnvVariable(VARS.NEXT_PUBLIC_SENTRY_ENVIRONMENT, false, '').trim() ||
       undefined,
-    // No `tracesSampleRate`, so tracing stays OFF and only errors are sent.
-    // The backend is GlitchTip (docs/DEPLOY.md §9), whose performance support is
-    // partial — and transactions are the high-volume signal, so enabling them
-    // spends a shared event quota on data nobody here reads. Errors are the
-    // whole point. One line to turn back on if that ever changes.
+    // Errors only, and not because `tracesSampleRate` is absent: without it the
+    // Node and edge SDKs read SENTRY_TRACES_SAMPLE_RATE from the environment
+    // (`@sentry/node-core` `sdk/index.js`, `@sentry/vercel-edge`), so one
+    // deploy variable switches tracing on. `beforeSendTransaction` below is
+    // what keeps transactions out. The backend is GlitchTip (docs/DEPLOY.md
+    // §9), whose performance support is partial — and transactions are the
+    // high-volume signal, so enabling them spends a shared event quota on data
+    // nobody here reads. Errors are the whole point.
     dataCollection,
     beforeSend: (event: Sentry.ErrorEvent, hint: Sentry.EventHint) =>
       withoutRequestBody(withoutAdminQuery(sanitizeDatabaseError(event, hint))),
