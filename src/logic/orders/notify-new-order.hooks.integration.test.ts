@@ -220,7 +220,7 @@ describe.skipIf(!databaseReachable)('the new-order alert hooks', () => {
     it('tells the admins when the first receipt accepts the order', async () => {
       const order = await waitingOrder();
 
-      await uploadReceipt(order.id, jpeg(), 'image/jpeg');
+      await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg');
 
       expect(mocks.notify).toHaveBeenCalledTimes(1);
       expect(mocks.notify).toHaveBeenCalledWith(order.id);
@@ -228,10 +228,10 @@ describe.skipIf(!databaseReachable)('the new-order alert hooks', () => {
 
     it('says nothing for a later receipt — the order was accepted already', async () => {
       const order = await waitingOrder();
-      await uploadReceipt(order.id, jpeg(), 'image/jpeg');
+      await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg');
       mocks.notify.mockClear();
 
-      await uploadReceipt(order.id, jpeg(), 'image/jpeg');
+      await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg');
 
       expect(mocks.notify).not.toHaveBeenCalled();
     });

@@ -192,7 +192,12 @@ describe.skipIf(!databaseReachable)('the new-order alert', () => {
     const { user, input, product } = await checkout();
     const order = await createOrder(user.id, input);
     fx.remember(order.id);
-    const upload = await uploadReceipt(order.id, jpeg(), 'image/jpeg');
+    const upload = await uploadReceipt(
+      order.id,
+      order.userId,
+      jpeg(),
+      'image/jpeg',
+    );
     return { order, input, product, upload };
   };
 

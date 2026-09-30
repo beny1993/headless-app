@@ -184,7 +184,7 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
     it('refuses the sixth receipt before the body is read', async () => {
       const { user, order } = await placed(ORDER_STATUSES.PROCESSING);
       for (let i = 0; i < MAX_RECEIPTS_PER_ORDER; i++) {
-        await uploadReceipt(order.id, jpeg(), 'image/jpeg');
+        await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg');
       }
       expect(await receiptUploadGate(order.id, user.id)).toEqual({
         outcome: 'cap_reached',
@@ -196,7 +196,12 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
     it('stores the first receipt, accepts the order and tells the admins once', async () => {
       const { order } = await placed();
 
-      const result = await uploadReceipt(order.id, jpeg(100), 'image/jpeg');
+      const result = await uploadReceipt(
+        order.id,
+        order.userId,
+        jpeg(100),
+        'image/jpeg',
+      );
 
       if (result.outcome !== 'ok') throw new Error(result.outcome);
       expect(result.accepted).toBe(true);
@@ -215,7 +220,7 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
 
     it('books nothing at acceptance — the payment still flips only at delivery', async () => {
       const { order } = await placed();
-      await uploadReceipt(order.id, jpeg(), 'image/jpeg');
+      await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg');
 
       const [before] = await PaymentDao.listByOrder(order.id);
       expect(before.status).toBe(PAYMENT_STATUSES.PENDING);
@@ -242,10 +247,15 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
 
     it('keeps a later receipt without touching the order or telling anyone', async () => {
       const { order } = await placed();
-      await uploadReceipt(order.id, jpeg(), 'image/jpeg');
+      await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg');
       mocks.notify.mockClear();
 
-      const second = await uploadReceipt(order.id, jpeg(), 'image/png');
+      const second = await uploadReceipt(
+        order.id,
+        order.userId,
+        jpeg(),
+        'image/png',
+      );
 
       expect(second).toMatchObject({ outcome: 'ok', accepted: false });
       expect(await statusOf(order.id)).toBe(ORDER_STATUSES.PROCESSING);
@@ -271,8 +281,8 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
         await released;
       });
       const uploads = Promise.all([
-        uploadReceipt(order.id, jpeg(), 'image/jpeg'),
-        uploadReceipt(order.id, jpeg(), 'image/jpeg'),
+        uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg'),
+        uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg'),
       ]);
       await vi.waitFor(
         async () =>
@@ -292,13 +302,30 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
       expect(mocks.notify).toHaveBeenCalledTimes(1);
     });
 
+    it('refuses a stranger’s upload under the lock, even with the gate skipped', async () => {
+      // The route's gate is the fast path; the store is the one that holds.
+      const { order } = await placed();
+      const stranger = await fx.user();
+
+      expect(
+        await uploadReceipt(order.id, stranger.id, jpeg(), 'image/jpeg'),
+      ).toEqual({ outcome: 'not_found' });
+
+      expect(await receiptRows(order.id)).toHaveLength(0);
+      expect(await storedFiles()).toEqual([]);
+      expect(await statusOf(order.id)).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
+      expect(mocks.notify).not.toHaveBeenCalled();
+    });
+
     it('never adds a receipt to a Zarinpal order', async () => {
       const { order } = await placed(
         ORDER_STATUSES.PROCESSING,
         PAYMENT_METHODS.ZARINPAL,
       );
 
-      expect(await uploadReceipt(order.id, jpeg(), 'image/jpeg')).toEqual({
+      expect(
+        await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg'),
+      ).toEqual({
         outcome: 'not_accepting',
       });
       expect(await receiptRows(order.id)).toHaveLength(0);
@@ -311,7 +338,9 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
         // The gate saw it open; the order moved before the bytes arrived.
         const { order } = await placed(status);
 
-        expect(await uploadReceipt(order.id, jpeg(), 'image/jpeg')).toEqual({
+        expect(
+          await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg'),
+        ).toEqual({
           outcome: 'not_accepting',
         });
         expect(await receiptRows(order.id)).toHaveLength(0);
@@ -323,12 +352,12 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
     it('holds the cap when the last slots are raced, leaving no stray file', async () => {
       const { order } = await placed(ORDER_STATUSES.PROCESSING);
       for (let i = 0; i < MAX_RECEIPTS_PER_ORDER - 1; i++) {
-        await uploadReceipt(order.id, jpeg(), 'image/jpeg');
+        await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg');
       }
 
       const results = await Promise.all([
-        uploadReceipt(order.id, jpeg(), 'image/jpeg'),
-        uploadReceipt(order.id, jpeg(), 'image/jpeg'),
+        uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg'),
+        uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg'),
       ]);
 
       expect(results.map((r) => r.outcome).sort()).toEqual([
@@ -345,7 +374,9 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
         throw new ReceiptExposedError(key);
       });
 
-      expect(await uploadReceipt(order.id, jpeg(), 'image/jpeg')).toEqual({
+      expect(
+        await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg'),
+      ).toEqual({
         outcome: 'exposed',
       });
       expect(await receiptRows(order.id)).toHaveLength(0);
@@ -359,6 +390,7 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
       const placedOrder = await placed();
       const result = await uploadReceipt(
         placedOrder.order.id,
+        placedOrder.order.userId,
         jpeg(80),
         'image/jpeg',
       );

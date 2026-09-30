@@ -274,20 +274,23 @@ export class OrderDao {
   }
 
   /**
-   * Lock the order for a receipt upload and read what decides it: the status
-   * and the payment method. Concurrent uploads to one order queue here — so
-   * only the first can accept it — and so does an admin's transition (its CAS
-   * UPDATE takes the same row lock). `no key update`: nothing here changes the
-   * key, so rows that merely reference the order are not held up.
+   * Lock `userId`'s order for a receipt upload and read what decides it: the
+   * status and the payment method. `null` for an order that does not exist or
+   * is someone else's — the lock is taken only on the uploader's own order.
+   * Concurrent uploads to one order queue here — so only the first can accept
+   * it — and so does an admin's transition (its CAS UPDATE takes the same row
+   * lock). `no key update`: nothing here changes the key, so rows that merely
+   * reference the order are not held up.
    */
   static async lockForReceipt(
     tx: Tx,
     id: string,
+    userId: string,
   ): Promise<{ status: OrderStatus; paymentMethod: PaymentMethod } | null> {
     const [row] = await tx
       .select({ status: orders.status, paymentMethod: orders.paymentMethod })
       .from(orders)
-      .where(eq(orders.id, id))
+      .where(and(eq(orders.id, id), eq(orders.userId, userId)))
       .for('no key update');
     return row ?? null;
   }

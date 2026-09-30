@@ -65,7 +65,8 @@ export const orderReceiptUploadGate: MiddlewareHandler<
 /**
  * `POST /orders/{id}/receipts`, last step, behind the gate and the body limit:
  * the body is read (sniffed, capped at exactly MAX_RECEIPT_BYTES) and stored.
- * The store re-checks the gate's answer under the order's lock.
+ * The store checks the owner, the method and the status again under the
+ * order's lock, and the cap as it inserts — the gate is the fast path.
  */
 export const orderReceiptUploadHandler = async (
   c: AuthedContext,
@@ -75,8 +76,15 @@ export const orderReceiptUploadHandler = async (
 
   const { bytes, type } = await readImageUpload(c, MAX_RECEIPT_BYTES);
 
-  const result = await uploadReceipt(orderId.data, bytes, type);
+  const result = await uploadReceipt(
+    orderId.data,
+    c.get('user').id,
+    bytes,
+    type,
+  );
   switch (result.outcome) {
+    case 'not_found':
+      return c.json(apiError(ORDER_NOT_FOUND_MESSAGE), 404);
     case 'not_accepting':
       return c.json(apiError(NOT_ACCEPTING_MESSAGE), 409);
     case 'cap_reached':

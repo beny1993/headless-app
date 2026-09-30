@@ -36,8 +36,9 @@ import { transitionOrder } from '@/logic/orders/state-machine';
  * Whether `userId` may upload a receipt to order `orderId` right now — run by
  * the route BEFORE the body is read, so a refused upload is never buffered.
  * `not_found` is both a missing order and someone else's: one answer, so the
- * route cannot tell a stranger which orders exist. `uploadReceipt` re-checks
- * everything under the order's lock; this is the fast path, not the gate.
+ * route cannot tell a stranger which orders exist. `uploadReceipt` checks the
+ * owner, the method and the status again under the order's lock, and the cap
+ * as it inserts: this is the fast path, not the gate.
  */
 export const receiptUploadGate = async (
   orderId: string,
@@ -56,6 +57,8 @@ export const receiptUploadGate = async (
 
 type UploadResult =
   | { outcome: 'ok'; receipt: PaymentReceipt; accepted: boolean }
+  /** No such order for this user — missing or someone else's, one answer. */
+  | { outcome: 'not_found' }
   /** The order no longer takes receipts (moved on since the gate). */
   | { outcome: 'not_accepting' }
   | { outcome: 'cap_reached' }
@@ -74,10 +77,12 @@ const deleteQuietly = (driver: StorageDriver, key: string, orderId: string) =>
   });
 
 /**
- * Store `bytes` (already sniffed as `type`) as a receipt of order `orderId`.
+ * Store `bytes` (already sniffed as `type`) as a receipt of `userId`'s order
+ * `orderId` — `userId` from the session, never the request.
  *
  * The object is written first, then — in one transaction, under the order's
- * row lock — the order is re-checked, the receipt recorded under the cap and,
+ * row lock, taken only if the order is `userId`'s — the order is re-checked,
+ * the receipt recorded under the cap and,
  * if the order was still waiting for its first receipt, accepted into
  * `processing`. Two first receipts racing queue on that lock: the first
  * accepts, the second finds `processing` and is simply kept. Any refusal takes
@@ -86,6 +91,7 @@ const deleteQuietly = (driver: StorageDriver, key: string, orderId: string) =>
  */
 export const uploadReceipt = async (
   orderId: string,
+  userId: string,
   bytes: Uint8Array,
   type: AcceptedImageType,
 ): Promise<UploadResult> => {
@@ -102,10 +108,9 @@ export const uploadReceipt = async (
   let result: UploadResult;
   try {
     result = await db.transaction(async (tx): Promise<UploadResult> => {
-      const order = await OrderDao.lockForReceipt(tx, orderId);
-      if (!order || !acceptsReceipts(order)) {
-        return { outcome: 'not_accepting' };
-      }
+      const order = await OrderDao.lockForReceipt(tx, orderId, userId);
+      if (!order) return { outcome: 'not_found' };
+      if (!acceptsReceipts(order)) return { outcome: 'not_accepting' };
       const receipt = await ReceiptDao.insertUnderCap(
         tx,
         orderId,
