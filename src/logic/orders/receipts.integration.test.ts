@@ -10,7 +10,8 @@
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import { pgSchema, text } from 'drizzle-orm/pg-core';
 import {
   afterAll,
   afterEach,
@@ -75,6 +76,24 @@ afterAll(async () => {
     process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = originalRoot;
   }
 });
+
+// Postgres's own view of its sessions, read through the query builder: how
+// many in this database are blocked on a lock right now.
+const pgStatActivity = pgSchema('pg_catalog').table('pg_stat_activity', {
+  datname: text('datname'),
+  waitEventType: text('wait_event_type'),
+});
+const sessionsWaitingOnLocks = () =>
+  testDb.$count(
+    pgStatActivity,
+    and(
+      eq(
+        pgStatActivity.datname,
+        new URL(process.env.APP_CONFIG_DATABASE_URL ?? '').pathname.slice(1),
+      ),
+      eq(pgStatActivity.waitEventType, 'Lock'),
+    ),
+  );
 
 /** The receipt files on disk right now. */
 const storedFiles = async () =>
@@ -237,10 +256,32 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
     it('accepts the order exactly once when two first receipts arrive together, keeping both', async () => {
       const { order } = await placed();
 
-      const results = await Promise.all([
+      // Make "together" certain rather than likely: hold the order's row
+      // until both uploads are stuck behind it, then let go. Both have read
+      // the order by then — or are queued to — so the one that loses must
+      // find it already accepted and still keep its receipt.
+      let release = () => {};
+      const released = new Promise<void>((resolve) => (release = resolve));
+      const holder = testDb.transaction(async (tx) => {
+        await tx
+          .select({ id: orders.id })
+          .from(orders)
+          .where(eq(orders.id, order.id))
+          .for('update');
+        await released;
+      });
+      const uploads = Promise.all([
         uploadReceipt(order.id, jpeg(), 'image/jpeg'),
         uploadReceipt(order.id, jpeg(), 'image/jpeg'),
       ]);
+      await vi.waitFor(
+        async () =>
+          expect(await sessionsWaitingOnLocks()).toBeGreaterThanOrEqual(2),
+        { timeout: 10_000, interval: 25 },
+      );
+      release();
+      await holder;
+      const results = await uploads;
 
       expect(results.map((r) => r.outcome)).toEqual(['ok', 'ok']);
       expect(
