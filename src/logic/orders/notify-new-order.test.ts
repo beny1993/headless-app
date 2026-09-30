@@ -94,8 +94,9 @@ describe('newOrderAlert', () => {
 });
 
 describe('notifiesOnCreate', () => {
-  it('notifies for a card-to-card order, which is born processing', () => {
-    expect(notifiesOnCreate(ORDER_STATUSES.PROCESSING)).toBe(true);
+  it('says nothing for a card-to-card order at checkout — it waits for its receipt', () => {
+    // Its alert comes when the first receipt accepts it (uploadReceipt).
+    expect(notifiesOnCreate(ORDER_STATUSES.AWAITING_RECEIPT)).toBe(false);
   });
 
   it('says nothing for pending_payment — an unfinished checkout', () => {
@@ -106,7 +107,9 @@ describe('notifiesOnCreate', () => {
 
   it.each(
     Object.values(ORDER_STATUSES).filter(
-      (status) => status !== ORDER_STATUSES.PENDING_PAYMENT,
+      (status) =>
+        status !== ORDER_STATUSES.PENDING_PAYMENT &&
+        status !== ORDER_STATUSES.AWAITING_RECEIPT,
     ),
   )('treats %j as a real order', (status) => {
     // Exhaustive over the domain: a status added later is a real order unless

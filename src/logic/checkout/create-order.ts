@@ -381,9 +381,11 @@ export const createOrder = async (
     });
 
     // Tell the admins — AFTER the commit, and only for an order this call
-    // created: the fast path above and the unique-violation catch below return
-    // before this line, and a re-check hit under the lock comes back
-    // `replayed` — so a double-submit sends one SMS.
+    // created and only if it is already a sale (`notifiesOnCreate`): a
+    // card-to-card order waits for its receipt, whose first upload sends this
+    // alert instead (`uploadReceipt`). The fast path above and the
+    // unique-violation catch below return before this line, and a re-check hit
+    // under the lock comes back `replayed` — so a double-submit sends one SMS.
     // Deliberately un-awaited and never `await`ed anywhere:
     // `notifyAdminsOfNewOrder` catches everything and never rejects, so the
     // shopper's response cannot be delayed or failed by a wedged SMS provider.

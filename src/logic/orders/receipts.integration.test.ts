@@ -1,0 +1,386 @@
+// The receipt logic against a live Postgres and the real local driver (on a
+// throwaway root): who may upload, what the first receipt does to the order —
+// exactly once, however many arrive together — what the cap holds, what a
+// refused upload leaves behind (nothing), and who may read a receipt back.
+//
+// The admin alert is recorded, not sent: its own suites prove what it says and
+// that it never fails its caller. Here it is only counted.
+//
+// Needs a live database — see src/db/test-db.ts.
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { eq } from 'drizzle-orm';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import { orders, paymentReceipts } from '@/db/schema/orders';
+import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
+import { OrderFixtures } from '@/db/order-test-fixtures';
+import {
+  ORDER_STATUSES,
+  PAYMENT_METHODS,
+  PAYMENT_STATUSES,
+  type OrderStatus,
+  type PaymentMethod,
+} from '@/lib/orders/order-status';
+import { MAX_RECEIPTS_PER_ORDER } from '@/lib/orders/receipt';
+import { VARS } from '@/lib/utils/env';
+
+const mocks = vi.hoisted(() => ({ notify: vi.fn() }));
+vi.mock('@/logic/orders/notify-new-order', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/logic/orders/notify-new-order')>()),
+  notifyAdminsOfNewOrder: mocks.notify,
+}));
+
+const { receiptUploadGate, uploadReceipt, readReceipt } = await importWithDb(
+  () => import('@/logic/orders/receipts'),
+);
+const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
+const { PaymentDao } = await importWithDb(() => import('@/db/dao/PaymentDao'));
+const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
+const { transitionOrder } = await importWithDb(
+  () => import('@/logic/orders/state-machine'),
+);
+const { localDriver } = await import('@/lib/storage/local-driver');
+const { ReceiptExposedError } = await import('@/lib/storage');
+
+/** A real JPEG header, padded: the bytes are what gets sniffed and stored. */
+const jpeg = (size = 64) => {
+  const bytes = new Uint8Array(size);
+  bytes.set([0xff, 0xd8, 0xff, 0xe0]);
+  return bytes;
+};
+
+let root: string;
+const originalRoot = process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT];
+
+beforeAll(async () => {
+  root = await mkdtemp(path.join(tmpdir(), 'smokey-receipts-'));
+  process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = root;
+});
+
+afterAll(async () => {
+  await rm(root, { recursive: true, force: true });
+  if (originalRoot === undefined) {
+    delete process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT];
+  } else {
+    process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = originalRoot;
+  }
+});
+
+/** The receipt files on disk right now. */
+const storedFiles = async () =>
+  readdir(path.join(root, 'receipts')).catch(() => [] as string[]);
+
+describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
+  const fx = new OrderFixtures();
+
+  beforeEach(() => mocks.notify.mockClear());
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await fx.cleanup();
+    await rm(path.join(root, 'receipts'), { recursive: true, force: true });
+  });
+
+  /** An order as checkout leaves it: stock reserved, the COD row pending. */
+  const placed = async (
+    status: OrderStatus = ORDER_STATUSES.AWAITING_RECEIPT,
+    paymentMethod: PaymentMethod = PAYMENT_METHODS.COD,
+  ) => {
+    const user = await fx.user();
+    const category = await fx.category();
+    const product = await fx.product(category, { stock: 10 });
+    await ProductDao.decrementStock(testDb, product.id, 1);
+    const order = await OrderDao.create(
+      fx.buildOrder(user, [{ product, qty: 1 }], { status, paymentMethod }),
+    );
+    fx.remember(order.id);
+    if (paymentMethod === PAYMENT_METHODS.COD) {
+      await PaymentDao.create({
+        orderId: order.id,
+        method: PAYMENT_METHODS.COD,
+        amount: order.total,
+      });
+    }
+    return { user, order };
+  };
+
+  const statusOf = async (id: string) =>
+    (
+      await testDb
+        .select({ status: orders.status })
+        .from(orders)
+        .where(eq(orders.id, id))
+    )[0].status;
+
+  const receiptRows = (orderId: string) =>
+    testDb
+      .select()
+      .from(paymentReceipts)
+      .where(eq(paymentReceipts.orderId, orderId));
+
+  describe('receiptUploadGate', () => {
+    it('lets the owner of a waiting card-to-card order through', async () => {
+      const { user, order } = await placed();
+      const gate = await receiptUploadGate(order.id, user.id);
+      expect(gate.outcome).toBe('ok');
+    });
+
+    it('answers another customer exactly as it answers a missing order', async () => {
+      const { order } = await placed();
+      const stranger = await fx.user();
+
+      expect(await receiptUploadGate(order.id, stranger.id)).toEqual({
+        outcome: 'not_found',
+      });
+      expect(await receiptUploadGate(crypto.randomUUID(), stranger.id)).toEqual(
+        { outcome: 'not_found' },
+      );
+    });
+
+    it.each([
+      [ORDER_STATUSES.PENDING_PAYMENT, PAYMENT_METHODS.ZARINPAL],
+      [ORDER_STATUSES.PROCESSING, PAYMENT_METHODS.ZARINPAL],
+      [ORDER_STATUSES.SHIPPED, PAYMENT_METHODS.COD],
+      [ORDER_STATUSES.DELIVERED, PAYMENT_METHODS.COD],
+      [ORDER_STATUSES.CANCELLED, PAYMENT_METHODS.COD],
+    ] as const)(
+      'refuses a %s %s order its owner uploads to',
+      async (status, method) => {
+        const { user, order } = await placed(status, method);
+        expect(await receiptUploadGate(order.id, user.id)).toEqual({
+          outcome: 'not_accepting',
+        });
+      },
+    );
+
+    it('refuses the sixth receipt before the body is read', async () => {
+      const { user, order } = await placed(ORDER_STATUSES.PROCESSING);
+      for (let i = 0; i < MAX_RECEIPTS_PER_ORDER; i++) {
+        await uploadReceipt(order.id, jpeg(), 'image/jpeg');
+      }
+      expect(await receiptUploadGate(order.id, user.id)).toEqual({
+        outcome: 'cap_reached',
+      });
+    });
+  });
+
+  describe('uploadReceipt', () => {
+    it('stores the first receipt, accepts the order and tells the admins once', async () => {
+      const { order } = await placed();
+
+      const result = await uploadReceipt(order.id, jpeg(100), 'image/jpeg');
+
+      if (result.outcome !== 'ok') throw new Error(result.outcome);
+      expect(result.accepted).toBe(true);
+      expect(await statusOf(order.id)).toBe(ORDER_STATUSES.PROCESSING);
+
+      const [row] = await receiptRows(order.id);
+      expect(row.id).toBe(result.receipt.id);
+      expect(row.objectKey).toMatch(/^receipts\/[0-9a-f-]{36}\.jpg$/);
+      expect(row.contentType).toBe('image/jpeg');
+      expect(row.size).toBe(100);
+      expect(await localDriver.get(row.objectKey)).toEqual(jpeg(100));
+
+      expect(mocks.notify).toHaveBeenCalledTimes(1);
+      expect(mocks.notify).toHaveBeenCalledWith(order.id);
+    });
+
+    it('books nothing at acceptance — the payment still flips only at delivery', async () => {
+      const { order } = await placed();
+      await uploadReceipt(order.id, jpeg(), 'image/jpeg');
+
+      const [before] = await PaymentDao.listByOrder(order.id);
+      expect(before.status).toBe(PAYMENT_STATUSES.PENDING);
+
+      await testDb.transaction((tx) =>
+        transitionOrder(
+          tx,
+          order.id,
+          ORDER_STATUSES.PROCESSING,
+          ORDER_STATUSES.SHIPPED,
+        ),
+      );
+      await testDb.transaction((tx) =>
+        transitionOrder(
+          tx,
+          order.id,
+          ORDER_STATUSES.SHIPPED,
+          ORDER_STATUSES.DELIVERED,
+        ),
+      );
+      const [after] = await PaymentDao.listByOrder(order.id);
+      expect(after.status).toBe(PAYMENT_STATUSES.PAID);
+    });
+
+    it('keeps a later receipt without touching the order or telling anyone', async () => {
+      const { order } = await placed();
+      await uploadReceipt(order.id, jpeg(), 'image/jpeg');
+      mocks.notify.mockClear();
+
+      const second = await uploadReceipt(order.id, jpeg(), 'image/png');
+
+      expect(second).toMatchObject({ outcome: 'ok', accepted: false });
+      expect(await statusOf(order.id)).toBe(ORDER_STATUSES.PROCESSING);
+      expect(await receiptRows(order.id)).toHaveLength(2);
+      expect(mocks.notify).not.toHaveBeenCalled();
+    });
+
+    it('accepts the order exactly once when two first receipts arrive together, keeping both', async () => {
+      const { order } = await placed();
+
+      const results = await Promise.all([
+        uploadReceipt(order.id, jpeg(), 'image/jpeg'),
+        uploadReceipt(order.id, jpeg(), 'image/jpeg'),
+      ]);
+
+      expect(results.map((r) => r.outcome)).toEqual(['ok', 'ok']);
+      expect(
+        results.filter((r) => r.outcome === 'ok' && r.accepted),
+      ).toHaveLength(1);
+      expect(await statusOf(order.id)).toBe(ORDER_STATUSES.PROCESSING);
+      expect(await receiptRows(order.id)).toHaveLength(2);
+      expect(mocks.notify).toHaveBeenCalledTimes(1);
+    });
+
+    it('never adds a receipt to a Zarinpal order', async () => {
+      const { order } = await placed(
+        ORDER_STATUSES.PROCESSING,
+        PAYMENT_METHODS.ZARINPAL,
+      );
+
+      expect(await uploadReceipt(order.id, jpeg(), 'image/jpeg')).toEqual({
+        outcome: 'not_accepting',
+      });
+      expect(await receiptRows(order.id)).toHaveLength(0);
+      expect(await storedFiles()).toEqual([]);
+    });
+
+    it.each([ORDER_STATUSES.CANCELLED, ORDER_STATUSES.SHIPPED])(
+      'stores nothing — no row, no file — once the order is %s',
+      async (status) => {
+        // The gate saw it open; the order moved before the bytes arrived.
+        const { order } = await placed(status);
+
+        expect(await uploadReceipt(order.id, jpeg(), 'image/jpeg')).toEqual({
+          outcome: 'not_accepting',
+        });
+        expect(await receiptRows(order.id)).toHaveLength(0);
+        expect(await storedFiles()).toEqual([]);
+        expect(mocks.notify).not.toHaveBeenCalled();
+      },
+    );
+
+    it('holds the cap when the last slots are raced, leaving no stray file', async () => {
+      const { order } = await placed(ORDER_STATUSES.PROCESSING);
+      for (let i = 0; i < MAX_RECEIPTS_PER_ORDER - 1; i++) {
+        await uploadReceipt(order.id, jpeg(), 'image/jpeg');
+      }
+
+      const results = await Promise.all([
+        uploadReceipt(order.id, jpeg(), 'image/jpeg'),
+        uploadReceipt(order.id, jpeg(), 'image/jpeg'),
+      ]);
+
+      expect(results.map((r) => r.outcome).sort()).toEqual([
+        'cap_reached',
+        'ok',
+      ]);
+      expect(await receiptRows(order.id)).toHaveLength(MAX_RECEIPTS_PER_ORDER);
+      expect(await storedFiles()).toHaveLength(MAX_RECEIPTS_PER_ORDER);
+    });
+
+    it('refuses, storing nothing and accepting nothing, when storage exposes the receipt', async () => {
+      const { order } = await placed();
+      vi.spyOn(localDriver, 'put').mockImplementation(async (key) => {
+        throw new ReceiptExposedError(key);
+      });
+
+      expect(await uploadReceipt(order.id, jpeg(), 'image/jpeg')).toEqual({
+        outcome: 'exposed',
+      });
+      expect(await receiptRows(order.id)).toHaveLength(0);
+      expect(await statusOf(order.id)).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
+      expect(mocks.notify).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('readReceipt', () => {
+    const stored = async () => {
+      const placedOrder = await placed();
+      const result = await uploadReceipt(
+        placedOrder.order.id,
+        jpeg(80),
+        'image/jpeg',
+      );
+      if (result.outcome !== 'ok') throw new Error(result.outcome);
+      return { ...placedOrder, receiptId: result.receipt.id };
+    };
+
+    it('gives the owner the bytes and their sniffed type', async () => {
+      const { user, order, receiptId } = await stored();
+
+      expect(
+        await readReceipt(order.id, receiptId, { userId: user.id }),
+      ).toEqual({ contentType: 'image/jpeg', bytes: jpeg(80) });
+    });
+
+    it('gives an admin the same', async () => {
+      const { order, receiptId } = await stored();
+      expect(await readReceipt(order.id, receiptId, 'admin')).toEqual({
+        contentType: 'image/jpeg',
+        bytes: jpeg(80),
+      });
+    });
+
+    it('gives another customer nothing — the same nothing as a missing receipt', async () => {
+      const { order, receiptId } = await stored();
+      const stranger = await fx.user();
+
+      expect(
+        await readReceipt(order.id, receiptId, { userId: stranger.id }),
+      ).toBeNull();
+      expect(
+        await readReceipt(order.id, crypto.randomUUID(), {
+          userId: stranger.id,
+        }),
+      ).toBeNull();
+    });
+
+    it('never reads one order’s receipt through another order, even the owner’s own', async () => {
+      const first = await stored();
+      const second = await placed();
+      await testDb
+        .update(orders)
+        .set({ userId: first.user.id })
+        .where(eq(orders.id, second.order.id));
+
+      expect(
+        await readReceipt(second.order.id, first.receiptId, {
+          userId: first.user.id,
+        }),
+      ).toBeNull();
+      expect(
+        await readReceipt(second.order.id, first.receiptId, 'admin'),
+      ).toBeNull();
+    });
+
+    it('answers null when the stored object is gone', async () => {
+      const { user, order, receiptId } = await stored();
+      const [row] = await receiptRows(order.id);
+      await localDriver.delete(row.objectKey);
+
+      expect(
+        await readReceipt(order.id, receiptId, { userId: user.id }),
+      ).toBeNull();
+    });
+  });
+});

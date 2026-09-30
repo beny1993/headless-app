@@ -14,6 +14,7 @@
 import { z } from 'zod';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { PaymentDao } from '@/db/dao/PaymentDao';
+import { ReceiptDao } from '@/db/dao/ReceiptDao';
 import type { OrderWithItems, Payment } from '@/db/schema/orders';
 import type { PaymentMethod, PaymentStatus } from '@/lib/orders/order-status';
 
@@ -35,8 +36,23 @@ export type AdminPayment = {
   createdAt: Date;
 };
 
-/** An order with its item snapshots and the admin payment view. */
-export type AdminOrder = OrderWithItems & { payments: AdminPayment[] };
+/**
+ * A card-to-card receipt as an admin sees it: what it is and how big, for the
+ * list on the order page. Not the storage key — the admin reads the bytes
+ * through the authenticated route by id, like the shopper.
+ */
+export type AdminReceipt = {
+  id: string;
+  contentType: string;
+  size: number;
+  createdAt: Date;
+};
+
+/** An order with its item snapshots, the admin payment view and its receipts. */
+export type AdminOrder = OrderWithItems & {
+  payments: AdminPayment[];
+  receipts: AdminReceipt[];
+};
 
 const refundFlagSchema = z
   .object({ needsManualRefund: z.boolean().catch(false) })
@@ -70,5 +86,13 @@ export const getAdminOrder = async (
   if (!order) return null;
 
   const payments = (await PaymentDao.listByOrder(orderId)).map(toAdminPayment);
-  return { ...order, payments };
+  const receipts = (await ReceiptDao.listByOrder(orderId)).map(
+    ({ id, contentType, size, createdAt }) => ({
+      id,
+      contentType,
+      size,
+      createdAt,
+    }),
+  );
+  return { ...order, payments, receipts };
 };

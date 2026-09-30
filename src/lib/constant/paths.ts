@@ -170,6 +170,24 @@ export const API_PATHS = {
 export const apiAdminOrderTransitionsPath = (id: string) =>
   `${API_PATHS.ADMIN_ORDERS}/${encodeURIComponent(id)}/transitions`;
 
+/**
+ * Where the owner of an order uploads a card-to-card receipt (`POST`,
+ * multipart). Owner-scoped server-side by the session, never by this path.
+ */
+export const apiOrderReceiptsPath = (orderId: string) =>
+  `${API_PATHS.ORDERS}/${encodeURIComponent(orderId)}/receipts`;
+
+/**
+ * One receipt's bytes, for the order's owner — the only URL a shopper's page
+ * ever renders for a receipt (a plain `<img>`, never `next/image`).
+ */
+export const apiOrderReceiptPath = (orderId: string, receiptId: string) =>
+  `${apiOrderReceiptsPath(orderId)}/${encodeURIComponent(receiptId)}`;
+
+/** One receipt's bytes, for an admin. */
+export const apiAdminOrderReceiptPath = (orderId: string, receiptId: string) =>
+  `${API_PATHS.ADMIN_ORDERS}/${encodeURIComponent(orderId)}/receipts/${encodeURIComponent(receiptId)}`;
+
 /** The admin toggle path for one discount code, by id. */
 export const apiAdminDiscountPath = (id: string) =>
   `${API_PATHS.ADMIN_DISCOUNTS}/${encodeURIComponent(id)}`;

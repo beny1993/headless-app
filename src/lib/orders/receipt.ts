@@ -5,6 +5,20 @@
 // **Client-safe, like `order-status.ts`**: plain zod and the status vocabulary,
 // never drizzle, `pg` or a storage driver, because the receipt box is a
 // `'use client'` component.
+import { z } from 'zod';
+import { toPersianDigits } from '@/lib/format';
+import {
+  ORDER_STATUSES,
+  PAYMENT_METHODS,
+  type OrderStatus,
+  type PaymentMethod,
+} from '@/lib/orders/order-status';
+import {
+  ACCEPTED_IMAGE_TYPES,
+  formatHint,
+  IMAGE_TYPE_ERROR,
+  sizeError,
+} from '@/lib/storage/image-upload';
 
 /** Receipts per order, append-only (a large order split over two transfers). */
 export const MAX_RECEIPTS_PER_ORDER = 5;
@@ -14,3 +28,66 @@ export const MAX_RECEIPTS_PER_ORDER = 5;
  * phone screenshot of a banking app is routinely bigger than a catalogue photo.
  */
 export const MAX_RECEIPT_BYTES = 5 * 1024 * 1024;
+
+/** «JPG، PNG یا WEBP، تا ۵ مگابایت» — the hint under the picker. */
+export const RECEIPT_FORMAT_HINT = formatHint(MAX_RECEIPT_BYTES);
+export const RECEIPT_SIZE_ERROR = sizeError(MAX_RECEIPT_BYTES);
+
+/** The sixth receipt's refusal — the API's and the box's, one sentence. */
+export const RECEIPT_CAP_MESSAGE = `حداکثر ${toPersianDigits(MAX_RECEIPTS_PER_ORDER)} رسید برای هر سفارش؛ برای رسید بیشتر با پشتیبانی تماس بگیر.`;
+
+/**
+ * One receipt as the shopper's order carries it and the upload answers with it:
+ * its id — which is the last segment of the authenticated URL that serves it —
+ * and when it arrived. Never a storage key, a URL or a size: those are the
+ * server's business.
+ */
+export const receiptSchema = z.object({
+  id: z.uuid(),
+  createdAt: z.iso.datetime(),
+});
+export type ReceiptSummary = z.infer<typeof receiptSchema>;
+
+type ReceiptOrder = { paymentMethod: PaymentMethod; status: OrderStatus };
+
+/**
+ * Whether an order takes a receipt: card to card, while it waits for one and
+ * while it is processed — a second transfer under a daily card limit is
+ * normal. Shipped, delivered or cancelled, it takes no more.
+ */
+export const acceptsReceipts = (order: ReceiptOrder): boolean =>
+  order.paymentMethod === PAYMENT_METHODS.COD &&
+  (order.status === ORDER_STATUSES.AWAITING_RECEIPT ||
+    order.status === ORDER_STATUSES.PROCESSING);
+
+/**
+ * Whether an order's page shows the receipt box: while it takes receipts, and
+ * afterwards for as long as it has any to list.
+ */
+export const showsReceipts = (
+  order: ReceiptOrder,
+  receiptCount: number,
+): boolean =>
+  order.paymentMethod === PAYMENT_METHODS.COD &&
+  (acceptsReceipts(order) || receiptCount > 0);
+
+/** The one pill over an order's receipts: what became of them. */
+export const receiptsLabel = (status: OrderStatus): string =>
+  status === ORDER_STATUSES.CANCELLED
+    ? 'رد شده'
+    : status === ORDER_STATUSES.SHIPPED || status === ORDER_STATUSES.DELIVERED
+      ? 'تأیید شد'
+      : 'دریافت شد؛ در حال بررسی';
+
+/**
+ * The browser-side courtesy check on a picked file: the declared type and the
+ * size, so an obvious refusal costs no upload. A Persian message, or `null`.
+ * The server decides by the file's bytes regardless — this is not the gate.
+ */
+export const validateReceiptFile = (file: File): string | null => {
+  if (!(ACCEPTED_IMAGE_TYPES as readonly string[]).includes(file.type)) {
+    return IMAGE_TYPE_ERROR;
+  }
+  if (file.size > MAX_RECEIPT_BYTES) return RECEIPT_SIZE_ERROR;
+  return null;
+};

@@ -7,8 +7,12 @@ import {
   imageUploadResultSchema,
   MAX_OBJECT_KEY_LENGTH,
   MAX_UPLOAD_BYTES,
+  formatHint,
+  IMAGE_FORMAT_HINT,
+  IMAGE_SIZE_ERROR,
   objectKeyFor,
   RECEIPT_KEY_PREFIX,
+  sizeError,
   sniffImageType,
   UPLOAD_FILENAME_PATTERN,
   UPLOAD_KEY_PREFIX,
@@ -123,6 +127,24 @@ describe('UPLOAD_FILENAME_PATTERN', () => {
     ]) {
       expect(bad).not.toMatch(UPLOAD_FILENAME_PATTERN);
     }
+  });
+});
+
+describe('the accept-and-size copy', () => {
+  it('quotes the product photo cap', () => {
+    expect(IMAGE_FORMAT_HINT).toBe('JPG، PNG یا WEBP، تا ۲ مگابایت');
+    expect(IMAGE_SIZE_ERROR).toBe('حجم تصویر باید حداکثر ۲ مگابایت باشد.');
+  });
+
+  it.each([
+    [5 * 1024 * 1024, '۵'],
+    // Rounded to one place with the fa-IR decimal separator, never 4.768…
+    [5_000_000, '۴٫۸'],
+  ])('quotes a cap of %i bytes as «%s» megabytes', (bytes, shown) => {
+    expect(formatHint(bytes)).toBe(`JPG، PNG یا WEBP، تا ${shown} مگابایت`);
+    expect(sizeError(bytes)).toBe(
+      `حجم تصویر باید حداکثر ${shown} مگابایت باشد.`,
+    );
   });
 });
 

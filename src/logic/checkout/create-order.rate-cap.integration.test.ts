@@ -255,7 +255,7 @@ describe.skipIf(!databaseReachable)('createOrder rate cap', () => {
         result.status === 'rejected' ? [result.reason] : [],
       );
 
-    it('commits exactly the creation cap, and alerts exactly that often', async () => {
+    it('commits exactly the creation cap, and texts nobody at checkout', async () => {
       // Three short of the cap with orders already accepted (not open), so the
       // burst meets the creation cap and never the open-order one: a
       // card-to-card order is open from birth, and five of those would stop
@@ -270,7 +270,10 @@ describe.skipIf(!databaseReachable)('createOrder rate cap', () => {
       );
 
       expect(await ordersOf(user.id)).toHaveLength(MAX_ORDERS_PER_WINDOW);
-      expect(mocks.notify).toHaveBeenCalledTimes(headroom);
+      // A card-to-card order is texted when its first receipt accepts it, so
+      // a burst of checkouts sends nothing — each alert still costs an order
+      // this cap let through, plus a receipt.
+      expect(mocks.notify).not.toHaveBeenCalled();
       const refused = refusals(results);
       expect(refused).toHaveLength(10);
       for (const error of refused) {
@@ -325,7 +328,8 @@ describe.skipIf(!databaseReachable)('createOrder rate cap', () => {
       );
       expect(ids.size).toBe(1);
       expect(await ordersOf(user.id)).toHaveLength(MAX_ORDERS_PER_WINDOW);
-      expect(mocks.notify).toHaveBeenCalledTimes(1);
+      // Card to card: its alert waits for the first receipt, not the checkout.
+      expect(mocks.notify).not.toHaveBeenCalled();
     });
   });
 });

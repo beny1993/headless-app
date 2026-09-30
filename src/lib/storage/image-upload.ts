@@ -169,9 +169,8 @@ export type ImageUploadResult = z.infer<typeof imageUploadResultSchema>;
  * needs the fa-IR decimal separator — `toPersianDigits` would leave a Latin
  * full stop on a screen where every other number uses «٫».
  */
-const MAX_UPLOAD_MB = formatNumber(
-  Math.round((MAX_UPLOAD_BYTES / 1024 / 1024) * 10) / 10,
-);
+const megabytes = (maxBytes: number) =>
+  formatNumber(Math.round((maxBytes / 1024 / 1024) * 10) / 10);
 
 /**
  * The accepted formats as the admin reads them, derived from the one list that
@@ -188,11 +187,18 @@ const ACCEPTED_LABELS = ((labels: string[]) =>
 ]);
 
 /**
- * The accept-and-size hint every image field shows, and the two refusals.
- * Derived rather than written out: three hand-typed copies of «۲ مگابایت» went
- * on promising two megabytes after the cap moved, in the very field the admin
- * was looking at while a larger file uploaded fine.
+ * The accept-and-size hint an image field shows, and the size refusal, for a
+ * given ceiling — the product photos' below, a payment receipt's in
+ * `src/lib/orders/receipt.ts`. Derived rather than written out: three
+ * hand-typed copies of «۲ مگابایت» went on promising two megabytes after the
+ * cap moved, in the very field the admin was looking at while a larger file
+ * uploaded fine.
  */
-export const IMAGE_FORMAT_HINT = `${ACCEPTED_LABELS}، تا ${MAX_UPLOAD_MB} مگابایت`;
+export const formatHint = (maxBytes: number) =>
+  `${ACCEPTED_LABELS}، تا ${megabytes(maxBytes)} مگابایت`;
+export const sizeError = (maxBytes: number) =>
+  `حجم تصویر باید حداکثر ${megabytes(maxBytes)} مگابایت باشد.`;
+
+export const IMAGE_FORMAT_HINT = formatHint(MAX_UPLOAD_BYTES);
 export const IMAGE_TYPE_ERROR = `فقط تصویر ${ACCEPTED_LABELS}.`;
-export const IMAGE_SIZE_ERROR = `حجم تصویر باید حداکثر ${MAX_UPLOAD_MB} مگابایت باشد.`;
+export const IMAGE_SIZE_ERROR = sizeError(MAX_UPLOAD_BYTES);

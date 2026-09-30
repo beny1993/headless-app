@@ -2,6 +2,7 @@ import { Scalar } from '@scalar/hono-api-reference';
 import type { Env } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { DEFAULT_SITE_NAME } from '@/constants';
+import { MAX_RECEIPT_BYTES } from '@/lib/orders/receipt';
 import { MAX_UPLOAD_BYTES } from '@/lib/storage/image-upload';
 import { isProductionServer } from '@/lib/utils/env';
 import { apiErrorHandler, createRouter } from './create-router';
@@ -92,6 +93,11 @@ import {
 } from './routes/me-pets';
 import { orderDetailHandler, orderDetailRoute } from './routes/orders';
 import {
+  adminOrderReceiptHandler,
+  orderReceiptHandler,
+  orderReceiptUploadHandler,
+} from './routes/receipts';
+import {
   mockCompleteHandler,
   mockGatewayHandler,
   paymentCallbackHandler,
@@ -171,13 +177,37 @@ app.openapi(reconcileRoute, reconcileHandler);
 // registered before each route so the guard runs first, authorizing before the
 // body is parsed. Every read inside is owner-scoped by the session id, never the
 // URL (see ./routes/orders.ts and src/logic/checkout/get-order.ts).
+/**
+ * What a multipart body adds around the file itself: the boundaries and the
+ * part headers, the file's name among them. Generous — a few hundred bytes is
+ * typical — because the limit is only the refuse-before-buffering guard; the
+ * exact ceiling is the file's own length, checked in `readImageUpload`.
+ */
+const MULTIPART_ENVELOPE_BYTES = 16 * 1024;
+
 const authed = createRouter<Env & AuthedEnv>();
 authed.use('/checkout', requireAuth);
 // Exact-path mount — `/checkout` above does NOT cover `/checkout/preview`, so
 // guard it explicitly (before the route) or the discount preview would be an
 // unauthenticated code-enumeration oracle.
 authed.use('/checkout/preview', requireAuth);
-authed.use('/orders/:id', requireAuth);
+// One order and everything under it — the owner's read and the card-to-card
+// receipts (the upload, and the owner's read of one). A wildcard, the `/me/*`
+// way: nothing public lives under an order, and a receipt route that slipped
+// past the guard would be serving someone's bank details. Hono's `/:id/*` also
+// matches `/:id` itself, so this one mount guards the order read too — an exact
+// mount beside it would look the session up twice. The body limit comes after
+// the guard, so an anonymous body is never buffered; it allows the multipart
+// envelope on top of the file, and `readImageUpload` holds the file itself to
+// exactly MAX_RECEIPT_BYTES.
+authed.use('/orders/:id/*', requireAuth);
+authed.use(
+  '/orders/:id/receipts',
+  bodyLimit({
+    maxSize: MAX_RECEIPT_BYTES + MULTIPART_ENVELOPE_BYTES,
+    onError: (c) => c.json(apiError(IMAGE_TOO_LARGE_MESSAGE), 413),
+  }),
+);
 authed.use('/payments/zarinpal/request', requireAuth);
 // The `/me/*` family (order history + owner-scoped pet/address CRUD) is entirely
 // authenticated, so one wildcard mount guards it — legible as "everything under
@@ -189,6 +219,8 @@ authed.use('/me/*', requireAuth);
 authed.openapi(checkoutRoute, checkoutHandler);
 authed.openapi(checkoutPreviewRoute, checkoutPreviewHandler);
 authed.openapi(orderDetailRoute, orderDetailHandler);
+authed.post('/orders/:id/receipts', orderReceiptUploadHandler);
+authed.get('/orders/:id/receipts/:receiptId', orderReceiptHandler);
 authed.openapi(paymentRequestRoute, paymentRequestHandler);
 authed.openapi(meOrdersRoute, meOrdersHandler);
 authed.openapi(mePetsListRoute, mePetsListHandler);
@@ -231,6 +263,9 @@ admin.openapi(productImagesOrderRoute, productImagesOrderHandler);
 // wildcard guard mounted above already covers these — no new mount needed.
 admin.openapi(adminOrderDetailRoute, adminOrderDetailHandler);
 admin.openapi(adminOrderTransitionRoute, adminOrderTransitionHandler);
+// A card-to-card receipt, for the admin checking it — the same bytes and
+// headers as the owner's route, behind the same `/admin/*` guard.
+admin.get('/admin/orders/:id/receipts/:receiptId', adminOrderReceiptHandler);
 // Admin discount codes (`Story - Discount Codes`): create a code and toggle it
 // active/inactive. Same `/admin/*` guard — covered by the wildcard above.
 admin.openapi(discountCreateRoute, discountCreateHandler);

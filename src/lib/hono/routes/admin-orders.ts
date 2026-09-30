@@ -70,6 +70,17 @@ const AdminPaymentSchema = z
   })
   .openapi('AdminPayment');
 
+// A receipt for the admin: its type and size on top of the shopper's view, and
+// still no storage key — the bytes are read by id at the admin receipt route.
+const AdminReceiptSchema = z
+  .object({
+    id: z.uuid(),
+    contentType: z.string(),
+    size: z.number().int().positive(),
+    createdAt: z.iso.datetime(),
+  })
+  .openapi('AdminOrderReceipt');
+
 const AdminOrderDetailSchema = z
   .object({
     orderId: z.uuid(),
@@ -93,6 +104,7 @@ const AdminOrderDetailSchema = z
     createdAt: z.iso.datetime(),
     items: z.array(AdminOrderItemSchema),
     payments: z.array(AdminPaymentSchema),
+    receipts: z.array(AdminReceiptSchema),
   })
   .openapi('AdminOrderDetail');
 
@@ -137,6 +149,12 @@ const toAdminOrderResponse = (order: AdminOrder): AdminOrderDetailResponse => ({
     needsManualRefund: payment.needsManualRefund,
     paidAt: payment.paidAt ? payment.paidAt.toISOString() : null,
     createdAt: payment.createdAt.toISOString(),
+  })),
+  receipts: order.receipts.map((receipt) => ({
+    id: receipt.id,
+    contentType: receipt.contentType,
+    size: receipt.size,
+    createdAt: receipt.createdAt.toISOString(),
   })),
 });
 

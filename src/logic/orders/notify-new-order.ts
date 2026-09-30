@@ -1,7 +1,8 @@
 // «Nobody sits on /admin-panel/orders all day.» This is the SMS that tells them
 // an order came in — sent to every admin who has a phone number, once per real
-// order, from the two places an order becomes real: a card-to-card checkout that
-// committed, and a Zarinpal payment that settled `paid`.
+// order, from the two places an order becomes real: a card-to-card order's
+// first receipt, which accepts it (`uploadReceipt`), and a Zarinpal payment
+// that settled `paid`.
 //
 // Two properties this module owes its callers, because both hook sites `void`
 // the promise it returns rather than awaiting it:
@@ -22,7 +23,7 @@ import { OrderDao } from '@/db/dao/OrderDao';
 import { UserDao } from '@/db/dao/UserDao';
 import { formatToman, toPersianDigits } from '@/lib/format';
 import {
-  ORDER_STATUSES,
+  OPEN_ORDER_STATUSES,
   PAYMENT_METHOD_LABELS,
   type OrderStatus,
   type PaymentMethod,
@@ -52,15 +53,15 @@ export const newOrderAlert = (order: {
 
 /**
  * Whether a freshly created order is news to an admin. Pure, and the whole of
- * the decision at the `createOrder` hook.
+ * the decision at the `createOrder` hook: only an order born past waiting is.
  *
- * A card-to-card order is born `processing`: the money is a transfer the admin
- * has to look for, so it is the most urgent alert the shop sends. A Zarinpal
- * order is born `pending_payment` — an unfinished checkout, which never
- * notifies; its alert comes from the settle, if the shopper ever pays.
+ * Today no checkout is. A card-to-card order is born `awaiting_receipt` — its
+ * alert comes when the shopper's first receipt accepts it; a Zarinpal order is
+ * born `pending_payment` — its alert comes from the settle, if the shopper ever
+ * pays. An unfinished checkout never wakes an admin.
  */
 export const notifiesOnCreate = (status: OrderStatus): boolean =>
-  status !== ORDER_STATUSES.PENDING_PAYMENT;
+  !OPEN_ORDER_STATUSES.includes(status);
 
 /**
  * Whether a settled payment is news to an admin. Pure, and the whole of the
