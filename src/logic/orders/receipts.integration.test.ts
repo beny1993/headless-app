@@ -10,8 +10,8 @@
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { and, eq } from 'drizzle-orm';
-import { pgSchema, text } from 'drizzle-orm/pg-core';
+import { eq, sql } from 'drizzle-orm';
+import { integer, pgSchema } from 'drizzle-orm/pg-core';
 import {
   afterAll,
   afterEach,
@@ -78,23 +78,52 @@ afterAll(async () => {
   }
 });
 
-// Postgres's own view of its sessions, read through the query builder: how
-// many in this database are blocked on a lock right now.
+// Postgres's own view of its sessions, for `holdOrderRow` below.
 const pgStatActivity = pgSchema('pg_catalog').table('pg_stat_activity', {
-  datname: text('datname'),
-  waitEventType: text('wait_event_type'),
+  pid: integer('pid'),
 });
-const sessionsWaitingOnLocks = () =>
-  testDb.$count(
-    pgStatActivity,
-    and(
-      eq(
-        pgStatActivity.datname,
-        new URL(process.env.APP_CONFIG_DATABASE_URL ?? '').pathname.slice(1),
+
+/**
+ * Holds `orderId`'s row until `release()`, so a race between uploads is
+ * certain rather than likely: start them, wait until `blockedBehind()` counts
+ * them all, let go. It counts only the sessions this holder blocks, never a
+ * lock anyone else holds: those with its backend pid among their
+ * `pg_blocking_pids`, and those queued behind one of them — two sessions
+ * waiting for one row queue on its tuple lock, so the second is blocked by
+ * the first, not by the holder.
+ */
+const holdOrderRow = async (orderId: string) => {
+  let letGo = () => {};
+  const released = new Promise<void>((resolve) => (letGo = resolve));
+  let holding = () => {};
+  const held = new Promise<void>((resolve) => (holding = resolve));
+  let pid = 0;
+  const done = testDb.transaction(async (tx) => {
+    const { rows } = await tx.execute<{ pid: number }>(
+      sql`select pg_backend_pid() as pid`,
+    );
+    pid = rows[0].pid;
+    await tx
+      .select({ id: orders.id })
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .for('update');
+    holding();
+    await released;
+  });
+  await held;
+  return {
+    blockedBehind: () =>
+      testDb.$count(
+        pgStatActivity,
+        sql`${pid} = any(pg_blocking_pids(${pgStatActivity.pid})) or exists (select 1 from unnest(pg_blocking_pids(${pgStatActivity.pid})) as blocker(pid) where ${pid} = any(pg_blocking_pids(blocker.pid)))`,
       ),
-      eq(pgStatActivity.waitEventType, 'Lock'),
-    ),
-  );
+    release: async () => {
+      letGo();
+      await done;
+    },
+  };
+};
 
 /** The receipt files on disk right now. */
 const storedFiles = async () =>
@@ -267,31 +296,22 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
     it('accepts the order exactly once when two first receipts arrive together, keeping both', async () => {
       const { order } = await placed();
 
-      // Make "together" certain rather than likely: hold the order's row
-      // until both uploads are stuck behind it, then let go. Both have read
-      // the order by then — or are queued to — so the one that loses must
-      // find it already accepted and still keep its receipt.
-      let release = () => {};
-      const released = new Promise<void>((resolve) => (release = resolve));
-      const holder = testDb.transaction(async (tx) => {
-        await tx
-          .select({ id: orders.id })
-          .from(orders)
-          .where(eq(orders.id, order.id))
-          .for('update');
-        await released;
-      });
+      // "Together" made certain: both uploads are stuck behind the held row
+      // before either can read the order, so the one that loses must find it
+      // already accepted and still keep its receipt.
+      const row = await holdOrderRow(order.id);
       const uploads = Promise.all([
         uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg'),
         uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg'),
       ]);
-      await vi.waitFor(
-        async () =>
-          expect(await sessionsWaitingOnLocks()).toBeGreaterThanOrEqual(2),
-        { timeout: 10_000, interval: 25 },
-      );
-      release();
-      await holder;
+      try {
+        await vi.waitFor(
+          async () => expect(await row.blockedBehind()).toBe(2),
+          { timeout: 10_000, interval: 25 },
+        );
+      } finally {
+        await row.release();
+      }
       const results = await uploads;
 
       expect(results.map((r) => r.outcome)).toEqual(['ok', 'ok']);
@@ -356,10 +376,22 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
         await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg');
       }
 
-      const results = await Promise.all([
+      // Both are stuck behind the held row before either counts the
+      // receipts, so both would see room for one more without the lock.
+      const row = await holdOrderRow(order.id);
+      const uploads = Promise.all([
         uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg'),
         uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg'),
       ]);
+      try {
+        await vi.waitFor(
+          async () => expect(await row.blockedBehind()).toBe(2),
+          { timeout: 10_000, interval: 25 },
+        );
+      } finally {
+        await row.release();
+      }
+      const results = await uploads;
 
       expect(results.map((r) => r.outcome).sort()).toEqual([
         'cap_reached',
