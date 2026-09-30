@@ -164,11 +164,10 @@ export const readReceipt = async (
   receiptId: string,
   scope: { userId: string } | 'admin',
 ): Promise<{ contentType: string; bytes: Uint8Array } | null> => {
-  const receipt = await ReceiptDao.getForOrder(
-    receiptId,
-    orderId,
-    scope === 'admin' ? undefined : scope.userId,
-  );
+  const receipt =
+    scope === 'admin'
+      ? await ReceiptDao.getForOrderAsAdmin(receiptId, orderId)
+      : await ReceiptDao.getOwnedForOrder(receiptId, orderId, scope.userId);
   const contentType = receipt && contentTypeOfKey(receipt.objectKey);
   if (!receipt || !contentType) return null;
   const bytes = await getStorageDriver().get(receipt.objectKey);

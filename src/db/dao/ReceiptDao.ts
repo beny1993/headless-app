@@ -28,16 +28,15 @@ export class ReceiptDao {
   }
 
   /**
-   * Receipt `receiptId` of order `orderId`, or `null`. Given `userId`, only
-   * when that user owns the order — so another customer's receipt, a receipt
-   * of another order and one that never existed are one and the same `null`.
-   * Without it (the admin read) any order's receipt, still only by its own
-   * order.
+   * Receipt `receiptId` of order `orderId`, only when `userId` owns the order;
+   * else `null` — so another customer's receipt, a receipt of another order
+   * and one that never existed are one and the same `null`. The owner is
+   * required: this read never widens into the admin one.
    */
-  static async getForOrder(
+  static async getOwnedForOrder(
     receiptId: string,
     orderId: string,
-    userId?: string,
+    userId: string,
   ): Promise<PaymentReceipt | null> {
     const [row] = await db
       .select({ receipt: paymentReceipts })
@@ -47,11 +46,33 @@ export class ReceiptDao {
         and(
           eq(paymentReceipts.id, receiptId),
           eq(paymentReceipts.orderId, orderId),
-          userId === undefined ? undefined : eq(orders.userId, userId),
+          eq(orders.userId, userId),
         ),
       )
       .limit(1);
     return row?.receipt ?? null;
+  }
+
+  /**
+   * Receipt `receiptId` of order `orderId`, whoever owns the order — for an
+   * admin, whom `requireAdmin` has already authorized. Still only by its own
+   * order: a receipt asked for under another order is `null`.
+   */
+  static async getForOrderAsAdmin(
+    receiptId: string,
+    orderId: string,
+  ): Promise<PaymentReceipt | null> {
+    const [row] = await db
+      .select()
+      .from(paymentReceipts)
+      .where(
+        and(
+          eq(paymentReceipts.id, receiptId),
+          eq(paymentReceipts.orderId, orderId),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
   }
 
   /**

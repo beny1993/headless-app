@@ -546,5 +546,22 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
         await readReceipt(order.id, receiptId, { userId: user.id }),
       ).toBeNull();
     });
+
+    it('never widens the owner read into the admin read for a missing user', async () => {
+      // Two reads, not one with an optional owner: a caller that loses the
+      // user id gets nothing, where a default could have given everyone's.
+      const { user, order, receiptId } = await stored();
+      const lost = undefined as unknown as string;
+
+      expect(
+        await ReceiptDao.getOwnedForOrder(receiptId, order.id, lost),
+      ).toBeNull();
+      expect(
+        (await ReceiptDao.getOwnedForOrder(receiptId, order.id, user.id))?.id,
+      ).toBe(receiptId);
+      expect(
+        (await ReceiptDao.getForOrderAsAdmin(receiptId, order.id))?.id,
+      ).toBe(receiptId);
+    });
   });
 });
