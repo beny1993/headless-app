@@ -62,12 +62,15 @@ describe('resultView', () => {
 });
 
 describe('resultCopy — card to card', () => {
-  const cod = (status: OrderStatus, cancellationReason: string | null = null) =>
-    resultCopy({
-      status,
-      paymentMethod: PAYMENT_METHODS.COD,
-      cancellationReason,
-    });
+  const cod = (
+    status: OrderStatus,
+    cancellationReason: string | null = null,
+    receiptCount = 1,
+  ) =>
+    resultCopy(
+      { status, paymentMethod: PAYMENT_METHODS.COD, cancellationReason },
+      receiptCount,
+    );
 
   it('asks for the transfer and the receipt while the order waits', () => {
     // The heading stays «سفارش ثبت شد!» — the checkout E2E finds it by name.
@@ -84,6 +87,14 @@ describe('resultCopy — card to card', () => {
       title: 'سفارش ثبت شد!',
       sub: 'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.',
     });
+  });
+
+  it('never claims a receipt arrived for an order accepted without one', () => {
+    // Accepted by hand (a receipt sent by DM), or processing from before
+    // receipts existed: the box below still invites one.
+    expect(cod(ORDER_STATUSES.PROCESSING, null, 0).sub).toBe(
+      'سفارش پذیرفته شد؛ رسید را می‌توانی پایین همین صفحه بارگذاری کنی.',
+    );
   });
 
   it.each([ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED])(
@@ -114,11 +125,14 @@ describe('resultCopy — card to card', () => {
 
 describe('resultCopy — Zarinpal, unchanged', () => {
   const zarinpal = (status: OrderStatus) =>
-    resultCopy({
-      status,
-      paymentMethod: PAYMENT_METHODS.ZARINPAL,
-      cancellationReason: null,
-    });
+    resultCopy(
+      {
+        status,
+        paymentMethod: PAYMENT_METHODS.ZARINPAL,
+        cancellationReason: null,
+      },
+      0,
+    );
 
   it('reads a settled payment as a success', () => {
     expect(zarinpal(ORDER_STATUSES.PAID)).toMatchObject({

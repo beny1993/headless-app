@@ -86,11 +86,19 @@ export const cancellationNote = ({
 
 type ResultCopy = { kind: ResultKind; title: string; sub: string };
 
-const COD_SUB_BY_STATUS: Partial<Record<OrderStatus, string>> = {
-  [ORDER_STATUSES.AWAITING_RECEIPT]:
-    'مبلغ سفارش را کارت به کارت کن و رسید را پایین همین صفحه بارگذاری کن تا سفارش پذیرفته شود.',
-  [ORDER_STATUSES.PROCESSING]:
-    'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.',
+/** What a live card-to-card order's result page says under «سفارش ثبت شد!». */
+const codSub = (status: OrderStatus, receiptCount: number): string => {
+  if (status === ORDER_STATUSES.AWAITING_RECEIPT) {
+    return 'مبلغ سفارش را کارت به کارت کن و رسید را پایین همین صفحه بارگذاری کن تا سفارش پذیرفته شود.';
+  }
+  if (status === ORDER_STATUSES.PROCESSING) {
+    // Accepted by hand (a receipt sent by DM), or processing from before
+    // receipts existed: no receipt arrived here, and the box still takes one.
+    return receiptCount > 0
+      ? 'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.'
+      : 'سفارش پذیرفته شد؛ رسید را می‌توانی پایین همین صفحه بارگذاری کنی.';
+  }
+  return 'سفارش پذیرفته شد.';
 };
 
 /**
@@ -103,11 +111,14 @@ const COD_SUB_BY_STATUS: Partial<Record<OrderStatus, string>> = {
  * gateway's «مبلغی از حساب شما کسر نشده است», which is false for a shopper who
  * transferred and was turned down.
  */
-export const resultCopy = (order: {
-  status: OrderStatus;
-  paymentMethod: PaymentMethod;
-  cancellationReason: string | null;
-}): ResultCopy => {
+export const resultCopy = (
+  order: {
+    status: OrderStatus;
+    paymentMethod: PaymentMethod;
+    cancellationReason: string | null;
+  },
+  receiptCount: number,
+): ResultCopy => {
   const { kind } = resultView(order.status);
 
   if (order.paymentMethod === PAYMENT_METHODS.COD) {
@@ -115,7 +126,7 @@ export const resultCopy = (order: {
       return {
         kind,
         title: 'سفارش ثبت شد!',
-        sub: COD_SUB_BY_STATUS[order.status] ?? 'سفارش پذیرفته شد.',
+        sub: codSub(order.status, receiptCount),
       };
     }
     return { kind, title: 'سفارش لغو شد', sub: cancellationNote(order) };

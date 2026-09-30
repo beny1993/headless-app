@@ -43,7 +43,7 @@ export default async function Page({
   );
 
   const view = resultView(order.status);
-  const { title, sub } = resultCopy(order);
+  const { title, sub } = resultCopy(order, order.receipts.length);
   const status = orderStatusBadge(order.status);
   // Where to send the money, for as long as the order takes a receipt — a
   // second transfer under a daily card limit needs the numbers too. Accepted
