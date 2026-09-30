@@ -20,7 +20,6 @@ import {
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
 } from '@/lib/orders/order-status';
-import { CheckoutError } from '@/logic/checkout/checkout-error';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
@@ -135,15 +134,12 @@ describe.skipIf(!databaseReachable)('createOrder idempotency', () => {
       expect(pays[0].status).toBe(PAYMENT_STATUSES.PENDING);
     });
 
-    it('the winner takes the last unit and the loser gets a stock error, never a second order or a double decrement', async () => {
-      // The benign edge the design flags: with only ONE unit, a loser that ever
-      // reached its decrement would find 0 rows and throw an insufficient-stock
-      // CheckoutError. Under the account lock it finds the winner's order first,
-      // so today both fulfil. What the money invariant demands is asserted
-      // deterministically, however the calls interleave:
-      // exactly ONE order, stock decremented exactly ONCE (never stranded, never
-      // twice), and any losing call fails with a client-fixable CheckoutError on
-      // the offending line — never a 500, never a second reservation.
+    it('the winner takes the last unit and the queued call gets that same order back, never a stock error, a second order or a double decrement', async () => {
+      // With only ONE unit, a loser that ever reached its decrement would find
+      // 0 rows and throw an insufficient-stock CheckoutError. Queued on the
+      // account lock, it finds the winner's order first (3b) and returns that,
+      // so however the calls interleave both fulfil with ONE order, and stock
+      // is decremented exactly ONCE (never stranded, never twice).
       const user = await fx.user();
       const category = await fx.category();
       const product = await fx.product(category, { price: 100_000, stock: 1 });
@@ -164,25 +160,13 @@ describe.skipIf(!databaseReachable)('createOrder idempotency', () => {
       expect(created).toHaveLength(1);
       expect(await stockOf(product.id)).toBe(0);
 
-      // At least the winner returned the created order; every returned order is
-      // that one order (no phantom second id).
+      // Both calls returned that one order (no phantom second id), and neither
+      // was refused: the loser never reached the stock guard.
       const fulfilled = results.filter(
         (r) => r.status === 'fulfilled',
       ) as PromiseFulfilledResult<{ id: string }>[];
-      expect(fulfilled.length).toBeGreaterThanOrEqual(1);
+      expect(fulfilled).toHaveLength(2);
       fulfilled.forEach((r) => expect(r.value.id).toBe(created[0].id));
-
-      // Any losing call is a benign, client-fixable stock error on the line —
-      // not a raw 23505, not an unexpected 500.
-      const rejected = results.filter(
-        (r) => r.status === 'rejected',
-      ) as PromiseRejectedResult[];
-      rejected.forEach((r) => {
-        expect(r.reason).toBeInstanceOf(CheckoutError);
-        expect((r.reason as InstanceType<typeof CheckoutError>).field).toBe(
-          'items.0',
-        );
-      });
     });
   });
 
