@@ -292,6 +292,10 @@ export function sentryOptions() {
     dataCollection,
     beforeSend: (event: Sentry.ErrorEvent, hint: Sentry.EventHint) =>
       withoutRequestBody(withoutAdminQuery(sanitizeDatabaseError(event, hint))),
+    // Every transaction dropped, whatever the sample rate. A transaction never
+    // passes `beforeSend`, so an admin search URL or a request body would ride
+    // on one past every scrub above.
+    beforeSendTransaction: () => null,
     // Console breadcrumbs go whole, in the browser too, whose `Breadcrumbs`
     // integration keeps them: Next logs a failed navigation's RSC fetch with
     // its full URL, admin search included. Whole, for the reason the server
