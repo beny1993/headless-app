@@ -149,12 +149,12 @@ export const createOrder = async (
   // 0. Idempotent-replay fast path. A retry (double-submit, a resend of the same
   // checkout) carries the key the first attempt did; if that order already
   // exists, return it before doing ANY work. This is a correctness requirement,
-  // not just an optimization: without it a replay of an order that took the last
-  // unit would 422 on the stock guard, and a replay of a Zarinpal order that put
-  // the user at the open-order cap would 422 on the cap — instead of returning
-  // the order the first attempt created. The concurrent race that slips past this
-  // (two requests both finding nothing here) is caught under the account lock
-  // below (3b).
+  // not just an optimization: steps 1–2 run before the account lock, so without
+  // it a retry whose province or online payment was switched off after the first
+  // attempt committed would 422 there instead of getting its order back.
+  // Everything past the lock — the stock guard, the caps — is covered by the
+  // re-check under it (3b) as well, which also catches the concurrent race that
+  // slips past this (two requests both finding nothing here).
   if (idempotencyKey) {
     const existing = await OrderDao.getByUserAndIdempotencyKey(
       userId,

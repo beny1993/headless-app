@@ -207,10 +207,11 @@ describe.skipIf(!databaseReachable)('createOrder idempotency', () => {
       expect(await paymentsForOrder(first.id)).toHaveLength(1);
     });
 
-    it('replays an order that took the last unit without a 422 (the pre-check is a correctness requirement)', async () => {
-      // Without the fast-path pre-check, the replay would re-enter the
-      // transaction, the stock guard would find 0 units and throw an
-      // insufficient-stock CheckoutError before the unique index ever caught it.
+    it('replays an order that took the last unit without a 422', async () => {
+      // A replay that reached the stock guard would find 0 units and throw an
+      // insufficient-stock CheckoutError before the unique index ever caught
+      // it. The fast path (step 0) hands the order back first, and without it
+      // the re-check under the account lock (3b) would.
       const user = await fx.user();
       const category = await fx.category();
       const product = await fx.product(category, { stock: 1 });
@@ -230,8 +231,9 @@ describe.skipIf(!databaseReachable)('createOrder idempotency', () => {
 
     it('replays a Zarinpal order that put the user at the open-order cap (the cap must not reject the replay)', async () => {
       // Seed the user to one below the cap, then create the keyed Zarinpal order
-      // (now AT the cap). A replay counts that order toward the cap; without the
-      // pre-check it would 422 TOO_MANY_OPEN_ORDERS instead of returning it.
+      // (now AT the cap). A replay that reached the cap would count that order
+      // toward it and 422 TOO_MANY_OPEN_ORDERS; step 0, and the re-check under
+      // the lock (3b) behind it, return the order before that.
       const user = await fx.user();
       const category = await fx.category();
       const product = await fx.product(category, { stock: 5 });
@@ -257,6 +259,45 @@ describe.skipIf(!databaseReachable)('createOrder idempotency', () => {
 
       expect(second.id).toBe(first.id);
       expect(await ordersForUser(user.id)).toHaveLength(MAX_OPEN_ORDERS);
+    });
+
+    // Steps 1–2 check the province and online payment BEFORE the account
+    // lock, where the re-check (3b) cannot help. Only the step-0 fast path
+    // stands between a retry of a committed order and their 422.
+    it('replays a committed order after its province was switched off', async () => {
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+      const k = key();
+      const input = buildInput(prov, [{ productId: product.id, qty: 1 }]);
+
+      const first = await createOrder(user.id, input, k);
+      fx.remember(first.id);
+      await ShippingRateDao.setActive(prov.provinceId, false);
+
+      await expect(createOrder(user.id, input, k)).resolves.toMatchObject({
+        id: first.id,
+      });
+    });
+
+    it('replays a committed Zarinpal order after online payment was switched off', async () => {
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+      const k = key();
+      const input = buildInput(prov, [{ productId: product.id, qty: 1 }], {
+        paymentMethod: PAYMENT_METHODS.ZARINPAL,
+      });
+
+      const first = await createOrder(user.id, input, k);
+      fx.remember(first.id);
+      vi.stubEnv('APP_CONFIG_ZARINPAL_ENABLED', 'false');
+
+      await expect(createOrder(user.id, input, k)).resolves.toMatchObject({
+        id: first.id,
+      });
     });
   });
 
