@@ -9,6 +9,7 @@ import {
   placeOrder,
   resultOrderId,
   test,
+  uploadReceipt,
 } from './support';
 
 test.use({ storageState: CUSTOMER_STATE });
@@ -23,8 +24,10 @@ async function expectOptimized(img: Locator) {
 const gatewayButton = (action: 'pay' | 'fail') =>
   `button[name="action"][value="${action}"]`;
 
-test('card to card: the order is confirmed and listed in the account', async ({
+test('card to card: the receipt accepts the order, and only its owner can read it', async ({
   page,
+  browser,
+  baseURL,
 }) => {
   await page.goto(IN_STOCK_PRODUCT);
   await page.locator('[data-umami-event="product-add-to-cart"]').click();
@@ -55,19 +58,59 @@ test('card to card: the order is confirmed and listed in the account', async ({
     page.getByRole('heading', { name: 'سفارش ثبت شد!' }),
   ).toBeVisible();
 
+  // Placed, not yet accepted: it waits for the shopper's receipt.
+  const status = page.getByText('وضعیت سفارش', { exact: true }).locator('..');
+  await expect(status).toContainText('در انتظار رسید واریز');
+  await expect(
+    page.getByText(
+      'هنوز رسیدی دریافت نشده است. پس از واریز، رسید را همین‌جا بارگذاری کن.',
+    ),
+  ).toBeVisible();
+
+  // The first receipt accepts it.
+  const receipt = await uploadReceipt(page);
+  await expect(status).toContainText('در حال پردازش');
+  await expect(
+    page.getByText(
+      'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.',
+    ),
+  ).toHaveCount(2); // the sub-copy under the heading, and the box's own line
+
   // Dates render in the Jalali calendar and every number goes through
-  // src/lib/format.ts: a Gregorian year or an ASCII digit skipped them.
+  // src/lib/format.ts: a Gregorian year or an ASCII digit skipped them —
+  // the receipt's upload time and the box's size hint included.
   await expect(page.getByText('تاریخ ثبت').locator('..')).toContainText(
     /۱۴[۰-۹]{2}/,
   );
   await expect(page.getByRole('main')).not.toContainText(/\d/);
 
+  // The receipt is readable in the shopper's own session, and nowhere else:
+  // uncacheable, and a 401 to anyone without a session. Fetched, never an
+  // <img>, so the answer is the route's and not a cache's.
+  const receiptUrl = await receipt.getAttribute('href');
+  if (!receiptUrl) throw new Error('the receipt thumbnail links nowhere');
+  const owned = await page.request.get(receiptUrl);
+  expect(owned.status()).toBe(200);
+  expect(owned.headers()['cache-control']).toBe('private, no-store');
+  expect(owned.headers()['content-type']).toBe('image/jpeg');
+  // An explicitly empty state: a context made in a test inherits the file's
+  // `storageState`, which is the customer's session.
+  const stranger = await browser.newContext({
+    baseURL,
+    storageState: { cookies: [], origins: [] },
+  });
+  try {
+    expect((await stranger.request.get(receiptUrl)).status()).toBe(401);
+  } finally {
+    await stranger.close();
+  }
+
   await page.locator('[data-umami-event="checkout-result-my-orders"]').click();
-  await expect(
-    page.locator(
-      `[data-umami-event="account-order-open"][href="${accountOrderPath(orderId)}"]`,
-    ),
-  ).toBeVisible();
+  const listed = page.locator(
+    `[data-umami-event="account-order-open"][href="${accountOrderPath(orderId)}"]`,
+  );
+  await expect(listed).toBeVisible();
+  await expect(listed).toContainText('در حال پردازش');
 });
 
 test('Zarinpal: paying at the mock gateway settles the order', async ({

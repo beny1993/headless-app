@@ -13,8 +13,12 @@ import { z } from 'zod';
 import { SEED_PRODUCTS } from '@/db/seed/catalog-data';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
 import { LOW_STOCK_THRESHOLD } from '@/features/storefront/product/availability';
-import { checkoutResultPath, productPath } from '@/lib/constant/paths';
-import type { PaymentMethod } from '@/lib/orders/order-status';
+import {
+  apiAdminOrderTransitionsPath,
+  checkoutResultPath,
+  productPath,
+} from '@/lib/constant/paths';
+import { ORDER_STATUSES, type PaymentMethod } from '@/lib/orders/order-status';
 
 export { expect };
 
@@ -301,4 +305,53 @@ export async function resultOrderId(page: Page) {
   const prefix = checkoutResultPath('');
   await page.waitForURL((url) => url.pathname.startsWith(prefix));
   return z.uuid().parse(new URL(page.url()).pathname.slice(prefix.length));
+}
+
+/**
+ * Uploads a payment receipt from the card-to-card order page the shopper is
+ * on — the checkout result page or the account order page — and waits for
+ * its thumbnail, which the upload's server refresh renders. The file is the
+ * product photo the catalog spec uploads. Returns the thumbnail's link, whose
+ * `href` is the receipt's one (authenticated) URL.
+ */
+export async function uploadReceipt(
+  page: Page,
+  prefix: 'checkout-result' | 'account-order' = 'checkout-result',
+) {
+  const thumbnails = page.locator(
+    `[data-umami-event="${prefix}-receipt-open"]`,
+  );
+  const before = await thumbnails.count();
+  await page
+    .locator(`[data-umami-event="${prefix}-receipt-file"]`)
+    .setInputFiles(PRODUCT_PHOTO);
+  await expect(page.getByText('یک تصویر انتخاب شد')).toBeVisible();
+  await page.locator(`[data-umami-event="${prefix}-receipt-upload"]`).click();
+  await expect(thumbnails).toHaveCount(before + 1);
+
+  const latest = thumbnails.last();
+  // Lazy-loaded, and below the fold on a phone: it loads once it is in view.
+  await latest.scrollIntoViewIfNeeded();
+  await expectRendered(latest.locator('img'));
+  return latest;
+}
+
+/**
+ * Cancels a card-to-card order a spec placed and left waiting for its receipt,
+ * through the admin API (`admin` is a page signed in as the admin). A waiting
+ * order is OPEN: it counts against its customer's open-order cap
+ * (`MAX_OPEN_ORDERS`, five), and the run's one customer places more
+ * card-to-card orders than that. Call it in a `finally`.
+ */
+export async function closeWaitingOrder(admin: Page, orderId: string) {
+  const response = await admin.request.post(
+    apiAdminOrderTransitionsPath(orderId),
+    {
+      data: {
+        to: ORDER_STATUSES.CANCELLED,
+        reason: 'بسته شده در آزمون خودکار',
+      },
+    },
+  );
+  expect(response.status(), 'closing the waiting order').toBe(200);
 }

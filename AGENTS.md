@@ -262,11 +262,19 @@ the cheapest **in-stock** member's price (its head is seeded sold out and
 cheaper) and an «انتخاب» link in place of the add button that opens that
 member rather than the sold-out head, its page headed title — label, the
 head's chip reading «ناموجود», its chips carrying the shopper to a sibling's
-own slug and the cart line naming that member; checkout by card to card — Jalali date and `format.ts`-formatted numbers
-on the result page, the order in `/account` — and through the mock Zarinpal
+own slug and the cart line naming that member; checkout by card to card —
+the order waiting for its receipt («در انتظار رسید واریز»), a receipt
+uploaded on the result page accepting it («در حال پردازش», the thumbnail
+rendered), Jalali date and `format.ts`-formatted numbers on the result page,
+the receipt's URL answering the shopper 200 `private, no-store` and a request
+with no session exactly 401 (both probed with `request.get`), the order in
+`/account` reading «در حال پردازش» — and through the mock Zarinpal
 gateway (paid, and failed → retry → paid). Admin: anonymous visitors and
-customers turned away; the dashboard figures; an order shipped, and one
-cancelled with its stock coming back; a product added with three photos — for
+customers turned away; the dashboard figures; an order whose receipt the admin
+sees before shipping it; one still waiting for its receipt cancelled with a
+reason and its stock coming back; an accepted one cancelled with a reason the
+shopper then reads on their order page, no upload box left and the stock
+back; a product added with three photos — for
 both pets, filed under a sub-category and given a second category — its
 gallery read on the product page (the strip, the numbered later slides, the
 first photo as the opening image), then dragged in both directions and
@@ -344,8 +352,10 @@ suite pins it on; the disabled option is component-tested in
 (the suite blanks Umami, so the tracker never mounts; its mount is unit-tested
 in `src/app/layout.test.ts` and the tracker in
 `src/components/umami-tracker.test.tsx`) — walk a tracked link with the real
-tracker loaded and check it still swaps the page in place — and anything
-visual (RTL layout, Persian font rendering).
+tracker loaded and check it still swaps the page in place — the bucket keeping
+receipts private (the suite runs the local driver; `pnpm verify-s3` proves
+it on staging, docs/DEPLOY.md §3) — and anything visual (RTL layout, Persian
+font rendering).
 
 - **It starts its own server**: `next dev` on :3100, never a running :3000 —
   that one may be another checkout on another branch. Worktrees running the
@@ -367,9 +377,16 @@ visual (RTL layout, Persian font rendering).
   server, and on 2026-09-29 it took down a parallel session's E2E run mid-suite.
 - **Checkout is rate-capped per account** (`MAX_ORDERS_PER_WINDOW` in
   `src/logic/checkout/create-order.ts`, 30 orders an hour, any status). One
-  run's throwaway customer places about 15 across both viewports, so a spec
+  run's throwaway customer places about 19 across both viewports, so a spec
   that adds checkouts eats into that headroom — raise the constant before the
   suite trips it with a 422 mid-run.
+- **A card-to-card order is open until its receipt arrives.** The open-order
+  cap (`MAX_OPEN_ORDERS`, five per account) counts `awaiting_receipt` as well
+  as `pending_payment`, and the run's one customer places more card-to-card
+  orders than that. A spec that places one and never uploads its receipt
+  closes it in a `finally` with `closeWaitingOrder` (`e2e/support.ts`: a cancel
+  with a reason, through the admin API) — or a later checkout in the run is
+  refused with a 422.
 - **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
   customer and a fresh admin (`pnpm create-admin`) in through the real login
   page and saves their sessions, plus the customer's number
@@ -378,8 +395,12 @@ visual (RTL layout, Persian font rendering).
   for the whole machine, so a run started within a minute of the last one
   waits about a minute.
 - **What a run leaves in the dev database:** two throwaway `0999…` accounts, a
-  few orders (the users spec places one card-to-card order per width, to walk
-  from the account to it), one inactive `e2e-…` product (it is given three
+  few orders (the card-to-card ones no spec uploads a receipt for — the users
+  spec's, the pager's, the discount's and the saved card's — cancelled by
+  `closeWaitingOrder`), three receipt files per width under
+  `uploads/receipts/` (the checkout spec's, the shipped order's and the
+  turned-down one's — receipts are append-only, so nothing deletes them), one
+  inactive `e2e-…` product (it is given three
   photos and has two of them removed again, so one file stays under `uploads/`)
   filed under a seeded sub-category and a seeded second category — seeded, and
   never one the spec made, because the junction's restricting foreign key would

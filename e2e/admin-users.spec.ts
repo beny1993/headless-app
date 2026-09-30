@@ -1,7 +1,8 @@
 // The admin users area: the list with its customer counts, a search by the
 // number a customer typed, their account page, and the walk from it to one of
 // their orders and back. Reads only, apart from the one order the customer
-// places for the walk, so it runs at both widths.
+// places for the walk — closed again afterwards, since it waits for a receipt
+// that never comes — so it runs at both widths.
 import {
   PATHS,
   PROTECTED_PATHS,
@@ -12,6 +13,7 @@ import { toPersianDigits } from '@/lib/format';
 import {
   ADMIN_STATE,
   CUSTOMER_STATE,
+  closeWaitingOrder,
   customerPhone,
   expect,
   placeOrder,
@@ -50,76 +52,84 @@ test.describe('an admin', () => {
     // An order in the customer's own session, so their page has one to open.
     await placeOrder(shopper, 'cod');
     const orderId = await resultOrderId(shopper);
-    const phone = customerPhone();
-    const shownPhone = toPersianDigits(phone);
+    try {
+      const phone = customerPhone();
+      const shownPhone = toPersianDigits(phone);
 
-    const navEntry = page.locator(
-      `[data-umami-event^="admin-panel-nav-"][href="${PROTECTED_PATHS.USERS}"]`,
-    );
-    const rows = page.getByRole('row').filter({
-      has: page.locator('[data-umami-event="admin-panel-users-view"]'),
-    });
+      const navEntry = page.locator(
+        `[data-umami-event^="admin-panel-nav-"][href="${PROTECTED_PATHS.USERS}"]`,
+      );
+      const rows = page.getByRole('row').filter({
+        has: page.locator('[data-umami-event="admin-panel-users-view"]'),
+      });
 
-    await page.goto(PROTECTED_PATHS.USERS);
-    await expect(
-      page.getByRole('heading', { level: 1, name: 'کاربران' }),
-    ).toBeVisible();
-    await expect(navEntry).toHaveAttribute('aria-current', 'page');
-    // Both counts went through src/lib/format.ts, or they would carry ASCII
-    // digits.
-    const newThisMonth = 'مشتریان جدید این ماه';
-    for (const label of ['کل مشتریان', newThisMonth]) {
-      const card = page.getByText(label, { exact: true }).locator('..');
-      await expect(card).toBeVisible();
-      await expect(card).not.toContainText(/\d/);
+      await page.goto(PROTECTED_PATHS.USERS);
+      await expect(
+        page.getByRole('heading', { level: 1, name: 'کاربران' }),
+      ).toBeVisible();
+      await expect(navEntry).toHaveAttribute('aria-current', 'page');
+      // Both counts went through src/lib/format.ts, or they would carry ASCII
+      // digits.
+      const newThisMonth = 'مشتریان جدید این ماه';
+      for (const label of ['کل مشتریان', newThisMonth]) {
+        const card = page.getByText(label, { exact: true }).locator('..');
+        await expect(card).toBeVisible();
+        await expect(card).not.toContainText(/\d/);
+      }
+      const newCard = page
+        .getByText(newThisMonth, { exact: true })
+        .locator('..');
+      const newCount = await newCard.textContent();
+
+      // The dashboard's tile is the same call, so the same number.
+      await page.goto(PROTECTED_PATHS.INDEX);
+      await expect(newCard).toBeVisible();
+      await expect(newCard).not.toContainText(/\d/);
+      await expect(newCard).toHaveText(newCount ?? '');
+
+      await page.goto(PROTECTED_PATHS.USERS);
+      // Signed up this run, so on the first page of a newest-first list.
+      await expect(rows.filter({ hasText: shownPhone })).toHaveCount(1);
+
+      // Typed as the customer typed it. The table stores `+98…`, so only a
+      // normalized search finds it.
+      await page
+        .locator('[data-umami-event="admin-panel-users-search-type"]')
+        .fill(phone);
+      await page
+        .locator('[data-umami-event="admin-panel-users-search-submit"]')
+        .click();
+      await expect(page).toHaveURL(
+        (url) => url.searchParams.get('q') === phone,
+      );
+      await expect(rows).toHaveCount(1);
+      await expect(rows).toContainText(shownPhone);
+
+      await rows.locator('[data-umami-event="admin-panel-users-view"]').click();
+      const profile = page
+        .getByRole('heading', { level: 2, name: 'مشخصات' })
+        .locator('..');
+      await expect(profile).toContainText(shownPhone);
+      await expect(navEntry).toHaveAttribute('aria-current', 'page');
+      const userPath = new URL(page.url()).pathname;
+
+      await page
+        .locator(
+          `[data-umami-event="admin-panel-user-order-view"][href="${adminOrderPath(orderId)}"]`,
+        )
+        .click();
+      await expect(page).toHaveURL(
+        (url) => url.pathname === adminOrderPath(orderId),
+      );
+
+      // Back to the account behind the order, which is the one we came from.
+      await page
+        .locator('[data-umami-event="admin-panel-order-customer-view"]')
+        .click();
+      await expect(page).toHaveURL((url) => url.pathname === userPath);
+      await expect(profile).toContainText(shownPhone);
+    } finally {
+      await closeWaitingOrder(page, orderId);
     }
-    const newCard = page.getByText(newThisMonth, { exact: true }).locator('..');
-    const newCount = await newCard.textContent();
-
-    // The dashboard's tile is the same call, so the same number.
-    await page.goto(PROTECTED_PATHS.INDEX);
-    await expect(newCard).toBeVisible();
-    await expect(newCard).not.toContainText(/\d/);
-    await expect(newCard).toHaveText(newCount ?? '');
-
-    await page.goto(PROTECTED_PATHS.USERS);
-    // Signed up this run, so on the first page of a newest-first list.
-    await expect(rows.filter({ hasText: shownPhone })).toHaveCount(1);
-
-    // Typed as the customer typed it. The table stores `+98…`, so only a
-    // normalized search finds it.
-    await page
-      .locator('[data-umami-event="admin-panel-users-search-type"]')
-      .fill(phone);
-    await page
-      .locator('[data-umami-event="admin-panel-users-search-submit"]')
-      .click();
-    await expect(page).toHaveURL((url) => url.searchParams.get('q') === phone);
-    await expect(rows).toHaveCount(1);
-    await expect(rows).toContainText(shownPhone);
-
-    await rows.locator('[data-umami-event="admin-panel-users-view"]').click();
-    const profile = page
-      .getByRole('heading', { level: 2, name: 'مشخصات' })
-      .locator('..');
-    await expect(profile).toContainText(shownPhone);
-    await expect(navEntry).toHaveAttribute('aria-current', 'page');
-    const userPath = new URL(page.url()).pathname;
-
-    await page
-      .locator(
-        `[data-umami-event="admin-panel-user-order-view"][href="${adminOrderPath(orderId)}"]`,
-      )
-      .click();
-    await expect(page).toHaveURL(
-      (url) => url.pathname === adminOrderPath(orderId),
-    );
-
-    // Back to the account behind the order, which is the one we came from.
-    await page
-      .locator('[data-umami-event="admin-panel-order-customer-view"]')
-      .click();
-    await expect(page).toHaveURL((url) => url.pathname === userPath);
-    await expect(profile).toContainText(shownPhone);
   });
 });

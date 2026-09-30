@@ -4,18 +4,43 @@ import {
   adminProductFilterSchema,
   productsHref,
 } from '@/features/admin-panel/products/products-query';
-import { PATHS, PROTECTED_PATHS, adminOrderPath } from '@/lib/constant/paths';
+import type { Page } from '@playwright/test';
+import {
+  PATHS,
+  PROTECTED_PATHS,
+  accountOrderPath,
+  adminOrderPath,
+} from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import { ORDER_STATUSES } from '@/lib/orders/order-status';
 import {
   ADMIN_STATE,
   CUSTOMER_STATE,
   LOW_STOCK_PRODUCT,
+  closeWaitingOrder,
   expect,
+  expectRendered,
   placeOrder,
   resultOrderId,
   test,
+  uploadReceipt,
 } from './support';
+
+/**
+ * Cancels the order open on the admin's page: the cancel button asks for the
+ * reason the shopper will read, and nothing is sent without one.
+ */
+async function cancelWithReason(page: Page, reason: string) {
+  await page
+    .locator('[data-umami-event="admin-panel-order-transition-cancelled"]')
+    .click();
+  await page
+    .locator('[data-umami-event="admin-panel-order-cancel-reason"]')
+    .fill(reason);
+  await page
+    .locator('[data-umami-event="admin-panel-order-cancel-submit"]')
+    .click();
+}
 
 test('a signed-out visitor is sent to sign in first', async ({ page }) => {
   await page.goto(PROTECTED_PATHS.INDEX);
@@ -51,10 +76,15 @@ test.describe('an admin', () => {
     ).not.toContainText(/\d/);
   });
 
-  test('finds a new order and ships it', async ({ page, shopper }) => {
-    // The order comes from a real checkout, in the customer's own session.
+  test('finds a new order, sees its receipt and ships it', async ({
+    page,
+    shopper,
+  }) => {
+    // The order comes from a real checkout, in the customer's own session,
+    // and its receipt from the result page — the upload that accepts it.
     await placeOrder(shopper, 'cod');
     const orderId = await resultOrderId(shopper);
+    await uploadReceipt(shopper);
 
     await page.goto(PROTECTED_PATHS.ORDERS);
     // Numbered from one down the first page, however many orders it holds.
@@ -74,8 +104,21 @@ test.describe('an admin', () => {
       )
       .click();
 
-    // Cash on delivery skips the gateway and starts in fulfilment, where
-    // shipping is the next move — and delivery is the only move after it.
+    // Accepted by its receipt: in fulfilment, where shipping is the next move
+    // — and delivery the only move after it. The receipt is on the page for
+    // the admin to check first, served through the admin's own route.
+    await expect(page).toHaveURL(
+      (url) => url.pathname === adminOrderPath(orderId),
+    );
+    await expect(
+      page.getByText('در حال پردازش', { exact: true }),
+    ).toBeVisible();
+    const receipt = page.locator(
+      '[data-umami-event="admin-panel-order-receipt-open"]',
+    );
+    await expect(receipt).toHaveCount(1);
+    await receipt.scrollIntoViewIfNeeded();
+    await expectRendered(receipt.locator('img'));
     const ship = page.locator(
       '[data-umami-event="admin-panel-order-transition-shipped"]',
     );
@@ -88,7 +131,7 @@ test.describe('an admin', () => {
     await expect(ship).toBeHidden();
   });
 
-  test('cancels an order and its stock comes back', async ({
+  test('cancels an order still waiting for its receipt, and its stock comes back', async ({
     page,
     shopper,
   }) => {
@@ -101,13 +144,56 @@ test.describe('an admin', () => {
     await shopper.goto(path);
     await expect(stockLeft(stock - 1)).toBeVisible();
 
+    // No receipt ever came: the admin cancels the waiting order by hand.
     await page.goto(adminOrderPath(orderId));
-    const cancel = page.locator(
-      '[data-umami-event="admin-panel-order-transition-cancelled"]',
-    );
-    await cancel.click();
+    await expect(
+      page.getByText('در انتظار رسید واریز', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('رسیدی در سایت بارگذاری نشده است.'),
+    ).toBeVisible();
+    await cancelWithReason(page, 'رسید پرداخت نرسید');
     // Cancelled is terminal: nothing is offered after it.
-    await expect(cancel).toBeHidden();
+    await expect(
+      page.locator(
+        '[data-umami-event="admin-panel-order-transition-cancelled"]',
+      ),
+    ).toBeHidden();
+
+    await shopper.goto(path);
+    await expect(stockLeft(stock)).toBeVisible();
+  });
+
+  test('cancels an accepted order with a reason the shopper then reads', async ({
+    page,
+    shopper,
+  }) => {
+    const { path, stock } = LOW_STOCK_PRODUCT;
+    const stockLeft = (count: number) =>
+      shopper.getByText(`تنها ${formatNumber(count)} عدد باقی مانده`);
+    const reason = 'مبلغ رسید با مبلغ سفارش نمی‌خواند';
+
+    await placeOrder(shopper, 'cod', path);
+    const orderId = await resultOrderId(shopper);
+    await uploadReceipt(shopper);
+
+    // The admin checks the receipt and turns it down.
+    await page.goto(adminOrderPath(orderId));
+    await expect(
+      page.locator('[data-umami-event="admin-panel-order-receipt-open"]'),
+    ).toHaveCount(1);
+    await cancelWithReason(page, reason);
+    await expect(page.getByText(`دلیل لغو: ${reason}`)).toBeVisible();
+
+    // The shopper's order says so, why, and where a transfer comes back from
+    // — and takes no more receipts.
+    await shopper.goto(accountOrderPath(orderId));
+    await expect(shopper.getByText('این سفارش لغو شد.')).toBeVisible();
+    await expect(shopper.getByText(`دلیل: ${reason}`)).toBeVisible();
+    await expect(
+      shopper.locator('[data-umami-event="account-order-receipt-file"]'),
+    ).toHaveCount(0);
+    await expect(shopper.getByText('رد شده', { exact: true })).toBeVisible();
 
     await shopper.goto(path);
     await expect(stockLeft(stock)).toBeVisible();
@@ -119,32 +205,36 @@ test.describe('an admin', () => {
   }) => {
     // At least one order, so the orders list has a page to come back to.
     await placeOrder(shopper, 'cod');
-    await resultOrderId(shopper);
+    const orderId = await resultOrderId(shopper);
 
-    for (const { pastTheEnd, empty, row } of [
-      {
-        pastTheEnd: `${PROTECTED_PATHS.ORDERS}?page=999`,
-        empty: 'این صفحه سفارشی ندارد.',
-        row: 'admin-panel-orders-view',
-      },
-      {
-        // Narrowed to one seeded product, the list has exactly one page however
-        // many products the database holds: the case the pager used to hide on.
-        pastTheEnd: `${PROTECTED_PATHS.PRODUCTS}?${new URLSearchParams({
-          q: SEED_PRODUCTS[0].title,
-          page: '999',
-        })}`,
-        empty: 'این صفحه محصولی ندارد.',
-        row: 'admin-panel-products-edit',
-      },
-    ]) {
-      await page.goto(pastTheEnd);
-      await expect(page.getByText(empty)).toBeVisible();
-      // Back to the last page that exists, whether the list has one page or many.
-      await page.getByRole('link', { name: 'صفحه قبل' }).click();
-      await expect(
-        page.locator(`[data-umami-event="${row}"]`).first(),
-      ).toBeVisible();
+    try {
+      for (const { pastTheEnd, empty, row } of [
+        {
+          pastTheEnd: `${PROTECTED_PATHS.ORDERS}?page=999`,
+          empty: 'این صفحه سفارشی ندارد.',
+          row: 'admin-panel-orders-view',
+        },
+        {
+          // Narrowed to one seeded product, the list has exactly one page however
+          // many products the database holds: the case the pager used to hide on.
+          pastTheEnd: `${PROTECTED_PATHS.PRODUCTS}?${new URLSearchParams({
+            q: SEED_PRODUCTS[0].title,
+            page: '999',
+          })}`,
+          empty: 'این صفحه محصولی ندارد.',
+          row: 'admin-panel-products-edit',
+        },
+      ]) {
+        await page.goto(pastTheEnd);
+        await expect(page.getByText(empty)).toBeVisible();
+        // Back to the last page that exists, whether the list has one page or many.
+        await page.getByRole('link', { name: 'صفحه قبل' }).click();
+        await expect(
+          page.locator(`[data-umami-event="${row}"]`).first(),
+        ).toBeVisible();
+      }
+    } finally {
+      await closeWaitingOrder(page, orderId);
     }
   });
 
