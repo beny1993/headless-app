@@ -2,13 +2,24 @@
 // aliases `@sentry/nextjs` to it), the real `sentryOptions()` and the default
 // browser integrations, in happy-dom, sending to a local transport.
 import * as Sentry from '@sentry/nextjs';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { sentryOptions } from './sentry';
 
 const PHONE = '09121234567';
 const NAME = 'علی رضایی';
 
 let captured: string | undefined;
+// Silenced before `init`, so the SDK wraps the silent one: a console call
+// still reaches its breadcrumb handler, and prints nothing into the run.
+const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
 beforeAll(() => {
   Sentry.init({
@@ -28,6 +39,7 @@ beforeAll(() => {
 });
 afterAll(async () => {
   await Sentry.close(2000);
+  consoleError.mockRestore();
 });
 afterEach(() => {
   Sentry.getIsolationScope().clearBreadcrumbs();
@@ -118,6 +130,24 @@ describe('screen-reader text in element breadcrumbs', () => {
         category: 'ui.click',
         message: 'body > button.save[type="submit"]',
       }),
+    );
+  });
+});
+
+// Next logs a failed client navigation's RSC fetch with its full URL, query
+// included, and the browser SDK keeps every console call as a breadcrumb.
+describe('console breadcrumbs', () => {
+  it("drops Next's failed-fetch log and the admin search in it", async () => {
+    console.error(
+      `Failed to fetch RSC payload for https://shop.example/admin-panel/users?q=${PHONE}. Falling back to browser navigation.`,
+      new TypeError('Failed to fetch'),
+    );
+
+    const { raw, breadcrumbs } = await capture();
+
+    expect(raw).not.toContain('9121234567');
+    expect(breadcrumbs.map((breadcrumb) => breadcrumb.category)).not.toContain(
+      'console',
     );
   });
 });

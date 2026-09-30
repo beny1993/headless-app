@@ -267,8 +267,15 @@ export function sentryOptions() {
     dataCollection,
     beforeSend: (event: Sentry.ErrorEvent, hint: Sentry.EventHint) =>
       withoutAdminQuery(sanitizeDatabaseError(event, hint)),
+    // Console breadcrumbs go whole, in the browser too, whose `Breadcrumbs`
+    // integration keeps them: Next logs a failed navigation's RSC fetch with
+    // its full URL, admin search included. Whole, for the reason the server
+    // drops its Console integration (`withoutConsoleBreadcrumbs`): a filter
+    // only knows the log lines that existed when it was written.
     beforeBreadcrumb: (breadcrumb: Sentry.Breadcrumb) =>
-      withoutScreenReaderText(withoutAdminQueryBreadcrumb(breadcrumb)),
+      breadcrumb.category === 'console'
+        ? null
+        : withoutScreenReaderText(withoutAdminQueryBreadcrumb(breadcrumb)),
     integrations: withoutConsoleBreadcrumbs,
   };
 }
