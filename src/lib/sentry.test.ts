@@ -156,6 +156,37 @@ describe('sentryOptions', () => {
   });
 });
 
+describe('withoutAdminQuery', () => {
+  it('strips the admin query from the Next.js request path of an event with no request', async () => {
+    // The SDK files the path Next reports as a context of its own, apart from
+    // the request data, so the context is scrubbed whether a `request` came
+    // with it or not.
+    const { withoutAdminQuery } = await freshSentry({});
+
+    expect(
+      withoutAdminQuery({
+        type: undefined,
+        contexts: {
+          nextjs: {
+            request_path: '/admin-panel/users?q=09121234567',
+            router_path: '/admin-panel/users',
+          },
+          runtime: { name: 'node' },
+        },
+      }),
+    ).toEqual({
+      type: undefined,
+      contexts: {
+        nextjs: {
+          request_path: '/admin-panel/users',
+          router_path: '/admin-panel/users',
+        },
+        runtime: { name: 'node' },
+      },
+    });
+  });
+});
+
 describe('sanitizeDatabaseError', () => {
   it('preserves safe exception types and frames while removing copied payloads', async () => {
     const { sanitizeDatabaseError } = await freshSentry({});

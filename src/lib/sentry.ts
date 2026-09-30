@@ -158,27 +158,40 @@ export const sanitizeDatabaseError = (
  * The users search puts a customer's phone or name in an admin page's `?q=`.
  * `urlQueryParams: false` above only drops the separate `query_string`: the SDK
  * still sends the page URL whole as `request.url` (and as `Referer`), and
- * records navigations and fetches, query included, as breadcrumbs.
+ * records navigations and fetches, query included, as breadcrumbs. And
+ * `onRequestError` (`src/instrumentation.ts`) copies Next's `req.url`, query
+ * included, into `contexts.nextjs.request_path`, with or without a `request`.
  */
 export const withoutAdminQuery = (
   event: Sentry.ErrorEvent,
 ): Sentry.ErrorEvent => {
-  const { request } = event;
-  if (!request) return event;
+  const { request, contexts } = event;
+  const nextjs = contexts?.nextjs;
   return {
     ...event,
-    request: {
-      ...request,
-      url: request.url && stripAdminQuery(request.url),
-      headers:
-        request.headers &&
-        Object.fromEntries(
-          Object.entries(request.headers).map(([name, value]) => [
-            name,
-            name.toLowerCase() === 'referer' ? stripAdminQuery(value) : value,
-          ]),
-        ),
-    },
+    ...(request && {
+      request: {
+        ...request,
+        url: request.url && stripAdminQuery(request.url),
+        headers:
+          request.headers &&
+          Object.fromEntries(
+            Object.entries(request.headers).map(([name, value]) => [
+              name,
+              name.toLowerCase() === 'referer' ? stripAdminQuery(value) : value,
+            ]),
+          ),
+      },
+    }),
+    ...(typeof nextjs?.request_path === 'string' && {
+      contexts: {
+        ...contexts,
+        nextjs: {
+          ...nextjs,
+          request_path: stripAdminQuery(nextjs.request_path),
+        },
+      },
+    }),
   };
 };
 

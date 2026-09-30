@@ -132,4 +132,56 @@ describe('admin query string privacy', () => {
     expect(event).toContain('https://shop.example/shop?q=royal');
     expect(event).toContain('/shop?q=royal&_rsc=1');
   });
+
+  // A server error while an admin page renders reaches the SDK through Next's
+  // `onRequestError` (`src/instrumentation.ts`), whose `path` is `req.url`,
+  // query included. The SDK files it under `contexts.nextjs.request_path`.
+  async function captureRequestError(path: string, routePath: string) {
+    Sentry.getIsolationScope().clearBreadcrumbs();
+    captured = undefined;
+    Sentry.captureRequestError(
+      new Error('Render failed'),
+      { path, method: 'GET', headers: {} },
+      { routerKind: 'App Router', routePath, routeType: 'render' },
+    );
+    await Sentry.flush(2000);
+    expect(captured).toBeDefined();
+    const [, [[, event]]] = JSON.parse(captured!) as [
+      unknown,
+      [[unknown, { contexts?: { nextjs?: { request_path?: unknown } } }]],
+    ];
+    return {
+      raw: captured!,
+      requestPath: event.contexts?.nextjs?.request_path,
+    };
+  }
+
+  it('sends no admin phone search in the path of an error Next reports', async () => {
+    const { raw, requestPath } = await captureRequestError(
+      '/admin-panel/users?q=09121234567',
+      '/admin-panel/users',
+    );
+
+    // The whole envelope, not one field: were the SDK to rename the key, the
+    // number would travel under the new one and still fail this.
+    expect(raw).not.toContain('9121234567');
+    expect(requestPath).toBe('/admin-panel/users');
+  });
+
+  it('sends no admin name search in that path either', async () => {
+    const name = encodeURIComponent('علی رضایی');
+    const { raw, requestPath } = await captureRequestError(
+      `/admin-panel/users?q=${name}`,
+      '/admin-panel/users',
+    );
+
+    expect(raw).not.toContain(name);
+    expect(requestPath).toBe('/admin-panel/users');
+  });
+
+  it('leaves a storefront path and its query in that field', async () => {
+    const { requestPath } = await captureRequestError('/shop?q=royal', '/shop');
+
+    expect(requestPath).toBe('/shop?q=royal');
+  });
 });
