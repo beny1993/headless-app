@@ -8,10 +8,13 @@ import {
   MAX_OBJECT_KEY_LENGTH,
   MAX_UPLOAD_BYTES,
   objectKeyFor,
+  RECEIPT_KEY_PREFIX,
   sniffImageType,
   UPLOAD_FILENAME_PATTERN,
   UPLOAD_KEY_PREFIX,
 } from './image-upload';
+
+const UUID = '123e4567-e89b-12d3-a456-426614174000';
 
 /** Build a byte array from a signature, padded so WEBP's offset-8 marker fits. */
 const bytesOf = (...signature: number[]): Uint8Array => {
@@ -94,6 +97,13 @@ describe('objectKeyFor', () => {
     );
     expect(keys.size).toBe(100);
   });
+
+  it('files a receipt under receipts/, never under the public uploads/', () => {
+    const key = objectKeyFor('image/jpeg', RECEIPT_KEY_PREFIX);
+    expect(key).toMatch(
+      /^receipts\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/,
+    );
+  });
 });
 
 describe('UPLOAD_FILENAME_PATTERN', () => {
@@ -109,6 +119,7 @@ describe('UPLOAD_FILENAME_PATTERN', () => {
       'products/cat-dry-food.jpg', // seed keys are served from public/, not here
       '123e4567-e89b-12d3-a456-426614174000.svg', // not an accepted extension
       '123e4567-e89b-12d3-a456-426614174000', // no extension
+      `receipts/${UUID}.jpg`, // a receipt: /uploads/* must never serve one
     ]) {
       expect(bad).not.toMatch(UPLOAD_FILENAME_PATTERN);
     }
@@ -134,6 +145,13 @@ describe('imageKeySchema', () => {
   ])('refuses %s with the Persian message', (_, key) => {
     expect(imageKeySchema.safeParse(key).error?.issues[0]?.message).toBe(
       IMAGE_KEY_ERROR,
+    );
+  });
+
+  it('refuses a receipt key — no form can file a receipt as a photo', () => {
+    // A photo key is rendered through a public URL; a receipt must never be.
+    expect(imageKeySchema.safeParse(`receipts/${UUID}.jpg`).success).toBe(
+      false,
     );
   });
 

@@ -52,6 +52,19 @@ export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 export const UPLOAD_KEY_PREFIX = 'uploads';
 
 /**
+ * Where a card-to-card payment receipt is stored: `receipts/<uuid>.<ext>` — the
+ * local driver's `<root>/receipts/` folder, the bucket's `receipts/` prefix. It
+ * is **never** a public namespace: no URL resolves a receipt key (`imageSrc`
+ * and every driver's `url()` throw on one), and only the authenticated receipt
+ * routes read one back, for the order's owner and the admins.
+ */
+export const RECEIPT_KEY_PREFIX = 'receipts';
+
+/** Whether `key` names a receipt — private by construction, see above. */
+export const isReceiptKey = (key: string): boolean =>
+  key.startsWith(`${RECEIPT_KEY_PREFIX}/`);
+
+/**
  * The filename half of a stored upload key: a v4 uuid and one of our extensions,
  * nothing else. The route validates the requested key against this before it
  * touches the filesystem, so a traversal segment (`..`, a slash, a leading dot)
@@ -90,12 +103,17 @@ export function sniffImageType(bytes: Uint8Array): AcceptedImageType | null {
 
 /**
  * A fresh storage key for an image of the given (sniffed) type:
- * `uploads/<uuid>.<ext>`. The uuid is generated here, on the server, so nothing
- * the client sent — filename, path, extension — reaches the stored key. That is
- * what makes a path-traversal key impossible to produce.
+ * `uploads/<uuid>.<ext>`, or `receipts/<uuid>.<ext>` for a payment receipt. The
+ * uuid is generated here, on the server, so nothing the client sent — filename,
+ * path, extension — reaches the stored key. That is what makes a path-traversal
+ * key impossible to produce.
  */
-export function objectKeyFor(type: AcceptedImageType): string {
-  return `${UPLOAD_KEY_PREFIX}/${crypto.randomUUID()}.${IMAGE_EXTENSIONS[type]}`;
+export function objectKeyFor(
+  type: AcceptedImageType,
+  prefix:
+    typeof UPLOAD_KEY_PREFIX | typeof RECEIPT_KEY_PREFIX = UPLOAD_KEY_PREFIX,
+): string {
+  return `${prefix}/${crypto.randomUUID()}.${IMAGE_EXTENSIONS[type]}`;
 }
 
 /**

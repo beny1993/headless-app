@@ -100,6 +100,41 @@ public object-read (no listing). Prove it with `pnpm verify-s3` before trusting
 it — it round-trips a real object through the live bucket. Uploads then survive a
 redeploy with no persistent volume. The storage seam means nothing else changes.
 
+**Card-to-card receipts share the bucket, under `receipts/`, and must never be
+public.** A receipt shows a bank, a card, a name and an amount. The app reads
+one back only through its authenticated routes (the order's owner, or an
+admin), so the bucket's anonymous read has to be narrowed from the whole bucket
+to `uploads/` — where every product photo lives. Liara documents only a
+whole-bucket public/private switch; the folder rule is an S3 bucket policy its
+endpoint may or may not honour, so staging decides. **Staging and production
+share the bucket: the rule is live on production the moment it lands. It is
+applied only with Benyamin's explicit go at that moment.**
+
+1. `pnpm bucket-policy` (dry run): lists every object and refuses while any
+   sits outside `uploads/` and `receipts/` — it would go dark for every
+   shopper — then prints the one statement it would set: `s3:GetObject` for
+   anyone on `arn:aws:s3:::<bucket>/uploads/*`.
+2. `pnpm bucket-policy --apply`: sets it and reads it back, failing if the
+   endpoint refused it (`NotImplemented`/`AccessDenied`) or stored something
+   else (a dropped prefix).
+3. `pnpm verify-s3` from the staging checkout: a photo is still served to a
+   stranger (200), a receipt is refused, the app key still reads it, and no URL
+   is ever built for it. Record the output in the PR.
+4. Only then deploy the receipts feature to production.
+
+**Rollback** (product photos stop loading): set the bucket public again in the
+Liara panel. **Never flip that toggle otherwise** — it silently restores
+whole-bucket public read. The app notices: every receipt upload probes its own
+object anonymously and, if the bucket serves it, deletes it, reports the key to
+GlitchTip and refuses the upload with a 503 until the policy is re-applied. A
+missing `NEXT_PUBLIC_STORAGE_BASE_URL` (nothing to probe with) refuses the same
+way. If Liara will not keep the policy at all, the fallback is encrypting each
+receipt in the app (design note §1e): one new secret env var that must be backed
+up off-box.
+
+On the `local` driver, receipts sit in a `receipts/` folder under
+`APP_CONFIG_STORAGE_LOCAL_ROOT`, which `/uploads/*` never serves.
+
 ---
 
 ## 4. Create the app in Coolify
