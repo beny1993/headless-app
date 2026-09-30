@@ -168,6 +168,9 @@ describe('sanitizeDatabaseError', () => {
           params: ['Private value'],
           paymentId: 'payment-id',
           orderId: 'order-id',
+          // The new-order alert reports this one, and a failure caused by the
+          // database is exactly when knowing which order matters.
+          orderNo: 1024,
         },
         exception: {
           values: [
@@ -181,6 +184,7 @@ describe('sanitizeDatabaseError', () => {
     expect(result.extra).toEqual({
       paymentId: 'payment-id',
       orderId: 'order-id',
+      orderNo: 1024,
     });
     expect(result.exception?.values?.[0]).toEqual({
       type: 'Error',

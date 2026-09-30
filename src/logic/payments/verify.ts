@@ -19,6 +19,10 @@ import type { Payment } from '@/db/schema/orders';
 import { ORDER_STATUSES, PAYMENT_STATUSES } from '@/lib/orders/order-status';
 import type { ZarinpalClient } from '@/lib/zarinpal/client';
 import {
+  notifiesOnSettle,
+  notifyAdminsOfNewOrder,
+} from '@/logic/orders/notify-new-order';
+import {
   InvalidTransitionError,
   transitionOrder,
 } from '@/logic/orders/state-machine';
@@ -109,7 +113,7 @@ export async function settlePendingPayment(
     paidAt: new Date(),
   };
 
-  return db.transaction(async (tx) => {
+  const outcome = await db.transaction(async (tx) => {
     try {
       await transitionOrder(
         tx,
@@ -149,4 +153,13 @@ export async function settlePendingPayment(
       return 'refund_flagged';
     }
   });
+
+  // One line for both callers — the gateway callback route and the reconcile
+  // sweep — because both settle through here. `paid` is the only outcome that
+  // is a new sale (see notifiesOnSettle). Un-awaited on purpose: the shopper is
+  // waiting on the redirect this function returns into, and the sweep's counters
+  // must not move because a provider hung. It never rejects.
+  if (notifiesOnSettle(outcome)) void notifyAdminsOfNewOrder(payment.orderId);
+
+  return outcome;
 }

@@ -2,8 +2,19 @@
 // belong in src/logic/, not in route handlers or components. Never write raw SQL:
 // the admin reads' per-user scalars below are parameterized `sql` fragments over
 // the schema's own identifiers, like `OrderDao`'s `hasPaidPayment`.
-import { and, desc, eq, gte, ilike, like, sql, type SQL } from 'drizzle-orm';
-import { db } from '@/db';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  ilike,
+  isNotNull,
+  like,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
+import { db, type Tx } from '@/db';
 import { escapeLike } from '@/db/dao/like-pattern';
 import { isRevenueOrder } from '@/db/dao/OrderDao';
 import { ROLES, users, type Role, type User } from '@/db/schema/auth';
@@ -83,6 +94,55 @@ export class UserDao {
       .where(eq(users.phoneNumber, phone))
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  /**
+   * Every admin who can receive an SMS — the new-order alert's recipient list
+   * (`src/logic/orders/notify-new-order.ts`). `role` is READ here and never
+   * written: granting it stays `pnpm create-admin`'s job alone, which is also
+   * what makes this list an admin's opt-in.
+   *
+   * Deliberately one `and(...)`: the admin settings page adds its per-admin
+   * opt-out as one more clause here, and nowhere else.
+   */
+  static async listAdminsWithPhone(): Promise<
+    { id: string; phoneNumber: string }[]
+  > {
+    // The cast is what `isNotNull` above already guarantees — drizzle types the
+    // column from the schema, not from the predicate. Deliberately the ONLY
+    // filter: a second one in JS would mean the `where` could be dropped
+    // without a single test noticing.
+    return (await db
+      .select({ id: users.id, phoneNumber: users.phoneNumber })
+      .from(users)
+      .where(and(eq(users.role, ROLES.ADMIN), isNotNull(users.phoneNumber)))
+      .orderBy(asc(users.createdAt))) as { id: string; phoneNumber: string }[];
+  }
+
+  /**
+   * Holds this user's row until `tx` ends — checkout's one-at-a-time lock per
+   * account (`src/logic/checkout/create-order.ts`). A second checkout by the
+   * same account waits here until the first has committed, so the caps it
+   * counts next include that order.
+   *
+   * `FOR NO KEY UPDATE`, not `FOR UPDATE`: two checkouts still conflict, but
+   * the `FOR KEY SHARE` a foreign-key check takes on this row does not, so an
+   * insert that references the user (a new session row) does not wait for a
+   * checkout. A sign-in still can: Better Auth's verify step also UPDATEs
+   * this row (`phone_number_verified`, `updated_at`), which conflicts with
+   * this lock, so an account's sign-in queues behind that same account's
+   * in-flight checkout — one short transaction, never another account's.
+   *
+   * It must be the transaction's FIRST lock. Product rows are only ever locked
+   * after it, in `byProductId` order, so no two transactions can hold these in
+   * opposite orders and deadlock.
+   */
+  static async lockForCheckout(tx: Tx, id: string): Promise<void> {
+    await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, id))
+      .for('no key update');
   }
 
   /** Creates a customer unless an elevated role is asked for explicitly. */

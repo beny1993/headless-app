@@ -365,6 +365,11 @@ visual (RTL layout, Persian font rendering).
   step ends a dev server by the PID it launched (or `lsof -ti :<its port>`),
   never by pattern — `pkill -f next-server` also kills every other worktree's
   server, and on 2026-09-29 it took down a parallel session's E2E run mid-suite.
+- **Checkout is rate-capped per account** (`MAX_ORDERS_PER_WINDOW` in
+  `src/logic/checkout/create-order.ts`, 30 orders an hour, any status). One
+  run's throwaway customer places about 15 across both viewports, so a spec
+  that adds checkouts eats into that headroom — raise the constant before the
+  suite trips it with a 422 mid-run.
 - **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
   customer and a fresh admin (`pnpm create-admin`) in through the real login
   page and saves their sessions, plus the customer's number
