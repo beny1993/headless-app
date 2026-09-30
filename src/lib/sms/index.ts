@@ -285,9 +285,10 @@ export const createSmsIrDriver = (): SmsSender => {
         `sms.ir refused the send (HTTP ${response.status}, status ` +
           // Untrusted, and on its way to Sentry: enough of the provider's
           // reason to act on, never a whole outage page — and never a number
-          // it echoed back, whatever the script (ASCII, Arabic-Indic, Persian).
+          // it echoed back, whatever the script: `\p{Nd}` is every decimal
+          // digit Unicode has, ASCII, Arabic-Indic, Persian and full-width too.
           `${parsed.data.status}): ${parsed.data.message
-            .replace(/[0-9\u0660-\u0669\u06F0-\u06F9]+/g, '#')
+            .replace(/\p{Nd}+/gu, '#')
             .slice(0, 200)}`,
       );
     }

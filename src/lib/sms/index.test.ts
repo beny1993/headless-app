@@ -469,9 +469,17 @@ describe('createSmsIrDriver', () => {
     it('masks every digit run in SMS.ir’s reason, in any script', async () => {
       // The reason is free text from outside, and this error goes to Sentry.
       // A provider that echoes the number back must not carry it there — not
-      // whole, not a Persian-digit tail. The words stay: they are the diagnosis.
+      // whole, not a tail in another script. The words stay: they are the
+      // diagnosis. Arabic-Indic and full-width digits are escaped, not typed:
+      // on the page they pass for the Persian and ASCII ones.
+      const arabicIndic = '\u0660\u0669';
+      const fullWidth = '\uFF10\uFF19';
       fetchMock.mockResolvedValueOnce(
-        reply(10, 400, 'شماره 09121234567 با پایان ۴۵۶۷ مجاز نیست'),
+        reply(
+          10,
+          400,
+          `شماره 09121234567 با پایان ۴۵۶۷ یا ${arabicIndic} یا ${fullWidth} مجاز نیست`,
+        ),
       );
 
       const error = await createSmsIrDriver()(PHONE, otpSms('482913')).catch(
@@ -481,6 +489,8 @@ describe('createSmsIrDriver', () => {
       const text = String(error);
       expect(text).not.toContain('1234567');
       expect(text).not.toContain('۴۵۶۷');
+      expect(text).not.toContain(arabicIndic);
+      expect(text).not.toContain(fullWidth);
       expect(text).toContain('مجاز نیست');
     });
 
