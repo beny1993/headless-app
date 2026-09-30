@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useId, useState, type FormEvent } from 'react';
 import { AlertCircle, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { postData } from '@/lib/api-client';
@@ -9,7 +9,11 @@ import { reasonFrom } from '@/lib/checkout/field-errors';
 import { apiAdminOrderTransitionsPath } from '@/lib/constant/paths';
 import {
   adminNextStatuses,
+  adminTransitionBodySchema,
+  CANCELLATION_REASON_MAX,
+  CANCELLATION_REASON_REQUIRED_MESSAGE,
   ORDER_STATUSES,
+  type AdminTransitionBody,
   type OrderStatus,
 } from '@/lib/orders/order-status';
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
@@ -34,6 +38,12 @@ import { cn } from '@/lib/utils';
  *
  * The server still rejects an illegal or stale transition (400/409); this only
  * decides what to *offer*. A terminal order offers nothing.
+ *
+ * A cancel needs a reason — the shopper reads it on their order — so the cancel
+ * button opens a field instead of sending. The reason is checked against the
+ * same `adminTransitionBodySchema` the route validates (the bidi and length
+ * rules, a blank field read as no reason); the server's `reason_required` is
+ * the rule, this is the courtesy.
  */
 export function OrderTransition({
   orderId,
@@ -43,9 +53,14 @@ export function OrderTransition({
   status: OrderStatus;
 }) {
   const router = useRouter();
+  const formId = useId();
   const [busy, setBusy] = useState<OrderStatus | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<string | null>(null);
 
   const next = adminNextStatuses(status);
+  const canCancel = next.includes(ORDER_STATUSES.CANCELLED);
 
   if (next.length === 0) {
     return (
@@ -57,10 +72,11 @@ export function OrderTransition({
     );
   }
 
-  const move = async (to: OrderStatus) => {
+  const move = async (body: AdminTransitionBody) => {
+    const { to } = body;
     setBusy(to);
     try {
-      await postData(apiAdminOrderTransitionsPath(orderId), { to });
+      await postData(apiAdminOrderTransitionsPath(orderId), body);
       // The server is now authoritative; re-render from it rather than tracking
       // the new status locally.
       router.refresh();
@@ -74,6 +90,22 @@ export function OrderTransition({
     }
   };
 
+  const cancel = async (event: FormEvent) => {
+    event.preventDefault();
+    const parsed = adminTransitionBodySchema.safeParse({
+      to: ORDER_STATUSES.CANCELLED,
+      reason,
+    });
+    const refusal = !parsed.success
+      ? (parsed.error.issues[0]?.message ??
+        CANCELLATION_REASON_REQUIRED_MESSAGE)
+      : !parsed.data.reason
+        ? CANCELLATION_REASON_REQUIRED_MESSAGE
+        : null;
+    setReasonError(refusal);
+    if (parsed.success && !refusal) await move(parsed.data);
+  };
+
   return (
     <div>
       <div className="flex flex-wrap gap-3">
@@ -83,8 +115,13 @@ export function OrderTransition({
             <button
               key={to}
               type="button"
-              onClick={() => move(to)}
+              // A cancel asks for its reason first; every other move goes.
+              onClick={() =>
+                isCancel ? setCancelling((open) => !open) : move({ to })
+              }
               disabled={busy !== null}
+              aria-expanded={isCancel ? cancelling : undefined}
+              aria-controls={isCancel ? formId : undefined}
               data-umami-event={`admin-panel-order-transition-${to}`}
               className={cn(
                 'inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-colors disabled:opacity-50',
@@ -108,7 +145,52 @@ export function OrderTransition({
         })}
       </div>
 
-      {next.includes(ORDER_STATUSES.CANCELLED) && (
+      {canCancel && cancelling && (
+        <form
+          id={formId}
+          onSubmit={cancel}
+          className="mt-4 flex flex-wrap items-end gap-3"
+        >
+          <div className="min-w-0 flex-1">
+            <label
+              htmlFor={`${formId}-reason`}
+              className="mb-1.5 block text-sm font-medium"
+            >
+              دلیل لغو
+            </label>
+            <input
+              id={`${formId}-reason`}
+              type="text"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              maxLength={CANCELLATION_REASON_MAX}
+              aria-invalid={reasonError ? true : undefined}
+              aria-describedby={reasonError ? `${formId}-error` : undefined}
+              data-umami-event="admin-panel-order-cancel-reason"
+              className="border-border focus:border-accent-strong w-full rounded-xl border-2 px-4 py-2.5 text-sm outline-none"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={busy !== null}
+            data-umami-event="admin-panel-order-cancel-submit"
+            className="border-destructive/40 text-destructive hover:bg-destructive-soft inline-flex items-center gap-2 rounded-xl border-2 px-5 py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            ثبت لغو
+          </button>
+          {reasonError && (
+            <p
+              id={`${formId}-error`}
+              role="alert"
+              className="text-destructive w-full text-xs"
+            >
+              {reasonError}
+            </p>
+          )}
+        </form>
+      )}
+
+      {canCancel && (
         <p className="text-warning mt-4 flex items-start gap-1.5 text-xs">
           <AlertCircle
             size={12}
@@ -116,7 +198,7 @@ export function OrderTransition({
             aria-hidden="true"
           />
           لغو سفارش موجودی اقلام را برمی‌گرداند؛ اگر پرداخت انجام شده باشد
-          بازپرداخت دستی لازم است.
+          بازپرداخت دستی لازم است. دلیل برای مشتری نمایش داده می‌شود.
         </p>
       )}
     </div>

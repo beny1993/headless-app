@@ -7,12 +7,17 @@ import { z } from 'zod';
 import { toLocalIranPhone } from '@/lib/auth/phone';
 import { adminUserPath, PROTECTED_PATHS } from '@/lib/constant/paths';
 import { formatJalali, formatToman, toPersianDigits } from '@/lib/format';
-import { PAYMENT_METHOD_LABELS } from '@/lib/orders/order-status';
+import {
+  ORDER_STATUSES,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_METHODS,
+} from '@/lib/orders/order-status';
 import {
   orderStatusBadge,
   paymentStatusBadge,
 } from '@/lib/orders/order-status-display';
 import { getAdminOrder } from '@/logic/orders/get-admin-order';
+import { OrderReceipts } from '@/features/admin-panel/orders/order-receipts';
 import { OrderTransition } from '@/features/admin-panel/orders/order-transition';
 import {
   PaymentRow,
@@ -56,11 +61,19 @@ export default async function AdminOrderDetailPage({
       </Link>
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <span
-          className={`rounded-full px-3 py-1.5 text-xs font-medium ${badge.badge}`}
-        >
-          {badge.label}
-        </span>
+        <div>
+          <span
+            className={`rounded-full px-3 py-1.5 text-xs font-medium ${badge.badge}`}
+          >
+            {badge.label}
+          </span>
+          {order.status === ORDER_STATUSES.CANCELLED &&
+            order.cancellationReason && (
+              <p className="text-muted-foreground mt-2 text-sm">
+                دلیل لغو: {order.cancellationReason}
+              </p>
+            )}
+        </div>
         <div className="text-end">
           <h1 className="nums text-2xl font-black">
             سفارش #{toPersianDigits(order.orderNo)}
@@ -123,6 +136,14 @@ export default async function AdminOrderDetailPage({
               </div>
             </div>
           </section>
+
+          {order.paymentMethod === PAYMENT_METHODS.COD && (
+            <OrderReceipts
+              orderId={order.id}
+              status={order.status}
+              receipts={order.receipts}
+            />
+          )}
 
           <section className="border-border rounded-2xl border bg-white p-5">
             <h2 className="mb-1 font-bold">تغییر وضعیت</h2>
