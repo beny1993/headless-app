@@ -21,10 +21,13 @@ beforeAll(() => {
       options
         .integrations(defaults)
         .filter((integration) => integration.name !== 'ContextLines'),
-    // A local transport: no events leave this process.
+    // A local transport: no events leave this process. Only an event's
+    // envelope is kept: once the SDK detects a release (`SENTRY_RELEASE`, or
+    // the commit variables every CI sets), a flush sends request sessions too.
     transport: () => ({
       send: async (envelope: unknown) => {
-        captured = JSON.stringify(envelope);
+        const [, [[item]]] = envelope as [unknown, [[{ type: string }]]];
+        if (item.type === 'event') captured = JSON.stringify(envelope);
         return {};
       },
       flush: async () => true,
