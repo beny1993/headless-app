@@ -112,8 +112,10 @@ applied only with Benyamin's explicit go at that moment.**
 
 1. `pnpm bucket-policy` (dry run): lists every object and refuses while any
    sits outside `uploads/` and `receipts/` — it would go dark for every
-   shopper — then prints the one statement it would set: `s3:GetObject` for
-   anyone on `arn:aws:s3:::<bucket>/uploads/*`.
+   shopper — or when the listing is truncated without a continuation token.
+   Then it prints the bucket's current policy — keep a copy before applying —
+   and the one statement it would set: `s3:GetObject` for anyone on
+   `arn:aws:s3:::<bucket>/uploads/*`.
 2. `pnpm bucket-policy --apply`: sets it and reads it back, failing if the
    endpoint refused it (`NotImplemented`/`AccessDenied`) or stored something
    else (a dropped prefix).

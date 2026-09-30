@@ -19,19 +19,27 @@ type Sent = { name: string; input: Record<string, unknown> };
 
 /**
  * A client whose answers are keyed by command name. `pages` is the listing,
- * one array of keys per page; `readBack` is what GetBucketPolicy returns.
+ * one array of keys per page — `dropToken` makes it say it is truncated
+ * without giving the next page's token. `current` is the bucket's policy
+ * before any put (none: GetBucketPolicy fails the way S3 does);
+ * `readBack` is what GetBucketPolicy returns after one.
  */
 const fakeClient = ({
   pages = [[UPLOAD]],
+  dropToken = false,
+  current,
   readBack,
   putError,
 }: {
   pages?: string[][];
+  dropToken?: boolean;
+  current?: string;
   readBack?: string;
   putError?: Error;
 }) => {
   const sent: Sent[] = [];
-  let stored: string | undefined;
+  let stored = current;
+  let put = false;
   const send = vi.fn(
     async (command: {
       constructor: { name: string };
@@ -47,15 +55,23 @@ const fakeClient = ({
             Contents: pages[page].map((Key) => ({ Key })),
             IsTruncated: next < pages.length,
             NextContinuationToken:
-              next < pages.length ? String(next) : undefined,
+              next < pages.length && !dropToken ? String(next) : undefined,
           };
         }
         case 'PutBucketPolicyCommand':
           if (putError) throw putError;
           stored = command.input.Policy as string;
+          put = true;
           return {};
-        case 'GetBucketPolicyCommand':
-          return { Policy: readBack ?? stored };
+        case 'GetBucketPolicyCommand': {
+          const policy = put ? (readBack ?? stored) : stored;
+          if (policy === undefined) {
+            throw Object.assign(new Error('The bucket policy does not exist'), {
+              name: 'NoSuchBucketPolicy',
+            });
+          }
+          return { Policy: policy };
+        }
         default:
           throw new Error(`unexpected command ${name}`);
       }
@@ -185,6 +201,20 @@ describe('setBucketPolicy', () => {
     );
   });
 
+  it('refuses to judge the bucket on part of a listing — truncated, with no token for the rest', async () => {
+    // An endpoint that says «more» without saying where: the offender on the
+    // unread page would go dark.
+    const { client, sent } = fakeClient({
+      pages: [[UPLOAD], ['site/logo.png']],
+      dropToken: true,
+    });
+
+    await expect(
+      setBucketPolicy({ client, bucket: BUCKET, apply: true, ...quiet }),
+    ).rejects.toThrow(/continuation token/);
+    expect(names(sent)).toEqual(['ListObjectsV2Command']);
+  });
+
   it('only checks and prints on a dry run — the policy is never sent', async () => {
     const { client, sent } = fakeClient({});
 
@@ -196,7 +226,43 @@ describe('setBucketPolicy', () => {
     });
 
     expect(ok).toBe(true);
-    expect(names(sent)).toEqual(['ListObjectsV2Command']);
+    expect(names(sent)).toEqual([
+      'ListObjectsV2Command',
+      'GetBucketPolicyCommand',
+    ]);
+  });
+
+  it('shows the policy it would replace before the one it proposes', async () => {
+    const current = JSON.stringify({
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Effect: 'Allow',
+          Principal: '*',
+          Action: 's3:GetObject',
+          Resource: `arn:aws:s3:::${BUCKET}/*`,
+        },
+      ],
+    });
+    const { client } = fakeClient({ current });
+
+    await setBucketPolicy({ client, bucket: BUCKET, apply: false, ...quiet });
+
+    const printed = quiet.log.mock.calls.flat().join('\n');
+    const currentAt = printed.indexOf(`arn:aws:s3:::${BUCKET}/*`);
+    const proposedAt = printed.indexOf(`arn:aws:s3:::${BUCKET}/uploads/*`);
+    expect(currentAt).toBeGreaterThan(-1);
+    expect(proposedAt).toBeGreaterThan(currentAt);
+  });
+
+  it('says so when the bucket has no policy yet', async () => {
+    const { client } = fakeClient({});
+
+    await setBucketPolicy({ client, bucket: BUCKET, apply: false, ...quiet });
+
+    expect(quiet.log.mock.calls.flat().join('\n')).toMatch(
+      /current policy[\s\S]*\(none\)/,
+    );
   });
 
   it('sends the policy and reads it back when applied', async () => {
@@ -212,10 +278,11 @@ describe('setBucketPolicy', () => {
     expect(ok).toBe(true);
     expect(names(sent)).toEqual([
       'ListObjectsV2Command',
+      'GetBucketPolicyCommand',
       'PutBucketPolicyCommand',
       'GetBucketPolicyCommand',
     ]);
-    expect(sent[1].input).toEqual({
+    expect(sent[2].input).toEqual({
       Bucket: BUCKET,
       Policy: buildReadPolicy(BUCKET),
     });

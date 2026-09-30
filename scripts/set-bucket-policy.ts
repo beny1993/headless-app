@@ -12,7 +12,9 @@
  * (docs/DEPLOY.md §3):
  *
  *   1. The pre-check lists every object and refuses while any sits outside
- *      `uploads/` and `receipts/`: it would go dark for every shopper.
+ *      `uploads/` and `receipts/`: it would go dark for every shopper. A listing
+ *      that is truncated with no continuation token is refused outright. Then
+ *      the bucket's current policy is printed, before the proposed one.
  *   2. `PutBucketPolicy` — one statement, `s3:GetObject` for anyone on
  *      `arn:aws:s3:::<bucket>/uploads/*`, nothing else.
  *   3. `GetBucketPolicy` read back and compared: some endpoints accept a policy
@@ -144,9 +146,31 @@ const listKeys = async (client: Sender, bucket: string) => {
     for (const object of page.Contents ?? []) {
       if (object.Key) keys.push(object.Key);
     }
+    if (page.IsTruncated && !page.NextContinuationToken) {
+      // An endpoint that says «more» without saying where: an object on the
+      // unread pages would go dark unseen, so the bucket is not judged at all.
+      throw new Error(
+        `the listing of ${bucket} is truncated but gives no continuation token; ` +
+          'refusing to judge the bucket on part of it',
+      );
+    }
     token = page.IsTruncated ? page.NextContinuationToken : undefined;
   } while (token);
   return keys;
+};
+
+/** The bucket's policy as it stands, for the operator to see before any change. */
+const currentPolicy = async (client: Sender, bucket: string) => {
+  try {
+    const { Policy } = (await client.send(
+      new GetBucketPolicyCommand({ Bucket: bucket }) as never,
+    )) as { Policy?: string };
+    return Policy ? JSON.stringify(JSON.parse(Policy), null, 2) : '(none)';
+  } catch (cause) {
+    return (cause as Error).name === 'NoSuchBucketPolicy'
+      ? '(none)'
+      : `(could not be read: ${(cause as Error).name})`;
+  }
 };
 
 /**
@@ -179,8 +203,11 @@ export async function setBucketPolicy({
     return false;
   }
 
+  // What is being replaced, then what replaces it — in both modes, so the
+  // operator can keep a copy of what the change replaces.
+  log(`→ current policy\n${await currentPolicy(client, bucket)}`);
   const policy = buildReadPolicy(bucket);
-  log(`→ policy\n${JSON.stringify(JSON.parse(policy), null, 2)}`);
+  log(`→ proposed policy\n${JSON.stringify(JSON.parse(policy), null, 2)}`);
   if (!apply) {
     log('\n(dry run) nothing was changed. Re-run with --apply to set it.');
     return true;
