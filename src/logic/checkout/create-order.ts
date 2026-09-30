@@ -199,10 +199,10 @@ export const createOrder = async (
       // productId order — so a second checkout of the same account waits here
       // until the first has committed, and the caps below count every order
       // that came before it, however many requests arrived at once. That needs
-      // READ COMMITTED, pinned as this transaction's config rather than
-      // inherited from `default_transaction_isolation` (as `OtpSendLogDao`
-      // does): a snapshot level takes its snapshot at this lock, before the
-      // wait, so the caps and 3b would miss the very orders they waited for.
+      // READ COMMITTED, pinned in this transaction's config, as `OtpSendLogDao`
+      // pins its own, rather than inherited from `default_transaction_isolation`:
+      // a snapshot level takes its snapshot at this lock, before the wait, so
+      // the caps and 3b would miss the very orders they waited for.
       // ponytail: a burst from one account queues on its own row, each waiting
       // request holding a pool connection until its turn; the /api/* rate limit
       // bounds that queue. The caps stay per account: N verified phones still
