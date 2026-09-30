@@ -290,7 +290,7 @@ describe.skipIf(!databaseReachable)('transitionOrder', () => {
     const category = await fx.category();
     const product = await fx.product(category, { stock: 10 });
     await ProductDao.decrementStock(testDb, product.id, 1);
-    // COD orders enter at processing, with a pending COD payment row.
+    // An accepted COD order: processing, its payment row still pending.
     const order = await OrderDao.create(
       fx.buildOrder(user, [{ product, qty: 1 }], {
         status: ORDER_STATUSES.PROCESSING,

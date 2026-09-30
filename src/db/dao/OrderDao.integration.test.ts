@@ -82,15 +82,17 @@ describe.skipIf(!databaseReachable)('OrderDao', () => {
   });
 
   describe('countOpenForUser (interim open-order cap)', () => {
-    it('counts only pending_payment orders, and only for the given user', async () => {
+    it('counts only open orders — unpaid Zarinpal and receipt-less card to card — and only for the given user', async () => {
       const { user, product } = await setup();
       const other = await fx.user();
 
-      // This user: two open (pending_payment) orders, plus one of every other
-      // state — none of the others may count toward the cap.
+      // This user: three open orders (two pending_payment, one waiting for its
+      // receipt), plus one of every other state — none of the others may count
+      // toward the cap.
       const mine = [
         ORDER_STATUSES.PENDING_PAYMENT,
         ORDER_STATUSES.PENDING_PAYMENT,
+        ORDER_STATUSES.AWAITING_RECEIPT,
         ORDER_STATUSES.PAID,
         ORDER_STATUSES.PROCESSING,
         ORDER_STATUSES.SHIPPED,
@@ -113,9 +115,9 @@ describe.skipIf(!databaseReachable)('OrderDao', () => {
       );
       fx.remember(theirs.id);
 
-      // 2, not 8: drop the status filter and this is 8; drop the userId filter
-      // and it is 3.
-      expect(await OrderDao.countOpenForUser(user.id)).toBe(2);
+      // 3, not 9: drop the status filter and this is 9; count pending_payment
+      // alone and it is 2; drop the userId filter and it is 4.
+      expect(await OrderDao.countOpenForUser(user.id)).toBe(3);
       expect(await OrderDao.countOpenForUser(other.id)).toBe(1);
     });
 

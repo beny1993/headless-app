@@ -20,6 +20,7 @@ import { orders, payments } from '@/db/schema/orders';
 import { products as productsTable } from '@/db/schema/catalog';
 import { provinces, shippingRates } from '@/db/schema/shipping';
 import {
+  initialStatusFor,
   ORDER_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
@@ -590,7 +591,13 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
     ) => {
       for (let i = 0; i < n; i++) {
         const order = await OrderDao.create(
-          fx.buildOrder(user, [{ product }], { status }),
+          fx.buildOrder(user, [{ product }], {
+            status,
+            // Only a card-to-card order ever waits for a receipt.
+            ...(status === ORDER_STATUSES.AWAITING_RECEIPT && {
+              paymentMethod: PAYMENT_METHODS.COD,
+            }),
+          }),
         );
         fx.remember(order.id);
       }
@@ -666,12 +673,70 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       expect(order.status).toBe(ORDER_STATUSES.PENDING_PAYMENT);
     });
 
-    it('never blocks a COD checkout, even at the cap', async () => {
+    it('blocks a card-to-card checkout at the cap — it waits with its stock too', async () => {
+      // A COD order is born awaiting_receipt and holds its stock until a
+      // receipt or an admin moves it, so it is bounded like a Zarinpal one.
       const user = await fx.user();
       const category = await fx.category();
       const product = await fx.product(category, { stock: 5 });
       const prov = await province();
       await seedOrders(user, product, MAX_OPEN_ORDERS);
+
+      const error = await createOrder(
+        user.id,
+        buildInput(prov, [{ productId: product.id, qty: 1 }], {
+          paymentMethod: PAYMENT_METHODS.COD,
+        }),
+      ).catch((e) => e);
+
+      expect(error).toBeInstanceOf(CheckoutError);
+      expect(error.field).toBe('paymentMethod');
+      expect(await stockOf(product.id)).toBe(5);
+      expect(await ordersForUser(user.id)).toHaveLength(MAX_OPEN_ORDERS);
+    });
+
+    it.each([
+      [PAYMENT_METHODS.COD, PAYMENT_METHODS.ZARINPAL],
+      [PAYMENT_METHODS.ZARINPAL, PAYMENT_METHODS.COD],
+    ] as const)(
+      'counts waiting orders of either method: %s ones fill the cap for a %s checkout',
+      async (heldMethod, newMethod) => {
+        const user = await fx.user();
+        const category = await fx.category();
+        const product = await fx.product(category, { stock: 5 });
+        const prov = await province();
+        await seedOrders(
+          user,
+          product,
+          MAX_OPEN_ORDERS,
+          initialStatusFor(heldMethod),
+        );
+
+        const error = await createOrder(
+          user.id,
+          buildInput(prov, [{ productId: product.id, qty: 1 }], {
+            paymentMethod: newMethod,
+          }),
+        ).catch((e) => e);
+
+        expect(error).toBeInstanceOf(CheckoutError);
+        expect(await ordersForUser(user.id)).toHaveLength(MAX_OPEN_ORDERS);
+      },
+    );
+
+    it('allows a card-to-card checkout once a waiting order is accepted', async () => {
+      // Accepted (processing) is not open: the receipt moved it on.
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+      await seedOrders(
+        user,
+        product,
+        MAX_OPEN_ORDERS - 1,
+        ORDER_STATUSES.AWAITING_RECEIPT,
+      );
+      await seedOrders(user, product, 1, ORDER_STATUSES.PROCESSING);
 
       const order = await createOrder(
         user.id,

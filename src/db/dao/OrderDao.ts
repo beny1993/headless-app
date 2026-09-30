@@ -25,6 +25,7 @@ import {
   type OrderWithItems,
 } from '@/db/schema/orders';
 import {
+  OPEN_ORDER_STATUSES,
   ORDER_STATUSES,
   PAYMENT_STATUSES,
   type OrderStatus,
@@ -217,11 +218,11 @@ export class OrderDao {
   }
 
   /**
-   * How many `pending_payment` orders `userId` currently holds — the input to
-   * checkout's open-order cap. Only `pending_payment` counts: it is the one
-   * state whose reserved stock waits on the admin-triggered reconcile sweep, so
-   * it is the only state the cap must bound. COD enters at `processing` (a
-   * releasable state) and is deliberately excluded.
+   * How many open orders `userId` currently holds — the input to checkout's
+   * open-order cap. Open is `OPEN_ORDER_STATUSES`: an unpaid Zarinpal order
+   * (released only by the admin-triggered reconcile sweep) and a card-to-card
+   * order still waiting for its receipt (released only by an upload or an
+   * admin). Both hold reserved stock with nothing on a clock to free it.
    */
   static async countOpenForUser(
     userId: string,
@@ -231,7 +232,7 @@ export class OrderDao {
       orders,
       and(
         eq(orders.userId, userId),
-        eq(orders.status, ORDER_STATUSES.PENDING_PAYMENT),
+        inArray(orders.status, OPEN_ORDER_STATUSES),
       ),
     );
   }
