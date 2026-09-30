@@ -4,7 +4,7 @@
 // holds the lock the account can still save a pet or an address.
 //
 // Needs a live database — see src/db/test-db.ts: the conflict is Postgres's
-// lock table, which a mocked `db` does not have.
+// row locking, which a mocked `db` does not have.
 import { sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { OrderFixtures } from '@/db/order-test-fixtures';
