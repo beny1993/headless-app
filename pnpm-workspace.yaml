@@ -1,4 +1,12 @@
 overrides:
+  # GHSA-6j4f-fj2g-mc7p (<1.1.19, <5.0.10) and GHSA-qhr7-859c-m2p7 (<1.1.20,
+  # <5.0.11): brace-expansion DoS via uncontrolled recursion on nested braces.
+  # GHSA-q2hr-2g5m-vwhr (<1.1.21, <5.0.12, moderate): quadratic-time expansion,
+  # cleared by the same pin. 1.x arrives via eslint -> minimatch, 5.x via
+  # @typescript-eslint -> minimatch and @sentry/nextjs -> its bundler plugins ->
+  # glob -> minimatch: lint and build-time only, never in the runtime bundle.
+  'brace-expansion@<1.1.21': ^1.1.21
+  'brace-expansion@>=4.0.0 <5.0.12': ^5.0.12
   # vite 8 (via vitest) wants esbuild ^0.27||^0.28 while
   # tsx/drizzle-kit pull 0.25 — route every consumer to one patched esbuild.
   'esbuild@>=0.17.0 <0.28.1': ^0.28.1
