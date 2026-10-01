@@ -176,7 +176,7 @@ export function OrderTransition({
               aria-invalid={reasonError ? true : undefined}
               aria-describedby={reasonError ? `${formId}-error` : undefined}
               data-umami-event="admin-panel-order-cancel-reason"
-              className="border-border focus-visible:border-accent-strong w-full rounded-xl border-2 px-4 py-2.5 text-sm outline-none focus-visible:ring-2"
+              className="border-border focus-visible:border-accent-strong focus-visible:ring-ring w-full rounded-xl border-2 px-4 py-2.5 text-sm outline-none focus-visible:ring-2"
             />
           </div>
           <button
