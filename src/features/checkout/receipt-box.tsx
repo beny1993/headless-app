@@ -76,7 +76,7 @@ export function ReceiptBox({
 }: {
   orderId: string;
   orderStatus: OrderStatus;
-  /** Oldest first; `uploadedAt` already formatted (Jalali) by the page. */
+  /** Oldest first; `uploadedAt` already formatted by the page (Jalali date and time). */
   receipts: { id: string; uploadedAt: string }[];
   eventPrefix: 'checkout-result' | 'account-order';
 }) {

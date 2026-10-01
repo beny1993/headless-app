@@ -112,6 +112,28 @@ export function formatJalali(date: Date): string {
   return jalaliDate.format(date);
 }
 
+// The date and the Tehran wall clock, 24-hour (`h23`, so midnight reads ۰۰,
+// never ۲۴) with two-digit hours.
+const jalaliDateTime = new Intl.DateTimeFormat(LOCALE, {
+  calendar: 'persian',
+  timeZone: TIME_ZONE,
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/**
+ * A UTC instant as its Tehran-local Jalali date and time:
+ * `۹ مهر ۱۴۰۵ ساعت ۱۴:۰۵`. For what a day can hold more than one of — a
+ * shopper's receipts — where the date alone would read the same five times.
+ */
+export function formatJalaliDateTime(date: Date): string {
+  return jalaliDateTime.format(date);
+}
+
 // Latin numbering so the parts parse straight to integers — this is a bucketing
 // key, not display, so it must never carry Persian digits. Tehran-pinned for the
 // same reason as `jalaliDate`: the same instant must not bucket into a different

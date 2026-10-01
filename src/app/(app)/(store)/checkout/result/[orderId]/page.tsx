@@ -15,7 +15,11 @@ import { RetryPaymentButton } from '@/features/checkout/retry-payment-button';
 import { SupportLine } from '@/features/checkout/support-line';
 import { resultCopy, resultView } from '@/lib/checkout/result-view';
 import { PATHS, checkoutResultPath, shopPath } from '@/lib/constant/paths';
-import { formatJalali, toPersianDigits } from '@/lib/format';
+import {
+  formatJalali,
+  formatJalaliDateTime,
+  toPersianDigits,
+} from '@/lib/format';
 import { PAYMENT_METHOD_LABELS } from '@/lib/orders/order-status';
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
 import { acceptsReceipts, showsReceipts } from '@/lib/orders/receipt';
@@ -127,7 +131,7 @@ export default async function Page({
               orderStatus={order.status}
               receipts={order.receipts.map((receipt) => ({
                 id: receipt.id,
-                uploadedAt: formatJalali(receipt.createdAt),
+                uploadedAt: formatJalaliDateTime(receipt.createdAt),
               }))}
               eventPrefix="checkout-result"
             />

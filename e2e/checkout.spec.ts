@@ -89,9 +89,13 @@ test('card to card: the receipt accepts the order, and only its owner can read i
     ),
   ).toBeVisible();
 
-  // The first receipt accepts it.
+  // The first receipt accepts it, and says when it came: a date and a Tehran
+  // time, since one order can hold five receipts from the same day.
   const receipt = await uploadReceipt(page);
   await expect(status).toContainText('در حال پردازش');
+  await expect(receipt.locator('..')).toContainText(
+    /۱۴[۰-۹]{2} ساعت [۰-۹]{2}:[۰-۹]{2}/,
+  );
   await expect(
     page.getByText(
       'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.',

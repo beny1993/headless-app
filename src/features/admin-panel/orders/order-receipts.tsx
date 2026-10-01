@@ -1,5 +1,5 @@
 import { apiAdminOrderReceiptPath } from '@/lib/constant/paths';
-import { formatJalali, formatNumber } from '@/lib/format';
+import { formatJalaliDateTime, formatNumber } from '@/lib/format';
 import { ORDER_STATUSES, type OrderStatus } from '@/lib/orders/order-status';
 import { receiptsLabel } from '@/lib/orders/receipt';
 import type { AdminReceipt } from '@/logic/orders/get-admin-order';
@@ -66,7 +66,7 @@ export function OrderReceipts({
                   />
                 </a>
                 <p className="text-muted-foreground nums mt-1 text-xs">
-                  {formatJalali(receipt.createdAt)}
+                  {formatJalaliDateTime(receipt.createdAt)}
                 </p>
                 <p className="text-muted-foreground nums text-xs">
                   {formatNumber(Math.ceil(receipt.size / 1024))} کیلوبایت

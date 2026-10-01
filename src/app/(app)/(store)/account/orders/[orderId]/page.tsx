@@ -14,7 +14,11 @@ import { ReceiptBox } from '@/features/checkout/receipt-box';
 import { RetryPaymentButton } from '@/features/checkout/retry-payment-button';
 import { cancellationNote, resultView } from '@/lib/checkout/result-view';
 import { accountOrderPath, PATHS } from '@/lib/constant/paths';
-import { formatJalali, toPersianDigits } from '@/lib/format';
+import {
+  formatJalali,
+  formatJalaliDateTime,
+  toPersianDigits,
+} from '@/lib/format';
 import {
   ORDER_STATUSES,
   PAYMENT_METHOD_LABELS,
@@ -139,7 +143,7 @@ export default async function Page({
             orderStatus={order.status}
             receipts={order.receipts.map((receipt) => ({
               id: receipt.id,
-              uploadedAt: formatJalali(receipt.createdAt),
+              uploadedAt: formatJalaliDateTime(receipt.createdAt),
             }))}
             eventPrefix="account-order"
           />
