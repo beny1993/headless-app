@@ -79,11 +79,12 @@ const PROBE_TIMEOUT_MS = 5_000;
  * at all (unreachable, timed out) is not either — card to card is the only way
  * to pay, and a shopper is never turned away because Liara was unreachable —
  * but it is no proof of privacy, so it is reported: a warning whose only
- * detail is the error's name. The key is not in it, its breadcrumbs included:
- * those hold this driver's own requests and every redirect hop the probe
- * follows, and `src/lib/sentry.ts` redacts the key from each of their strings,
- * in a path, a query or behind a percent-encoded slash. Redirects are followed:
- * whatever finally answers 2xx for this URL is somewhere a stranger can read it.
+ * detail is the error's name. The key is not in it, nor in any breadcrumb, on
+ * this event or another: `src/lib/sentry.ts` redacts it from each breadcrumb
+ * as it is recorded — in a path, a query or behind a percent-encoded slash —
+ * and a probe's breadcrumbs can ride on another request's event (see
+ * `withoutReceiptKeyBreadcrumb` there). Redirects are followed: whatever
+ * finally answers 2xx for this URL is somewhere a stranger can read it.
  */
 const readableByAnyone = async (url: string): Promise<boolean> => {
   try {
@@ -158,10 +159,10 @@ export const s3Driver: StorageDriver = {
     );
 
     if (receipt && (await readableByAnyone(`${base.trim()}/${key}`))) {
-      // The alarm first, and without the key — not in the message, and not in
-      // the breadcrumbs of the put, the probe and its redirect hops, from whose
-      // strings `src/lib/sentry.ts` redacts it: whatever the delete does next,
-      // it has been raised.
+      // The alarm first, and without the key — not in the message, nor in any
+      // breadcrumb it carries, since `src/lib/sentry.ts` redacts the key from
+      // each as it is recorded: whatever the delete does next, it has been
+      // raised.
       Sentry.captureMessage('[storage] a receipt was readable anonymously', {
         level: 'error',
       });

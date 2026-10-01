@@ -275,13 +275,15 @@ const withoutReceiptKey = (text: string): string =>
 
 /**
  * A breadcrumb with no receipt key in its message or in any string of its data:
- * the Node SDK records the s3 driver's own requests — the put, the anonymous
- * probe and each hop of a redirect it follows, the delete — as `http`
- * breadcrumbs carrying the key. Scrubbed as each one is added, which is what
- * makes it hold wherever the breadcrumb lands: on the scope of the request
- * that made the call, except a redirect hop a fetch follows over a kept-alive
- * socket, which lands on the scope of the request that opened that socket —
- * and goes out with whatever event that request captures later.
+ * the Node SDK records the s3 driver's own requests as `http` breadcrumbs
+ * carrying the key. Which request's scope one lands on depends on the client.
+ * The put and the delete go through the AWS SDK's `node:http`, whose
+ * `Agent.addRequest` resets a reused socket's async context, so they land on
+ * the caller's. The anonymous probe is a `fetch`, and undici resets nothing,
+ * so each of its hops — the first as well as a redirect's — lands on the
+ * scope of whichever request opened the kept-alive socket its response came
+ * back on, and goes out with whatever event that request captures. Each is
+ * scrubbed as it is added, so no event carries the key, whichever one it is.
  */
 export const withoutReceiptKeyBreadcrumb = (
   breadcrumb: Sentry.Breadcrumb,
