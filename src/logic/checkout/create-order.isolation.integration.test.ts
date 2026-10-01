@@ -18,17 +18,10 @@ import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 import { CheckoutError } from '@/logic/checkout/checkout-error';
 
-const mocks = vi.hoisted(() => {
+vi.hoisted(() => {
   // Before any import opens a connection.
   process.env.PGOPTIONS = '-c default_transaction_isolation=repeatable\\ read';
-  return { notify: vi.fn() };
 });
-
-// A burst of real checkouts must not reach the admins' phones.
-vi.mock('@/logic/orders/notify-new-order', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/logic/orders/notify-new-order')>()),
-  notifyAdminsOfNewOrder: mocks.notify,
-}));
 
 const { createOrder, MAX_OPEN_ORDERS } = await importWithDb(
   () => import('@/logic/checkout/create-order'),
