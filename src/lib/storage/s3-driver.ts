@@ -15,8 +15,9 @@
 // Receipts share the bucket with the product photos, and the bucket's anonymous
 // read is narrowed to `uploads/` by policy (`scripts/set-bucket-policy.ts`) —
 // a rule one panel toggle can silently undo. So every receipt `put` ends with a
-// probe: fetch the object as a stranger would; if the bucket serves it, delete
-// it, report the key, and refuse the upload (`ReceiptExposedError`).
+// probe: fetch the object as a stranger would; if the bucket serves it, raise
+// the alarm and refuse the upload (`ReceiptExposedError`). The object is deleted
+// when the bucket allows it, and the server log says whether it was.
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -35,7 +36,8 @@ import type { StorageDriver } from './index';
 
 /**
  * A receipt was — or could not be proven not to be — readable by anyone who
- * has its URL. The upload is refused and nothing is left in the bucket.
+ * has its URL. The upload is refused; an object already stored is deleted when
+ * the bucket allows it, and the server log says whether it was.
  */
 export class ReceiptExposedError extends Error {
   constructor(readonly key: string) {

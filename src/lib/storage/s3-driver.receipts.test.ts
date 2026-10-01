@@ -2,7 +2,9 @@
 // same bucket as the product photos, written private and uncacheable, read back
 // with the app's key — and, because the bucket's anonymous-read rule is one
 // panel toggle away from covering it again, every upload is probed as a
-// stranger would see it. Readable → deleted, reported by key, refused.
+// stranger would see it. Readable → refused, with the alarm raised; the object
+// deleted when the bucket allows it, and the key and whether it went on the
+// server console.
 //
 // The AWS SDK and the network are mocked at the module edge; nothing here
 // reaches a bucket. The live proof is `pnpm verify-s3`, on staging, by hand.

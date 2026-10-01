@@ -63,7 +63,11 @@ type UploadResult =
   /** The order no longer takes receipts (moved on since the gate). */
   | { outcome: 'not_accepting' }
   | { outcome: 'cap_reached' }
-  /** Storage could not keep the receipt private; nothing was kept. */
+  /**
+   * Storage could not keep the receipt private: refused, with no row recorded.
+   * The driver deletes the object when the bucket allows it, and the server log
+   * says whether it did.
+   */
   | { outcome: 'exposed' };
 
 /**
