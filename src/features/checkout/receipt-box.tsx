@@ -28,6 +28,7 @@ import {
   ACCEPTED_IMAGE_TYPES,
   IMAGE_FIELD_NAME,
 } from '@/lib/storage/image-upload';
+import { cn } from '@/lib/utils';
 
 const UPLOAD_FAILED = 'بارگذاری رسید ناموفق بود. دوباره تلاش کن.';
 
@@ -115,18 +116,17 @@ export function ReceiptBox({
       setFile(null);
       router.refresh();
     } catch (uploadError) {
+      setError(refusalOf(uploadError));
       // A 409: the order moved on under the shopper (shipped, cancelled, or
       // holding all its receipts). Re-render from it, so the box stops
-      // offering what the order no longer takes. The cap's 409 is not repeated
-      // here: the re-rendered box says the cap itself, once it holds them all.
-      const conflict =
-        uploadError instanceof ApiRequestError && uploadError.status === 409
-          ? uploadError
-          : null;
-      if (conflict?.message !== RECEIPT_CAP_MESSAGE) {
-        setError(refusalOf(uploadError));
+      // offering what the order no longer takes; the refusal stays in the
+      // alert, and a full box leaves the cap's sentence to it.
+      if (
+        uploadError instanceof ApiRequestError &&
+        uploadError.status === 409
+      ) {
+        router.refresh();
       }
-      if (conflict) router.refresh();
     } finally {
       setBusy(false);
     }
@@ -185,7 +185,9 @@ export function ReceiptBox({
         </ul>
       )}
 
-      {accepting && atCap && (
+      {/* Not when the alert below already says it: a 409 that found the
+          order full puts this same sentence there. */}
+      {accepting && atCap && error !== RECEIPT_CAP_MESSAGE && (
         <p className="text-muted-foreground text-sm">{RECEIPT_CAP_MESSAGE}</p>
       )}
 
@@ -237,20 +239,28 @@ export function ReceiptBox({
         </div>
       )}
 
-      {error && (
-        <p
-          id={errorId}
-          role="alert"
-          className="text-destructive mt-3 flex items-start gap-1.5 text-sm"
-        >
-          <AlertCircle
-            size={14}
-            className="mt-0.5 shrink-0"
-            aria-hidden="true"
-          />
-          {error}
-        </p>
-      )}
+      {/* On the page from the start, only its text changing: a screen reader
+          announces a change to an alert already in the page, the pattern the
+          «picked» region above uses too. */}
+      <p
+        id={errorId}
+        role="alert"
+        className={cn(
+          'text-destructive flex items-start gap-1.5 text-sm',
+          error && 'mt-3',
+        )}
+      >
+        {error && (
+          <>
+            <AlertCircle
+              size={14}
+              className="mt-0.5 shrink-0"
+              aria-hidden="true"
+            />
+            {error}
+          </>
+        )}
+      </p>
     </section>
   );
 }

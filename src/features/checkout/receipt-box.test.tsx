@@ -6,9 +6,11 @@
 //     server to re-render, clearing what it picked — and never leaves the
 //     control stuck busy, since `router.refresh()` keeps this component
 //     mounted (the lesson `order-transition.test.tsx` pins);
-//   · a refusal shows the server's Persian sentence; a 409 (the order moved on
-//     under the shopper) also re-renders the box from the server — and the
-//     cap's 409 leaves its sentence to the re-rendered box, so it shows once;
+//   · a refusal shows the server's Persian sentence in the box's one alert,
+//     which is on the page from the start and only changes its text; a 409
+//     (the order moved on under the shopper) also re-renders the box from the
+//     server — and the re-rendered box leaves the cap's sentence to the alert,
+//     so it is said once, before the refresh and after;
 //   · what the box offers follows the status it is given;
 //   · for a screen reader: each receipt numbered, its link saying it opens a
 //     new tab, and the «picked» live region mounted before anything is picked.
@@ -82,6 +84,14 @@ const uploadButton = () =>
   );
 const pick = (file: File) =>
   fireEvent.change(picker()!, { target: { files: [file] } });
+const alertRegion = () => document.querySelector('[role="alert"]');
+/** Where the cap's sentence is: read out by the box's alert, and on screen. */
+const capSaid = () => ({
+  announced: [...document.querySelectorAll('[role="alert"]')].filter(
+    (region) => region.textContent === RECEIPT_CAP_MESSAGE,
+  ).length,
+  shown: screen.queryAllByText(RECEIPT_CAP_MESSAGE).length,
+});
 
 const screenshot = () =>
   new File(
@@ -171,9 +181,10 @@ describe('ReceiptBox', () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  it('says the cap once when a 409 finds the order full — the refreshed box says it', async () => {
-    // Another tab filled the order: the 409 carries the cap's sentence, and the
-    // refreshed box, now holding every receipt, shows that sentence itself.
+  it('announces the cap once when a 409 finds the order full, and shows it once — before the refresh and after', async () => {
+    // Another tab filled the order. The 409's sentence goes into the box's
+    // alert — on the page from the start, so only its text changes — and the
+    // refreshed box, now holding every receipt, does not say it a second time.
     postForm.mockRejectedValue(new ApiRequestError(409, RECEIPT_CAP_MESSAGE));
     const view = render(
       box(
@@ -181,11 +192,15 @@ describe('ReceiptBox', () => {
         [1, 2, 3, 4].map((n) => receipt(n)),
       ),
     );
+    const region = alertRegion();
+    expect(region?.textContent).toBe('');
 
     pick(screenshot());
     fireEvent.click(uploadButton()!);
     await act(async () => {});
     expect(refresh).toHaveBeenCalledTimes(1);
+    expect(alertRegion()).toBe(region);
+    expect(capSaid()).toEqual({ announced: 1, shown: 1 });
 
     view.rerender(
       box(
@@ -193,7 +208,7 @@ describe('ReceiptBox', () => {
         [1, 2, 3, 4, 5].map((n) => receipt(n)),
       ),
     );
-    expect(screen.getAllByText(RECEIPT_CAP_MESSAGE)).toHaveLength(1);
+    expect(capSaid()).toEqual({ announced: 1, shown: 1 });
   });
 
   it('shows the server’s own sentence for a 503 and refreshes nothing', async () => {
@@ -281,7 +296,8 @@ describe('ReceiptBox', () => {
       ),
     );
     expect(picker()).toBeNull();
-    expect(screen.getByText(RECEIPT_CAP_MESSAGE)).toBeTruthy();
+    // Already full when the page loads: said once, and nothing to announce.
+    expect(capSaid()).toEqual({ announced: 0, shown: 1 });
   });
 
   it('keeps the receipts of a cancelled order on view, marked rejected, with no picker', () => {
