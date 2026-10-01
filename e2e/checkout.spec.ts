@@ -1,6 +1,8 @@
 import { accountOrderPath } from '@/lib/constant/paths';
 import type { Locator } from '@playwright/test';
 import {
+  ADMIN_STATE,
+  closeIfStillWaiting,
   completeCheckout,
   CUSTOMER_STATE,
   expect,
@@ -13,6 +15,25 @@ import {
 } from './support';
 
 test.use({ storageState: CUSTOMER_STATE });
+
+// The card-to-card order a test placed, closed after it if it is still waiting
+// for its receipt — as it would be had the test failed before its upload, and
+// open against the customer's cap. Through an admin context of its own: this
+// file's pages are the customer's.
+let placedOrder: string | undefined;
+test.afterEach(async ({ browser, baseURL }) => {
+  if (!placedOrder) return;
+  const admin = await browser.newContext({
+    baseURL,
+    storageState: ADMIN_STATE,
+  });
+  try {
+    await closeIfStillWaiting(admin.request, placedOrder);
+  } finally {
+    placedOrder = undefined;
+    await admin.close();
+  }
+});
 
 /** A product photo served by `/_next/image`, and decoded. */
 async function expectOptimized(img: Locator) {
@@ -54,6 +75,7 @@ test('card to card: the receipt accepts the order, and only its owner can read i
   ).toHaveValue(/^09\d{9}$/);
   await completeCheckout(page, 'cod');
   const orderId = await resultOrderId(page);
+  placedOrder = orderId;
   await expect(
     page.getByRole('heading', { name: 'سفارش ثبت شد!' }),
   ).toBeVisible();

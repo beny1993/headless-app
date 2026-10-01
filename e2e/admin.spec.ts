@@ -17,6 +17,7 @@ import {
   ADMIN_STATE,
   CUSTOMER_STATE,
   LOW_STOCK_PRODUCT,
+  closeIfStillWaiting,
   closeWaitingOrder,
   expect,
   expectRendered,
@@ -64,6 +65,16 @@ test.describe('a customer', () => {
 test.describe('an admin', () => {
   test.use({ storageState: ADMIN_STATE });
 
+  // Card-to-card orders a test means to move on — upload, ship, cancel. If it
+  // fails first, the order would stay open against the customer's cap, so
+  // each is closed after the test, unless the test did move it on.
+  const movedOn: string[] = [];
+  test.afterEach(async ({ page }) => {
+    for (const orderId of movedOn.splice(0)) {
+      await closeIfStillWaiting(page.request, orderId);
+    }
+  });
+
   test('sees the dashboard figures, formatted', async ({ page }) => {
     await page.goto(PROTECTED_PATHS.INDEX);
     await expect(
@@ -84,6 +95,7 @@ test.describe('an admin', () => {
     // and its receipt from the result page — the upload that accepts it.
     await placeOrder(shopper, 'cod');
     const orderId = await resultOrderId(shopper);
+    movedOn.push(orderId);
     await uploadReceipt(shopper);
 
     await page.goto(PROTECTED_PATHS.ORDERS);
@@ -141,6 +153,7 @@ test.describe('an admin', () => {
 
     await placeOrder(shopper, 'cod', path);
     const orderId = await resultOrderId(shopper);
+    movedOn.push(orderId);
     await shopper.goto(path);
     await expect(stockLeft(stock - 1)).toBeVisible();
 
@@ -175,6 +188,7 @@ test.describe('an admin', () => {
 
     await placeOrder(shopper, 'cod', path);
     const orderId = await resultOrderId(shopper);
+    movedOn.push(orderId);
     await uploadReceipt(shopper);
 
     // The admin checks the receipt and turns it down.

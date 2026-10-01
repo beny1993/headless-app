@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import {
   expect,
   test as base,
+  type APIRequestContext,
   type Locator,
   type Page,
   type Response,
@@ -14,6 +15,7 @@ import { SEED_PRODUCTS } from '@/db/seed/catalog-data';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
 import { LOW_STOCK_THRESHOLD } from '@/features/storefront/product/availability';
 import {
+  API_PATHS,
   apiAdminOrderTransitionsPath,
   checkoutResultPath,
   productPath,
@@ -344,14 +346,39 @@ export async function uploadReceipt(
  * card-to-card orders than that. Call it in a `finally`.
  */
 export async function closeWaitingOrder(admin: Page, orderId: string) {
-  const response = await admin.request.post(
-    apiAdminOrderTransitionsPath(orderId),
-    {
-      data: {
-        to: ORDER_STATUSES.CANCELLED,
-        reason: 'بسته شده در آزمون خودکار',
-      },
+  await cancelWaitingOrder(admin.request, orderId);
+}
+
+const cancelWaitingOrder = async (
+  admin: APIRequestContext,
+  orderId: string,
+) => {
+  const response = await admin.post(apiAdminOrderTransitionsPath(orderId), {
+    data: {
+      to: ORDER_STATUSES.CANCELLED,
+      reason: 'بسته شده در آزمون خودکار',
     },
-  );
+  });
   expect(response.status(), 'closing the waiting order').toBe(200);
+};
+
+/**
+ * For the `afterEach` of a test that is meant to move its order on (upload a
+ * receipt, ship, cancel): closes the order only if it is STILL waiting for its
+ * receipt, as it is when the test failed early. An order the test did move on
+ * — accepted, shipped, already cancelled — is left exactly as it is. `admin`
+ * is a request context signed in as the admin.
+ */
+export async function closeIfStillWaiting(
+  admin: APIRequestContext,
+  orderId: string,
+) {
+  const response = await admin.get(`${API_PATHS.ADMIN_ORDERS}/${orderId}`);
+  expect(response.status(), 'reading the order to close').toBe(200);
+  const { data } = z
+    .object({ data: z.object({ status: z.string() }) })
+    .parse(await response.json());
+  if (data.status === ORDER_STATUSES.AWAITING_RECEIPT) {
+    await cancelWaitingOrder(admin, orderId);
+  }
 }
