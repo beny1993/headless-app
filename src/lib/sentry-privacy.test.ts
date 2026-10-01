@@ -257,6 +257,21 @@ describe('receipt key privacy', () => {
     expect(captured).not.toContain(id);
   });
 
+  it('sends no receipt key that a storage error quotes', async () => {
+    // AWS's AccessDenied names the object it refused. A failed GetObject is
+    // rethrown by `readReceipt`, and the API's error boundary captures it.
+    const id = crypto.randomUUID();
+    Sentry.getIsolationScope().clearBreadcrumbs();
+    const error = new Error(
+      `User: arn:aws:iam::1:user/app is not authorized to perform: s3:GetObject on resource: "arn:aws:s3:::bucket/receipts/${id}.jpg"`,
+    );
+    error.name = 'AccessDenied';
+    const event = await capture(error);
+
+    expect(event).not.toContain(id);
+    expect(event).toContain('bucket/receipts/[redacted]');
+  });
+
   describe('in the breadcrumbs the SDK records itself', () => {
     let server: Server;
     let origin = '';

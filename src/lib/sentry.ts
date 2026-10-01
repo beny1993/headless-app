@@ -297,6 +297,32 @@ export const withoutReceiptKeyBreadcrumb = (
 });
 
 /**
+ * An event with no receipt key in its message or in any exception's value. A
+ * storage error can quote the object it refused — AWS's AccessDenied names it
+ * (`…on resource: "arn:aws:s3:::<bucket>/receipts/<key>"`) — and a failed
+ * GetObject reaches Sentry whole: `readReceipt` rethrows it, and the API's
+ * error boundary (`apiErrorHandler`) captures it.
+ */
+export const withoutReceiptKeyEvent = (
+  event: Sentry.ErrorEvent,
+): Sentry.ErrorEvent => ({
+  ...event,
+  ...(event.message !== undefined && {
+    message: withoutReceiptKey(event.message),
+  }),
+  ...(event.exception?.values && {
+    exception: {
+      ...event.exception,
+      values: event.exception.values.map((exception) =>
+        exception.value === undefined
+          ? exception
+          : { ...exception, value: withoutReceiptKey(exception.value) },
+      ),
+    },
+  }),
+});
+
+/**
  * An element's screen-reader text, as the browser SDK writes it into a `ui.*`
  * breadcrumb's element path: `body > a.view[aria-label="…"]`. The users list
  * labels each row's view link with the customer's name and phone number, the
@@ -348,8 +374,13 @@ export function sentryOptions() {
     // high-volume signal, so enabling them spends a shared event quota on data
     // nobody here reads. Errors are the whole point.
     dataCollection,
+    // The receipt-key scrub last, over whatever the others leave.
     beforeSend: (event: Sentry.ErrorEvent, hint: Sentry.EventHint) =>
-      withoutRequestBody(withoutAdminQuery(sanitizeDatabaseError(event, hint))),
+      withoutReceiptKeyEvent(
+        withoutRequestBody(
+          withoutAdminQuery(sanitizeDatabaseError(event, hint)),
+        ),
+      ),
     // Every transaction dropped, whatever the sample rate. A transaction never
     // passes `beforeSend`, so an admin search URL or a request body would ride
     // on one past every scrub above.
