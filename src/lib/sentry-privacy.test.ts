@@ -123,7 +123,9 @@ describe('admin query string privacy', () => {
   it('sends no admin query in the request URL, its Referer or a breadcrumb', async () => {
     const event = await captureWith(SEARCH, '/admin-panel/users?q=09121234567');
 
-    expect(event).not.toContain('0912');
+    // The number, not its first digits: «0912» turns up by chance in a random
+    // event id and, for 17 minutes on 2026-10-02, in every epoch timestamp.
+    expect(event).not.toContain('9121234567');
     expect(event).toContain('https://shop.example/admin-panel/users');
     expect(event).toContain('/admin-panel/users/abc');
   });
