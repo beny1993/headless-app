@@ -260,10 +260,10 @@ export const withoutAdminQueryBreadcrumb = (
  * bucket or base path itself named `receipts` cannot leave the filename behind;
  * and not only in a URL's path, since a redirect can move the key into a query
  * string, which the SDK files apart from the URL as `http.query`. Any case,
- * and on no word boundary — no lookbehind
- * either: this module ships to the browser, and Safari before 16.4 throws on
- * one — so it over-redacts: `/my-receipts/…` and the app's own
- * `/api/orders/<id>/receipts/<id>` lose their tails too, which is harmless.
+ * and on no word boundary — no lookbehind either: this module ships to the
+ * browser, and Safari before 16.4 throws on one — so it over-redacts:
+ * `/my-receipts/…` and the app's own `/api/orders/<id>/receipts/<id>` lose
+ * their tails too, which is harmless.
  */
 const RECEIPT_KEY = new RegExp(
   `(${RECEIPT_KEY_PREFIX}(?:/|%2F|%252F))[^?#&\\s"'<>]+`,
@@ -275,16 +275,16 @@ const withoutReceiptKey = (text: string): string =>
   text.replace(RECEIPT_KEY, '$1[redacted]');
 
 /**
- * A breadcrumb with no receipt key in its message or in any string of its data:
- * the Node SDK records the s3 driver's own requests as `http` breadcrumbs
- * carrying the key. Which request's scope one lands on depends on the client.
- * The put and the delete go through the AWS SDK's `node:http`, whose
- * `Agent.addRequest` resets a reused socket's async context, so they land on
- * the caller's. The anonymous probe is a `fetch`, and undici resets nothing,
- * so each of its hops — the first as well as a redirect's — lands on the
- * scope of whichever request opened the kept-alive socket its response came
- * back on, and goes out with whatever event that request captures. Each is
- * scrubbed as it is added, so no event carries the key, whichever one it is.
+ * A breadcrumb with no receipt key in its message or in any top-level string
+ * of its data: the Node SDK records the s3 driver's own requests as `http`
+ * breadcrumbs carrying the key. Which request's scope one lands on depends on
+ * the client. The put and the delete go through the AWS SDK's `node:http`,
+ * whose `Agent.addRequest` resets a reused socket's async context, so they
+ * land on the caller's. The anonymous probe is a `fetch`, and undici resets
+ * nothing, so each of its hops — the first as well as a redirect's — lands on
+ * the scope of whichever request opened the kept-alive socket its response
+ * came back on, and goes out with whatever event that request captures. Each
+ * is scrubbed as it is added, so no event carries the key, whichever one it is.
  */
 export const withoutReceiptKeyBreadcrumb = (
   breadcrumb: Sentry.Breadcrumb,
@@ -309,8 +309,9 @@ export const withoutReceiptKeyBreadcrumb = (
  * An event with no receipt key in its message or in any exception's value. A
  * storage error can quote the object it refused — AWS's AccessDenied names it
  * (`…on resource: "arn:aws:s3:::<bucket>/receipts/<key>"`) — and a failed
- * GetObject reaches Sentry whole: `readReceipt` rethrows it, and the API's
- * error boundary (`apiErrorHandler`) captures it.
+ * GetObject reaches Sentry whole: `s3Driver.get` rethrows every failure but
+ * `NoSuchKey`, `readReceipt` lets it through, and the API's error boundary
+ * (`apiErrorHandler`) captures it.
  */
 export const withoutReceiptKeyEvent = (
   event: Sentry.ErrorEvent,

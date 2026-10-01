@@ -138,9 +138,11 @@ refuses the upload with a 503 until the policy is re-applied. A probe that
 cannot reach the bucket lets the upload through and leaves a GlitchTip warning
 («receipt privacy probe could not run», with only the error's name). Neither
 carries the receipt's key, their breadcrumbs included: `src/lib/sentry.ts`
-redacts every `receipts/<key>` to `receipts/[redacted]` in a breadcrumb, a
-redirect hop's too, wherever it sits (path, query, a percent-encoded slash, a
-bucket itself named `receipts`), and in an event's message and exception values,
+redacts every `receipts/<key>` to `receipts/[redacted]` — and the key behind a
+percent-encoded slash, `receipts%2F<key>` or twice encoded `receipts%252F<key>`,
+to `receipts%2F[redacted]` or `receipts%252F[redacted]` — in a breadcrumb, a
+redirect hop's too, wherever it sits (path, query, a bucket itself named
+`receipts`), and in an event's message and exception values,
 which covers a storage error that quotes the object (AWS's AccessDenied names
 it). A missing `NEXT_PUBLIC_STORAGE_BASE_URL` (nothing to probe with) refuses
 the upload outright. If Liara will not keep the policy at all, the fallback is
