@@ -270,7 +270,10 @@ const RECEIPT_KEY = new RegExp(
   'gi',
 );
 
-/** `text` with `receipts/[redacted]` (or `receipts%2F[redacted]`) for a key. */
+/**
+ * `text` with each receipt key replaced: `receipts/[redacted]`, or
+ * `receipts%2F[redacted]` / `receipts%252F[redacted]` behind an encoded slash.
+ */
 const withoutReceiptKey = (text: string): string =>
   text.replace(RECEIPT_KEY, '$1[redacted]');
 
