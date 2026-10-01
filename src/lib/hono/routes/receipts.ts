@@ -107,9 +107,11 @@ export const orderReceiptUploadHandler = async (
 
 /**
  * One receipt's bytes, from `lookup` — which decides who may have them. The
- * headers are the point: the stored, sniffed type (never re-guessed by the
- * browser) and `private, no-store`, so the bytes are kept by nobody between
- * the app and the one person allowed to see them.
+ * headers are the point: the type the receipt's key names (`readReceipt` reads
+ * it off the extension, which the upload minted from the sniffed bytes — never
+ * the row's `content_type`), never re-guessed by the browser, and `private,
+ * no-store`, so the bytes are kept by nobody between the app and the one person
+ * allowed to see them.
  */
 const serveReceipt = async (
   c: AuthedContext,

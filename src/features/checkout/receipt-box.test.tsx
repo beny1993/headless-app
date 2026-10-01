@@ -6,7 +6,8 @@
 //     server to re-render, clearing what it picked — and never leaves the
 //     control stuck busy, since `router.refresh()` keeps this component
 //     mounted (the lesson `order-transition.test.tsx` pins);
-//   · a refusal shows the server's Persian sentence, and refreshes nothing;
+//   · a refusal shows the server's Persian sentence; a 409 (the order moved on
+//     under the shopper) also re-renders the box from the server;
 //   · what the box offers follows the status it is given.
 //
 // Mocked at the module edge only: `next/navigation` (refresh is a recorder)
