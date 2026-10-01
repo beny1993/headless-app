@@ -114,6 +114,15 @@ export function ReceiptBox({
       router.refresh();
     } catch (uploadError) {
       setError(refusalOf(uploadError));
+      // A 409: the order moved on under the shopper (shipped, cancelled, or
+      // holding all its receipts). Re-render from it, so the box stops
+      // offering what the order no longer takes.
+      if (
+        uploadError instanceof ApiRequestError &&
+        uploadError.status === 409
+      ) {
+        router.refresh();
+      }
     } finally {
       setBusy(false);
     }

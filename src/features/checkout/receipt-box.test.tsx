@@ -150,13 +150,12 @@ describe('ReceiptBox', () => {
 
   it.each([
     [409, 'این سفارش رسید نمی‌پذیرد.'],
-    [
-      503,
-      'بارگذاری رسید موقتاً ممکن نیست؛ رسید را از طریق اینستاگرام یا تلگرام بفرست.',
-    ],
+    [409, RECEIPT_CAP_MESSAGE],
   ])(
-    'shows the server’s own sentence for a %i and refreshes nothing',
+    'shows the server’s own sentence for a %i, then re-renders from the order as it now is',
     async (status, message) => {
+      // A 409 means the order moved on under the shopper — shipped, cancelled
+      // or full — so the box must stop offering what it no longer takes.
       postForm.mockRejectedValue(new ApiRequestError(status, message));
       render(box(ORDER_STATUSES.AWAITING_RECEIPT));
 
@@ -165,11 +164,26 @@ describe('ReceiptBox', () => {
       await act(async () => {});
 
       expect(screen.getByText(message)).toBeTruthy();
-      expect(refresh).not.toHaveBeenCalled();
-      // Not stuck: the same file can be sent again.
-      expect(uploadButton()!.disabled).toBe(false);
+      expect(refresh).toHaveBeenCalledTimes(1);
     },
   );
+
+  it('shows the server’s own sentence for a 503 and refreshes nothing', async () => {
+    // Nothing about the order changed; the same file can be sent again later.
+    const message =
+      'بارگذاری رسید موقتاً ممکن نیست؛ رسید را از طریق اینستاگرام یا تلگرام بفرست.';
+    postForm.mockRejectedValue(new ApiRequestError(503, message));
+    render(box(ORDER_STATUSES.AWAITING_RECEIPT));
+
+    pick(screenshot());
+    fireEvent.click(uploadButton()!);
+    await act(async () => {});
+
+    expect(screen.getByText(message)).toBeTruthy();
+    expect(refresh).not.toHaveBeenCalled();
+    // Not stuck: the same file can be sent again.
+    expect(uploadButton()!.disabled).toBe(false);
+  });
 
   it('lists each receipt as a plain image through the owner’s route', () => {
     render(box(ORDER_STATUSES.PROCESSING, [receipt(1), receipt(2)]));
