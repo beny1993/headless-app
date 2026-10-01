@@ -20,10 +20,11 @@ import { optionalBoundedText } from '@/lib/validation/text';
 /**
  * The `orders.status` column's domain. Never compare against bare strings.
  *
- * Order matters: the pgEnum is built from `Object.values` of this object, so a
- * new value's position here is where drizzle-kit adds it to the database enum
- * (`ADD VALUE … BEFORE …`). Append a status anywhere else and the next generate
- * sees two different enums.
+ * Order matters: the pgEnum is built from `Object.values` of this object. A
+ * new value may go anywhere — drizzle-kit adds it at that position (`ADD VALUE
+ * … BEFORE …`) — but never MOVE an existing one: the database's enum order and
+ * this list must agree, or the next generate reads a difference and emits the
+ * recreate form, which rewrites `orders.status` on a live table.
  */
 export const ORDER_STATUSES = {
   /** Zarinpal order awaiting a verified payment. Its stock is already reserved. */

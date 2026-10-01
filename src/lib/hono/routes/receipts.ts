@@ -4,12 +4,15 @@
 // `src/lib/storage/image-url.ts`); these answer `private, no-store`, so no
 // shared cache or CDN ever holds one.
 //
-// Plain handlers, like the product image upload (`admin-products.ts`):
-// `openapi()` has no multipart request body and no byte-stream response. So
-// every path segment is parsed with zod here, before anything touches the
-// database, and the guards are the mounts in ../index.ts — `requireAuth` on
-// `/orders/:id/*` (the owner's id is `c.get('user').id`, never the URL or the
-// body), `requireAdmin` on `/admin/*`, and a body limit on the upload.
+// Plain handlers, like the product image upload (`admin-products.ts`): the
+// upload's body is read by `readImageUpload`, the trust boundary every upload
+// route shares (the type sniffed from the bytes, the exact size cap), and only
+// after the receipt gate and the body limit have let it through; the reads
+// answer raw image bytes, not the JSON envelope. So every path segment is
+// parsed with zod here, before anything touches the database, and the guards
+// are the mounts in ../index.ts — `requireAuth` on `/orders/:id/*` (the
+// owner's id is `c.get('user').id`, never the URL or the body), `requireAdmin`
+// on `/admin/*`, and the gate and the body limit on the upload.
 import type { Context, Env, MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import { MAX_RECEIPT_BYTES, RECEIPT_CAP_MESSAGE } from '@/lib/orders/receipt';
