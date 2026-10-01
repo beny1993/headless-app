@@ -8,6 +8,7 @@ import {
   adminTransitionBodySchema,
   adminTransitionTargetSchema,
   CANCELLATION_REASON_MAX,
+  CANCELLATION_REASON_REQUIRED_MESSAGE,
   canTransition,
   GATEWAY_OWNED_STATUSES,
   initialStatusFor,
@@ -211,6 +212,7 @@ describe('adminTransitionBodySchema', () => {
   const NUL = String.fromCharCode(0);
   const RLM = String.fromCharCode(0x200f);
   const RLO = String.fromCharCode(0x202e);
+  const ZWNJ = String.fromCharCode(0x200c);
 
   it('takes a target with no reason — acceptance and shipping carry none', () => {
     expect(
@@ -258,6 +260,27 @@ describe('adminTransitionBodySchema', () => {
         reason: `${at}ر`,
       }).success,
     ).toBe(false);
+  });
+
+  it('refuses a reason of nothing a person can see — zero-width non-joiners only', () => {
+    // ZWNJ is allowed inside Persian words, so the shared text rule lets it
+    // through; on its own it is an empty reason the shopper would read.
+    const result = adminTransitionBodySchema.safeParse({
+      to: ORDER_STATUSES.CANCELLED,
+      reason: ZWNJ.repeat(2),
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toBe(
+      CANCELLATION_REASON_REQUIRED_MESSAGE,
+    );
+  });
+
+  it('keeps the ZWNJ inside a Persian reason', () => {
+    const reason = `رسید${ZWNJ}ها نرسید`;
+    expect(
+      adminTransitionBodySchema.parse({ to: ORDER_STATUSES.CANCELLED, reason })
+        .reason,
+    ).toBe(reason);
   });
 
   it.each([

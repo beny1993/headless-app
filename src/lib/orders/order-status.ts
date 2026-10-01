@@ -15,7 +15,7 @@
 // live in `src/logic/orders/state-machine.ts`, which imports `canTransition`
 // from here.
 import { z } from 'zod';
-import { optionalBoundedText } from '@/lib/validation/text';
+import { optionalBoundedText, VISIBLE_CHAR } from '@/lib/validation/text';
 
 /**
  * The `orders.status` column's domain. Never compare against bare strings.
@@ -229,11 +229,17 @@ export const adminTransitionBodySchema = z.object({
       "order's current status; `paid`/`failed` are gateway-owned and rejected.",
     example: 'processing',
   }),
-  reason: optionalBoundedText(CANCELLATION_REASON_MAX).meta({
-    description:
-      'Why the order is cancelled, shown to the customer. Required when `to` ' +
-      'is `cancelled`; ignored otherwise.',
-  }),
+  // A reason of zero-width non-joiners alone passes the shared text rule —
+  // ZWNJ belongs inside Persian words — but is nothing a shopper can read.
+  reason: optionalBoundedText(CANCELLATION_REASON_MAX)
+    .refine((reason) => reason === undefined || VISIBLE_CHAR.test(reason), {
+      error: CANCELLATION_REASON_REQUIRED_MESSAGE,
+    })
+    .meta({
+      description:
+        'Why the order is cancelled, shown to the customer. Required when `to` ' +
+        'is `cancelled`; ignored otherwise.',
+    }),
 });
 
 export type AdminTransitionBody = z.infer<typeof adminTransitionBodySchema>;

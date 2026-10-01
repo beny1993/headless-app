@@ -396,6 +396,7 @@ describe.skipIf(!databaseReachable)('admin order API', () => {
         ['one past the cap', 'ر'.repeat(CANCELLATION_REASON_MAX + 1)],
         ['a right-to-left mark', `دلیل${String.fromCharCode(0x200f)}۱`],
         ['a NUL', `دلیل${String.fromCharCode(0)}`],
+        ['zero-width non-joiners only', String.fromCharCode(0x200c).repeat(2)],
       ])('refuses a reason carrying %s', async (_, reason) => {
         const order = await seedOrder(
           ORDER_STATUSES.PROCESSING,
