@@ -343,6 +343,24 @@ and deliberately not baked into the image:
       volume, telemetry is disabled (`NEXT_TELEMETRY_DISABLED=1` in the image).
       Verify against the deployed site.
 
+### Before deploying card-to-card receipts (once, on production)
+
+- [ ] **The bucket rule (§3), on Benyamin's go.** Until the bucket's anonymous
+      read is narrowed to `uploads/`, every receipt upload on the `s3` driver
+      answers 503 — the driver finds its own receipt public and deletes it.
+- [ ] **Edit the saved `checkout.payment` row once** in
+      `/admin-panel/content/checkout`. A saved row never picks up a new
+      default, so until it is edited the checkout note keeps telling shoppers
+      to send the receipt by DM instead of uploading it on the order's page.
+- [ ] **`NEXT_PUBLIC_STORAGE_BASE_URL`** is set on `s3` (a build variable):
+      without it there is nothing to probe a receipt with, and every receipt
+      upload is refused.
+- [ ] **Postgres 12 or later** (`SELECT version()`): migration 0019 adds an
+      enum value inside the migrator's transaction. No migration in the same
+      release may use the new `awaiting_receipt` value.
+- [ ] **Deploy off-peak.** While the old container still serves, it cannot
+      render an order in the new status.
+
 ### Before deploying the forbidden-character widening (once, on production)
 
 The bidi marks (U+200E, U+200F, U+061C) and the two separators (U+2028, U+2029)

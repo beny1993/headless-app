@@ -118,9 +118,10 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   driver's `url()` throw on a receipt key. The only readers are the
   authenticated routes (the order's owner, 404 to any other customer; an
   admin), answering `private, no-store`; render one with a plain `<img>` on
-  that route, never `next/image`. On s3 the bucket's anonymous read is narrowed
-  to `uploads/` by policy, and the driver probes every receipt it stores
-  (docs/DEPLOY.md §3).
+  that route, never `next/image`. On s3 the bucket's anonymous read must be
+  narrowed to `uploads/` (a bucket policy, docs/DEPLOY.md §3) before the
+  feature ships: until then every receipt upload answers 503, because the
+  driver probes each receipt it stores and finds it public.
 - **Cart is client-side** (localStorage) until checkout; the server re-prices and
   validates at order creation.
 - **Rate limits**: every `/api/*` route is budgeted per caller per minute by
