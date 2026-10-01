@@ -255,17 +255,18 @@ export const withoutAdminQueryBreadcrumb = (
 
 /**
  * A receipt's object key wherever text can carry one: from the first
- * `receipts/` — or `receipts%2F`, once a redirect has percent-encoded the slash
- * — to the end of that path, so a bucket or base path itself named `receipts`
- * cannot leave the filename behind; and not only in a URL's path, since a
- * redirect can move the key into a query string, which the SDK files apart from
- * the URL as `http.query`. Any case, and on no word boundary — no lookbehind
+ * `receipts/` — or `receipts%2F`, or `receipts%252F`, once a redirect has
+ * percent-encoded the slash once or twice — to the end of that path, so a
+ * bucket or base path itself named `receipts` cannot leave the filename behind;
+ * and not only in a URL's path, since a redirect can move the key into a query
+ * string, which the SDK files apart from the URL as `http.query`. Any case,
+ * and on no word boundary — no lookbehind
  * either: this module ships to the browser, and Safari before 16.4 throws on
  * one — so it over-redacts: `/my-receipts/…` and the app's own
  * `/api/orders/<id>/receipts/<id>` lose their tails too, which is harmless.
  */
 const RECEIPT_KEY = new RegExp(
-  `(${RECEIPT_KEY_PREFIX}(?:/|%2F))[^?#&\\s"'<>]+`,
+  `(${RECEIPT_KEY_PREFIX}(?:/|%2F|%252F))[^?#&\\s"'<>]+`,
   'gi',
 );
 

@@ -237,6 +237,10 @@ describe('receipt key privacy', () => {
       (id: string) => ({ url: `https://cdn/x/receipts%2F${id}.jpg` }),
     ],
     [
+      'a redirect hop that encoded the slash twice',
+      (id: string) => ({ url: `https://cdn/x/receipts%252F${id}.jpg` }),
+    ],
+    [
       'a query string',
       (id: string) => ({
         url: 'https://cdn/x',
