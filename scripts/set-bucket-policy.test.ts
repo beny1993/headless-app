@@ -20,7 +20,10 @@ type Sent = { name: string; input: Record<string, unknown> };
 /**
  * A client whose answers are keyed by command name. `pages` is the listing,
  * one array of keys per page — `dropToken` makes it say it is truncated
- * without giving the next page's token. `current` is the bucket's policy
+ * without giving the next page's token, and `loopTokens` makes every page say
+ * «more» with the next token from that list, round and round (bounded, so a
+ * script that never stops paging fails here instead of hanging). `current` is
+ * the bucket's policy
  * before any put (none: GetBucketPolicy fails the way S3 does);
  * `readBack` is what GetBucketPolicy returns after one. `listError` is thrown
  * by the listing, as the SDK throws an endpoint's refusal.
@@ -32,9 +35,11 @@ const fakeClient = ({
   readBack,
   putError,
   listError,
+  loopTokens,
 }: {
   pages?: string[][];
   dropToken?: boolean;
+  loopTokens?: string[];
   current?: string;
   readBack?: string;
   putError?: Error;
@@ -53,6 +58,16 @@ const fakeClient = ({
       switch (name) {
         case 'ListObjectsV2Command': {
           if (listError) throw listError;
+          if (loopTokens) {
+            const calls = names(sent).length;
+            if (calls > 50) throw new Error('runaway listing');
+            return {
+              Contents: [{ Key: UPLOAD }],
+              IsTruncated: true,
+              NextContinuationToken:
+                loopTokens[(calls - 1) % loopTokens.length],
+            };
+          }
           const page = Number(command.input.ContinuationToken ?? 0);
           const next = page + 1;
           return {
@@ -224,6 +239,29 @@ describe('setBucketPolicy', () => {
     expect(names(sent)).toEqual(['ListObjectsV2Command']);
     expect(quiet.error.mock.calls.flat().join('\n')).toMatch(
       /continuation token/,
+    );
+  });
+
+  it('refuses a listing that hands back a token it gave before — it would page forever', async () => {
+    // A → B → A: not the same token twice in a row, so only remembering every
+    // token seen catches it.
+    const { client, sent } = fakeClient({ loopTokens: ['A', 'B'] });
+
+    const ok = await setBucketPolicy({
+      client,
+      bucket: BUCKET,
+      apply: true,
+      ...quiet,
+    });
+
+    expect(ok).toBe(false);
+    expect(names(sent)).toEqual([
+      'ListObjectsV2Command',
+      'ListObjectsV2Command',
+      'ListObjectsV2Command',
+    ]);
+    expect(quiet.error.mock.calls.flat().join('\n')).toMatch(
+      /repeats a continuation token/,
     );
   });
 

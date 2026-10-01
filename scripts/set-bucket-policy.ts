@@ -13,8 +13,9 @@
  *
  *   1. The pre-check lists every object and refuses while any sits outside
  *      `uploads/` and `receipts/`: it would go dark for every shopper. A listing
- *      that is truncated with no continuation token is refused outright. Then
- *      the bucket's current policy is printed, before the proposed one.
+ *      that is truncated with no continuation token, or that hands back a token
+ *      it gave before, is refused outright. Then the bucket's current policy is
+ *      printed, before the proposed one.
  *   2. `PutBucketPolicy` — one statement, `s3:GetObject` for anyone on
  *      `arn:aws:s3:::<bucket>/uploads/*`, nothing else.
  *   3. `GetBucketPolicy` read back and compared: some endpoints accept a policy
@@ -131,6 +132,7 @@ type Sender = { send: (command: never) => Promise<unknown> };
 /** Every key in the bucket, all pages. */
 const listKeys = async (client: Sender, bucket: string) => {
   const keys: string[] = [];
+  const seen = new Set<string>();
   let token: string | undefined;
   do {
     const page = (await client.send(
@@ -155,6 +157,17 @@ const listKeys = async (client: Sender, bucket: string) => {
       );
     }
     token = page.IsTruncated ? page.NextContinuationToken : undefined;
+    if (token !== undefined) {
+      // A token handed back a second time asks for pages already read, and
+      // paging on would go round them forever: the bucket is not judged.
+      if (seen.has(token)) {
+        throw new Error(
+          `the listing of ${bucket} repeats a continuation token; ` +
+            'refusing to page through it forever',
+        );
+      }
+      seen.add(token);
+    }
   } while (token);
   return keys;
 };
