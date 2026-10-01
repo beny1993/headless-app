@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useId, useRef, useState, type FormEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { AlertCircle, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { postData } from '@/lib/api-client';
@@ -103,9 +104,9 @@ export function OrderTransition({
       : !parsed.data.reason
         ? CANCELLATION_REASON_REQUIRED_MESSAGE
         : null;
-    setReasonError(refusal);
-    // Back to the field the refusal is about, so the admin types the reason
-    // straight away; the refusal itself is announced by its `role="alert"`.
+    // Committed before focus moves: by the time focus lands back on the field,
+    // it is already `aria-invalid` and described by the refusal.
+    flushSync(() => setReasonError(refusal));
     if (refusal) reasonField.current?.focus();
     if (parsed.success && !refusal) await move(parsed.data);
   };

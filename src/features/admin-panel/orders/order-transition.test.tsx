@@ -208,6 +208,36 @@ describe('OrderTransition', () => {
       expect(document.activeElement).toBe(reasonField());
     });
 
+    it('has the field marked invalid and described by the refusal by the time focus lands on it', async () => {
+      render(
+        <OrderTransition
+          orderId={ORDER_ID}
+          status={ORDER_STATUSES.PROCESSING}
+        />,
+      );
+      openCancel();
+      const field = reasonField()!;
+      let atFocus: { invalid: string | null; message?: string | null } = {
+        invalid: null,
+      };
+      field.addEventListener('focus', () => {
+        const describedBy = field.getAttribute('aria-describedby');
+        atFocus = {
+          invalid: field.getAttribute('aria-invalid'),
+          message:
+            describedBy && document.getElementById(describedBy)?.textContent,
+        };
+      });
+      submit().focus();
+      fireEvent.click(submit());
+      await act(async () => {});
+
+      expect(atFocus).toEqual({
+        invalid: 'true',
+        message: CANCELLATION_REASON_REQUIRED_MESSAGE,
+      });
+    });
+
     it('makes the reason a named field the browser spell-checks and never autofills', () => {
       render(
         <OrderTransition
