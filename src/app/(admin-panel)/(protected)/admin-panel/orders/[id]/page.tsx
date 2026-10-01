@@ -69,7 +69,10 @@ export default async function AdminOrderDetailPage({
           </span>
           {order.status === ORDER_STATUSES.CANCELLED &&
             order.cancellationReason && (
-              <p className="text-muted-foreground mt-2 text-sm">
+              // `wrap-anywhere`, not `wrap-break-word`: this sits in a flex
+              // item, and only `anywhere` counts its breaks in the min-content
+              // width, which is what lets the item shrink to the screen.
+              <p className="text-muted-foreground mt-2 text-sm wrap-anywhere">
                 دلیل لغو: {order.cancellationReason}
               </p>
             )}

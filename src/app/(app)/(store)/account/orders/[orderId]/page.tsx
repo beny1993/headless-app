@@ -121,7 +121,7 @@ export default async function Page({
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold">این سفارش لغو شد.</p>
               {cancellationNote(order) && (
-                <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
+                <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed wrap-anywhere">
                   {cancellationNote(order)}
                 </p>
               )}

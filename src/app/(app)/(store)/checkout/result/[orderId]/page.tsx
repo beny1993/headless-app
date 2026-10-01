@@ -77,7 +77,9 @@ export default async function Page({
             {icon}
           </div>
           <h1 className="mb-2 text-2xl font-black">{title}</h1>
-          <p className="text-muted-foreground mx-auto mb-7 max-w-md text-sm leading-relaxed">
+          {/* Wraps anywhere: a cancellation reason is the admin's free text,
+              and a pasted link is wider than a phone. */}
+          <p className="text-muted-foreground mx-auto mb-7 max-w-md text-sm leading-relaxed wrap-anywhere">
             {sub}
           </p>
 

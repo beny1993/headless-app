@@ -10,6 +10,7 @@ import {
   PROTECTED_PATHS,
   accountOrderPath,
   adminOrderPath,
+  checkoutResultPath,
 } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import { ORDER_STATUSES } from '@/lib/orders/order-status';
@@ -26,6 +27,22 @@ import {
   test,
   uploadReceipt,
 } from './support';
+
+/**
+ * How far the page, and its `main`, reach past their own width: both 0 when
+ * nothing pushes the screen sideways. The admin panel's `main` scrolls on its
+ * own (`overflow-y-auto`, so its x overflow is `auto` too), and a line too wide
+ * for it widens `main`, not the page.
+ */
+const sidewaysOverflow = (page: Page) =>
+  page.evaluate(() => {
+    const root = document.documentElement;
+    const main = document.querySelector('main');
+    return {
+      page: root.scrollWidth - root.clientWidth,
+      main: main ? main.scrollWidth - main.clientWidth : 0,
+    };
+  });
 
 /**
  * Cancels the order open on the admin's page: the cancel button asks for the
@@ -184,7 +201,9 @@ test.describe('an admin', () => {
     const { path, stock } = LOW_STOCK_PRODUCT;
     const stockLeft = (count: number) =>
       shopper.getByText(`تنها ${formatNumber(count)} عدد باقی مانده`);
-    const reason = 'مبلغ رسید با مبلغ سفارش نمی‌خواند';
+    // A pasted link: one unbroken run longer than a phone is wide, which every
+    // page that shows the reason has to wrap rather than scroll sideways.
+    const reason = `مبلغ رسید با مبلغ سفارش نمی‌خواند: https://bank.example/r/${'abcdefghij'.repeat(7)}`;
 
     await placeOrder(shopper, 'cod', path);
     const orderId = await resultOrderId(shopper);
@@ -198,6 +217,7 @@ test.describe('an admin', () => {
     ).toHaveCount(1);
     await cancelWithReason(page, reason);
     await expect(page.getByText(`دلیل لغو: ${reason}`)).toBeVisible();
+    expect(await sidewaysOverflow(page)).toEqual({ page: 0, main: 0 });
 
     // The shopper's order says so, why, and where a transfer comes back from
     // — and takes no more receipts.
@@ -208,6 +228,12 @@ test.describe('an admin', () => {
       shopper.locator('[data-umami-event="account-order-receipt-file"]'),
     ).toHaveCount(0);
     await expect(shopper.getByText('رد شده', { exact: true })).toBeVisible();
+    expect(await sidewaysOverflow(shopper)).toEqual({ page: 0, main: 0 });
+
+    // The checkout result page says it too, in its own words.
+    await shopper.goto(checkoutResultPath(orderId));
+    await expect(shopper.getByText(reason, { exact: false })).toBeVisible();
+    expect(await sidewaysOverflow(shopper)).toEqual({ page: 0, main: 0 });
 
     await shopper.goto(path);
     await expect(stockLeft(stock)).toBeVisible();
