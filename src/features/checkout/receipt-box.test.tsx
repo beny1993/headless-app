@@ -7,7 +7,8 @@
 //     control stuck busy, since `router.refresh()` keeps this component
 //     mounted (the lesson `order-transition.test.tsx` pins);
 //   · a refusal shows the server's Persian sentence; a 409 (the order moved on
-//     under the shopper) also re-renders the box from the server;
+//     under the shopper) also re-renders the box from the server — and the
+//     cap's 409 leaves its sentence to the re-rendered box, so it shows once;
 //   · what the box offers follows the status it is given.
 //
 // Mocked at the module edge only: `next/navigation` (refresh is a recorder)
@@ -149,25 +150,45 @@ describe('ReceiptBox', () => {
     expect(uploadButton()!.disabled).toBe(false);
   });
 
-  it.each([
-    [409, 'این سفارش رسید نمی‌پذیرد.'],
-    [409, RECEIPT_CAP_MESSAGE],
-  ])(
-    'shows the server’s own sentence for a %i, then re-renders from the order as it now is',
-    async (status, message) => {
-      // A 409 means the order moved on under the shopper — shipped, cancelled
-      // or full — so the box must stop offering what it no longer takes.
-      postForm.mockRejectedValue(new ApiRequestError(status, message));
-      render(box(ORDER_STATUSES.AWAITING_RECEIPT));
+  it('shows the server’s own sentence for a 409, then re-renders from the order as it now is', async () => {
+    // A 409 means the order moved on under the shopper — shipped or cancelled —
+    // so the box must stop offering what it no longer takes.
+    const message = 'این سفارش رسید نمی‌پذیرد.';
+    postForm.mockRejectedValue(new ApiRequestError(409, message));
+    render(box(ORDER_STATUSES.AWAITING_RECEIPT));
 
-      pick(screenshot());
-      fireEvent.click(uploadButton()!);
-      await act(async () => {});
+    pick(screenshot());
+    fireEvent.click(uploadButton()!);
+    await act(async () => {});
 
-      expect(screen.getByText(message)).toBeTruthy();
-      expect(refresh).toHaveBeenCalledTimes(1);
-    },
-  );
+    expect(screen.getByText(message)).toBeTruthy();
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the cap once when a 409 finds the order full — the refreshed box says it', async () => {
+    // Another tab filled the order: the 409 carries the cap's sentence, and the
+    // refreshed box, now holding every receipt, shows that sentence itself.
+    postForm.mockRejectedValue(new ApiRequestError(409, RECEIPT_CAP_MESSAGE));
+    const view = render(
+      box(
+        ORDER_STATUSES.PROCESSING,
+        [1, 2, 3, 4].map((n) => receipt(n)),
+      ),
+    );
+
+    pick(screenshot());
+    fireEvent.click(uploadButton()!);
+    await act(async () => {});
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      box(
+        ORDER_STATUSES.PROCESSING,
+        [1, 2, 3, 4, 5].map((n) => receipt(n)),
+      ),
+    );
+    expect(screen.getAllByText(RECEIPT_CAP_MESSAGE)).toHaveLength(1);
+  });
 
   it('shows the server’s own sentence for a 503 and refreshes nothing', async () => {
     // Nothing about the order changed; the same file can be sent again later.

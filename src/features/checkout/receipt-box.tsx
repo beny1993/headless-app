@@ -113,16 +113,18 @@ export function ReceiptBox({
       setFile(null);
       router.refresh();
     } catch (uploadError) {
-      setError(refusalOf(uploadError));
       // A 409: the order moved on under the shopper (shipped, cancelled, or
       // holding all its receipts). Re-render from it, so the box stops
-      // offering what the order no longer takes.
-      if (
-        uploadError instanceof ApiRequestError &&
-        uploadError.status === 409
-      ) {
-        router.refresh();
+      // offering what the order no longer takes. The cap's 409 is not repeated
+      // here: the re-rendered box says the cap itself, once it holds them all.
+      const conflict =
+        uploadError instanceof ApiRequestError && uploadError.status === 409
+          ? uploadError
+          : null;
+      if (conflict?.message !== RECEIPT_CAP_MESSAGE) {
+        setError(refusalOf(uploadError));
       }
+      if (conflict) router.refresh();
     } finally {
       setBusy(false);
     }
