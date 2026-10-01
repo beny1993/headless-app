@@ -78,9 +78,11 @@ const PROBE_TIMEOUT_MS = 5_000;
  * what it fetched — and every refusal is not. A probe that cannot run
  * at all (unreachable, timed out) is not either — card to card is the only way
  * to pay, and a shopper is never turned away because Liara was unreachable —
- * but it is no proof of privacy, so it is reported: a warning with the error's
- * name, never the key. Redirects are followed: whatever finally answers 2xx
- * for this URL is somewhere a stranger can read it.
+ * but it is no proof of privacy, so it is reported: a warning whose only
+ * detail is the error's name. The key is not in it, its breadcrumbs included:
+ * those hold this driver's own requests, whose URLs `src/lib/sentry.ts`
+ * rewrites to `/receipts/[redacted]`. Redirects are followed: whatever finally
+ * answers 2xx for this URL is somewhere a stranger can read it.
  */
 const readableByAnyone = async (url: string): Promise<boolean> => {
   try {
@@ -155,8 +157,10 @@ export const s3Driver: StorageDriver = {
     );
 
     if (receipt && (await readableByAnyone(`${base.trim()}/${key}`))) {
-      // The alarm first, and keyless: whatever the delete does next, it has
-      // been raised.
+      // The alarm first, and without the key — not in the message, and not in
+      // the breadcrumbs of the put and the probe, which `src/lib/sentry.ts`
+      // rewrites to `/receipts/[redacted]`: whatever the delete does next, it
+      // has been raised.
       Sentry.captureMessage('[storage] a receipt was readable anonymously', {
         level: 'error',
       });
