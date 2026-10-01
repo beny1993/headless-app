@@ -375,7 +375,9 @@ describe('setBucketPolicy', () => {
     );
   });
 
-  it('says on a dry run that the policy could not be read, and that --apply will refuse', async () => {
+  it('fails a dry run over a policy it could not read — --apply would refuse', async () => {
+    // A dry run that passes says «--apply may go ahead»; over an unreadable
+    // policy it will not, so the dry run fails too, saying why.
     const { client, sent } = fakeClient({ currentError: accessDenied() });
 
     const ok = await setBucketPolicy({
@@ -385,14 +387,17 @@ describe('setBucketPolicy', () => {
       ...quiet,
     });
 
-    expect(ok).toBe(true);
+    expect(ok).toBe(false);
     expect(names(sent)).toEqual([
       'ListObjectsV2Command',
       'GetBucketPolicyCommand',
     ]);
-    const printed = quiet.log.mock.calls.flat().join('\n');
-    expect(printed).toContain('(could not be read: AccessDenied)');
-    expect(printed).toMatch(/--apply will refuse/);
+    expect(quiet.log.mock.calls.flat().join('\n')).toContain(
+      '(could not be read: AccessDenied)',
+    );
+    expect(quiet.error.mock.calls.flat().join('\n')).toMatch(
+      /--apply will refuse/,
+    );
   });
 
   it('shows a current policy that is not JSON as it is stored, then replaces it', async () => {

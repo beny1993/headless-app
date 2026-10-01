@@ -17,7 +17,7 @@
  *      it gave before, is refused outright. Then the bucket's current policy is
  *      printed, before the proposed one — as stored when it is not JSON — and
  *      `--apply` refuses when it cannot be read at all: there would be no copy
- *      of what it replaced.
+ *      of what it replaced. A dry run then fails too, since --apply would.
  *   2. `PutBucketPolicy` — one statement, `s3:GetObject` for anyone on
  *      `arn:aws:s3:::<bucket>/uploads/*`, nothing else.
  *   3. `GetBucketPolicy` read back and compared: some endpoints accept a policy
@@ -257,12 +257,15 @@ async function procedure({
   const policy = buildReadPolicy(bucket);
   log(`→ proposed policy\n${JSON.stringify(JSON.parse(policy), null, 2)}`);
   if (!apply) {
-    log(
-      current.readable
-        ? '\n(dry run) nothing was changed. Re-run with --apply to set it.'
-        : '\n(dry run) nothing was changed. --apply will refuse until the ' +
-            'current policy can be read.',
-    );
+    if (!current.readable) {
+      // A passing dry run means --apply may go ahead; here it would refuse.
+      error(
+        '✗ (dry run) nothing was changed, and --apply will refuse until the ' +
+          'current policy can be read.',
+      );
+      return false;
+    }
+    log('\n(dry run) nothing was changed. Re-run with --apply to set it.');
     return true;
   }
   if (!current.readable) {

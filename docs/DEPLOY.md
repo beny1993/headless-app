@@ -116,7 +116,8 @@ applied only with Benyamin's explicit go at that moment.**
    or hands back a token it gave before. Then it prints the bucket's current
    policy (exactly as stored, when it is not JSON) — keep a copy before
    applying — and the one statement it would set: `s3:GetObject` for anyone
-   on `arn:aws:s3:::<bucket>/uploads/*`.
+   on `arn:aws:s3:::<bucket>/uploads/*`. It fails, as `--apply` would, while
+   the current policy cannot be read.
 2. `pnpm bucket-policy --apply`: refuses while the current policy cannot be
    read, since there would be no copy of what it replaces; otherwise sets it
    and reads it back, failing if the endpoint refused it
