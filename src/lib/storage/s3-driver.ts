@@ -88,8 +88,12 @@ const readableByAnyone = async (url: string): Promise<boolean> => {
       cache: 'no-store',
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
-    await response.body?.cancel();
-    return response.status === 200 || response.status === 206;
+    // The answer is the status, read before the body is let go: a cancel that
+    // fails afterwards changes nothing about it, so it is ignored rather than
+    // allowed to turn exposure into the could-not-run path below.
+    const { status } = response;
+    await response.body?.cancel().catch(() => {});
+    return status === 200 || status === 206;
   } catch (error) {
     Sentry.captureMessage('[storage] receipt privacy probe could not run', {
       level: 'warning',

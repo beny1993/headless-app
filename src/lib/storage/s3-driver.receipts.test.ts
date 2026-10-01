@@ -171,6 +171,21 @@ describe('s3Driver — receipts', () => {
     expect(logged).toContain('deleted: false');
   });
 
+  it('takes a 200 as exposure even when letting its body go fails', async () => {
+    // The status is what the bucket answered; a cancel that rejects afterwards
+    // changes nothing about it, and must not turn exposure into a pass.
+    const { s3Driver, ReceiptExposedError } = await freshDriver();
+    mocks.fetch.mockResolvedValue({
+      status: 200,
+      body: { cancel: () => Promise.reject(new TypeError('cancel failed')) },
+    });
+
+    await expect(
+      s3Driver.put(RECEIPT, bytes, 'image/jpeg'),
+    ).rejects.toBeInstanceOf(ReceiptExposedError);
+    expect(commandsSent()).toEqual(['PutObject', 'DeleteObject']);
+  });
+
   it.each([401, 403, 404, 500])(
     'keeps a receipt the bucket will not serve to a stranger (%i)',
     async (status) => {
