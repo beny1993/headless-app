@@ -173,24 +173,38 @@ const currentPolicy = async (client: Sender, bucket: string) => {
   }
 };
 
-/**
- * The procedure above, against any client. Resolves `true` when the bucket is
- * (or, on a dry run, may be) given the policy; `false` when it must not be, or
- * the endpoint would not keep it.
- */
-export async function setBucketPolicy({
-  client,
-  bucket,
-  apply,
-  log,
-  error,
-}: {
+type Options = {
   client: Sender;
   bucket: string;
   apply: boolean;
   log: (line: string) => void;
   error: (line: string) => void;
-}): Promise<boolean> {
+};
+
+/**
+ * The procedure above, against any client. Resolves `true` when the bucket is
+ * (or, on a dry run, may be) given the policy; `false` when it must not be, the
+ * endpoint would not keep it, or anything on the way failed. A failure is
+ * reported by its name and message alone: the AWS SDK copies every field of
+ * the endpoint's error answer onto the error it throws
+ * (`decorateServiceException`), and for a refused key or signature that answer
+ * can carry the key's id and the string that was signed.
+ */
+export const setBucketPolicy = (options: Options): Promise<boolean> =>
+  procedure(options).catch((cause: unknown) => {
+    options.error(
+      `✗ failed: ${(cause as Error).name}: ${(cause as Error).message}`,
+    );
+    return false;
+  });
+
+async function procedure({
+  client,
+  bucket,
+  apply,
+  log,
+  error,
+}: Options): Promise<boolean> {
   const keys = await listKeys(client, bucket);
   const offenders = findOffenders(keys);
   log(`→ ${keys.length} objects in ${bucket}`);
@@ -254,9 +268,6 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     apply: process.argv.includes('--apply'),
     log: console.log,
     error: console.error,
-  }).catch((cause: unknown) => {
-    console.error('✗ failed:', cause);
-    return false;
   });
   process.exitCode = ok ? 0 : 1;
 }

@@ -22,7 +22,8 @@ type Sent = { name: string; input: Record<string, unknown> };
  * one array of keys per page — `dropToken` makes it say it is truncated
  * without giving the next page's token. `current` is the bucket's policy
  * before any put (none: GetBucketPolicy fails the way S3 does);
- * `readBack` is what GetBucketPolicy returns after one.
+ * `readBack` is what GetBucketPolicy returns after one. `listError` is thrown
+ * by the listing, as the SDK throws an endpoint's refusal.
  */
 const fakeClient = ({
   pages = [[UPLOAD]],
@@ -30,12 +31,14 @@ const fakeClient = ({
   current,
   readBack,
   putError,
+  listError,
 }: {
   pages?: string[][];
   dropToken?: boolean;
   current?: string;
   readBack?: string;
   putError?: Error;
+  listError?: Error;
 }) => {
   const sent: Sent[] = [];
   let stored = current;
@@ -49,6 +52,7 @@ const fakeClient = ({
       sent.push({ name, input: command.input });
       switch (name) {
         case 'ListObjectsV2Command': {
+          if (listError) throw listError;
           const page = Number(command.input.ContinuationToken ?? 0);
           const next = page + 1;
           return {
@@ -209,10 +213,62 @@ describe('setBucketPolicy', () => {
       dropToken: true,
     });
 
-    await expect(
-      setBucketPolicy({ client, bucket: BUCKET, apply: true, ...quiet }),
-    ).rejects.toThrow(/continuation token/);
+    const ok = await setBucketPolicy({
+      client,
+      bucket: BUCKET,
+      apply: true,
+      ...quiet,
+    });
+
+    expect(ok).toBe(false);
     expect(names(sent)).toEqual(['ListObjectsV2Command']);
+    expect(quiet.error.mock.calls.flat().join('\n')).toMatch(
+      /continuation token/,
+    );
+  });
+
+  it('reports a failure by its name and message alone — never the rest of what the endpoint answered', async () => {
+    // An SDK error carries every field of the endpoint's error answer; for a
+    // refused signature, S3's names the key's id and what was signed.
+    const refused = Object.assign(
+      new Error(
+        'The request signature we calculated does not match the signature you provided.',
+      ),
+      {
+        name: 'SignatureDoesNotMatch',
+        $fault: 'client',
+        $metadata: { httpStatusCode: 403, requestId: 'REQUEST-ID-1' },
+        AWSAccessKeyId: 'AKIDEXAMPLEKEYID',
+        StringToSign: 'AWS4-HMAC-SHA256 20261001T000000Z scope hash',
+        SignatureProvided: 'SIGNATURE-PROVIDED-1',
+      },
+    );
+    const { client, sent } = fakeClient({ listError: refused });
+
+    const ok = await setBucketPolicy({
+      client,
+      bucket: BUCKET,
+      apply: true,
+      ...quiet,
+    });
+
+    expect(ok).toBe(false);
+    expect(names(sent)).toEqual(['ListObjectsV2Command']);
+    const printed = [...quiet.log.mock.calls, ...quiet.error.mock.calls]
+      .flat()
+      .map(String)
+      .join('\n');
+    expect(printed).toContain(
+      'SignatureDoesNotMatch: The request signature we calculated does not match',
+    );
+    for (const leak of [
+      'AKIDEXAMPLEKEYID',
+      'AWS4-HMAC-SHA256',
+      'SIGNATURE-PROVIDED-1',
+      'REQUEST-ID-1',
+    ]) {
+      expect(printed).not.toContain(leak);
+    }
   });
 
   it('only checks and prints on a dry run — the policy is never sent', async () => {
