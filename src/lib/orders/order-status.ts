@@ -215,6 +215,13 @@ export const CANCELLATION_REASON_REQUIRED_MESSAGE =
   'برای لغو سفارش، دلیل را بنویس.';
 
 /**
+ * Every default-ignorable code point (ZWNJ among them, and the Hangul fillers
+ * U+115F, U+1160, U+3164 and U+FFA0, letters by category) and the blank Braille
+ * pattern U+2800 (a symbol): characters that render as nothing.
+ */
+const RENDERS_AS_NOTHING = /[\p{Default_Ignorable_Code_Point}\u2800]/gu;
+
+/**
  * The admin transition request body, shared by the route and the panel's
  * control so both validate one schema. `reason` is optional HERE — `{ to:
  * 'processing' }` is a whole request — and required for a cancel by the server
@@ -229,12 +236,17 @@ export const adminTransitionBodySchema = z.object({
       "order's current status; `paid`/`failed` are gateway-owned and rejected.",
     example: 'processing',
   }),
-  // A reason of zero-width non-joiners alone passes the shared text rule —
-  // ZWNJ belongs inside Persian words — but is nothing a shopper can read.
+  // A reason must show something once what renders as nothing is set aside:
+  // zero-width non-joiners pass the shared text rule (ZWNJ belongs inside
+  // Persian words), and the Hangul fillers and the blank Braille pattern pass
+  // `VISIBLE_CHAR` itself.
   reason: optionalBoundedText(CANCELLATION_REASON_MAX)
-    .refine((reason) => reason === undefined || VISIBLE_CHAR.test(reason), {
-      error: CANCELLATION_REASON_REQUIRED_MESSAGE,
-    })
+    .refine(
+      (reason) =>
+        reason === undefined ||
+        VISIBLE_CHAR.test(reason.replace(RENDERS_AS_NOTHING, '')),
+      { error: CANCELLATION_REASON_REQUIRED_MESSAGE },
+    )
     .meta({
       description:
         'Why the order is cancelled, shown to the customer. Required when `to` ' +

@@ -275,6 +275,40 @@ describe('adminTransitionBodySchema', () => {
     );
   });
 
+  it.each([
+    ['the Hangul filler', 0x3164],
+    ['the Hangul choseong filler', 0x115f],
+    ['the Hangul jungseong filler', 0x1160],
+    ['the halfwidth Hangul filler', 0xffa0],
+    ['the blank Braille pattern', 0x2800],
+  ])(
+    'refuses a reason of %s alone — a letter or a symbol by category, blank on screen',
+    (_, codePoint) => {
+      const blank = String.fromCharCode(codePoint);
+      for (const reason of [blank.repeat(3), `${ZWNJ}${blank}`]) {
+        const result = adminTransitionBodySchema.safeParse({
+          to: ORDER_STATUSES.CANCELLED,
+          reason,
+        });
+        expect(result.success).toBe(false);
+        expect(result.error?.issues[0]?.message).toBe(
+          CANCELLATION_REASON_REQUIRED_MESSAGE,
+        );
+      }
+    },
+  );
+
+  it.each([
+    ['a Persian word', 'دلیل'],
+    ['a ZWNJ inside a word', `رسید${ZWNJ}ها`],
+    ['a lone full stop', '.'],
+  ])('still takes %s', (_, reason) => {
+    expect(
+      adminTransitionBodySchema.parse({ to: ORDER_STATUSES.CANCELLED, reason })
+        .reason,
+    ).toBe(reason);
+  });
+
   it('keeps the ZWNJ inside a Persian reason', () => {
     const reason = `رسید${ZWNJ}ها نرسید`;
     expect(
