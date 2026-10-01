@@ -394,13 +394,15 @@ export function sentryOptions() {
     // its full URL, admin search included. Whole, for the reason the server
     // drops its Console integration (`withoutConsoleBreadcrumbs`): a filter
     // only knows the log lines that existed when it was written.
+    //
+    // The screen-reader cut before the receipt-key scrub: the scrub's run
+    // does not stop at `[`, so it would eat the `[aria-label="` the cut keys
+    // on whenever a class or id holds `receipts/`, and the label would leak.
     beforeBreadcrumb: (breadcrumb: Sentry.Breadcrumb) =>
       breadcrumb.category === 'console'
         ? null
-        : withoutScreenReaderText(
-            withoutReceiptKeyBreadcrumb(
-              withoutAdminQueryBreadcrumb(breadcrumb),
-            ),
+        : withoutReceiptKeyBreadcrumb(
+            withoutScreenReaderText(withoutAdminQueryBreadcrumb(breadcrumb)),
           ),
     integrations: withoutConsoleBreadcrumbs,
   };
