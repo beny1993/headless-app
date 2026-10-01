@@ -1,7 +1,11 @@
 import { apiAdminOrderReceiptPath } from '@/lib/constant/paths';
 import { formatJalaliDateTime, formatNumber } from '@/lib/format';
 import { ORDER_STATUSES, type OrderStatus } from '@/lib/orders/order-status';
-import { receiptsLabel } from '@/lib/orders/receipt';
+import {
+  OPENS_IN_NEW_TAB,
+  receiptAlt,
+  receiptsLabel,
+} from '@/lib/orders/receipt';
 import type { AdminReceipt } from '@/logic/orders/get-admin-order';
 
 /**
@@ -44,7 +48,7 @@ export function OrderReceipts({
         </>
       ) : (
         <ul className="flex flex-wrap gap-4">
-          {receipts.map((receipt) => {
+          {receipts.map((receipt, index) => {
             const url = apiAdminOrderReceiptPath(orderId, receipt.id);
             return (
               <li key={receipt.id} className="w-28">
@@ -60,10 +64,11 @@ export function OrderReceipts({
                   {/* eslint-disable-next-line no-restricted-syntax */}
                   <img
                     src={url}
-                    alt="رسید پرداخت"
+                    alt={receiptAlt(index + 1)}
                     loading="lazy"
                     className="size-28 object-cover"
                   />
+                  <span className="sr-only">{OPENS_IN_NEW_TAB}</span>
                 </a>
                 <p className="text-muted-foreground nums mt-1 text-xs">
                   {formatJalaliDateTime(receipt.createdAt)}

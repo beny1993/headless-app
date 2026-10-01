@@ -16,8 +16,10 @@ import {
 import {
   acceptsReceipts,
   MAX_RECEIPTS_PER_ORDER,
+  OPENS_IN_NEW_TAB,
   RECEIPT_CAP_MESSAGE,
   RECEIPT_FORMAT_HINT,
+  receiptAlt,
   receiptSchema,
   receiptsLabel,
   validateReceiptFile,
@@ -149,7 +151,7 @@ export function ReceiptBox({
 
       {receipts.length > 0 && (
         <ul className="mb-4 flex flex-wrap gap-3">
-          {receipts.map((receipt) => {
+          {receipts.map((receipt, index) => {
             const url = apiOrderReceiptPath(orderId, receipt.id);
             return (
               <li key={receipt.id} className="w-24">
@@ -168,10 +170,11 @@ export function ReceiptBox({
                   {/* eslint-disable-next-line no-restricted-syntax */}
                   <img
                     src={url}
-                    alt="رسید پرداخت"
+                    alt={receiptAlt(index + 1)}
                     loading="lazy"
                     className="size-24 object-cover"
                   />
+                  <span className="sr-only">{OPENS_IN_NEW_TAB}</span>
                 </a>
                 <p className="text-muted-foreground nums mt-1 text-center text-xs">
                   {receipt.uploadedAt}
@@ -216,18 +219,18 @@ export function ReceiptBox({
             onClick={upload}
             disabled={!file || busy}
             data-umami-event={`${eventPrefix}-receipt-upload`}
-            className="bg-accent-strong hover:bg-accent-hover inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium text-white transition-colors disabled:opacity-50"
+            className="bg-accent-strong hover:bg-accent-hover inline-flex min-h-11 items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium text-white transition-colors disabled:opacity-50"
           >
             {busy && (
               <Loader2 size={14} className="animate-spin" aria-hidden="true" />
             )}
             بارگذاری رسید
           </button>
-          {file && (
-            <p className="text-sm" aria-live="polite">
-              یک تصویر انتخاب شد
-            </p>
-          )}
+          {/* Mounted with the picker, only its words changing: a live region
+              that arrives together with its text may never be announced. */}
+          <p className="text-sm" aria-live="polite">
+            {file ? 'یک تصویر انتخاب شد' : ''}
+          </p>
           <p id={hintId} className="text-muted-foreground w-full text-xs">
             {RECEIPT_FORMAT_HINT}
           </p>

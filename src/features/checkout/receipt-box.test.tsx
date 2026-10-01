@@ -9,7 +9,9 @@
 //   · a refusal shows the server's Persian sentence; a 409 (the order moved on
 //     under the shopper) also re-renders the box from the server — and the
 //     cap's 409 leaves its sentence to the re-rendered box, so it shows once;
-//   · what the box offers follows the status it is given.
+//   · what the box offers follows the status it is given;
+//   · for a screen reader: each receipt numbered, its link saying it opens a
+//     new tab, and the «picked» live region mounted before anything is picked.
 //
 // Mocked at the module edge only: `next/navigation` (refresh is a recorder)
 // and `@/lib/api-client`'s `postForm` (a recorder; `ApiRequestError` stays
@@ -49,6 +51,10 @@ afterEach(() => {
 
 const ORDER_ID = '11111111-1111-1111-1111-111111111111';
 const PREFIX = 'account-order';
+// Constructed, never typed: the project's control-character rule.
+const ZWNJ = String.fromCharCode(0x200c);
+/** What a screen reader hears after a receipt link: it opens a new tab. */
+const NEW_TAB = `(در برگه${ZWNJ}ی تازه)`;
 const receipt = (n: number) => ({
   id: `2222222${n}-2222-2222-2222-222222222222`,
   uploadedAt: '۸ مهر ۱۴۰۵',
@@ -225,6 +231,36 @@ describe('ReceiptBox', () => {
         'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.',
       ),
     ).toBeTruthy();
+  });
+
+  it('numbers each receipt for a screen reader, and says its link opens a new tab', () => {
+    render(box(ORDER_STATUSES.PROCESSING, [receipt(1), receipt(2)]));
+
+    const links = [
+      ...document.querySelectorAll<HTMLAnchorElement>(
+        `[data-umami-event="${PREFIX}-receipt-open"]`,
+      ),
+    ];
+    // Five receipts named alike are five identical links; Persian digits, as
+    // everything a shopper reads.
+    expect(
+      links.map((link) => link.querySelector('img')?.getAttribute('alt')),
+    ).toEqual(['رسید پرداخت ۱', 'رسید پرداخت ۲']);
+    for (const link of links) expect(link.textContent).toContain(NEW_TAB);
+  });
+
+  it('keeps its live region in place before anything is picked, changing only its words', () => {
+    // A live region that arrives together with its text may never be
+    // announced; one already on the page is, when its text changes.
+    render(box(ORDER_STATUSES.AWAITING_RECEIPT));
+    const region = document.querySelector('[aria-live="polite"]');
+    expect(region).not.toBeNull();
+    expect(region!.textContent).toBe('');
+
+    pick(screenshot());
+
+    expect(document.querySelector('[aria-live="polite"]')).toBe(region);
+    expect(region!.textContent).toBe('یک تصویر انتخاب شد');
   });
 
   it('invites a receipt for an order accepted by hand, with none uploaded', () => {

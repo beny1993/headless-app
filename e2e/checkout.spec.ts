@@ -89,6 +89,18 @@ test('card to card: the receipt accepts the order, and only its owner can read i
     ),
   ).toBeVisible();
 
+  // Both receipt controls are a thumb's height, 44px: the picker's label (the
+  // input itself is sr-only) and the upload button.
+  const picker = page.locator('label', {
+    has: page.locator('[data-umami-event="checkout-result-receipt-file"]'),
+  });
+  const upload = page.locator(
+    '[data-umami-event="checkout-result-receipt-upload"]',
+  );
+  for (const control of [picker, upload]) {
+    expect((await control.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  }
+
   // The first receipt accepts it, and says when it came: a date and a Tehran
   // time, since one order can hold five receipts from the same day.
   const receipt = await uploadReceipt(page);

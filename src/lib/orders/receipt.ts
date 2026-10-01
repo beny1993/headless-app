@@ -33,6 +33,16 @@ export const MAX_RECEIPT_BYTES = 5 * 1024 * 1024;
 export const RECEIPT_FORMAT_HINT = formatHint(MAX_RECEIPT_BYTES);
 export const RECEIPT_SIZE_ERROR = sizeError(MAX_RECEIPT_BYTES);
 
+/**
+ * A receipt thumbnail's alt text, numbered — «رسید پرداخت ۲» — so five receipts
+ * are not five links read out alike. The shopper's box and the admin's list.
+ */
+export const receiptAlt = (position: number) =>
+  `رسید پرداخت ${toPersianDigits(position)}`;
+
+/** Read out after a receipt thumbnail's alt, never shown: its link opens a new tab. */
+export const OPENS_IN_NEW_TAB = '(در برگه\u200Cی تازه)';
+
 /** The sixth receipt's refusal — the API's and the box's, one sentence. */
 export const RECEIPT_CAP_MESSAGE = `حداکثر ${toPersianDigits(MAX_RECEIPTS_PER_ORDER)} رسید برای هر سفارش؛ برای رسید بیشتر با پشتیبانی تماس بگیر.`;
 
