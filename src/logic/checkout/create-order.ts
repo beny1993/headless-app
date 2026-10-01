@@ -79,7 +79,7 @@ export const MAX_OPEN_ORDERS = 5;
  * that, for both payment methods at once.
  *
  * 30/hour is far above any real shopper — and above the machines: the E2E
- * suite's single throwaway customer places about 15 orders a run (AGENTS.md,
+ * suite's single throwaway customer places 19 orders a run (AGENTS.md,
  * «Checkout is rate-capped per account»). Keep that headroom if the suite grows.
  *
  * Deliberately NOT status-aware: cancelling an order must not give the quota
@@ -108,6 +108,9 @@ const isUniqueViolation = (error: unknown, constraint: string): boolean => {
   const pg = pgErrorOf(error);
   return pg?.code === '23505' && pg.constraint === constraint;
 };
+
+/** The checkout transaction's isolation level, pinned: see step 3a. */
+const READ_COMMITTED = { isolationLevel: 'read committed' } as const;
 
 /**
  * Creates an order for `userId` from a validated checkout body.
@@ -146,12 +149,12 @@ export const createOrder = async (
   // 0. Idempotent-replay fast path. A retry (double-submit, a resend of the same
   // checkout) carries the key the first attempt did; if that order already
   // exists, return it before doing ANY work. This is a correctness requirement,
-  // not just an optimization: without it a replay of an order that took the last
-  // unit would 422 on the stock guard, and a replay of a Zarinpal order that put
-  // the user at the open-order cap would 422 on the cap — instead of returning
-  // the order the first attempt created. The concurrent race that slips past this
-  // (two requests both finding nothing here) is caught under the account lock
-  // below (3b).
+  // not just an optimization: steps 1–2 run before the account lock, so without
+  // it a retry whose province or online payment was switched off after the first
+  // attempt committed would 422 there instead of getting its order back.
+  // Everything past the lock — the stock guard, the caps — is covered by the
+  // re-check under it (3b) as well, which also catches the concurrent race that
+  // slips past this (two requests both finding nothing here).
   if (idempotencyKey) {
     const existing = await OrderDao.getByUserAndIdempotencyKey(
       userId,
@@ -195,7 +198,11 @@ export const createOrder = async (
       // transaction's FIRST lock — product rows are locked only after it, in
       // productId order — so a second checkout of the same account waits here
       // until the first has committed, and the caps below count every order
-      // that came before it, however many requests arrived at once.
+      // that came before it, however many requests arrived at once. That needs
+      // READ COMMITTED, pinned in this transaction's config, as `OtpSendLogDao`
+      // pins its own, rather than inherited from `default_transaction_isolation`:
+      // a snapshot level takes its snapshot at this lock, before the wait, so
+      // the caps and 3b would miss the very orders they waited for.
       // ponytail: a burst from one account queues on its own row, each waiting
       // request holding a pool connection until its turn; the /api/* rate limit
       // bounds that queue. The caps stay per account: N verified phones still
@@ -216,7 +223,9 @@ export const createOrder = async (
 
       // 3c. The rolling creation cap: every order this user created in the
       // window, whatever its status and however it was paid. This is the one
-      // that bounds a COD loop. See MAX_ORDERS_PER_WINDOW.
+      // that bounds a loop of orders each finished in turn — paid, or given its
+      // receipt — which the open-order cap below never sees. See
+      // MAX_ORDERS_PER_WINDOW.
       const recentOrders = await OrderDao.countCreatedSince(
         userId,
         new Date(Date.now() - ORDER_RATE_WINDOW_MS),
@@ -374,7 +383,7 @@ export const createOrder = async (
       }
 
       return order;
-    });
+    }, READ_COMMITTED);
     // No admin alert here: every checkout is born open, and an unfinished
     // checkout never wakes an admin. A card-to-card order's alert comes when its
     // first receipt accepts it (`uploadReceipt`); a Zarinpal order's when its

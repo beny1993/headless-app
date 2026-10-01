@@ -56,11 +56,17 @@ export const withoutConsoleBreadcrumbs = (integrations: SentryIntegration[]) =>
 /**
  * What the SDK is allowed to collect on its own.
  *
- * Every category is set explicitly. `dataCollection` is opt-*out*: passing the
- * object at all — even `{}` — resolves each omitted category to its permissive
- * default (cookies, request bodies and stack-frame locals all `true`), and for a
- * phone-OTP app those three are, respectively, the session cookie, the OTP in
- * the sign-in POST body, and the plaintext code sitting in a local variable.
+ * Every category that can hold a customer's data is set explicitly; SDK 10.73.0
+ * also has `graphQL`, `genAI` and `frameContextLines`, left at their defaults
+ * (no GraphQL or AI client here, and context lines are our own source).
+ * `dataCollection` is opt-*out*: passing the object at all — even `{}` —
+ * resolves each omitted category to its permissive default (cookies, request
+ * bodies and stack-frame locals all `true`), and for a phone-OTP app those
+ * three are, respectively, the session cookie, the OTP in the sign-in POST
+ * body, and the plaintext code sitting in a local variable.
+ *
+ * `httpBodies: []` does not keep every body out, though: see
+ * {@link withoutRequestBody}.
  *
  * The deprecated `sendDefaultPii: false` would cover the same ground today, but
  * it is removed in SDK v11 — and it is a single switch where this is a list you
@@ -158,28 +164,62 @@ export const sanitizeDatabaseError = (
  * The users search puts a customer's phone or name in an admin page's `?q=`.
  * `urlQueryParams: false` above only drops the separate `query_string`: the SDK
  * still sends the page URL whole as `request.url` (and as `Referer`), and
- * records navigations and fetches, query included, as breadcrumbs.
+ * records navigations and fetches, query included, as breadcrumbs. And
+ * `onRequestError` (`src/instrumentation.ts`) copies Next's `req.url`, query
+ * included, into `contexts.nextjs.request_path`, with or without a `request`.
  */
 export const withoutAdminQuery = (
   event: Sentry.ErrorEvent,
 ): Sentry.ErrorEvent => {
-  const { request } = event;
-  if (!request) return event;
+  const { request, contexts } = event;
+  const nextjs = contexts?.nextjs;
   return {
     ...event,
-    request: {
-      ...request,
-      url: request.url && stripAdminQuery(request.url),
-      headers:
-        request.headers &&
-        Object.fromEntries(
-          Object.entries(request.headers).map(([name, value]) => [
-            name,
-            name.toLowerCase() === 'referer' ? stripAdminQuery(value) : value,
-          ]),
-        ),
-    },
+    ...(request && {
+      request: {
+        ...request,
+        url: request.url && stripAdminQuery(request.url),
+        headers:
+          request.headers &&
+          Object.fromEntries(
+            Object.entries(request.headers).map(([name, value]) => [
+              name,
+              name.toLowerCase() === 'referer' ? stripAdminQuery(value) : value,
+            ]),
+          ),
+      },
+    }),
+    ...(typeof nextjs?.request_path === 'string' && {
+      contexts: {
+        ...contexts,
+        nextjs: {
+          ...nextjs,
+          request_path: stripAdminQuery(nextjs.request_path),
+        },
+      },
+    }),
   };
+};
+
+/**
+ * The event without the HTTP request body the SDK attached to it.
+ *
+ * `httpBodies: []` above does not stop that: in SDK 10.73.0 the Node `Http`
+ * integration records an incoming body read through `req.on('data')` without
+ * consulting the list, and the request-data integration attaches it to every
+ * event captured in that request, transactions as well as errors
+ * (`@sentry/core` `integrations/http/server-subscription.js`,
+ * `integrations/requestdata.js`). This reaches only the errors; the
+ * transactions are dropped whole by `beforeSendTransaction`. Span streaming
+ * (`traceLifecycle: 'stream'`, not set here) would put the body on spans as
+ * `http.request.body.data`, where neither reaches.
+ */
+export const withoutRequestBody = (
+  event: Sentry.ErrorEvent,
+): Sentry.ErrorEvent => {
+  if (event.request?.data === undefined) return event;
+  const { data: _data, ...request } = event.request;
+  return { ...event, request };
 };
 
 /** Where a breadcrumb keeps a URL: navigation's `from`/`to`, fetch's `url`. */
@@ -204,6 +244,28 @@ export const withoutAdminQueryBreadcrumb = (
     : breadcrumb;
 
 /**
+ * An element's screen-reader text, as the browser SDK writes it into a `ui.*`
+ * breadcrumb's element path: `body > a.view[aria-label="…"]`. The users list
+ * labels each row's view link with the customer's name and phone number, the
+ * pets tab labels its buttons with a pet's name, the addresses tab with an
+ * address title. The SDK writes the value unescaped, so a `"]` inside it cannot
+ * be told from its end: everything from the first such attribute on is
+ * dropped, the rest of the path with it, and only the attribute's name stays.
+ */
+const SCREEN_READER_TEXT = /\[(aria-label|title|alt)="[\s\S]*$/;
+
+/** A `ui.*` breadcrumb without its {@link SCREEN_READER_TEXT}. */
+export const withoutScreenReaderText = (
+  breadcrumb: Sentry.Breadcrumb,
+): Sentry.Breadcrumb =>
+  breadcrumb.category?.startsWith('ui.') && breadcrumb.message
+    ? {
+        ...breadcrumb,
+        message: breadcrumb.message.replace(SCREEN_READER_TEXT, '[$1]'),
+      }
+    : breadcrumb;
+
+/**
  * Shared `Sentry.init` options.
  *
  * A function, not a constant: the DSN and environment are read from `process.env`,
@@ -224,15 +286,30 @@ export function sentryOptions() {
     environment:
       getEnvVariable(VARS.NEXT_PUBLIC_SENTRY_ENVIRONMENT, false, '').trim() ||
       undefined,
-    // No `tracesSampleRate`, so tracing stays OFF and only errors are sent.
-    // The backend is GlitchTip (docs/DEPLOY.md §9), whose performance support is
-    // partial — and transactions are the high-volume signal, so enabling them
-    // spends a shared event quota on data nobody here reads. Errors are the
-    // whole point. One line to turn back on if that ever changes.
+    // Errors only, and not because `tracesSampleRate` is absent: without it the
+    // Node and edge SDKs read SENTRY_TRACES_SAMPLE_RATE from the environment
+    // (`@sentry/node-core` `sdk/index.js`, `@sentry/vercel-edge`), so one
+    // deploy variable switches tracing on. `beforeSendTransaction` below is
+    // what keeps transactions out. The backend is GlitchTip (docs/DEPLOY.md
+    // §9), whose performance support is partial — and transactions are the
+    // high-volume signal, so enabling them spends a shared event quota on data
+    // nobody here reads. Errors are the whole point.
     dataCollection,
     beforeSend: (event: Sentry.ErrorEvent, hint: Sentry.EventHint) =>
-      withoutAdminQuery(sanitizeDatabaseError(event, hint)),
-    beforeBreadcrumb: withoutAdminQueryBreadcrumb,
+      withoutRequestBody(withoutAdminQuery(sanitizeDatabaseError(event, hint))),
+    // Every transaction dropped, whatever the sample rate. A transaction never
+    // passes `beforeSend`, so an admin search URL or a request body would ride
+    // on one past every scrub above.
+    beforeSendTransaction: () => null,
+    // Console breadcrumbs go whole, in the browser too, whose `Breadcrumbs`
+    // integration keeps them: Next logs a failed navigation's RSC fetch with
+    // its full URL, admin search included. Whole, for the reason the server
+    // drops its Console integration (`withoutConsoleBreadcrumbs`): a filter
+    // only knows the log lines that existed when it was written.
+    beforeBreadcrumb: (breadcrumb: Sentry.Breadcrumb) =>
+      breadcrumb.category === 'console'
+        ? null
+        : withoutScreenReaderText(withoutAdminQueryBreadcrumb(breadcrumb)),
     integrations: withoutConsoleBreadcrumbs,
   };
 }

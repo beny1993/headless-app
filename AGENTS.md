@@ -392,16 +392,19 @@ font rendering).
   server, and on 2026-09-29 it took down a parallel session's E2E run mid-suite.
 - **Checkout is rate-capped per account** (`MAX_ORDERS_PER_WINDOW` in
   `src/logic/checkout/create-order.ts`, 30 orders an hour, any status). One
-  run's throwaway customer places about 19 across both viewports, so a spec
-  that adds checkouts eats into that headroom — raise the constant before the
-  suite trips it with a 422 mid-run.
+  run's throwaway customer places 19 across both viewports (`checkout` 6,
+  `admin` 8, `admin-users` 2, `admin-settings` 2, `admin-catalog` 1 at 1280px
+  only), so a spec that adds checkouts eats into that headroom — raise the
+  constant before the suite trips it with a 422 mid-run.
 - **A card-to-card order is open until its receipt arrives.** The open-order
   cap (`MAX_OPEN_ORDERS`, five per account) counts `awaiting_receipt` as well
   as `pending_payment`, and the run's one customer places more card-to-card
   orders than that. A spec that places one and never uploads its receipt
   closes it in a `finally` with `closeWaitingOrder` (`e2e/support.ts`: a cancel
-  with a reason, through the admin API) — or a later checkout in the run is
-  refused with a 422.
+  with a reason, through the admin API), and one that means to move its order
+  on closes it after the test only if it is still waiting
+  (`closeIfStillWaiting`), as it is when the test failed first — or a later
+  checkout in the run is refused with a 422.
 - **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
   customer and a fresh admin (`pnpm create-admin`) in through the real login
   page and saves their sessions, plus the customer's number
@@ -409,14 +412,15 @@ font rendering).
   `test.use({ storageState })` (`e2e/support.ts`). send-otp allows 3 a minute
   for the whole machine, so a run started within a minute of the last one
   waits about a minute.
-- **What a run leaves in the dev database:** two throwaway `0999…` accounts, a
-  few orders (the card-to-card ones no spec uploads a receipt for — the users
-  spec's, the pager's, the discount's and the saved card's — cancelled by
-  `closeWaitingOrder`), three receipt files per width under
-  `uploads/receipts/` (the checkout spec's, the shipped order's and the
-  turned-down one's — receipts are append-only, so nothing deletes them), one
-  inactive `e2e-…` product (it is given three
-  photos and has two of them removed again, so one file stays under `uploads/`)
+- **What a run leaves in the dev database:** two throwaway `0999…` accounts,
+  the 19 orders counted under «Checkout is rate-capped per account» (none left
+  open: the card-to-card ones no spec uploads a receipt for are cancelled — the
+  admin spec's waiting one by the admin, and the users spec's, the pager's, the
+  discount's and the saved card's by `closeWaitingOrder`), three receipt files
+  per width under `uploads/receipts/` (the checkout spec's, the shipped order's
+  and the turned-down one's — receipts are append-only, so nothing deletes
+  them), one inactive `e2e-…` product (it is given three photos and has two of
+  them removed again, so one file stays under `uploads/`)
   filed under a seeded sub-category and a seeded second category — seeded, and
   never one the spec made, because the junction's restricting foreign key would
   pin that category for good — one switched-off `E2E…` discount code and one

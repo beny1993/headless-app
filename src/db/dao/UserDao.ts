@@ -123,15 +123,19 @@ export class UserDao {
    * Holds this user's row until `tx` ends — checkout's one-at-a-time lock per
    * account (`src/logic/checkout/create-order.ts`). A second checkout by the
    * same account waits here until the first has committed, so the caps it
-   * counts next include that order.
+   * counts next include that order. That holds only under READ COMMITTED,
+   * which the caller must pin: under a snapshot level every read after the
+   * wait still sees the world from before it.
    *
    * `FOR NO KEY UPDATE`, not `FOR UPDATE`: two checkouts still conflict, but
    * the `FOR KEY SHARE` a foreign-key check takes on this row does not, so an
-   * insert that references the user (a new session row) does not wait for a
-   * checkout. A sign-in still can: Better Auth's verify step also UPDATEs
-   * this row (`phone_number_verified`, `updated_at`), which conflicts with
-   * this lock, so an account's sign-in queues behind that same account's
-   * in-flight checkout — one short transaction, never another account's.
+   * insert that references the user — a `pets` or `addresses` row, whose keys
+   * are in `src/db/schema/account.ts` — does not wait for a checkout
+   * (`UserDao.lockForCheckout.integration.test.ts`). A sign-in still can:
+   * Better Auth's verify step UPDATEs this row (`phone_number_verified`,
+   * `updated_at`) before it creates the session, and that conflicts with this
+   * lock, so an account's sign-in queues behind every checkout from that same
+   * account already queued — never another account's.
    *
    * It must be the transaction's FIRST lock. Product rows are only ever locked
    * after it, in `byProductId` order, so no two transactions can hold these in
