@@ -259,6 +259,37 @@ describe('receipt key privacy', () => {
     expect(captured).not.toContain(id);
   });
 
+  // A breadcrumb is any library's to add, and a filter that throws on an odd
+  // one throws to whoever called `addBreadcrumb`. Nothing to scrub in these.
+  it.each([
+    ['a null message', { category: 'http', message: null }],
+    ['a number for a message', { category: 'http', message: 42 }],
+    [
+      'a number on an element breadcrumb',
+      { category: 'ui.click', message: 42 },
+    ],
+    ['a number for a category', { category: 7, message: 'receipts/x.jpg' }],
+  ])('passes a breadcrumb with %s through, never throwing', async (_, odd) => {
+    Sentry.getIsolationScope().clearBreadcrumbs();
+    expect(() =>
+      Sentry.addBreadcrumb(
+        odd as unknown as Parameters<typeof Sentry.addBreadcrumb>[0],
+      ),
+    ).not.toThrow();
+    captured = undefined;
+    Sentry.captureMessage('after an odd breadcrumb');
+    await Sentry.flush(2000);
+
+    expect(captured).toBeDefined();
+    const [, [[, event]]] = JSON.parse(captured!) as [
+      unknown,
+      [[unknown, { breadcrumbs?: unknown[] }]],
+    ];
+    expect(event.breadcrumbs).toContainEqual(
+      expect.objectContaining({ category: odd.category }),
+    );
+  });
+
   it('sends no receipt key that a storage error quotes', async () => {
     // AWS's AccessDenied names the object it refused. A failed GetObject is
     // rethrown by `readReceipt`, and the API's error boundary captures it.

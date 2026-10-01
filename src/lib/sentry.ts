@@ -289,7 +289,9 @@ export const withoutReceiptKeyBreadcrumb = (
   breadcrumb: Sentry.Breadcrumb,
 ): Sentry.Breadcrumb => ({
   ...breadcrumb,
-  ...(breadcrumb.message !== undefined && {
+  // Strings only: a breadcrumb is any library's to add, and a filter that
+  // throws on an odd one throws to whoever called `addBreadcrumb`.
+  ...(typeof breadcrumb.message === 'string' && {
     message: withoutReceiptKey(breadcrumb.message),
   }),
   ...(breadcrumb.data && {
@@ -313,14 +315,14 @@ export const withoutReceiptKeyEvent = (
   event: Sentry.ErrorEvent,
 ): Sentry.ErrorEvent => ({
   ...event,
-  ...(event.message !== undefined && {
+  ...(typeof event.message === 'string' && {
     message: withoutReceiptKey(event.message),
   }),
   ...(event.exception?.values && {
     exception: {
       ...event.exception,
       values: event.exception.values.map((exception) =>
-        exception.value === undefined
+        typeof exception.value !== 'string'
           ? exception
           : { ...exception, value: withoutReceiptKey(exception.value) },
       ),
@@ -343,7 +345,9 @@ const SCREEN_READER_TEXT = /\[(aria-label|title|alt)="[\s\S]*$/;
 export const withoutScreenReaderText = (
   breadcrumb: Sentry.Breadcrumb,
 ): Sentry.Breadcrumb =>
-  breadcrumb.category?.startsWith('ui.') && breadcrumb.message
+  typeof breadcrumb.category === 'string' &&
+  breadcrumb.category.startsWith('ui.') &&
+  typeof breadcrumb.message === 'string'
     ? {
         ...breadcrumb,
         message: breadcrumb.message.replace(SCREEN_READER_TEXT, '[$1]'),
