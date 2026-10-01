@@ -281,10 +281,16 @@ describe('adminTransitionBodySchema', () => {
     ['the Hangul jungseong filler', 0x1160],
     ['the halfwidth Hangul filler', 0xffa0],
     ['the blank Braille pattern', 0x2800],
+    // Pasted with rich text: draws no ink.
+    ['the object replacement character', 0xfffc],
+    // A box on macOS, but blank where a font has no glyph for them.
+    ['the musical null notehead', 0x1d159],
+    ['the Egyptian hieroglyph full blank', 0x13441],
+    ['the Egyptian hieroglyph half blank', 0x13442],
   ])(
     'refuses a reason of %s alone — a letter or a symbol by category, blank on screen',
     (_, codePoint) => {
-      const blank = String.fromCharCode(codePoint);
+      const blank = String.fromCodePoint(codePoint);
       for (const reason of [blank.repeat(3), `${ZWNJ}${blank}`]) {
         const result = adminTransitionBodySchema.safeParse({
           to: ORDER_STATUSES.CANCELLED,

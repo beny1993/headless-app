@@ -215,11 +215,17 @@ export const CANCELLATION_REASON_REQUIRED_MESSAGE =
   'برای لغو سفارش، دلیل را بنویس.';
 
 /**
- * Every default-ignorable code point (ZWNJ among them, and the Hangul fillers
- * U+115F, U+1160, U+3164 and U+FFA0, letters by category) and the blank Braille
- * pattern U+2800 (a symbol): characters that render as nothing.
+ * Characters that render as nothing: every default-ignorable code point (ZWNJ
+ * among them, and the Hangul fillers U+115F, U+1160, U+3164 and U+FFA0, letters
+ * by category); the blank Braille pattern U+2800 and the object replacement
+ * character U+FFFC, the placeholder pasted rich text leaves (symbols, neither
+ * drawing any ink); and the Egyptian hieroglyph full and half blanks U+13441
+ * and U+13442 and the musical null notehead U+1D159, which may draw nothing
+ * where a font has them (this Mac has none, and Chrome draws a missing-glyph
+ * box for each).
  */
-const RENDERS_AS_NOTHING = /[\p{Default_Ignorable_Code_Point}\u2800]/gu;
+const RENDERS_AS_NOTHING =
+  /[\p{Default_Ignorable_Code_Point}\u2800\uFFFC\u{13441}\u{13442}\u{1D159}]/gu;
 
 /**
  * The admin transition request body, shared by the route and the panel's
