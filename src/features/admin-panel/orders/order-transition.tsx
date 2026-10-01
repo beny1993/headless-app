@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent } from 'react';
 import { AlertCircle, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { postData } from '@/lib/api-client';
@@ -58,6 +58,7 @@ export function OrderTransition({
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState('');
   const [reasonError, setReasonError] = useState<string | null>(null);
+  const reasonField = useRef<HTMLInputElement>(null);
 
   const next = adminNextStatuses(status);
   const canCancel = next.includes(ORDER_STATUSES.CANCELLED);
@@ -103,6 +104,9 @@ export function OrderTransition({
         ? CANCELLATION_REASON_REQUIRED_MESSAGE
         : null;
     setReasonError(refusal);
+    // Back to the field the refusal is about, so the admin types the reason
+    // straight away; the refusal itself is announced by its `role="alert"`.
+    if (refusal) reasonField.current?.focus();
     if (parsed.success && !refusal) await move(parsed.data);
   };
 
@@ -159,15 +163,19 @@ export function OrderTransition({
               دلیل لغو
             </label>
             <input
+              ref={reasonField}
               id={`${formId}-reason`}
+              name="reason"
               type="text"
+              autoComplete="off"
+              spellCheck
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               maxLength={CANCELLATION_REASON_MAX}
               aria-invalid={reasonError ? true : undefined}
               aria-describedby={reasonError ? `${formId}-error` : undefined}
               data-umami-event="admin-panel-order-cancel-reason"
-              className="border-border focus:border-accent-strong w-full rounded-xl border-2 px-4 py-2.5 text-sm outline-none"
+              className="border-border focus-visible:border-accent-strong w-full rounded-xl border-2 px-4 py-2.5 text-sm outline-none focus-visible:ring-2"
             />
           </div>
           <button

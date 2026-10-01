@@ -4,7 +4,8 @@
 //     copy. Revert to `useState(status)` and the "follows the prop" test fails.
 //   · a click POSTs `{ to }` to the transitions endpoint and, on success, calls
 //     router.refresh() — never tracking the new status itself.
-//   · a terminal order offers nothing.
+//   · a terminal order offers nothing;
+//   · a cancel refused for its reason puts focus back in the reason field.
 //
 // Mocked at the module edge only: `next/navigation` (refresh is a recorder) and
 // `@/lib/api-client` (postData is a recorder; `ApiRequestError` stays real),
@@ -190,6 +191,36 @@ describe('OrderTransition', () => {
         screen.getByText(CANCELLATION_REASON_REQUIRED_MESSAGE),
       ).toBeTruthy();
       expect(postData).not.toHaveBeenCalled();
+    });
+
+    it('takes the admin back to the reason field when a cancel is sent without one', async () => {
+      render(
+        <OrderTransition
+          orderId={ORDER_ID}
+          status={ORDER_STATUSES.PROCESSING}
+        />,
+      );
+      openCancel();
+      submit().focus();
+      fireEvent.click(submit());
+      await act(async () => {});
+
+      expect(document.activeElement).toBe(reasonField());
+    });
+
+    it('makes the reason a named field the browser spell-checks and never autofills', () => {
+      render(
+        <OrderTransition
+          orderId={ORDER_ID}
+          status={ORDER_STATUSES.PROCESSING}
+        />,
+      );
+      openCancel();
+
+      const field = reasonField()!;
+      expect(field.name).toBe('reason');
+      expect(field.getAttribute('autocomplete')).toBe('off');
+      expect(field.getAttribute('spellcheck')).toBe('true');
     });
 
     it('refuses a reason carrying a bidi control before sending it', async () => {
