@@ -137,12 +137,15 @@ allows it, writes the key and whether the delete worked to the server log, and
 refuses the upload with a 503 until the policy is re-applied. A probe that
 cannot reach the bucket lets the upload through and leaves a GlitchTip warning
 («receipt privacy probe could not run», with only the error's name). Neither
-carries the receipt's key, their breadcrumbs included: the storage requests in
-them read `/receipts/[redacted]` (`src/lib/sentry.ts`). A missing
-`NEXT_PUBLIC_STORAGE_BASE_URL` (nothing to probe with) refuses the upload
-outright. If Liara will not keep the policy at all, the fallback is encrypting
-each receipt in the app (design note §1e): one new secret env var that must be
-backed up off-box.
+carries the receipt's key, their breadcrumbs included: `src/lib/sentry.ts`
+redacts every `receipts/<key>` to `receipts/[redacted]` in a breadcrumb, a
+redirect hop's too, wherever it sits (path, query, a percent-encoded slash, a
+bucket itself named `receipts`), and in an event's message and exception values,
+which covers a storage error that quotes the object (AWS's AccessDenied names
+it). A missing `NEXT_PUBLIC_STORAGE_BASE_URL` (nothing to probe with) refuses
+the upload outright. If Liara will not keep the policy at all, the fallback is
+encrypting each receipt in the app (design note §1e): one new secret env var
+that must be backed up off-box.
 
 On the `local` driver, receipts sit in a `receipts/` folder under
 `APP_CONFIG_STORAGE_LOCAL_ROOT`, which `/uploads/*` never serves.
