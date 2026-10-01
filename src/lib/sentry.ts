@@ -254,21 +254,47 @@ export const withoutAdminQueryBreadcrumb = (
 ): Sentry.Breadcrumb => scrubBreadcrumbUrls(breadcrumb, stripAdminQuery);
 
 /**
- * A receipt's object key in a URL's path: `/receipts/` and everything up to the
- * next `/`, `?` or `#`. The Node SDK records the s3 driver's own requests — the
- * put, the anonymous probe, the delete — as `http` breadcrumbs whose `url` ends
- * in that key, and every event captured later in the same request carries them:
- * the exposure alarm, the probe's warning, a failed clean-up, any error.
+ * A receipt's object key wherever text can carry one: from the first
+ * `receipts/` — or `receipts%2F`, once a redirect has percent-encoded the slash
+ * — to the end of that path, so a bucket or base path itself named `receipts`
+ * cannot leave the filename behind; and not only in a URL's path, since a
+ * redirect can move the key into a query string, which the SDK files apart from
+ * the URL as `http.query`. Any case, and on no word boundary — no lookbehind
+ * either: this module ships to the browser, and Safari before 16.4 throws on
+ * one — so it over-redacts: `/my-receipts/…` and the app's own
+ * `/api/orders/<id>/receipts/<id>` lose their tails too, which is harmless.
  */
-const RECEIPT_KEY_IN_PATH = new RegExp(`/${RECEIPT_KEY_PREFIX}/[^/?#]+`, 'g');
+const RECEIPT_KEY = new RegExp(
+  `(${RECEIPT_KEY_PREFIX}(?:/|%2F))[^?#&\\s"'<>]+`,
+  'gi',
+);
 
-/** A breadcrumb whose URLs say `/receipts/[redacted]` where a key was. */
+/** `text` with `receipts/[redacted]` (or `receipts%2F[redacted]`) for a key. */
+const withoutReceiptKey = (text: string): string =>
+  text.replace(RECEIPT_KEY, '$1[redacted]');
+
+/**
+ * A breadcrumb with no receipt key in its message or in any string of its data:
+ * the Node SDK records the s3 driver's own requests — the put, the anonymous
+ * probe and each hop of a redirect it follows, the delete — as `http`
+ * breadcrumbs carrying the key.
+ */
 export const withoutReceiptKeyBreadcrumb = (
   breadcrumb: Sentry.Breadcrumb,
-): Sentry.Breadcrumb =>
-  scrubBreadcrumbUrls(breadcrumb, (url) =>
-    url.replace(RECEIPT_KEY_IN_PATH, `/${RECEIPT_KEY_PREFIX}/[redacted]`),
-  );
+): Sentry.Breadcrumb => ({
+  ...breadcrumb,
+  ...(breadcrumb.message !== undefined && {
+    message: withoutReceiptKey(breadcrumb.message),
+  }),
+  ...(breadcrumb.data && {
+    data: Object.fromEntries(
+      Object.entries(breadcrumb.data).map(([key, value]) => [
+        key,
+        typeof value === 'string' ? withoutReceiptKey(value) : value,
+      ]),
+    ),
+  }),
+});
 
 /**
  * An element's screen-reader text, as the browser SDK writes it into a `ui.*`
