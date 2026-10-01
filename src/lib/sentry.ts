@@ -8,6 +8,7 @@
 // have no way to read yet (see the sanctions note in `docs/DEPLOY.md`).
 import type * as Sentry from '@sentry/nextjs';
 import { stripAdminQuery } from '@/lib/admin-url';
+import { RECEIPT_KEY_PREFIX } from '@/lib/storage/image-upload';
 import { getEnvVariable, VARS } from '@/lib/utils/env';
 
 /**
@@ -222,12 +223,16 @@ export const withoutRequestBody = (
   return { ...event, request };
 };
 
-/** Where a breadcrumb keeps a URL: navigation's `from`/`to`, fetch's `url`. */
+/**
+ * Where a breadcrumb keeps a URL: navigation's `from`/`to`, and the `url` of a
+ * fetch or, on the server, of an outgoing `http` request.
+ */
 const BREADCRUMB_URL_KEYS = new Set(['from', 'to', 'url']);
 
-/** {@link withoutAdminQuery} for a breadcrumb. */
-export const withoutAdminQueryBreadcrumb = (
+/** `breadcrumb` with every URL in its data passed through `scrub`. */
+const scrubBreadcrumbUrls = (
   breadcrumb: Sentry.Breadcrumb,
+  scrub: (url: string) => string,
 ): Sentry.Breadcrumb =>
   breadcrumb.data
     ? {
@@ -236,12 +241,34 @@ export const withoutAdminQueryBreadcrumb = (
           Object.entries(breadcrumb.data).map(([key, value]) => [
             key,
             BREADCRUMB_URL_KEYS.has(key) && typeof value === 'string'
-              ? stripAdminQuery(value)
+              ? scrub(value)
               : value,
           ]),
         ),
       }
     : breadcrumb;
+
+/** {@link withoutAdminQuery} for a breadcrumb. */
+export const withoutAdminQueryBreadcrumb = (
+  breadcrumb: Sentry.Breadcrumb,
+): Sentry.Breadcrumb => scrubBreadcrumbUrls(breadcrumb, stripAdminQuery);
+
+/**
+ * A receipt's object key in a URL's path: `/receipts/` and everything up to the
+ * next `/`, `?` or `#`. The Node SDK records the s3 driver's own requests — the
+ * put, the anonymous probe, the delete — as `http` breadcrumbs whose `url` ends
+ * in that key, and every event captured later in the same request carries them:
+ * the exposure alarm, the probe's warning, a failed clean-up, any error.
+ */
+const RECEIPT_KEY_IN_PATH = new RegExp(`/${RECEIPT_KEY_PREFIX}/[^/?#]+`, 'g');
+
+/** A breadcrumb whose URLs say `/receipts/[redacted]` where a key was. */
+export const withoutReceiptKeyBreadcrumb = (
+  breadcrumb: Sentry.Breadcrumb,
+): Sentry.Breadcrumb =>
+  scrubBreadcrumbUrls(breadcrumb, (url) =>
+    url.replace(RECEIPT_KEY_IN_PATH, `/${RECEIPT_KEY_PREFIX}/[redacted]`),
+  );
 
 /**
  * An element's screen-reader text, as the browser SDK writes it into a `ui.*`
@@ -309,7 +336,11 @@ export function sentryOptions() {
     beforeBreadcrumb: (breadcrumb: Sentry.Breadcrumb) =>
       breadcrumb.category === 'console'
         ? null
-        : withoutScreenReaderText(withoutAdminQueryBreadcrumb(breadcrumb)),
+        : withoutScreenReaderText(
+            withoutReceiptKeyBreadcrumb(
+              withoutAdminQueryBreadcrumb(breadcrumb),
+            ),
+          ),
     integrations: withoutConsoleBreadcrumbs,
   };
 }

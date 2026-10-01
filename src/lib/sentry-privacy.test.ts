@@ -191,6 +191,42 @@ describe('admin query string privacy', () => {
   });
 });
 
+// The s3 driver's own requests — the put, the anonymous probe, the delete —
+// are recorded by the Node SDK as `http` breadcrumbs, each URL ending in the
+// receipt's object key, and every event captured later in that request takes
+// them along: the exposure alarm, the probe's warning, a failed clean-up.
+describe('receipt key privacy', () => {
+  it('sends no receipt key in a breadcrumb URL', async () => {
+    const id = crypto.randomUUID();
+    Sentry.getIsolationScope().clearBreadcrumbs();
+    Sentry.addBreadcrumb({
+      category: 'http',
+      type: 'http',
+      data: {
+        url: `https://x/bucket/receipts/${id}.jpg`,
+        'http.method': 'PUT',
+        'http.query': '?x-id=PutObject',
+        status_code: 200,
+      },
+    });
+    Sentry.addBreadcrumb({
+      category: 'navigation',
+      data: {
+        from: `/bucket/receipts/${id}.png?x-id=GetObject`,
+        to: `/bucket/receipts/${id}.webp#top`,
+      },
+    });
+    captured = undefined;
+    Sentry.captureMessage('[storage] a receipt was readable anonymously');
+    await Sentry.flush(2000);
+
+    expect(captured).toBeDefined();
+    expect(captured).not.toContain(id);
+    expect(captured).toContain('https://x/bucket/receipts/[redacted]');
+    expect(captured).toContain('/bucket/receipts/[redacted]?x-id=GetObject');
+  });
+});
+
 // `httpBodies: []` is not the whole of it: the Node `Http` integration records
 // an incoming body read through `req.on('data')` without consulting that list.
 describe('request body privacy', () => {
