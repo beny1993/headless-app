@@ -22,11 +22,11 @@ type Sent = { name: string; input: Record<string, unknown> };
  * one array of keys per page — `dropToken` makes it say it is truncated
  * without giving the next page's token, and `loopTokens` makes every page say
  * «more» with the next token from that list, round and round (bounded, so a
- * script that never stops paging fails here instead of hanging). `current` is
- * the bucket's policy
- * before any put (none: GetBucketPolicy fails the way S3 does);
- * `readBack` is what GetBucketPolicy returns after one. `listError` is thrown
- * by the listing, as the SDK throws an endpoint's refusal.
+ * script that never stops paging fails here instead of hanging). `listError`
+ * is thrown by the listing, as the SDK throws an endpoint's refusal.
+ * `current` is the bucket's policy before any put (none: GetBucketPolicy fails
+ * the way S3 does), and `currentError` what reading it fails with instead;
+ * `readBack` is what GetBucketPolicy returns after one.
  */
 const fakeClient = ({
   pages = [[UPLOAD]],
@@ -36,10 +36,12 @@ const fakeClient = ({
   putError,
   listError,
   loopTokens,
+  currentError,
 }: {
   pages?: string[][];
   dropToken?: boolean;
   loopTokens?: string[];
+  currentError?: Error;
   current?: string;
   readBack?: string;
   putError?: Error;
@@ -83,6 +85,7 @@ const fakeClient = ({
           put = true;
           return {};
         case 'GetBucketPolicyCommand': {
+          if (currentError && !put) throw currentError;
           const policy = put ? (readBack ?? stored) : stored;
           if (policy === undefined) {
             throw Object.assign(new Error('The bucket policy does not exist'), {
@@ -347,6 +350,72 @@ describe('setBucketPolicy', () => {
     const proposedAt = printed.indexOf(`arn:aws:s3:::${BUCKET}/uploads/*`);
     expect(currentAt).toBeGreaterThan(-1);
     expect(proposedAt).toBeGreaterThan(currentAt);
+  });
+
+  const accessDenied = () =>
+    Object.assign(new Error('Access Denied'), { name: 'AccessDenied' });
+
+  it('refuses to apply over a policy it could not read — there would be no copy of what it replaced', async () => {
+    const { client, sent } = fakeClient({ currentError: accessDenied() });
+
+    const ok = await setBucketPolicy({
+      client,
+      bucket: BUCKET,
+      apply: true,
+      ...quiet,
+    });
+
+    expect(ok).toBe(false);
+    expect(names(sent)).toEqual([
+      'ListObjectsV2Command',
+      'GetBucketPolicyCommand',
+    ]);
+    expect(quiet.error.mock.calls.flat().join('\n')).toMatch(
+      /current policy could not be read/,
+    );
+  });
+
+  it('says on a dry run that the policy could not be read, and that --apply will refuse', async () => {
+    const { client, sent } = fakeClient({ currentError: accessDenied() });
+
+    const ok = await setBucketPolicy({
+      client,
+      bucket: BUCKET,
+      apply: false,
+      ...quiet,
+    });
+
+    expect(ok).toBe(true);
+    expect(names(sent)).toEqual([
+      'ListObjectsV2Command',
+      'GetBucketPolicyCommand',
+    ]);
+    const printed = quiet.log.mock.calls.flat().join('\n');
+    expect(printed).toContain('(could not be read: AccessDenied)');
+    expect(printed).toMatch(/--apply will refuse/);
+  });
+
+  it('shows a current policy that is not JSON as it is stored, then replaces it', async () => {
+    const current = 'not a JSON policy {';
+    const { client, sent } = fakeClient({ current });
+
+    const ok = await setBucketPolicy({
+      client,
+      bucket: BUCKET,
+      apply: true,
+      ...quiet,
+    });
+
+    expect(quiet.log.mock.calls.flat().join('\n')).toContain(
+      `→ current policy\n${current}`,
+    );
+    expect(ok).toBe(true);
+    expect(names(sent)).toEqual([
+      'ListObjectsV2Command',
+      'GetBucketPolicyCommand',
+      'PutBucketPolicyCommand',
+      'GetBucketPolicyCommand',
+    ]);
   });
 
   it('says so when the bucket has no policy yet', async () => {

@@ -112,13 +112,16 @@ applied only with Benyamin's explicit go at that moment.**
 
 1. `pnpm bucket-policy` (dry run): lists every object and refuses while any
    sits outside `uploads/` and `receipts/` — it would go dark for every
-   shopper — or when the listing is truncated without a continuation token.
-   Then it prints the bucket's current policy — keep a copy before applying —
-   and the one statement it would set: `s3:GetObject` for anyone on
-   `arn:aws:s3:::<bucket>/uploads/*`.
-2. `pnpm bucket-policy --apply`: sets it and reads it back, failing if the
-   endpoint refused it (`NotImplemented`/`AccessDenied`) or stored something
-   else (a dropped prefix).
+   shopper — or when the listing is truncated without a continuation token,
+   or hands back a token it gave before. Then it prints the bucket's current
+   policy (exactly as stored, when it is not JSON) — keep a copy before
+   applying — and the one statement it would set: `s3:GetObject` for anyone
+   on `arn:aws:s3:::<bucket>/uploads/*`.
+2. `pnpm bucket-policy --apply`: refuses while the current policy cannot be
+   read, since there would be no copy of what it replaces; otherwise sets it
+   and reads it back, failing if the endpoint refused it
+   (`NotImplemented`/`AccessDenied`) or stored something else (a dropped
+   prefix).
 3. `pnpm verify-s3` from the staging checkout: a photo is still served to a
    stranger (200), a receipt is refused, the app key still reads it, and no URL
    is ever built for it. Record the output in the PR.

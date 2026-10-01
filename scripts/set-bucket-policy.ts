@@ -15,7 +15,9 @@
  *      `uploads/` and `receipts/`: it would go dark for every shopper. A listing
  *      that is truncated with no continuation token, or that hands back a token
  *      it gave before, is refused outright. Then the bucket's current policy is
- *      printed, before the proposed one.
+ *      printed, before the proposed one — as stored when it is not JSON — and
+ *      `--apply` refuses when it cannot be read at all: there would be no copy
+ *      of what it replaced.
  *   2. `PutBucketPolicy` — one statement, `s3:GetObject` for anyone on
  *      `arn:aws:s3:::<bucket>/uploads/*`, nothing else.
  *   3. `GetBucketPolicy` read back and compared: some endpoints accept a policy
@@ -172,17 +174,35 @@ const listKeys = async (client: Sender, bucket: string) => {
   return keys;
 };
 
-/** The bucket's policy as it stands, for the operator to see before any change. */
-const currentPolicy = async (client: Sender, bucket: string) => {
+/**
+ * The bucket's policy as it stands, for the operator to keep a copy of before
+ * any change: pretty-printed when it is JSON, exactly as stored when it is
+ * not, `(none)` when there is none. `readable` is false when it could not be
+ * read at all — and then `--apply` refuses rather than replace what nobody saw.
+ */
+const currentPolicy = async (
+  client: Sender,
+  bucket: string,
+): Promise<{ shown: string; readable: boolean }> => {
+  let policy: string | undefined;
   try {
-    const { Policy } = (await client.send(
+    ({ Policy: policy } = (await client.send(
       new GetBucketPolicyCommand({ Bucket: bucket }) as never,
-    )) as { Policy?: string };
-    return Policy ? JSON.stringify(JSON.parse(Policy), null, 2) : '(none)';
+    )) as { Policy?: string });
   } catch (cause) {
-    return (cause as Error).name === 'NoSuchBucketPolicy'
-      ? '(none)'
-      : `(could not be read: ${(cause as Error).name})`;
+    const { name } = cause as Error;
+    return name === 'NoSuchBucketPolicy'
+      ? { shown: '(none)', readable: true }
+      : { shown: `(could not be read: ${name})`, readable: false };
+  }
+  if (!policy) return { shown: '(none)', readable: true };
+  try {
+    return {
+      shown: JSON.stringify(JSON.parse(policy), null, 2),
+      readable: true,
+    };
+  } catch {
+    return { shown: policy, readable: true };
   }
 };
 
@@ -232,12 +252,25 @@ async function procedure({
 
   // What is being replaced, then what replaces it — in both modes, so the
   // operator can keep a copy of what the change replaces.
-  log(`→ current policy\n${await currentPolicy(client, bucket)}`);
+  const current = await currentPolicy(client, bucket);
+  log(`→ current policy\n${current.shown}`);
   const policy = buildReadPolicy(bucket);
   log(`→ proposed policy\n${JSON.stringify(JSON.parse(policy), null, 2)}`);
   if (!apply) {
-    log('\n(dry run) nothing was changed. Re-run with --apply to set it.');
+    log(
+      current.readable
+        ? '\n(dry run) nothing was changed. Re-run with --apply to set it.'
+        : '\n(dry run) nothing was changed. --apply will refuse until the ' +
+            'current policy can be read.',
+    );
     return true;
+  }
+  if (!current.readable) {
+    error(
+      '✗ the current policy could not be read, so there would be no copy of ' +
+        'what --apply replaces. Nothing was changed.',
+    );
+    return false;
   }
 
   try {
