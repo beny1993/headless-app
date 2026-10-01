@@ -73,8 +73,9 @@ const PRIVATE_CACHE = 'private, no-store';
 const PROBE_TIMEOUT_MS = 5_000;
 
 /**
- * Whether the bucket serves `url` to a stranger. Only a 200 or a 206 (the one
- * byte asked for) is exposure; every refusal is not. A probe that cannot run
+ * Whether the bucket serves `url` to a stranger. Any 2xx is exposure — a 200,
+ * the 206 the one-byte range asks for, or the 203 of a proxy that transformed
+ * what it fetched — and every refusal is not. A probe that cannot run
  * at all (unreachable, timed out) is not either — card to card is the only way
  * to pay, and a shopper is never turned away because Liara was unreachable —
  * but it is no proof of privacy, so it is reported: a warning with the error's
@@ -88,12 +89,12 @@ const readableByAnyone = async (url: string): Promise<boolean> => {
       cache: 'no-store',
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
-    // The answer is the status, read before the body is let go: a cancel that
-    // fails afterwards changes nothing about it, so it is ignored rather than
-    // allowed to turn exposure into the could-not-run path below.
-    const { status } = response;
+    // The answer is whether the status was a 2xx, read before the body is let
+    // go: a cancel that fails afterwards changes nothing about it, so it is
+    // ignored rather than allowed to turn exposure into the could-not-run path.
+    const { ok } = response;
     await response.body?.cancel().catch(() => {});
-    return status === 200 || status === 206;
+    return ok;
   } catch (error) {
     Sentry.captureMessage('[storage] receipt privacy probe could not run', {
       level: 'warning',

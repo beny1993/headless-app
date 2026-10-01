@@ -106,7 +106,9 @@ describe('s3Driver — receipts', () => {
     expect(init.cache).toBe('no-store');
   });
 
-  it.each([200, 206])(
+  // Any 2xx: a 200, the 206 the one-byte range asks for, or the 203 of a
+  // proxy that transformed what it fetched.
+  it.each([200, 203, 206])(
     'raises the alarm when the bucket serves a receipt to anyone (%i): Sentry first and keyless, the key on the server console, the object deleted, the upload refused',
     async (status) => {
       const { s3Driver, ReceiptExposedError } = await freshDriver();
@@ -176,6 +178,7 @@ describe('s3Driver — receipts', () => {
     // changes nothing about it, and must not turn exposure into a pass.
     const { s3Driver, ReceiptExposedError } = await freshDriver();
     mocks.fetch.mockResolvedValue({
+      ok: true,
       status: 200,
       body: { cancel: () => Promise.reject(new TypeError('cancel failed')) },
     });
