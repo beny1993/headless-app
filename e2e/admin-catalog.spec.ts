@@ -22,7 +22,7 @@ import {
   SECOND_PRODUCT_PHOTO,
   THIRD_PRODUCT_PHOTO,
   apiCall,
-  closeWaitingOrder,
+  closeOrder,
   completeCheckout,
   expect,
   expectFailedRequest,
@@ -449,7 +449,7 @@ test('an admin creates a discount code a shopper redeems, then switches it off',
       shopper.getByRole('main').getByText('تخفیف', { exact: true }),
     ).toBeVisible();
   } finally {
-    await closeWaitingOrder(page, orderId);
+    await closeOrder(page, orderId);
   }
 
   await row.locator('[data-umami-event="admin-panel-discount-toggle"]').click();

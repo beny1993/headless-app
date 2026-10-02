@@ -1,8 +1,8 @@
 // The admin users area: the list with its customer counts, a search by the
 // number a customer typed, their account page, and the walk from it to one of
 // their orders and back. Reads only, apart from the one order the customer
-// places for the walk — closed again afterwards, since it waits for a receipt
-// that never comes — so it runs at both widths.
+// places for the walk — cancelled again afterwards — so it runs at both
+// widths.
 import {
   PATHS,
   PROTECTED_PATHS,
@@ -13,7 +13,7 @@ import { toPersianDigits } from '@/lib/format';
 import {
   ADMIN_STATE,
   CUSTOMER_STATE,
-  closeWaitingOrder,
+  closeOrder,
   customerPhone,
   expect,
   placeOrder,
@@ -129,7 +129,7 @@ test.describe('an admin', () => {
       await expect(page).toHaveURL((url) => url.pathname === userPath);
       await expect(profile).toContainText(shownPhone);
     } finally {
-      await closeWaitingOrder(page, orderId);
+      await closeOrder(page, orderId);
     }
   });
 });

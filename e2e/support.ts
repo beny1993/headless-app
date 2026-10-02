@@ -20,7 +20,11 @@ import {
   checkoutResultPath,
   productPath,
 } from '@/lib/constant/paths';
-import { ORDER_STATUSES, type PaymentMethod } from '@/lib/orders/order-status';
+import {
+  ORDER_STATUSES,
+  PAYMENT_METHODS,
+  type PaymentMethod,
+} from '@/lib/orders/order-status';
 
 export { expect };
 
@@ -277,14 +281,28 @@ export async function reachPayment(page: Page) {
 }
 
 /**
- * Walks the open checkout wizard and submits it. Returns wherever that leads:
- * the result page for card to card, the mock gateway for Zarinpal.
+ * Attaches the transfer's screenshot on the checkout's payment step, card to
+ * card chosen — the product photo the catalog spec uploads, a JPEG — and waits
+ * until the form has taken it: «ثبت سفارش» is locked until then.
+ */
+export async function attachReceipt(page: Page) {
+  await page
+    .locator('[data-umami-event="checkout-receipt-file"]')
+    .setInputFiles(PRODUCT_PHOTO);
+  await expect(page.getByText('یک تصویر انتخاب شد')).toBeVisible();
+}
+
+/**
+ * Walks the open checkout wizard and submits it — card to card with its
+ * screenshot attached. Returns wherever that leads: the result page for card
+ * to card, the mock gateway for Zarinpal.
  */
 export async function completeCheckout(page: Page, payment: PaymentMethod) {
   await reachPayment(page);
   await page
     .locator(`[data-umami-event="checkout-payment-${payment}"]`)
     .check();
+  if (payment === PAYMENT_METHODS.COD) await attachReceipt(page);
   await page.locator('[data-umami-event="checkout-submit-order"]').click();
 }
 
@@ -310,64 +328,34 @@ export async function resultOrderId(page: Page) {
 }
 
 /**
- * Uploads a payment receipt from the card-to-card order page the shopper is
- * on — the checkout result page or the account order page — and waits for
- * its thumbnail, which the upload's server refresh renders. The file is the
- * product photo the catalog spec uploads. Returns the thumbnail's link, whose
- * `href` is the receipt's one (authenticated) URL.
+ * Cancels a card-to-card order a spec placed only to have one, through the
+ * admin API (`admin` is a page signed in as the admin), with the reason every
+ * admin cancel needs. Its screenshot accepted it at checkout, so it is not
+ * open against the customer's cap; it is cancelled so the run leaves no order
+ * in fulfilment, and its stock comes back. Call it in a `finally`.
  */
-export async function uploadReceipt(
-  page: Page,
-  prefix: 'checkout-result' | 'account-order' = 'checkout-result',
-) {
-  const thumbnails = page.locator(
-    `[data-umami-event="${prefix}-receipt-open"]`,
-  );
-  const before = await thumbnails.count();
-  await page
-    .locator(`[data-umami-event="${prefix}-receipt-file"]`)
-    .setInputFiles(PRODUCT_PHOTO);
-  await expect(page.getByText('یک تصویر انتخاب شد')).toBeVisible();
-  await page.locator(`[data-umami-event="${prefix}-receipt-upload"]`).click();
-  await expect(thumbnails).toHaveCount(before + 1);
-
-  const latest = thumbnails.last();
-  // Lazy-loaded, and below the fold on a phone: it loads once it is in view.
-  await latest.scrollIntoViewIfNeeded();
-  await expectRendered(latest.locator('img'));
-  return latest;
+export async function closeOrder(admin: Page, orderId: string) {
+  await cancelOrder(admin.request, orderId);
 }
 
-/**
- * Cancels a card-to-card order a spec placed and left waiting for its receipt,
- * through the admin API (`admin` is a page signed in as the admin). A waiting
- * order is OPEN: it counts against its customer's open-order cap
- * (`MAX_OPEN_ORDERS`, five), and the run's one customer places more
- * card-to-card orders than that. Call it in a `finally`.
- */
-export async function closeWaitingOrder(admin: Page, orderId: string) {
-  await cancelWaitingOrder(admin.request, orderId);
-}
-
-const cancelWaitingOrder = async (
-  admin: APIRequestContext,
-  orderId: string,
-) => {
+const cancelOrder = async (admin: APIRequestContext, orderId: string) => {
   const response = await admin.post(apiAdminOrderTransitionsPath(orderId), {
     data: {
       to: ORDER_STATUSES.CANCELLED,
       reason: 'بسته شده در آزمون خودکار',
     },
   });
-  expect(response.status(), 'closing the waiting order').toBe(200);
+  expect(response.status(), 'closing the order').toBe(200);
 };
 
 /**
- * For the `afterEach` of a test that is meant to move its order on (upload a
- * receipt, ship, cancel): closes the order only if it is STILL waiting for its
- * receipt, as it is when the test failed early. An order the test did move on
- * — accepted, shipped, already cancelled — is left exactly as it is. `admin`
- * is a request context signed in as the admin.
+ * For the `afterEach` of a test that is meant to move its order on (ship,
+ * cancel): closes the order only if it is STILL waiting for its receipt — as
+ * it is when its screenshot failed to store, or the test cut the upload and
+ * failed before cancelling. A waiting order is OPEN: it counts against its
+ * customer's open-order cap (`MAX_OPEN_ORDERS`, five). An order the test did
+ * move on — accepted, shipped, already cancelled — is left exactly as it is.
+ * `admin` is a request context signed in as the admin.
  */
 export async function closeIfStillWaiting(
   admin: APIRequestContext,
@@ -379,6 +367,6 @@ export async function closeIfStillWaiting(
     .object({ data: z.object({ status: z.string() }) })
     .parse(await response.json());
   if (data.status === ORDER_STATUSES.AWAITING_RECEIPT) {
-    await cancelWaitingOrder(admin, orderId);
+    await cancelOrder(admin, orderId);
   }
 }

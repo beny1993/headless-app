@@ -19,13 +19,12 @@ import {
   CUSTOMER_STATE,
   LOW_STOCK_PRODUCT,
   closeIfStillWaiting,
-  closeWaitingOrder,
+  closeOrder,
   expect,
   expectRendered,
   placeOrder,
   resultOrderId,
   test,
-  uploadReceipt,
 } from './support';
 
 /**
@@ -82,9 +81,10 @@ test.describe('a customer', () => {
 test.describe('an admin', () => {
   test.use({ storageState: ADMIN_STATE });
 
-  // Card-to-card orders a test means to move on — upload, ship, cancel. If it
-  // fails first, the order would stay open against the customer's cap, so
-  // each is closed after the test, unless the test did move it on.
+  // Card-to-card orders a test means to move on — ship, cancel. One still
+  // waiting for its receipt is open against the customer's cap — the cut
+  // upload's, if its test fails before cancelling it — so each is closed after
+  // the test, unless the test did move it on.
   const movedOn: string[] = [];
   test.afterEach(async ({ page }) => {
     for (const orderId of movedOn.splice(0)) {
@@ -109,11 +109,10 @@ test.describe('an admin', () => {
     shopper,
   }) => {
     // The order comes from a real checkout, in the customer's own session,
-    // and its receipt from the result page — the upload that accepts it.
+    // its screenshot attached there — the upload that accepts it.
     await placeOrder(shopper, 'cod');
     const orderId = await resultOrderId(shopper);
     movedOn.push(orderId);
-    await uploadReceipt(shopper);
 
     await page.goto(PROTECTED_PATHS.ORDERS);
     // Numbered from one down the first page, however many orders it holds.
@@ -168,9 +167,44 @@ test.describe('an admin', () => {
     const stockLeft = (count: number) =>
       shopper.getByText(`تنها ${formatNumber(count)} عدد باقی مانده`);
 
+    // The screenshot never reaches the shop: its upload is cut after the
+    // order exists, as a dropped connection would cut it. Aborted, it gets no
+    // response, so the failed-request watch (which reads responses) has
+    // nothing to record.
+    const receiptUpload = '**/api/orders/*/receipts';
+    await shopper.route(receiptUpload, (route) => route.abort());
     await placeOrder(shopper, 'cod', path);
     const orderId = await resultOrderId(shopper);
     movedOn.push(orderId);
+    await shopper.unroute(receiptUpload);
+
+    // The result page says the order is not accepted yet — never the accepted
+    // «سفارش ثبت شد!» — and puts the box to upload in above the order's
+    // details, where the shopper needs no scroll to find it.
+    await expect(
+      shopper.getByRole('heading', { name: 'سفارش هنوز پذیرفته نشده است' }),
+    ).toBeVisible();
+    await expect(
+      shopper.getByRole('heading', { name: 'سفارش ثبت شد!' }),
+    ).toHaveCount(0);
+    const picker = shopper.locator('label', {
+      has: shopper.locator('[data-umami-event="checkout-result-receipt-file"]'),
+    });
+    const orderNumber = shopper
+      .getByText('شماره سفارش', { exact: true })
+      .locator('..');
+    const pickerTop = (await picker.boundingBox())?.y;
+    const detailsTop = (await orderNumber.boundingBox())?.y;
+    if (pickerTop === undefined || detailsTop === undefined) {
+      throw new Error('the picker or the order number is not on the page');
+    }
+    expect(pickerTop).toBeLessThan(detailsTop);
+    // The account order page says so too.
+    await shopper.goto(accountOrderPath(orderId));
+    await expect(
+      shopper.getByText('سفارش هنوز پذیرفته نشده است'),
+    ).toBeVisible();
+
     await shopper.goto(path);
     await expect(stockLeft(stock - 1)).toBeVisible();
 
@@ -208,7 +242,6 @@ test.describe('an admin', () => {
     await placeOrder(shopper, 'cod', path);
     const orderId = await resultOrderId(shopper);
     movedOn.push(orderId);
-    await uploadReceipt(shopper);
 
     // The admin checks the receipt and turns it down.
     await page.goto(adminOrderPath(orderId));
@@ -274,7 +307,7 @@ test.describe('an admin', () => {
         ).toBeVisible();
       }
     } finally {
-      await closeWaitingOrder(page, orderId);
+      await closeOrder(page, orderId);
     }
   });
 

@@ -108,11 +108,18 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 - **Payments** are keyed by gateway authority id; verification is server-side and
   idempotent (Zarinpal redirect → callback → verify; no webhooks).
 - **Card to card waits for its receipt.** A card-to-card order is born
-  `awaiting_receipt`; the shopper's first receipt accepts it into `processing`
+  `awaiting_receipt`; its first receipt accepts it into `processing`
   (`src/logic/orders/receipts.ts`, under the order's row lock), and the admins'
-  new-order SMS goes out then, never at checkout. The admin checks the receipt
-  and ships, or cancels — every admin cancel carries a reason the shopper reads.
-  The payment row still flips to `paid` only at delivery.
+  new-order SMS goes out then, never at the create. The checkout locks
+  «ثبت سفارش» until the transfer's screenshot is attached and uploads it right
+  after the create, so a placed order is accepted at once; waiting is the
+  fallback for a screenshot that failed to store, and both shopper pages then
+  say the order is not accepted yet. Once the create has answered 2xx nothing
+  re-enables «ثبت سفارش» or mints another Idempotency-Key — every failure
+  lands on that order's own page
+  (`src/features/checkout/checkout-form.receipt.test.tsx`). The admin checks
+  the receipt and ships, or cancels — every admin cancel carries a reason the
+  shopper reads. The payment row still flips to `paid` only at delivery.
 - **A receipt is never public.** Receipts live under `receipts/` in the same
   storage as the photos, and no URL exists for one: `imageSrc` and every
   driver's `url()` throw on a receipt key. The only readers are the
@@ -121,7 +128,8 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   that route, never `next/image`. On s3 the bucket's anonymous read must be
   narrowed to `uploads/` (a bucket policy, docs/DEPLOY.md §3) before the
   feature ships: until then every receipt upload answers 503, because the
-  driver probes each receipt it stores and finds it public.
+  driver probes each receipt it stores and finds it public — and every
+  card-to-card checkout ends on the not-accepted page.
 - **Cart is client-side** (localStorage) until checkout; the server re-prices and
   validates at order creation.
 - **Rate limits**: every `/api/*` route is budgeted per caller per minute by
@@ -278,16 +286,20 @@ cheaper) and an «انتخاب» link in place of the add button that opens that
 member rather than the sold-out head, its page headed title — label, the
 head's chip reading «ناموجود», its chips carrying the shopper to a sibling's
 own slug and the cart line naming that member; checkout by card to card —
-the order waiting for its receipt («در انتظار رسید واریز»), a receipt
-uploaded on the result page accepting it («در حال پردازش», the thumbnail
-rendered), Jalali date and `format.ts`-formatted numbers on the result page,
-the receipt's URL answering the shopper 200 `private, no-store` and a request
-with no session exactly 401 (both probed with `request.get`), the order in
-`/account` reading «در حال پردازش» — and through the mock Zarinpal
-gateway (paid, and failed → retry → paid). Admin: anonymous visitors and
+«ثبت سفارش» locked until the transfer's screenshot is attached, the checkout
+page free of ASCII digits once it is, the order accepted on landing
+(«سفارش ثبت شد!», «در حال پردازش», the receipt's thumbnail rendered with its
+Jalali upload time), Jalali date and `format.ts`-formatted numbers on the
+result page, the receipt's URL answering the shopper 200 `private, no-store`
+and a request with no session exactly 401 (both probed with `request.get`),
+the order in `/account` reading «در حال پردازش» — and through the mock
+Zarinpal gateway (paid, and failed → retry → paid). Admin: anonymous visitors and
 customers turned away; the dashboard figures; an order whose receipt the admin
-sees before shipping it; one still waiting for its receipt cancelled with a
-reason and its stock coming back; an accepted one cancelled with a reason the
+sees before shipping it; one whose screenshot upload the spec cuts with
+`page.route` — its result page saying it is not accepted yet, never
+«سفارش ثبت شد!», with the receipt box above the order's details, and the
+account order page saying so too — cancelled while still waiting, with a
+reason, and its stock coming back; an accepted one cancelled with a reason the
 shopper then reads on their order page, no upload box left and the stock
 back; a product added with three photos — for
 both pets, filed under a sub-category and given a second category — its
@@ -398,13 +410,15 @@ font rendering).
   constant before the suite trips it with a 422 mid-run.
 - **A card-to-card order is open until its receipt arrives.** The open-order
   cap (`MAX_OPEN_ORDERS`, five per account) counts `awaiting_receipt` as well
-  as `pending_payment`, and the run's one customer places more card-to-card
-  orders than that. A spec that places one and never uploads its receipt
-  closes it in a `finally` with `closeWaitingOrder` (`e2e/support.ts`: a cancel
-  with a reason, through the admin API), and one that means to move its order
-  on closes it after the test only if it is still waiting
-  (`closeIfStillWaiting`), as it is when the test failed first — or a later
-  checkout in the run is refused with a 422.
+  as `pending_payment`. `completeCheckout` attaches the screenshot, so the
+  run's card-to-card orders are accepted at checkout and leave the cap alone;
+  only the admin spec that cuts the upload leaves one waiting, and it cancels
+  that one itself. A spec that places an order only to have one cancels it in
+  a `finally` with `closeOrder` (`e2e/support.ts`: a cancel with a reason,
+  through the admin API), and one that means to move its order on closes it
+  after the test only if it is still waiting (`closeIfStillWaiting`), as it
+  is when its screenshot failed to store or the test failed first — or a
+  later checkout in the run could be refused with a 422.
 - **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
   customer and a fresh admin (`pnpm create-admin`) in through the real login
   page and saves their sessions, plus the customer's number
@@ -414,12 +428,14 @@ font rendering).
   waits about a minute.
 - **What a run leaves in the dev database:** two throwaway `0999…` accounts,
   the 19 orders counted under «Checkout is rate-capped per account» (none left
-  open: the card-to-card ones no spec uploads a receipt for are cancelled — the
-  admin spec's waiting one by the admin, and the users spec's, the pager's, the
-  discount's and the saved card's by `closeWaitingOrder`), three receipt files
-  per width under `uploads/receipts/` (the checkout spec's, the shipped order's
-  and the turned-down one's — receipts are append-only, so nothing deletes
-  them), one inactive `e2e-…` product (it is given three photos and has two of
+  open: the admin spec's waiting one is cancelled by the admin, and the users
+  spec's, the pager's, the discount's and the saved card's — accepted at
+  checkout — by `closeOrder`), 13 receipt files a run under
+  `uploads/receipts/`, one per card-to-card checkout whose screenshot stored
+  (six per width — `checkout` 1, `admin` 3: the shipped, the turned-down and
+  the pager's, the cut one storing nothing, `admin-users` 1, `admin-settings`
+  1 — and `admin-catalog`'s one at 1280px; receipts are append-only, so
+  nothing deletes them), one inactive `e2e-…` product (it is given three photos and has two of
   them removed again, so one file stays under `uploads/`)
   filed under a seeded sub-category and a seeded second category — seeded, and
   never one the spec made, because the junction's restricting foreign key would

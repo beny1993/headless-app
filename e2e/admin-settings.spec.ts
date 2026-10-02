@@ -14,7 +14,8 @@ import { formatToman, toAsciiDigits } from '@/lib/format';
 import { PROVINCE_MESSAGES } from '@/lib/shipping/province-input';
 import {
   ADMIN_STATE,
-  closeWaitingOrder,
+  attachReceipt,
+  closeOrder,
   expect,
   openCheckout,
   passRecipientStep,
@@ -570,14 +571,15 @@ test('a card an admin saves is what card-to-card checkout shows', async ({
       shopper.locator('[data-umami-event="checkout-card-instagram"]'),
     ).toHaveAttribute('href', 'https://instagram.com/smokey.e2e');
 
-    // The result page repeats it: that is where the shopper pays from.
+    await attachReceipt(shopper);
     await shopper.locator('[data-umami-event="checkout-submit-order"]').click();
     const orderId = await resultOrderId(shopper);
     try {
+      // The result page repeats it, for a second transfer.
       await expect(shopper.getByText(shown)).toBeVisible();
       await expect(shopper.getByRole('main')).not.toContainText(/\d/);
     } finally {
-      await closeWaitingOrder(page, orderId);
+      await closeOrder(page, orderId);
     }
   } finally {
     await save(original);

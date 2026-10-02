@@ -2,22 +2,22 @@ import { accountOrderPath } from '@/lib/constant/paths';
 import type { Locator } from '@playwright/test';
 import {
   ADMIN_STATE,
+  attachReceipt,
   closeIfStillWaiting,
-  completeCheckout,
   CUSTOMER_STATE,
   expect,
   expectRendered,
   IN_STOCK_PRODUCT,
   placeOrder,
+  reachPayment,
   resultOrderId,
   test,
-  uploadReceipt,
 } from './support';
 
 test.use({ storageState: CUSTOMER_STATE });
 
 // The card-to-card order a test placed, closed after it if it is still waiting
-// for its receipt — as it would be had the test failed before its upload, and
+// for its receipt — as it would be had its screenshot failed to store — and so
 // open against the customer's cap. Through an admin context of its own: this
 // file's pages are the customer's.
 let placedOrder: string | undefined;
@@ -45,7 +45,7 @@ async function expectOptimized(img: Locator) {
 const gatewayButton = (action: 'pay' | 'fail') =>
   `button[name="action"][value="${action}"]`;
 
-test('card to card: the receipt accepts the order, and only its owner can read it', async ({
+test('card to card: the screenshot attached at checkout accepts the order, and only its owner can read it', async ({
   page,
   browser,
   baseURL,
@@ -73,46 +73,51 @@ test('card to card: the receipt accepts the order, and only its owner can read i
   await expect(
     page.locator('[data-umami-event="checkout-recipient-phone"]'),
   ).toHaveValue(/^09\d{9}$/);
-  await completeCheckout(page, 'cod');
+  await reachPayment(page);
+  await page.locator('[data-umami-event="checkout-payment-cod"]').check();
+
+  // «ثبت سفارش» stays locked until the transfer's screenshot is attached. The
+  // picker's label is a thumb's height, 44px: the input itself is sr-only.
+  const submit = page.locator('[data-umami-event="checkout-submit-order"]');
+  await expect(submit).toBeDisabled();
+  const picker = page.locator('label', {
+    has: page.locator('[data-umami-event="checkout-receipt-file"]'),
+  });
+  expect((await picker.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  await attachReceipt(page);
+  await expect(submit).toBeEnabled();
+  // The picked file is never named — a phone names a screenshot with its
+  // timestamp — so the checkout page shows no ASCII digit either.
+  await expect(page.getByRole('main')).not.toContainText(/\d/);
+
+  await submit.click();
   const orderId = await resultOrderId(page);
   placedOrder = orderId;
+
+  // Placed and accepted in that one click: no waiting page on this path.
   await expect(
     page.getByRole('heading', { name: 'سفارش ثبت شد!' }),
   ).toBeVisible();
-
-  // Placed, not yet accepted: it waits for the shopper's receipt.
   const status = page.getByText('وضعیت سفارش', { exact: true }).locator('..');
-  await expect(status).toContainText('در انتظار رسید واریز');
-  await expect(
-    page.getByText(
-      'هنوز رسیدی دریافت نشده است. پس از واریز، رسید را همین‌جا بارگذاری کن.',
-    ),
-  ).toBeVisible();
-
-  // Both receipt controls are a thumb's height, 44px: the picker's label (the
-  // input itself is sr-only) and the upload button.
-  const picker = page.locator('label', {
-    has: page.locator('[data-umami-event="checkout-result-receipt-file"]'),
-  });
-  const upload = page.locator(
-    '[data-umami-event="checkout-result-receipt-upload"]',
-  );
-  for (const control of [picker, upload]) {
-    expect((await control.boundingBox())?.height).toBeGreaterThanOrEqual(44);
-  }
-
-  // The first receipt accepts it, and says when it came: a date and a Tehran
-  // time, since one order can hold five receipts from the same day.
-  const receipt = await uploadReceipt(page);
   await expect(status).toContainText('در حال پردازش');
-  await expect(receipt.locator('..')).toContainText(
-    /۱۴[۰-۹]{2} ساعت [۰-۹]{2}:[۰-۹]{2}/,
-  );
   await expect(
     page.getByText(
       'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.',
     ),
   ).toHaveCount(2); // the sub-copy under the heading, and the box's own line
+
+  // The screenshot is listed with when it came: a date and a Tehran time,
+  // since one order can hold five receipts from the same day.
+  const receipt = page.locator(
+    '[data-umami-event="checkout-result-receipt-open"]',
+  );
+  await expect(receipt).toHaveCount(1);
+  // Lazy-loaded, and below the fold on a phone: it loads once it is in view.
+  await receipt.scrollIntoViewIfNeeded();
+  await expectRendered(receipt.locator('img'));
+  await expect(receipt.locator('..')).toContainText(
+    /۱۴[۰-۹]{2} ساعت [۰-۹]{2}:[۰-۹]{2}/,
+  );
 
   // Dates render in the Jalali calendar and every number goes through
   // src/lib/format.ts: a Gregorian year or an ASCII digit skipped them —

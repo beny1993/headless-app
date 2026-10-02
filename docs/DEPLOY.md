@@ -359,11 +359,14 @@ and deliberately not baked into the image:
 
 - [ ] **The bucket rule (§3), on Benyamin's go.** Until the bucket's anonymous
       read is narrowed to `uploads/`, every receipt upload on the `s3` driver
-      answers 503 — the driver finds its own receipt public and deletes it.
+      answers 503 — the driver finds its own receipt public and deletes it —
+      so every card-to-card checkout ends on the «not accepted yet» page, its
+      order waiting for an admin to accept it by hand.
 - [ ] **Edit the saved `checkout.payment` row once** in
       `/admin-panel/content/checkout`. A saved row never picks up a new
       default, so until it is edited the checkout note keeps telling shoppers
-      to send the receipt by DM instead of uploading it on the order's page.
+      to send the receipt by DM instead of attaching its screenshot at
+      checkout.
 - [ ] **`NEXT_PUBLIC_STORAGE_BASE_URL`** is set on `s3` (a build variable):
       without it there is nothing to probe a receipt with, and every receipt
       upload is refused.
