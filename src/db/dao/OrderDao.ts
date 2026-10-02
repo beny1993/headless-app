@@ -148,10 +148,13 @@ export class OrderDao {
   }
 
   /** The one order matching `where`, with its snapshotted line items, or `null`. */
-  private static async findOne(where: SQL): Promise<OrderWithItems | null> {
-    const [order] = await db.select().from(orders).where(where).limit(1);
+  private static async findOne(
+    where: SQL,
+    executor: Executor = db,
+  ): Promise<OrderWithItems | null> {
+    const [order] = await executor.select().from(orders).where(where).limit(1);
     if (!order) return null;
-    return { ...order, items: await OrderDao.getItems(db, order.id) };
+    return { ...order, items: await OrderDao.getItems(executor, order.id) };
   }
 
   /** Order display / admin read: the order with its snapshotted line items. */
@@ -161,13 +164,15 @@ export class OrderDao {
 
   /**
    * The order a `userId` created under `idempotencyKey`, or `null`. Checkout's
-   * idempotency lookup: the fast path a retry hits before doing any work, and the
-   * re-fetch after a losing concurrent insert trips the partial unique index. The
+   * idempotency lookup: the fast path a retry hits before doing any work, the
+   * re-check under the account lock (pass checkout's `tx`), and the re-fetch
+   * after a losing concurrent insert trips the partial unique index. The
    * `(user_id, idempotency_key)` pair is unique, so this returns at most one.
    */
   static async getByUserAndIdempotencyKey(
     userId: string,
     idempotencyKey: string,
+    executor: Executor = db,
   ): Promise<OrderWithItems | null> {
     // `and` of two defined conditions is never undefined.
     return OrderDao.findOne(
@@ -175,6 +180,7 @@ export class OrderDao {
         eq(orders.userId, userId),
         eq(orders.idempotencyKey, idempotencyKey),
       )!,
+      executor,
     );
   }
 
@@ -209,13 +215,36 @@ export class OrderDao {
    * it is the only state the cap must bound. COD enters at `processing` (a
    * releasable state) and is deliberately excluded.
    */
-  static async countOpenForUser(userId: string): Promise<number> {
-    return db.$count(
+  static async countOpenForUser(
+    userId: string,
+    executor: Executor = db,
+  ): Promise<number> {
+    return executor.$count(
       orders,
       and(
         eq(orders.userId, userId),
         eq(orders.status, ORDER_STATUSES.PENDING_PAYMENT),
       ),
+    );
+  }
+
+  /**
+   * How many orders `userId` created since `since` — the input to checkout's
+   * rolling creation cap.
+   *
+   * No status filter, deliberately: a cancelled or failed order still cost the
+   * shop a row, a stock movement and an SMS to every admin, so letting it stop
+   * counting would hand an attacker a reset button (create to the cap, cancel
+   * everything, go again). Only the clock lets the count fall.
+   */
+  static async countCreatedSince(
+    userId: string,
+    since: Date,
+    executor: Executor = db,
+  ): Promise<number> {
+    return executor.$count(
+      orders,
+      and(eq(orders.userId, userId), gte(orders.createdAt, since)),
     );
   }
 

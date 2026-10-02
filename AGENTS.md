@@ -30,7 +30,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/lib/hono/` | API app, router factory, response envelope, routes |
 | `src/lib/hono/middleware/` | Cross-cutting middleware: the `requireAdmin`/`requireAuth` guards, and the `/api/*` rate limiter (the one deliberate `app.use('*')` — see its mount comment) |
 | `src/lib/auth/`, `src/lib/utils/env.ts` | Better Auth, env accessor |
-| `src/lib/seo.ts` | What search engines read: the root metadata, `absoluteUrl` (every canonical, sitemap `<loc>` and JSON-LD link goes through it, so a page's canonical and its sitemap entry match; the root aside, which Next writes without its slash, and the two are one URL), `purchaseSentence` (the one generated meta description), the site's JSON-LD, the breadcrumb builder and the `sitemap.xml` entries. The site share cards carry no title or description, so Next fills each page's from its own; a page that sets its own `openGraph`/`twitter` spreads `SITE_OPEN_GRAPH`/`SITE_TWITTER` back in, since Next *replaces* a nested metadata object rather than merging it. Never put `alternates.canonical` in a layout, or every page without its own claims to be that one. `src/app/sitemap.ts` lists only shelves that show products, the pet shelves included (`listStockedShelves` in `src/logic/seo/stocked-shelves.ts`, through `ProductDao.hasShelfProducts`), and, while maintenance mode is on, only the fixed pages. A product's metadata and `Product` JSON-LD live in `src/features/storefront/product/product-seo.ts`; a shop URL's title, heading and index rules in `src/features/storefront/shop/shop-metadata.ts` (`shelfTitle`; a search, a sorted/filtered/resized view and a page that lists nothing are `noindex` with no canonical, still titled and described by their shelf; the canonical is `buildShopHref`'s); `<JsonLd>` (`src/components/json-ld.tsx`) renders the JSON-LD escaped |
+| `src/lib/seo.ts` | What search engines read: the root metadata, `absoluteUrl` (every canonical, sitemap `<loc>` and JSON-LD link goes through it, so a page's canonical and its sitemap entry match; the root aside, which Next writes without its slash, and the two are one URL), `purchaseSentence` (the one generated meta description), the site's JSON-LD, the breadcrumb builder and the `sitemap.xml` entries. The site share cards carry no title or description, so Next fills each page's from its own; a page that sets its own `openGraph`/`twitter` spreads `SITE_OPEN_GRAPH`/`SITE_TWITTER` back in, since Next *replaces* a nested metadata object rather than merging it. Never put `alternates.canonical` in a layout, or every page without its own claims to be that one. `src/app/sitemap.ts` lists only shelves that show products, the pet shelves included (`listStockedShelves` in `src/logic/seo/stocked-shelves.ts`, through `ProductDao.hasShelfProducts`), and, while maintenance mode is on, only the fixed pages. A product's metadata and `Product` JSON-LD live in `src/features/storefront/product/product-seo.ts` — its `category` a Google product taxonomy code by pet, never the Persian title, which Search Console reported as invalid — and the delivery and return terms its `Offer` repeats in `shop-policy.ts` beside it, which the product page also states under its add button; a shop URL's title, heading and index rules in `src/features/storefront/shop/shop-metadata.ts` (`shelfTitle`; a search, a sorted/filtered/resized view and a page that lists nothing are `noindex` with no canonical, still titled and described by their shelf; the canonical is `buildShopHref`'s); `<JsonLd>` (`src/components/json-ld.tsx`) renders the JSON-LD escaped |
 | `src/lib/sentry.ts` | The one `Sentry.init` options object, shared by all three runtimes (`register()` in `src/instrumentation.ts` for Node and edge, `src/instrumentation-client.ts` for the browser). Owns the privacy contract: explicit `dataCollection` opt-outs and the removal of the console-breadcrumb integration, without which every OTP in the server log rides along on the next event |
 | `src/lib/content/` | Storefront editorial content: the client-safe zod schemas + key enum + area map + `isVisible` (`site-content.ts`), the saved-link contract + `resolveLink` (`link.ts`; its id → slug targets load in `src/logic/content/link-targets.ts`), the typed defaults + `resolveContent` fallback (`defaults.ts`), and the header/footer request-time read `readSiteChrome` (`chrome.ts`, `await connection()`). Values live in the `site_content` table; the page-organized admin editor is `/admin-panel/content/[area]` |
 | `src/features/<area>/<feature>/` | Feature components; route files stay thin |
@@ -315,9 +315,10 @@ whose «مشاهده حساب سفارش‌دهنده» leads back to that same 
 anonymous visitors and customers turned away from the list and a detail page.
 For search engines: `sitemap.xml` listing a seeded
 product, a family member and their shelves by the URL each page names as its
-canonical; a product page's `Product` JSON-LD priced in Rial and its
-breadcrumb, both in the HTML the server sends; the home page's canonical,
-share card and `Organization`; a category shelf named by its category in the
+canonical; a product page's `Product` JSON-LD priced in Rial, with its Google
+product category, shipping and return policy — those terms also shown on the
+page — and its breadcrumb, both in the HTML the server sends; the home page's
+canonical, share card and `Organization`; a category shelf named by its category in the
 tab, its heading and its share card, its breadcrumb leading back to the whole
 shop with the slashes hidden from screen readers; a sorted view of it (still
 described by its shelf), a search and a page past the end kept out of the
@@ -365,6 +366,12 @@ visual (RTL layout, Persian font rendering).
   step ends a dev server by the PID it launched (or `lsof -ti :<its port>`),
   never by pattern — `pkill -f next-server` also kills every other worktree's
   server, and on 2026-09-29 it took down a parallel session's E2E run mid-suite.
+- **Checkout is rate-capped per account** (`MAX_ORDERS_PER_WINDOW` in
+  `src/logic/checkout/create-order.ts`, 30 orders an hour, any status). One
+  run's throwaway customer places 17 across both viewports (`checkout` 6,
+  `admin` 6, `admin-users` 2, `admin-settings` 2, `admin-catalog` 1 at 1280px
+  only), so a spec that adds checkouts eats into that headroom — raise the
+  constant before the suite trips it with a 422 mid-run.
 - **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
   customer and a fresh admin (`pnpm create-admin`) in through the real login
   page and saves their sessions, plus the customer's number
@@ -372,10 +379,10 @@ visual (RTL layout, Persian font rendering).
   `test.use({ storageState })` (`e2e/support.ts`). send-otp allows 3 a minute
   for the whole machine, so a run started within a minute of the last one
   waits about a minute.
-- **What a run leaves in the dev database:** two throwaway `0999…` accounts, a
-  few orders (the users spec places one card-to-card order per width, to walk
-  from the account to it), one inactive `e2e-…` product (it is given three
-  photos and has two of them removed again, so one file stays under `uploads/`)
+- **What a run leaves in the dev database:** two throwaway `0999…` accounts,
+  the 17 orders counted under «Checkout is rate-capped per account», one
+  inactive `e2e-…` product (it is given three photos and has two of them
+  removed again, so one file stays under `uploads/`)
   filed under a seeded sub-category and a seeded second category — seeded, and
   never one the spec made, because the junction's restricting foreign key would
   pin that category for good — one switched-off `E2E…` discount code and one

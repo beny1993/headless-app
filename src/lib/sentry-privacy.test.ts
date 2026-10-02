@@ -1,5 +1,7 @@
 // @vitest-environment node
+import { createServer, type Server } from 'node:http';
 import { createRequire } from 'node:module';
+import type { AddressInfo } from 'node:net';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sentryOptions } from './sentry';
@@ -19,10 +21,13 @@ beforeAll(() => {
       options
         .integrations(defaults)
         .filter((integration) => integration.name !== 'ContextLines'),
-    // A local transport: no events leave this process.
+    // A local transport: no events leave this process. Only an event's
+    // envelope is kept: once the SDK detects a release (`SENTRY_RELEASE`, or
+    // the commit variables every CI sets), a flush sends request sessions too.
     transport: () => ({
       send: async (envelope: unknown) => {
-        captured = JSON.stringify(envelope);
+        const [, [[item]]] = envelope as [unknown, [[{ type: string }]]];
+        if (item.type === 'event') captured = JSON.stringify(envelope);
         return {};
       },
       flush: async () => true,
@@ -131,5 +136,109 @@ describe('admin query string privacy', () => {
 
     expect(event).toContain('https://shop.example/shop?q=royal');
     expect(event).toContain('/shop?q=royal&_rsc=1');
+  });
+
+  // A server error while an admin page renders reaches the SDK through Next's
+  // `onRequestError` (`src/instrumentation.ts`), whose `path` is `req.url`,
+  // query included. The SDK files it under `contexts.nextjs.request_path`.
+  async function captureRequestError(path: string, routePath: string) {
+    Sentry.getIsolationScope().clearBreadcrumbs();
+    captured = undefined;
+    Sentry.captureRequestError(
+      new Error('Render failed'),
+      { path, method: 'GET', headers: {} },
+      { routerKind: 'App Router', routePath, routeType: 'render' },
+    );
+    await Sentry.flush(2000);
+    expect(captured).toBeDefined();
+    const [, [[, event]]] = JSON.parse(captured!) as [
+      unknown,
+      [[unknown, { contexts?: { nextjs?: { request_path?: unknown } } }]],
+    ];
+    return {
+      raw: captured!,
+      requestPath: event.contexts?.nextjs?.request_path,
+    };
+  }
+
+  it('sends no admin phone search in the path of an error Next reports', async () => {
+    const { raw, requestPath } = await captureRequestError(
+      '/admin-panel/users?q=09121234567',
+      '/admin-panel/users',
+    );
+
+    // The whole envelope, not one field: were the SDK to rename the key, the
+    // number would travel under the new one and still fail this.
+    expect(raw).not.toContain('9121234567');
+    expect(requestPath).toBe('/admin-panel/users');
+  });
+
+  it('sends no admin name search in that path either', async () => {
+    const name = encodeURIComponent('علی رضایی');
+    const { raw, requestPath } = await captureRequestError(
+      `/admin-panel/users?q=${name}`,
+      '/admin-panel/users',
+    );
+
+    expect(raw).not.toContain(name);
+    expect(requestPath).toBe('/admin-panel/users');
+  });
+
+  it('leaves a storefront path and its query in that field', async () => {
+    const { requestPath } = await captureRequestError('/shop?q=royal', '/shop');
+
+    expect(requestPath).toBe('/shop?q=royal');
+  });
+});
+
+// `httpBodies: []` is not the whole of it: the Node `Http` integration records
+// an incoming body read through `req.on('data')` without consulting that list.
+describe('request body privacy', () => {
+  let server: Server;
+  let origin = '';
+
+  beforeAll(async () => {
+    server = createServer((request, response) => {
+      void (async () => {
+        // Read as a stream consumer (`pipe`, busboy) reads it, then fail
+        // inside the request, as a handler that awaits its body would.
+        await new Promise<void>((resolve) => {
+          request.on('data', () => {});
+          request.on('end', resolve);
+        });
+        Sentry.captureException(new Error('Sign-in failed'));
+        response.end();
+      })();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('sends no body the server read', async () => {
+    captured = undefined;
+    const url = `${origin}/api/auth/phone-number/verify`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phoneNumber: '+989121234567', code: '482913' }),
+    });
+    await response.text();
+    await Sentry.flush(2000);
+
+    expect(captured).toBeDefined();
+    const [, [[, event]]] = JSON.parse(captured!) as [
+      unknown,
+      [[unknown, { request?: { url?: string; data?: unknown } }]],
+    ];
+    // The request's own scope was on the event: its body had a way in.
+    expect(event.request?.url).toBe(url);
+    expect(event.request?.data).toBeUndefined();
+    expect(captured).not.toContain('9121234567');
+    expect(captured).not.toContain('482913');
   });
 });

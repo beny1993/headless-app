@@ -2,10 +2,11 @@ import { cache, Fragment } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Check } from 'lucide-react';
+import { Check, Truck, Undo2 } from 'lucide-react';
 import { JsonLd } from '@/components/json-ld';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
+import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
 import { availability } from '@/features/storefront/product/availability';
 import { ProductGallery } from '@/features/storefront/product/product-gallery';
 import { ProductPurchase } from '@/features/storefront/product/product-purchase';
@@ -14,6 +15,10 @@ import {
   productMetadata,
 } from '@/features/storefront/product/product-seo';
 import { ProductTabs } from '@/features/storefront/product/product-tabs';
+import {
+  DELIVERY_NOTE,
+  RETURN_NOTE,
+} from '@/features/storefront/product/shop-policy';
 import { Spec } from '@/features/storefront/product/spec-row';
 import { StockNotice } from '@/features/storefront/product/stock-notice';
 import { VariantChips } from '@/features/storefront/product/variant-chips';
@@ -77,13 +82,15 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 export default async function ProductDetailPage({ params }: Params) {
   const { slug } = await params;
 
-  // Two independent single-DAO reads, as on the home and shop pages, so they
+  // Independent single-DAO reads, as on the home and shop pages, so they
   // belong here rather than in `src/logic/`. The category list is six rows and
-  // is needed for one breadcrumb link; asking for it alongside the product
-  // costs nothing and keeps the DAO's shape untouched.
-  const [product, categories] = await Promise.all([
+  // is needed for one breadcrumb link; the province fees price shipping in the
+  // structured data. Asking for both alongside the product costs nothing and
+  // keeps the DAOs' shapes untouched.
+  const [product, categories, rates] = await Promise.all([
     findProduct(slug),
     CategoryDao.list(),
+    ShippingRateDao.listActive(),
   ]);
   if (!product) notFound();
 
@@ -134,7 +141,12 @@ export default async function ProductDetailPage({ params }: Params) {
 
   return (
     <main className="min-h-screen">
-      <JsonLd data={productJsonLd(product, category?.title)} />
+      <JsonLd
+        data={productJsonLd(
+          product,
+          rates.map((rate) => rate.fee),
+        )}
+      />
       <JsonLd data={breadcrumbJsonLd(trail)} />
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-8">
         <nav
@@ -219,6 +231,19 @@ export default async function ProductDetailPage({ params }: Params) {
                 imageKey: product.images[0]?.objectKey,
               }}
             />
+
+            {/* The terms the structured data repeats, so Google never shows
+                one a shopper cannot read here. */}
+            <ul className="text-muted-foreground mt-6 space-y-2 text-sm">
+              <li className="flex items-center gap-1.5">
+                <Truck size={14} className="shrink-0" aria-hidden="true" />
+                {DELIVERY_NOTE}
+              </li>
+              <li className="flex items-center gap-1.5">
+                <Undo2 size={14} className="shrink-0" aria-hidden="true" />
+                {RETURN_NOTE}
+              </li>
+            </ul>
           </div>
         </div>
 
