@@ -15,7 +15,7 @@ import type { OwnedOrder } from '@/logic/checkout/get-order';
 import {
   acceptedCardToCardOrder,
   waitingCardToCardOrder,
-} from '@/logic/checkout/get-order.fixture';
+} from '@/logic/checkout/owned-order-test-fixtures';
 import ResultPage from './page';
 
 const { loadOwnedOrder } = vi.hoisted(() => ({ loadOwnedOrder: vi.fn() }));
