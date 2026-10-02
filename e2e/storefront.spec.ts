@@ -11,7 +11,7 @@ import {
   SEED_SUBCATEGORIES,
 } from '@/db/seed/catalog-data';
 import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
-import { formatNumber } from '@/lib/format';
+import { formatNumber, formatToman } from '@/lib/format';
 import {
   DEFAULT_SHOP_QUERY,
   SHOP_SORT_OPTIONS,
@@ -270,6 +270,46 @@ test('a sold-out product cannot go in the cart', async ({ page }) => {
   await expect(
     page.locator('[data-umami-event="product-add-to-cart"]'),
   ).toHaveCount(0);
+});
+
+test('shop grid and list hide sold-out prices and keep buyable prices', async ({
+  page,
+}) => {
+  await page.goto(
+    buildShopHref({ ...DEFAULT_SHOP_QUERY, limit: MAX_PRODUCT_PAGE_SIZE }),
+  );
+  const soldOutCard = page.locator('article', {
+    has: cardsFor(page, soldOut.title),
+  });
+  const stockedCard = page.locator('article', {
+    has: cardsFor(page, dearerInStock.title),
+  });
+  const familyCard = page.locator('article', {
+    has: cardsFor(page, familyHead.title),
+  });
+
+  for (const view of ['grid', 'list'] as const) {
+    await page.locator(`[data-umami-event="shop-view-${view}"]`).click();
+    await expect(soldOutCard).toBeVisible();
+    await expect(soldOutCard).toContainText('ناموجود');
+    await expect(soldOutCard).not.toContainText('تومان');
+    await expect(soldOutCard).not.toContainText(formatNumber(soldOut.price));
+    await expect(
+      soldOutCard.locator('[data-umami-event="product-card-add-to-cart"]'),
+    ).toHaveCount(0);
+    await expect(stockedCard).toContainText(formatToman(dearerInStock.price));
+    // The head itself is sold out, but its siblings can still be bought.
+    await expect(familyCard).toContainText(`از ${formatToman(cheapest.price)}`);
+    await expect(familyCard).not.toContainText('ناموجود');
+    await expect(
+      familyCard.locator('[data-umami-event="product-card-choose"]'),
+    ).toBeVisible();
+  }
+
+  await cardsFor(page, soldOut.title).click();
+  await expect(page).toHaveURL(new RegExp(`${soldOut.slug}$`));
+  // Price visibility on the detail page stays as before.
+  await expect(page.locator('main')).toContainText(formatToman(soldOut.price));
 });
 
 test('every sort lists the products in stock before the sold-out ones', async ({
