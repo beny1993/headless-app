@@ -44,6 +44,26 @@ const sidewaysOverflow = (page: Page) =>
   });
 
 /**
+ * A waiting order's page puts the receipt box above the card numbers: the
+ * box's top is above the card panel's. The panel is found by its fixed
+ * contact sentence, never by its note, which the admin writes.
+ */
+async function expectBoxAbovePanel(page: Page) {
+  const box = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'رسید پرداخت' }) });
+  const panel = page
+    .getByText('برای هماهنگی، از طریق', { exact: false })
+    .locator('..');
+  const boxTop = (await box.boundingBox())?.y;
+  const panelTop = (await panel.boundingBox())?.y;
+  if (boxTop === undefined || panelTop === undefined) {
+    throw new Error('the receipt box or the card panel is not on the page');
+  }
+  expect(boxTop).toBeLessThan(panelTop);
+}
+
+/**
  * The upload on a waiting order's page, where the shopper lands: the picker
  * and its button each wholly inside the first screen, at scroll 0.
  */
@@ -200,9 +220,10 @@ test.describe('an admin', () => {
     movedOn.push(orderId);
     await shopper.unroute(receiptUpload);
 
-    // The result page says the order is not accepted yet — never the accepted
-    // «سفارش ثبت شد!» — and puts the box to upload in first, above the card
-    // numbers and the order's details, where the shopper needs no scroll.
+    // The result page says the order is not accepted yet, never the accepted
+    // «سفارش ثبت شد!». The receipt box's top is above the card panel's, its
+    // picker above the order number, and the picker and «بارگذاری رسید» lie
+    // wholly inside the first screen at scroll 0.
     await expect(
       shopper.getByRole('heading', { name: 'سفارش هنوز پذیرفته نشده است' }),
     ).toBeVisible();
@@ -221,12 +242,15 @@ test.describe('an admin', () => {
       throw new Error('the picker or the order number is not on the page');
     }
     expect(pickerTop).toBeLessThan(detailsTop);
+    await expectBoxAbovePanel(shopper);
     await expectUploadOnFirstScreen(shopper, 'checkout-result');
-    // The account order page says so too, its upload as close at hand.
+    // The account order page says so too, with its box above the card panel
+    // and its picker and button inside the first screen.
     await shopper.goto(accountOrderPath(orderId));
     await expect(
       shopper.getByText('سفارش هنوز پذیرفته نشده است'),
     ).toBeVisible();
+    await expectBoxAbovePanel(shopper);
     await expectUploadOnFirstScreen(shopper, 'account-order');
 
     await shopper.goto(path);

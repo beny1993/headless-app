@@ -297,10 +297,10 @@ Zarinpal gateway (paid, and failed → retry → paid). Admin: anonymous visitor
 customers turned away; the dashboard figures; an order whose receipt the admin
 sees before shipping it; one whose screenshot upload the spec cuts with
 `page.route` — its result page saying it is not accepted yet, never
-«سفارش ثبت شد!», with the receipt box first, above the card numbers and the
-order's details, and the account order page saying so too, its box likewise
-before the card numbers, the picker and «بارگذاری رسید» inside the first
-screen on both pages — cancelled while still waiting, with a
+«سفارش ثبت شد!», the receipt box's top above the card panel's and its picker
+above the order number, and the account order page saying so too with its
+box above the card panel, the picker and «بارگذاری رسید» wholly inside the
+first screen at scroll 0 on both pages — cancelled while still waiting, with a
 reason, and its stock coming back; an accepted one cancelled with a reason the
 shopper then reads on their order page, no upload box left and the stock
 back; a product added with three photos — for
