@@ -113,9 +113,8 @@ export default async function Page({
   );
   // An order still waiting for its receipt leads with the box to upload it in
   // — the copy above says it is right under it — then the card numbers, then
-  // the order's details. Accepted, the details lead. One keyed list rather
-  // than two places, so the box is moved, not mounted afresh, when the upload
-  // it took re-renders the page as accepted.
+  // the order's details. Accepted, the details lead. Keyed, so the refresh
+  // moves the box rather than mounting a new one.
   const sections =
     order.status === ORDER_STATUSES.AWAITING_RECEIPT
       ? [box, panel, details]

@@ -94,10 +94,6 @@ export default async function Page({
       eventPrefix="account-order"
     />
   );
-  // Waiting, the box to upload in leads and the card numbers follow: a
-  // shopper here attached their transfer's screenshot at checkout already.
-  // One keyed list, so the box is moved, not mounted afresh, when the upload
-  // it took re-renders the page as accepted.
 
   return (
     <main className="min-h-screen pt-4">
@@ -180,6 +176,10 @@ export default async function Page({
           </div>
         )}
 
+        {/* Waiting, the box to upload in leads and the card numbers follow:
+            a shopper here attached their transfer's screenshot at checkout
+            already. Keyed, so the refresh moves the box rather than mounting
+            a new one. */}
         {waiting ? [box, panel] : [panel, box]}
 
         <div className="bg-card border-border mb-5 rounded-2xl border p-5">

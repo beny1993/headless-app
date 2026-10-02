@@ -383,8 +383,11 @@ in `src/app/layout.test.ts` and the tracker in
 `src/components/umami-tracker.test.tsx`) — walk a tracked link with the real
 tracker loaded and check it still swaps the page in place — the bucket keeping
 receipts private (the suite runs the local driver; `pnpm verify-s3` proves
-it on staging, docs/DEPLOY.md §3) — and anything visual (RTL layout, Persian
-font rendering).
+it on staging, docs/DEPLOY.md §3), a checkout whose answer is lost followed
+by a reload that resends the same order (the client's resend is
+component-tested in `src/features/checkout/checkout-form.key.test.tsx`, the
+server's replay in `src/logic/checkout/create-order.idempotency.integration.test.ts`)
+— and anything visual (RTL layout, Persian font rendering).
 
 - **It starts its own server**: `next dev` on :3100, never a running :3000 —
   that one may be another checkout on another branch. Worktrees running the

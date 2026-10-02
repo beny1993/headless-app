@@ -493,11 +493,10 @@ export function CheckoutForm({
     // shop (the effect above), so it offers nothing to submit again.
     clearCart();
     forgetCheckoutKey(idempotencyKey, keptKeys); // consumed: this body is new again
-    // What follows is the answer's call, not the method on screen: a resent
-    // key hands back the order it first made, as it is now. The upload follows
-    // only a card-to-card order waiting for its receipt, the gateway only a
-    // Zarinpal order waiting for its payment; any other answer goes straight to
-    // the order's page.
+    // The answer's status and the method on screen decide what follows: the
+    // upload only for card to card answered `awaiting_receipt`, the gateway
+    // only for Zarinpal answered `pending_payment`, and anything else
+    // straight to the order's page.
     const screenshot =
       order.status === ORDER_STATUSES.AWAITING_RECEIPT &&
       paymentMethod === PAYMENT_METHODS.COD
