@@ -37,16 +37,18 @@ type ResultView = {
  * `Record` type forces every status to be listed), so a status added later fails
  * the compile here rather than silently falling through to a wrong view.
  *
- *  · awaiting_receipt / paid / processing / shipped / delivered → success
- *    (the order is placed and live; a card-to-card one asks for its receipt).
+ *  · paid / processing / shipped / delivered → success (the order is placed
+ *    and live).
  *  · pending_payment → pending, with retry (the shopper never completed the
  *    gateway, or a transient verify error left it open).
+ *  · awaiting_receipt → pending, without one: a card-to-card order whose
+ *    screenshot failed to store after it was placed. Not accepted yet, so it
+ *    never reads as a success, and there is no gateway to retry.
  *  · failed / cancelled → failed (payment never completed and the order expired,
  *    or it was cancelled) — an explicit "منقضی/ناموفق" view, never a retry.
  */
 const VIEW_BY_STATUS: Record<OrderStatus, ResultView> = {
-  // «سفارش ثبت شد!» holds before the receipt as after it.
-  [ORDER_STATUSES.AWAITING_RECEIPT]: { kind: 'success', showRetry: false },
+  [ORDER_STATUSES.AWAITING_RECEIPT]: { kind: 'pending', showRetry: false },
   [ORDER_STATUSES.PAID]: { kind: 'success', showRetry: false },
   [ORDER_STATUSES.PROCESSING]: { kind: 'success', showRetry: false },
   [ORDER_STATUSES.SHIPPED]: { kind: 'success', showRetry: false },
@@ -59,8 +61,11 @@ const VIEW_BY_STATUS: Record<OrderStatus, ResultView> = {
 export const resultView = (status: OrderStatus): ResultView =>
   VIEW_BY_STATUS[status];
 
-/** A shopper's way back to money they may have transferred for a dead order. */
-const REFUND_SENTENCE =
+/**
+ * A shopper's way back to money they may have transferred for a dead order —
+ * a cancelled one here, a card-to-card checkout the server refused in the form.
+ */
+export const REFUND_SENTENCE =
   'اگر مبلغی واریز کرده‌ای، برای بازگشت وجه با پشتیبانی تماس بگیر.';
 
 /**
@@ -86,11 +91,8 @@ export const cancellationNote = ({
 
 type ResultCopy = { kind: ResultKind; title: string; sub: string };
 
-/** What a live card-to-card order's result page says under «سفارش ثبت شد!». */
+/** What an accepted card-to-card order's result page says under «سفارش ثبت شد!». */
 const codSub = (status: OrderStatus, receiptCount: number): string => {
-  if (status === ORDER_STATUSES.AWAITING_RECEIPT) {
-    return 'مبلغ سفارش را کارت به کارت کن و رسید را پایین همین صفحه بارگذاری کن تا سفارش پذیرفته شود.';
-  }
   if (status === ORDER_STATUSES.PROCESSING) {
     // Accepted by hand (a receipt sent by DM), or processing from before
     // receipts existed: no receipt arrived here, and the box still takes one.
@@ -102,11 +104,13 @@ const codSub = (status: OrderStatus, receiptCount: number): string => {
 };
 
 /**
- * The result page's heading and sub-copy for an order. Split on the method and
+ * The result page's heading and sub-copy for an order — and the account order
+ * page's banner for a card-to-card order still waiting. Split on the method and
  * the SERVER status, never on the gateway callback's query.
  *
- * Card to card keeps «سفارش ثبت شد!» while the order is live — true before the
- * receipt as after it — and says what happens next under it. Cancelled, it says
+ * Card to card reads «سفارش ثبت شد!» once the order is accepted, and says what
+ * happens next under it. Still waiting for its receipt, it says the order is
+ * not accepted yet and points to the box under the copy. Cancelled, it says
  * so, with the admin's reason and the way back to a transfer: never the
  * gateway's «مبلغی از حساب شما کسر نشده است», which is false for a shopper who
  * transferred and was turned down.
@@ -127,6 +131,13 @@ export const resultCopy = (
         kind,
         title: 'سفارش ثبت شد!',
         sub: codSub(order.status, receiptCount),
+      };
+    }
+    if (kind === 'pending') {
+      return {
+        kind,
+        title: 'سفارش هنوز پذیرفته نشده است',
+        sub: 'رسید واریز به ما نرسید. اسکرین‌شات رسید را در کادر زیر بارگذاری کن تا سفارش پذیرفته شود.',
       };
     }
     return { kind, title: 'سفارش لغو شد', sub: cancellationNote(order) };

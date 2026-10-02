@@ -20,7 +20,10 @@ import {
   formatJalaliDateTime,
   toPersianDigits,
 } from '@/lib/format';
-import { PAYMENT_METHOD_LABELS } from '@/lib/orders/order-status';
+import {
+  ORDER_STATUSES,
+  PAYMENT_METHOD_LABELS,
+} from '@/lib/orders/order-status';
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
 import { acceptsReceipts, showsReceipts } from '@/lib/orders/receipt';
 
@@ -55,6 +58,27 @@ export default async function Page({
   const cardToCard = acceptsReceipts(order)
     ? await readCardToCardPayment()
     : null;
+  // Where to pay and the box to upload in. Above the order's details while the
+  // order still waits for its receipt — the copy above says the box is right
+  // under it — and below them once the order is accepted.
+  const receiptSection = (
+    <>
+      {cardToCard && <CardToCardPanel payment={cardToCard} className="mb-7" />}
+
+      {showsReceipts(order, order.receipts.length) && (
+        <ReceiptBox
+          orderId={order.id}
+          orderStatus={order.status}
+          receipts={order.receipts.map((receipt) => ({
+            id: receipt.id,
+            uploadedAt: formatJalaliDateTime(receipt.createdAt),
+          }))}
+          eventPrefix="checkout-result"
+        />
+      )}
+    </>
+  );
+  const waiting = order.status === ORDER_STATUSES.AWAITING_RECEIPT;
 
   const { icon, ring } = {
     success: {
@@ -86,6 +110,8 @@ export default async function Page({
           <p className="text-muted-foreground mx-auto mb-7 max-w-md text-sm leading-relaxed wrap-anywhere">
             {sub}
           </p>
+
+          {waiting && receiptSection}
 
           <div className="border-border mb-7 overflow-hidden rounded-2xl border text-start">
             <div className="bg-secondary/50 flex items-center justify-between gap-3 p-4 text-sm">
@@ -121,21 +147,7 @@ export default async function Page({
             </div>
           </div>
 
-          {cardToCard && (
-            <CardToCardPanel payment={cardToCard} className="mb-7" />
-          )}
-
-          {showsReceipts(order, order.receipts.length) && (
-            <ReceiptBox
-              orderId={order.id}
-              orderStatus={order.status}
-              receipts={order.receipts.map((receipt) => ({
-                id: receipt.id,
-                uploadedAt: formatJalaliDateTime(receipt.createdAt),
-              }))}
-              eventPrefix="checkout-result"
-            />
-          )}
+          {!waiting && receiptSection}
 
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             {view.showRetry && <RetryPaymentButton orderId={order.id} />}

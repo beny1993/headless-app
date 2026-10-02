@@ -12,7 +12,11 @@ import {
 } from '@/features/checkout/order-summary';
 import { ReceiptBox } from '@/features/checkout/receipt-box';
 import { RetryPaymentButton } from '@/features/checkout/retry-payment-button';
-import { cancellationNote, resultView } from '@/lib/checkout/result-view';
+import {
+  cancellationNote,
+  resultCopy,
+  resultView,
+} from '@/lib/checkout/result-view';
 import { accountOrderPath, PATHS } from '@/lib/constant/paths';
 import {
   formatJalali,
@@ -35,8 +39,10 @@ export const metadata: Metadata = { title: 'جزئیات سفارش' };
 /**
  * One of the customer's own orders, in full: snapshotted items and totals, the
  * delivery address, and the payment method/status — plus a "pay now" banner while
- * the order is still `pending_payment`, the card-to-card details and receipt box
- * while it takes receipts, and the reason once an admin has cancelled it.
+ * the order is still `pending_payment`, a «not accepted yet» banner while a
+ * card-to-card order still waits for its receipt, the card-to-card details and
+ * receipt box while it takes receipts, and the reason once an admin has
+ * cancelled it.
  *
  * A server component, owner-scoped by the session id through `getOwnedOrder`: a
  * missing order and one that belongs to someone else are the same `notFound()`,
@@ -67,6 +73,12 @@ export default async function Page({
     ? await readCardToCardPayment()
     : null;
   const cancelled = order.status === ORDER_STATUSES.CANCELLED;
+  // A card-to-card order whose receipt never arrived: the result page's own
+  // words, so the two pages cannot disagree about whether it was accepted.
+  const waiting =
+    order.status === ORDER_STATUSES.AWAITING_RECEIPT
+      ? resultCopy(order, order.receipts.length)
+      : null;
 
   return (
     <main className="min-h-screen pt-4">
@@ -112,6 +124,22 @@ export default async function Page({
               </p>
             </div>
             <RetryPaymentButton orderId={order.id} />
+          </div>
+        )}
+
+        {waiting && (
+          <div className="bg-warning-soft border-warning/30 mb-5 flex items-start gap-3 rounded-2xl border p-4">
+            <Clock
+              size={18}
+              className="text-warning mt-0.5 shrink-0"
+              aria-hidden="true"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">{waiting.title}</p>
+              <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
+                {waiting.sub}
+              </p>
+            </div>
           </div>
         )}
 

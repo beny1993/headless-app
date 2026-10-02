@@ -17,11 +17,11 @@ describe('resultView', () => {
     }
   });
 
-  it('maps a card-to-card order waiting for its receipt to the success view', () => {
-    // «سفارش ثبت شد!» is true before the upload as after it; the page asks for
-    // the transfer and the receipt, never for a gateway retry.
+  it('maps a card-to-card order still waiting for its receipt to the pending view, with no retry', () => {
+    // Its screenshot failed to store after the order was placed: not accepted
+    // yet, so never the success view — and nothing for a gateway to retry.
     expect(resultView(ORDER_STATUSES.AWAITING_RECEIPT)).toEqual({
-      kind: 'success',
+      kind: 'pending',
       showRetry: false,
     });
   });
@@ -72,13 +72,16 @@ describe('resultCopy — card to card', () => {
       receiptCount,
     );
 
-  it('asks for the transfer and the receipt while the order waits', () => {
-    // The heading stays «سفارش ثبت شد!» — the checkout E2E finds it by name.
-    expect(cod(ORDER_STATUSES.AWAITING_RECEIPT)).toEqual({
-      kind: 'success',
-      title: 'سفارش ثبت شد!',
-      sub: 'مبلغ سفارش را کارت به کارت کن و رسید را پایین همین صفحه بارگذاری کن تا سفارش پذیرفته شود.',
+  it('says a waiting order is not accepted yet, and points to the box below', () => {
+    // The screenshot did not arrive: the page must not read as an accepted
+    // order (Benyamin, 2026-10-02) — the box sits directly under this copy.
+    const copy = cod(ORDER_STATUSES.AWAITING_RECEIPT, null, 0);
+    expect(copy).toEqual({
+      kind: 'pending',
+      title: 'سفارش هنوز پذیرفته نشده است',
+      sub: 'رسید واریز به ما نرسید. اسکرین‌شات رسید را در کادر زیر بارگذاری کن تا سفارش پذیرفته شود.',
     });
+    expect(copy.title).not.toBe('سفارش ثبت شد!');
   });
 
   it('says the receipt arrived and the order is accepted once it is processing', () => {
