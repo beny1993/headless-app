@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { ApiRequestError, postForm } from '@/lib/api-client';
 import {
@@ -82,6 +82,9 @@ export function ReceiptBox({
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set before the first await, so a second click in the same tick finds it:
+  // `busy` disables the button only once React re-renders.
+  const sending = useRef(false);
 
   // Only card-to-card orders get this box, so the method is not a question.
   const accepting = acceptsReceipts({
@@ -92,7 +95,8 @@ export function ReceiptBox({
   const line = stateLine(orderStatus, receipts.length);
 
   const upload = async () => {
-    if (!file) return;
+    if (!file || sending.current) return;
+    sending.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -115,6 +119,7 @@ export function ReceiptBox({
         router.refresh();
       }
     } finally {
+      sending.current = false;
       setBusy(false);
     }
   };

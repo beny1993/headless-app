@@ -225,6 +225,21 @@ describe('ReceiptBox', () => {
     expect(uploadButton()!.disabled).toBe(false);
   });
 
+  it('sends one receipt for three clicks in the same tick', async () => {
+    // Each click reaches the handler before the button re-renders disabled.
+    postForm.mockReturnValue(new Promise(() => undefined));
+    render(box(ORDER_STATUSES.AWAITING_RECEIPT));
+    await pick(screenshot());
+
+    await act(async () => {
+      fireEvent.click(uploadButton()!);
+      fireEvent.click(uploadButton()!);
+      fireEvent.click(uploadButton()!);
+    });
+
+    expect(postForm).toHaveBeenCalledTimes(1);
+  });
+
   it('shows the server’s own sentence for a 409, then re-renders from the order as it now is', async () => {
     // A 409 means the order moved on under the shopper — shipped or cancelled —
     // so the box must stop offering what it no longer takes.
