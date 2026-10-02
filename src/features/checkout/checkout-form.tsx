@@ -170,9 +170,11 @@ export function CheckoutForm({
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [topError, setTopError] = useState<string | undefined>();
-  // A card-to-card create that got no answer — a 5xx, a dropped connection —
-  // may have placed the order: the alert says to look before trying again.
+  // A create that got no answer — a 5xx, a dropped connection — may have
+  // placed the order: the alert says to look before trying again.
   const [orderMayExist, setOrderMayExist] = useState(false);
+  // Counts refused creates, so each one moves focus (the effect below).
+  const [refusals, setRefusals] = useState(0);
   const [status, setStatus] = useState<Status>('idle');
   // "Save this address" — a best-effort write after the order is created; a
   // failure never blocks the redirect (see `submit`).
@@ -201,6 +203,7 @@ export function CheckoutForm({
   // point; the server-side `Idempotency-Key` is the last line if one slips out.
   const inFlight = useRef(false);
   const topAlert = useRef<HTMLParagraphElement>(null);
+  const page = useRef<HTMLElement>(null);
   // The Idempotency-Keys, one per checkout body: a key is resent by every
   // retry of its body — after a reload too (`checkout-key.ts`) — and dropped
   // once its order is created. A refusal does not consume it, so the retry
@@ -273,16 +276,18 @@ export function CheckoutForm({
     }
   }, [hydrated, status, lines.length, router]);
 
-  // A refused create's alert tops the form, above the button that sent it,
-  // and the shopper may have just transferred money: focus it, which also
-  // moves a screen reader there, and scroll it to the middle of the screen,
-  // clear of the fixed header. `submit` clears both before each create, so a
-  // repeated refusal runs this again.
+  // After a refused create, focus what it says: its alert, which tops the
+  // form far above the button that sent it — or, when the refusal shows only
+  // on fields, the first field to fix. Focus also moves a screen reader there;
+  // the scroll centres it, clear of the fixed header.
   useEffect(() => {
-    if (!topError && !orderMayExist) return;
-    topAlert.current?.focus();
-    topAlert.current?.scrollIntoView({ block: 'center' });
-  }, [topError, orderMayExist]);
+    if (refusals === 0) return;
+    const target =
+      topAlert.current ??
+      page.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    target?.focus();
+    target?.scrollIntoView({ block: 'center' });
+  }, [refusals]);
 
   /**
    * Ask the server what the code takes off the current cart. Read-only — it never
@@ -459,22 +464,26 @@ export function CheckoutForm({
         )
         .map(([, fieldMessage]) => fieldMessage);
       if (message) top.push(message);
-      // A 4xx is the server's refusal: nothing was created, though a
-      // card-to-card shopper may have transferred already. Anything else — a
+      // A 4xx is the server's refusal: nothing was created. Anything else — a
       // 5xx, a dropped connection — leaves the outcome unknown and the order
-      // may exist, so card to card says to look before trying again instead.
+      // may exist, so the alert says to look before trying again instead.
       const refused =
         error instanceof ApiRequestError &&
         error.status >= 400 &&
         error.status < 500;
-      const cardToCard = paymentMethod === PAYMENT_METHODS.COD;
-      if (cardToCard && refused) top.push(REFUND_SENTENCE);
-      const mayExist = cardToCard && !refused;
-      setOrderMayExist(mayExist);
-      setTopError(!mayExist && top.length > 0 ? top.join(' ') : undefined);
+      // The refund line goes only beside a refusal that blocks the order —
+      // a cart line, the method or a cap, the request's own message — where
+      // a card-to-card shopper may have transferred already. A refusal of
+      // fields they can fix has none: it shows on those fields.
+      if (refused && paymentMethod === PAYMENT_METHODS.COD && top.length > 0) {
+        top.push(REFUND_SENTENCE);
+      }
+      setOrderMayExist(!refused);
+      setTopError(refused && top.length > 0 ? top.join(' ') : undefined);
       // Jump to the earliest step that has an error so it is on screen.
       const steps = Object.keys(fields).map(stepOfField);
       if (steps.length > 0) setStep(Math.min(...steps));
+      setRefusals((count) => count + 1);
       return;
     }
 
@@ -547,7 +556,7 @@ export function CheckoutForm({
   const errorId = `${fieldId}-top-error`;
 
   return (
-    <main className="bg-secondary/20 min-h-screen pt-20">
+    <main ref={page} className="bg-secondary/20 min-h-screen pt-20">
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-8">
         <a
           href={PATHS.SHOP}

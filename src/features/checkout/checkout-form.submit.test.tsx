@@ -533,7 +533,8 @@ describe('the checkout submit state machine', () => {
 
   it('surfaces a server error in Persian in the top-level alert', async () => {
     // A 5xx `message` is the literal `Internal server error` — English
-    // developer text the shopper must never read.
+    // developer text the shopper must never read. No answer is not a refusal
+    // either: the order may exist, so the alert says to look first.
     postData.mockRejectedValue(
       new ApiRequestError(500, 'Internal server error'),
     );
@@ -544,7 +545,7 @@ describe('the checkout submit state machine', () => {
     });
 
     expect(screen.getByRole('alert').textContent).toBe(
-      'ثبت سفارش انجام نشد. لطفاً دوباره تلاش کن.',
+      'ممکن است سفارش ثبت شده باشد؛ پیش از تلاش دوباره، «سفارش‌های من» را ببین.',
     );
     expect(submitButton().disabled).toBe(false);
     expect(getCart()).toHaveLength(1); // nothing created, cart kept

@@ -356,25 +356,43 @@ describe('the card-to-card checkout and its screenshot', () => {
     expect(getCart()).toHaveLength(1);
   });
 
-  it('says it beside an inline field error too, where the alert had nothing else to say', async () => {
-    postData.mockRejectedValue(
-      new ApiRequestError(400, 'ورودی نامعتبر است', [
-        'address.city: مقدار واردشده بیش از حد طولانی است.',
-      ]),
-    );
-    advanceToPayment();
-    chooseCardToCard();
-    await attach(screenshot());
+  it.each([
+    [
+      'a phone typed too long',
+      400,
+      'address.recipientPhone: شماره تماس گیرنده معتبر نیست.',
+      'شماره تماس گیرنده',
+    ],
+    [
+      'a province since switched off',
+      422,
+      'address.provinceId: استان انتخاب‌شده معتبر نیست.',
+      'استان',
+    ],
+    [
+      'a discount code refused',
+      422,
+      'discountCode: کد تخفیف واردشده معتبر نیست.',
+      'کد تخفیف',
+    ],
+  ])(
+    'claims no refund for %s, and focuses the field to fix',
+    async (_, status, error, label) => {
+      // The shopper fixes a typo here; nothing about it needs money back.
+      postData.mockRejectedValue(
+        new ApiRequestError(status, 'ورودی نامعتبر', [error]),
+      );
+      advanceToPayment();
+      chooseCardToCard();
+      await attach(screenshot());
 
-    await click();
+      await click();
 
-    // Back on the address step, the field's own message inline…
-    expect(
-      screen.getByText('مقدار واردشده بیش از حد طولانی است.'),
-    ).toBeTruthy();
-    // …and the way back to a transfer above it.
-    expect(topAlert()?.textContent).toBe(REFUND_SENTENCE);
-  });
+      expect(topAlert()).toBeNull();
+      expect(document.body.textContent).not.toContain(REFUND_SENTENCE);
+      expect(document.activeElement).toBe(screen.getByLabelText(label));
+    },
+  );
 
   it('says nothing about a transfer to a Zarinpal shopper', async () => {
     postData.mockRejectedValue(
@@ -391,17 +409,32 @@ describe('the card-to-card checkout and its screenshot', () => {
   });
 
   it.each([
-    ['a 5xx', () => new ApiRequestError(500, 'Internal server error')],
-    ['a dropped connection', () => new TypeError('Failed to fetch')],
+    [
+      'card-to-card',
+      'a 5xx',
+      () => new ApiRequestError(500, 'Internal server error'),
+    ],
+    [
+      'card-to-card',
+      'a dropped connection',
+      () => new TypeError('Failed to fetch'),
+    ],
+    [
+      'Zarinpal',
+      'a dropped connection',
+      () => new TypeError('Failed to fetch'),
+    ],
   ])(
-    'says a card-to-card order may exist after %s — never the refund line',
-    async (_, failure) => {
+    'says a %s order may exist after %s — never the refund line',
+    async (method, _, failure) => {
       // No answer is not a refusal: the order may have been created, and a
-      // shopper who already transferred must look before trying again.
+      // shopper who already paid must look before trying again.
       postData.mockRejectedValue(failure());
       advanceToPayment();
-      chooseCardToCard();
-      await attach(screenshot());
+      if (method === 'card-to-card') {
+        chooseCardToCard();
+        await attach(screenshot());
+      }
 
       await click();
 
@@ -416,13 +449,15 @@ describe('the card-to-card checkout and its screenshot', () => {
   );
 
   it.each([
-    ['card-to-card', chooseCardToCard],
-    ['Zarinpal', () => {}],
+    ['card-to-card', chooseCardToCard, true],
+    ['Zarinpal', () => {}, false],
   ])(
-    'moves focus to the alert a refused %s create shows',
-    async (_, choose) => {
+    'moves focus to the alert a sold-out %s create shows',
+    async (_, choose, refund) => {
       // The alert tops the form, far above the button the shopper pressed:
-      // focus takes them, and a screen reader, to it.
+      // focus takes them, and a screen reader, to it. A sold-out line blocks
+      // the order, so a card-to-card shopper also reads how to get a transfer
+      // back.
       postData.mockRejectedValue(
         new ApiRequestError(422, 'ورودی نامعتبر', [
           'items.0: موجودی «اسباب‌بازی گربه» کافی نیست.',
@@ -434,7 +469,8 @@ describe('the card-to-card checkout and its screenshot', () => {
 
       await click();
 
-      expect(topAlert()).not.toBeNull();
+      expect(topAlert()?.textContent).toContain('کافی نیست');
+      expect(topAlert()?.textContent?.includes(REFUND_SENTENCE)).toBe(refund);
       expect(document.activeElement).toBe(topAlert());
     },
   );
