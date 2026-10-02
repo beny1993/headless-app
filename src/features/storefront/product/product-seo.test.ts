@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SITE_ORIGIN } from '@/constants';
+import { PET_TYPES } from '@/lib/catalog/product-query';
 import { productPath } from '@/lib/constant/paths';
 import {
   absoluteUrl,
@@ -15,6 +16,7 @@ import {
   productMetadata,
   type ProductForSeo,
 } from './product-seo';
+import { HANDLING_DAYS, RETURN_DAYS, TRANSIT_DAYS } from './shop-policy';
 
 // A site-wide Twitter field for the product card to carry: Next replaces a
 // nested metadata object, so a card built from scratch would drop it on
@@ -40,6 +42,7 @@ const product = (overrides: Partial<ProductForSeo> = {}): ProductForSeo => ({
   variantLabel: null,
   sku: 'RC-CAT-ADULT-2KG',
   brand: 'رویال کنین',
+  petTypes: [PET_TYPES.CAT],
   description: null,
   benefit: 'مناسب گوارش حساس',
   price: 285_000,
@@ -181,8 +184,11 @@ describe('productMetadata', () => {
 });
 
 describe('productJsonLd', () => {
+  /** What every province pays today: one flat fee, in Toman. */
+  const FLAT_FEES = [45_000, 45_000, 45_000];
+
   it('describes the product as Google reads it, priced in Rial', () => {
-    expect(productJsonLd(product(), 'غذای خشک')).toEqual({
+    expect(productJsonLd(product(), FLAT_FEES)).toEqual({
       '@context': 'https://schema.org',
       '@type': 'Product',
       name: 'غذای خشک گربه بالغ',
@@ -193,7 +199,12 @@ describe('productJsonLd', () => {
       description: 'مناسب گوارش حساس',
       sku: 'RC-CAT-ADULT-2KG',
       brand: { '@type': 'Brand', name: 'رویال کنین' },
-      category: 'غذای خشک',
+      category: {
+        '@type': 'CategoryCode',
+        inCodeSet:
+          'https://www.google.com/basepages/producttype/taxonomy-with-ids.en-US.txt',
+        codeValue: '4',
+      },
       offers: {
         '@type': 'Offer',
         url: `${DEFAULT_SITE_ORIGIN}/product/royal-canin-adult-cat-dry-food`,
@@ -201,30 +212,101 @@ describe('productJsonLd', () => {
         price: rialForStructuredData(285_000),
         availability: 'https://schema.org/InStock',
         itemCondition: 'https://schema.org/NewCondition',
+        shippingDetails: {
+          '@type': 'OfferShippingDetails',
+          shippingDestination: {
+            '@type': 'DefinedRegion',
+            addressCountry: 'IR',
+          },
+          shippingRate: {
+            '@type': 'MonetaryAmount',
+            currency: 'IRR',
+            value: rialForStructuredData(45_000),
+          },
+          deliveryTime: {
+            '@type': 'ShippingDeliveryTime',
+            handlingTime: {
+              '@type': 'QuantitativeValue',
+              minValue: HANDLING_DAYS.min,
+              maxValue: HANDLING_DAYS.max,
+              unitCode: 'DAY',
+            },
+            transitTime: {
+              '@type': 'QuantitativeValue',
+              minValue: TRANSIT_DAYS.min,
+              maxValue: TRANSIT_DAYS.max,
+              unitCode: 'DAY',
+            },
+          },
+        },
+        hasMerchantReturnPolicy: {
+          '@type': 'MerchantReturnPolicy',
+          applicableCountry: 'IR',
+          returnPolicyCategory:
+            'https://schema.org/MerchantReturnFiniteReturnWindow',
+          merchantReturnDays: RETURN_DAYS,
+          returnMethod: 'https://schema.org/ReturnByMail',
+          returnFees: 'https://schema.org/ReturnFeesCustomerResponsibility',
+        },
       },
     });
   });
 
+  it('files the product under Google’s pet supplies by the pets it is for', () => {
+    const code = (petTypes: ProductForSeo['petTypes']) =>
+      productJsonLd(product({ petTypes }), FLAT_FEES).category.codeValue;
+
+    expect(code([PET_TYPES.CAT])).toBe('4');
+    expect(code([PET_TYPES.DOG])).toBe('5');
+    // Both pets: the branch the two share, never one of them.
+    expect(code([PET_TYPES.CAT, PET_TYPES.DOG])).toBe('2');
+  });
+
+  it('prices shipping at the most a province pays when the fees differ', () => {
+    const rate = productJsonLd(product(), [30_000, 80_000, 55_000]).offers
+      .shippingDetails?.shippingRate;
+
+    expect(rate).toEqual({
+      '@type': 'MonetaryAmount',
+      currency: 'IRR',
+      maxValue: rialForStructuredData(80_000),
+    });
+  });
+
+  it('reads free shipping everywhere as a rate of zero', () => {
+    expect(
+      productJsonLd(product(), [0, 0]).offers.shippingDetails?.shippingRate,
+    ).toMatchObject({ value: 0 });
+  });
+
+  it('leaves shipping out when no province is priced, and keeps the return policy', () => {
+    const { offers } = productJsonLd(product(), []);
+
+    expect(offers).not.toHaveProperty('shippingDetails');
+    expect(offers.hasMerchantReturnPolicy).toMatchObject({
+      merchantReturnDays: RETURN_DAYS,
+    });
+  });
+
   it('reads low stock as in stock and none as out of stock', () => {
-    expect(productJsonLd(product({ stock: 1 })).offers.availability).toBe(
-      'https://schema.org/InStock',
-    );
-    expect(productJsonLd(product({ stock: 0 })).offers.availability).toBe(
-      'https://schema.org/OutOfStock',
-    );
+    expect(
+      productJsonLd(product({ stock: 1 }), FLAT_FEES).offers.availability,
+    ).toBe('https://schema.org/InStock');
+    expect(
+      productJsonLd(product({ stock: 0 }), FLAT_FEES).offers.availability,
+    ).toBe('https://schema.org/OutOfStock');
   });
 
   it('leaves out what the product does not have, rather than sending nulls', () => {
-    const data = productJsonLd(product({ brand: null, images: [] }));
+    const data = productJsonLd(product({ brand: null, images: [] }), FLAT_FEES);
 
     expect(data).not.toHaveProperty('brand');
     expect(data).not.toHaveProperty('image');
-    expect(data).not.toHaveProperty('category');
   });
 
   it('names a family member by its label', () => {
-    expect(productJsonLd(product({ variantLabel: 'لاوندر' })).name).toBe(
-      'غذای خشک گربه بالغ — لاوندر',
-    );
+    expect(
+      productJsonLd(product({ variantLabel: 'لاوندر' }), FLAT_FEES).name,
+    ).toBe('غذای خشک گربه بالغ — لاوندر');
   });
 });
