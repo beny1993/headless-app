@@ -27,6 +27,7 @@ import { REFUND_SENTENCE } from '@/lib/checkout/result-view';
 import { API_PATHS, PATHS, apiOrderReceiptsPath } from '@/lib/constant/paths';
 import {
   MAX_RECEIPT_BYTES,
+  RECEIPT_READ_ERROR,
   RECEIPT_SIZE_ERROR,
   receiptSchema,
 } from '@/lib/orders/receipt';
@@ -110,6 +111,17 @@ const attach = async (file: File) => {
   await act(async () => {
     fireEvent.change(receiptInput()!, { target: { files: [file] } });
   });
+};
+
+/**
+ * Replaces how `file`'s leading bytes are read — its `slice(…).arrayBuffer()`,
+ * what the byte check calls — with `read`.
+ */
+const readBytesWith = (file: File, read: () => Promise<ArrayBuffer>) => {
+  const slice = file.slice.bind(file);
+  file.slice = (...args) =>
+    Object.assign(slice(...args), { arrayBuffer: read });
+  return file;
 };
 
 /** A phone's screenshot: a JPEG by its bytes, named by its timestamp. */
@@ -199,6 +211,45 @@ describe('the card-to-card checkout and its screenshot', () => {
     expect(postData).not.toHaveBeenCalled();
   });
 
+  it('locks «ثبت سفارش» while a later pick is still being read', async () => {
+    advanceToPayment();
+    chooseCardToCard();
+    await attach(screenshot());
+    expect(submitButton().disabled).toBe(false);
+
+    // The next pick's bytes are slow to arrive: until they are checked,
+    // nothing is attached — never the earlier file in its place.
+    let arrive = () => {};
+    const arrived = new Promise<void>((resolve) => (arrive = resolve));
+    const next = screenshot();
+    const head = next.slice(0, 12);
+    await attach(
+      readBytesWith(next, async () => {
+        await arrived;
+        return head.arrayBuffer();
+      }),
+    );
+    expect(submitButton().disabled).toBe(true);
+
+    await act(async () => arrive());
+    expect(submitButton().disabled).toBe(false);
+  });
+
+  it('refuses a file whose bytes cannot be read, and keeps «ثبت سفارش» locked', async () => {
+    advanceToPayment();
+    chooseCardToCard();
+    await attach(screenshot());
+
+    await attach(
+      readBytesWith(screenshot(), () =>
+        Promise.reject(new DOMException('gone', 'NotReadableError')),
+      ),
+    );
+
+    expect(receiptAlert()?.textContent).toBe(RECEIPT_READ_ERROR);
+    expect(submitButton().disabled).toBe(true);
+  });
+
   it('asks a Zarinpal checkout for no screenshot', () => {
     advanceToPayment(); // Zarinpal is the default method
 
@@ -234,7 +285,14 @@ describe('the card-to-card checkout and its screenshot', () => {
       unknown,
     ];
     expect(path).toBe(apiOrderReceiptsPath('order-123'));
-    expect(form.get(IMAGE_FIELD_NAME)).toBe(file);
+    // The picked bytes, named «receipt»: the shopper's own file name is
+    // never sent.
+    const sent = form.get(IMAGE_FIELD_NAME) as File;
+    expect(sent.name).toBe('receipt');
+    expect(sent.type).toBe(file.type);
+    expect(new Uint8Array(await sent.arrayBuffer())).toEqual(
+      new Uint8Array(await file.arrayBuffer()),
+    );
     expect(schema).toBe(receiptSchema);
 
     await act(async () => stored());

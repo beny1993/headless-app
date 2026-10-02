@@ -15,6 +15,7 @@ import {
   MAX_RECEIPT_BYTES,
   RECEIPT_CAP_MESSAGE,
   RECEIPT_FORMAT_HINT,
+  RECEIPT_READ_ERROR,
   RECEIPT_SIZE_ERROR,
   receiptSchema,
   receiptsLabel,
@@ -173,13 +174,15 @@ describe('the receipt copy', () => {
     );
   });
 
-  it.each([RECEIPT_FORMAT_HINT, RECEIPT_SIZE_ERROR, RECEIPT_CAP_MESSAGE])(
-    'carries no ASCII digit: %s',
-    (copy) => {
-      // The checkout E2E asserts `main` has none.
-      expect(copy).not.toMatch(/\d/);
-    },
-  );
+  it.each([
+    RECEIPT_FORMAT_HINT,
+    RECEIPT_SIZE_ERROR,
+    RECEIPT_READ_ERROR,
+    RECEIPT_CAP_MESSAGE,
+  ])('carries no ASCII digit: %s', (copy) => {
+    // The checkout E2E asserts `main` has none.
+    expect(copy).not.toMatch(/\d/);
+  });
 });
 
 describe('receiptSchema', () => {

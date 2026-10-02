@@ -206,7 +206,14 @@ describe('ReceiptBox', () => {
       unknown,
     ];
     expect(path).toBe(apiOrderReceiptsPath(ORDER_ID));
-    expect(form.get(IMAGE_FIELD_NAME)).toBe(file);
+    // The picked bytes, named «receipt»: the shopper's own file name is
+    // never sent.
+    const sent = form.get(IMAGE_FIELD_NAME) as File;
+    expect(sent.name).toBe('receipt');
+    expect(sent.type).toBe(file.type);
+    expect(new Uint8Array(await sent.arrayBuffer())).toEqual(
+      new Uint8Array(await file.arrayBuffer()),
+    );
     expect(schema).toBe(receiptSchema);
     expect(refresh).toHaveBeenCalledTimes(1);
 

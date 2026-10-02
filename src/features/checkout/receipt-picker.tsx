@@ -2,14 +2,20 @@
 
 import { useRef, type ReactNode } from 'react';
 import { AlertCircle, ImageUp } from 'lucide-react';
-import { RECEIPT_FORMAT_HINT, validateReceiptFile } from '@/lib/orders/receipt';
+import {
+  RECEIPT_FORMAT_HINT,
+  RECEIPT_READ_ERROR,
+  validateReceiptFile,
+} from '@/lib/orders/receipt';
 import { ACCEPTED_IMAGE_TYPES } from '@/lib/storage/image-upload';
 import { cn } from '@/lib/utils';
 
 /**
  * A payment receipt's file picker, for the checkout's payment step and the
  * order pages' receipt box. Controlled: the parent holds the picked file and
- * the refusal, and `onPick` reports each pick once its bytes are checked.
+ * the refusal. `onPick` clears both the moment a file is picked, so nothing is
+ * attached while its bytes are checked, then reports the verdict — or that
+ * the bytes could not be read.
  *
  * The picked file's NAME is never rendered: a phone names a screenshot with its
  * timestamp, and a shopper's page carries no ASCII digit — nor anybody's files.
@@ -74,14 +80,18 @@ export function ReceiptPicker({
                 // Emptied, so the same file can be picked again after a refusal.
                 change.target.value = '';
                 const pick = ++latest.current;
-                if (!picked) {
-                  onPick({ file: null, error: null });
-                  return;
-                }
-                void validateReceiptFile(picked).then((refusal) => {
-                  if (pick !== latest.current) return;
-                  onPick({ file: refusal ? null : picked, error: refusal });
-                });
+                onPick({ file: null, error: null });
+                if (!picked) return;
+                void validateReceiptFile(picked).then(
+                  (refusal) => {
+                    if (pick !== latest.current) return;
+                    onPick({ file: refusal ? null : picked, error: refusal });
+                  },
+                  () => {
+                    if (pick !== latest.current) return;
+                    onPick({ file: null, error: RECEIPT_READ_ERROR });
+                  },
+                );
               }}
             />
           </label>

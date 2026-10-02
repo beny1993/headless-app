@@ -97,7 +97,8 @@ export function ReceiptBox({
     setError(null);
     try {
       const form = new FormData();
-      form.set(IMAGE_FIELD_NAME, file);
+      // Named «receipt», never the shopper's own file name.
+      form.append(IMAGE_FIELD_NAME, file, 'receipt');
       await postForm(apiOrderReceiptsPath(orderId), form, receiptSchema);
       setFile(null);
       router.refresh();

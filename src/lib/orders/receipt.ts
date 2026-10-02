@@ -33,6 +33,8 @@ export const MAX_RECEIPT_BYTES = 5 * 1024 * 1024;
 /** «JPG، PNG یا WEBP، تا ۵ مگابایت» — the hint under the picker. */
 export const RECEIPT_FORMAT_HINT = formatHint(MAX_RECEIPT_BYTES);
 export const RECEIPT_SIZE_ERROR = sizeError(MAX_RECEIPT_BYTES);
+/** A picked file whose bytes the browser could not hand over. */
+export const RECEIPT_READ_ERROR = 'این فایل خوانده نشد؛ دوباره انتخاب کن.';
 
 /**
  * A receipt thumbnail's alt text, numbered — «رسید پرداخت ۲» — so five receipts

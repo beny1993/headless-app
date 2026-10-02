@@ -506,7 +506,8 @@ export function CheckoutForm({
     if (screenshot) {
       try {
         const form = new FormData();
-        form.set(IMAGE_FIELD_NAME, screenshot);
+        // Named «receipt», never the shopper's own file name.
+        form.append(IMAGE_FIELD_NAME, screenshot, 'receipt');
         await postForm(
           apiOrderReceiptsPath(order.orderId),
           form,
