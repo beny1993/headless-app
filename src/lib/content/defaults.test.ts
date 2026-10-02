@@ -169,10 +169,12 @@ describe('the shop’s social handles', () => {
 });
 
 describe('the card-to-card note', () => {
-  it('says the receipt is uploaded in the app, after the order is placed', () => {
+  it('says the screenshot is attached right here — never after the order is placed', () => {
+    // «همین‌جا»: the picker under the note at checkout, the receipt box under
+    // it on the order pages.
     const { note } = DEFAULT_CONTENT['checkout.payment'];
-    expect(note).toContain('بعد از «ثبت سفارش»');
-    expect(note).toContain('بارگذاری کن');
+    expect(note).toContain('همین‌جا پیوست کن');
+    expect(note).not.toContain('بعد از «ثبت سفارش»');
     // Not sent to anyone: the DM inbox is no longer where a receipt goes.
     expect(note).not.toContain('بفرست');
   });
