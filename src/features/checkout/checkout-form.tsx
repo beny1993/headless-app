@@ -431,11 +431,16 @@ export function CheckoutForm({
         setApplied(null);
         setDiscountError(fields.discountCode);
       }
-      // Field errors on an input show inline; `items.*` (a cart line) and the
-      // request's own message have no input to attach to → the top-level alert.
+      // Field errors on an input show inline; everything else goes to the
+      // top-level alert: `items.*` (a cart line), `paymentMethod` (where
+      // createOrder's per-user caps and the online-payment refusal land — the
+      // payment radios have no error slot, so the message would otherwise be
+      // parsed, kept, and shown nowhere) and the request's own message.
       const top = Object.entries(fields)
-        .filter(([path]) => path.startsWith('items.'))
-        .map(([, itemMessage]) => itemMessage);
+        .filter(
+          ([path]) => path.startsWith('items.') || path === 'paymentMethod',
+        )
+        .map(([, fieldMessage]) => fieldMessage);
       if (message) top.push(message);
       setTopError(top.length > 0 ? top.join(' ') : undefined);
       // Jump to the earliest step that has an error so it is on screen.

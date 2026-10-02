@@ -4,9 +4,10 @@
 // second fulfillment), charged once, with stock decremented once.
 //
 // Needs a live database — see src/db/test-db.ts — because every guarantee here is
-// a property of real transactions and a real partial unique index: the losing
-// insert of a concurrent race trips 23505 and rolls its reservation back, which a
-// mocked `db` cannot show. Same rigor as the oversell suite next door; the
+// a property of real transactions, a real row lock and a real partial unique
+// index: a concurrent same-key request queues on the account lock and is handed
+// the winner's order (the index, tripping 23505, is the backstop behind it),
+// which a mocked `db` cannot show. Same rigor as the oversell suite next door; the
 // discriminator is that BOTH concurrent calls here succeed with the SAME order,
 // where oversell has exactly one rejection.
 import { eq, inArray } from 'drizzle-orm';
@@ -19,7 +20,6 @@ import {
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
 } from '@/lib/orders/order-status';
-import { CheckoutError } from '@/logic/checkout/checkout-error';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
@@ -101,9 +101,9 @@ describe.skipIf(!databaseReachable)('createOrder idempotency', () => {
 
   describe('concurrency', () => {
     it('two concurrent COD checkouts with the same key create exactly one order, decrementing stock once', async () => {
-      // Ample stock so BOTH decrements clear the oversell guard — the collision
-      // must land on the partial unique index (23505), not the stock guard.
-      // 5 - 2 = 3, and 3 >= 2, so the loser reserves before it hits the index.
+      // Ample stock (5 - 2 = 3 >= 2), so stock never decides between the two.
+      // The loser waits on the account lock, then finds the winner's order
+      // under it and returns that — it never reserves at all.
       const user = await fx.user();
       const category = await fx.category();
       const product = await fx.product(category, { price: 100_000, stock: 5 });
@@ -134,15 +134,12 @@ describe.skipIf(!databaseReachable)('createOrder idempotency', () => {
       expect(pays[0].status).toBe(PAYMENT_STATUSES.PENDING);
     });
 
-    it('the winner takes the last unit and the loser gets a stock error, never a second order or a double decrement', async () => {
-      // The benign edge the design flags: with only ONE unit, the loser's atomic
-      // decrement finds 0 rows and throws an insufficient-stock CheckoutError
-      // BEFORE it can reach the unique index — so the losing branch is the stock
-      // guard, not the 23505 catch (unlike the ample-stock race above, where both
-      // fulfil). What the money invariant demands is asserted deterministically:
-      // exactly ONE order, stock decremented exactly ONCE (never stranded, never
-      // twice), and any losing call fails with a client-fixable CheckoutError on
-      // the offending line — never a 500, never a second reservation.
+    it('the winner takes the last unit and the queued call gets that same order back, never a stock error, a second order or a double decrement', async () => {
+      // With only ONE unit, a loser that ever reached its decrement would find
+      // 0 rows and throw an insufficient-stock CheckoutError. Queued on the
+      // account lock, it finds the winner's order first (3b) and returns that,
+      // so however the calls interleave both fulfil with ONE order, and stock
+      // is decremented exactly ONCE (never stranded, never twice).
       const user = await fx.user();
       const category = await fx.category();
       const product = await fx.product(category, { price: 100_000, stock: 1 });
@@ -163,25 +160,13 @@ describe.skipIf(!databaseReachable)('createOrder idempotency', () => {
       expect(created).toHaveLength(1);
       expect(await stockOf(product.id)).toBe(0);
 
-      // At least the winner returned the created order; every returned order is
-      // that one order (no phantom second id).
+      // Both calls returned that one order (no phantom second id), and neither
+      // was refused: the loser never reached the stock guard.
       const fulfilled = results.filter(
         (r) => r.status === 'fulfilled',
       ) as PromiseFulfilledResult<{ id: string }>[];
-      expect(fulfilled.length).toBeGreaterThanOrEqual(1);
+      expect(fulfilled).toHaveLength(2);
       fulfilled.forEach((r) => expect(r.value.id).toBe(created[0].id));
-
-      // Any losing call is a benign, client-fixable stock error on the line —
-      // not a raw 23505, not an unexpected 500.
-      const rejected = results.filter(
-        (r) => r.status === 'rejected',
-      ) as PromiseRejectedResult[];
-      rejected.forEach((r) => {
-        expect(r.reason).toBeInstanceOf(CheckoutError);
-        expect((r.reason as InstanceType<typeof CheckoutError>).field).toBe(
-          'items.0',
-        );
-      });
     });
   });
 
@@ -206,10 +191,11 @@ describe.skipIf(!databaseReachable)('createOrder idempotency', () => {
       expect(await paymentsForOrder(first.id)).toHaveLength(1);
     });
 
-    it('replays an order that took the last unit without a 422 (the pre-check is a correctness requirement)', async () => {
-      // Without the fast-path pre-check, the replay would re-enter the
-      // transaction, the stock guard would find 0 units and throw an
-      // insufficient-stock CheckoutError before the unique index ever caught it.
+    it('replays an order that took the last unit without a 422', async () => {
+      // A replay that reached the stock guard would find 0 units and throw an
+      // insufficient-stock CheckoutError before the unique index ever caught
+      // it. The fast path (step 0) hands the order back first, and without it
+      // the re-check under the account lock (3b) would.
       const user = await fx.user();
       const category = await fx.category();
       const product = await fx.product(category, { stock: 1 });
@@ -229,8 +215,9 @@ describe.skipIf(!databaseReachable)('createOrder idempotency', () => {
 
     it('replays a Zarinpal order that put the user at the open-order cap (the cap must not reject the replay)', async () => {
       // Seed the user to one below the cap, then create the keyed Zarinpal order
-      // (now AT the cap). A replay counts that order toward the cap; without the
-      // pre-check it would 422 TOO_MANY_OPEN_ORDERS instead of returning it.
+      // (now AT the cap). A replay that reached the cap would count that order
+      // toward it and 422 TOO_MANY_OPEN_ORDERS; step 0, and the re-check under
+      // the lock (3b) behind it, return the order before that.
       const user = await fx.user();
       const category = await fx.category();
       const product = await fx.product(category, { stock: 5 });
@@ -256,6 +243,45 @@ describe.skipIf(!databaseReachable)('createOrder idempotency', () => {
 
       expect(second.id).toBe(first.id);
       expect(await ordersForUser(user.id)).toHaveLength(MAX_OPEN_ORDERS);
+    });
+
+    // Steps 1–2 check the province and online payment BEFORE the account
+    // lock, where the re-check (3b) cannot help. Only the step-0 fast path
+    // stands between a retry of a committed order and their 422.
+    it('replays a committed order after its province was switched off', async () => {
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+      const k = key();
+      const input = buildInput(prov, [{ productId: product.id, qty: 1 }]);
+
+      const first = await createOrder(user.id, input, k);
+      fx.remember(first.id);
+      await ShippingRateDao.setActive(prov.provinceId, false);
+
+      await expect(createOrder(user.id, input, k)).resolves.toMatchObject({
+        id: first.id,
+      });
+    });
+
+    it('replays a committed Zarinpal order after online payment was switched off', async () => {
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+      const k = key();
+      const input = buildInput(prov, [{ productId: product.id, qty: 1 }], {
+        paymentMethod: PAYMENT_METHODS.ZARINPAL,
+      });
+
+      const first = await createOrder(user.id, input, k);
+      fx.remember(first.id);
+      vi.stubEnv('APP_CONFIG_ZARINPAL_ENABLED', 'false');
+
+      await expect(createOrder(user.id, input, k)).resolves.toMatchObject({
+        id: first.id,
+      });
     });
   });
 
