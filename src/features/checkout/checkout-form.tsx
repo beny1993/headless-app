@@ -33,7 +33,7 @@ import {
   FieldShell,
   TextField,
 } from '@/components/ui/field';
-import { postData, postForm } from '@/lib/api-client';
+import { ApiRequestError, postData, postForm } from '@/lib/api-client';
 import { normalizePostalCode, validateAddress } from '@/lib/account/address';
 import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
 import { REFUND_SENTENCE } from '@/lib/checkout/result-view';
@@ -161,6 +161,9 @@ export function CheckoutForm({
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [topError, setTopError] = useState<string | undefined>();
+  // A card-to-card create that got no answer — a 5xx, a dropped connection —
+  // may have placed the order: the alert says to look before trying again.
+  const [orderMayExist, setOrderMayExist] = useState(false);
   const [status, setStatus] = useState<Status>('idle');
   // "Save this address" — a best-effort write after the order is created; a
   // failure never blocks the redirect (see `submit`).
@@ -188,6 +191,7 @@ export function CheckoutForm({
   // defense-in-depth, not the guarantee. Never sending a second create is the
   // point; the server-side `Idempotency-Key` is the last line if one slips out.
   const inFlight = useRef(false);
+  const topAlert = useRef<HTMLParagraphElement>(null);
   // One key per checkout attempt, minted lazily on first submit, reused across
   // retries, and dropped only once an order is created (a 422 does not consume
   // it — nothing was created, so the retry must carry the same key).
@@ -257,6 +261,17 @@ export function CheckoutForm({
       router.replace(PATHS.SHOP);
     }
   }, [hydrated, status, lines.length, router]);
+
+  // A refused create's alert tops the form, above the button that sent it,
+  // and the shopper may have just transferred money: focus it, which also
+  // moves a screen reader there, and scroll it to the middle of the screen,
+  // clear of the fixed header. `submit` clears both before each create, so a
+  // repeated refusal runs this again.
+  useEffect(() => {
+    if (!topError && !orderMayExist) return;
+    topAlert.current?.focus();
+    topAlert.current?.scrollIntoView({ block: 'center' });
+  }, [topError, orderMayExist]);
 
   /**
    * Ask the server what the code takes off the current cart. Read-only — it never
@@ -374,6 +389,7 @@ export function CheckoutForm({
     inFlight.current = true;
     setStatus('submitting');
     setTopError(undefined);
+    setOrderMayExist(false);
 
     if (!idempotencyKey.current) idempotencyKey.current = crypto.randomUUID();
 
@@ -432,9 +448,19 @@ export function CheckoutForm({
         )
         .map(([, fieldMessage]) => fieldMessage);
       if (message) top.push(message);
-      // Card to card: the shopper may have transferred before the refusal.
-      if (paymentMethod === PAYMENT_METHODS.COD) top.push(REFUND_SENTENCE);
-      setTopError(top.length > 0 ? top.join(' ') : undefined);
+      // A 4xx is the server's refusal: nothing was created, though a
+      // card-to-card shopper may have transferred already. Anything else — a
+      // 5xx, a dropped connection — leaves the outcome unknown and the order
+      // may exist, so card to card says to look before trying again instead.
+      const refused =
+        error instanceof ApiRequestError &&
+        error.status >= 400 &&
+        error.status < 500;
+      const cardToCard = paymentMethod === PAYMENT_METHODS.COD;
+      if (cardToCard && refused) top.push(REFUND_SENTENCE);
+      const mayExist = cardToCard && !refused;
+      setOrderMayExist(mayExist);
+      setTopError(!mayExist && top.length > 0 ? top.join(' ') : undefined);
       // Jump to the earliest step that has an error so it is on screen.
       const steps = Object.keys(fields).map(stepOfField);
       if (steps.length > 0) setStep(Math.min(...steps));
@@ -556,9 +582,11 @@ export function CheckoutForm({
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
           <div className="border-border bg-card rounded-2xl border p-6 lg:col-span-3">
-            {topError && (
+            {(topError || orderMayExist) && (
               <p
                 id={errorId}
+                ref={topAlert}
+                tabIndex={-1}
                 role="alert"
                 className="text-destructive border-destructive/30 bg-destructive-soft/40 mb-5 flex items-center gap-2 rounded-xl border p-3 text-sm"
               >
@@ -567,7 +595,21 @@ export function CheckoutForm({
                   className="shrink-0"
                   aria-hidden="true"
                 />
-                {topError}
+                {orderMayExist ? (
+                  <span>
+                    ممکن است سفارش ثبت شده باشد؛ پیش از تلاش دوباره، «
+                    <a
+                      href={PATHS.ACCOUNT}
+                      className="font-medium underline"
+                      data-umami-event="checkout-error-my-orders"
+                    >
+                      سفارش‌های من
+                    </a>
+                    » را ببین.
+                  </span>
+                ) : (
+                  topError
+                )}
               </p>
             )}
 
@@ -845,7 +887,9 @@ export function CheckoutForm({
                 disabled={
                   busy || (paymentMethod === PAYMENT_METHODS.COD && !receipt)
                 }
-                aria-describedby={topError ? errorId : undefined}
+                aria-describedby={
+                  topError || orderMayExist ? errorId : undefined
+                }
                 className="bg-brand hover:bg-brand-hover text-brand-foreground mt-6 w-full rounded-xl py-3.5 font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 data-umami-event="checkout-submit-order"
               >

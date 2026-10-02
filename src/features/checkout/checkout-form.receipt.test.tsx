@@ -24,7 +24,7 @@ import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import { addToCart, clearCart, getCart } from '@/features/storefront/cart/cart';
 import { ApiRequestError } from '@/lib/api-client';
 import { REFUND_SENTENCE } from '@/lib/checkout/result-view';
-import { API_PATHS, apiOrderReceiptsPath } from '@/lib/constant/paths';
+import { API_PATHS, PATHS, apiOrderReceiptsPath } from '@/lib/constant/paths';
 import {
   MAX_RECEIPT_BYTES,
   RECEIPT_SIZE_ERROR,
@@ -331,6 +331,55 @@ describe('the card-to-card checkout and its screenshot', () => {
     expect(topAlert()?.textContent).toContain('به حد مجاز رسیده است');
     expect(topAlert()?.textContent).not.toContain(REFUND_SENTENCE);
   });
+
+  it.each([
+    ['a 5xx', () => new ApiRequestError(500, 'Internal server error')],
+    ['a dropped connection', () => new TypeError('Failed to fetch')],
+  ])(
+    'says a card-to-card order may exist after %s — never the refund line',
+    async (_, failure) => {
+      // No answer is not a refusal: the order may have been created, and a
+      // shopper who already transferred must look before trying again.
+      postData.mockRejectedValue(failure());
+      advanceToPayment();
+      chooseCardToCard();
+      await attach(screenshot());
+
+      await click();
+
+      expect(topAlert()?.textContent).toBe(
+        'ممکن است سفارش ثبت شده باشد؛ پیش از تلاش دوباره، «سفارش‌های من» را ببین.',
+      );
+      expect(
+        screen.getByRole('link', { name: 'سفارش‌های من' }).getAttribute('href'),
+      ).toBe(PATHS.ACCOUNT);
+      expect(topAlert()?.textContent).not.toContain(REFUND_SENTENCE);
+    },
+  );
+
+  it.each([
+    ['card-to-card', chooseCardToCard],
+    ['Zarinpal', () => {}],
+  ])(
+    'moves focus to the alert a refused %s create shows',
+    async (_, choose) => {
+      // The alert tops the form, far above the button the shopper pressed:
+      // focus takes them, and a screen reader, to it.
+      postData.mockRejectedValue(
+        new ApiRequestError(422, 'ورودی نامعتبر', [
+          'items.0: موجودی «اسباب‌بازی گربه» کافی نیست.',
+        ]),
+      );
+      advanceToPayment();
+      choose();
+      if (receiptInput()) await attach(screenshot());
+
+      await click();
+
+      expect(topAlert()).not.toBeNull();
+      expect(document.activeElement).toBe(topAlert());
+    },
+  );
 
   it('saves the address only after the screenshot, and still navigates when that save fails', async () => {
     postData.mockImplementation((path: string) =>
