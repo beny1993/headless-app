@@ -381,6 +381,40 @@ describe('the card-to-card checkout and its screenshot', () => {
     },
   );
 
+  it.each([
+    ['card to card, answered with a Zarinpal order', true, 'pending_payment'],
+    [
+      'card to card, answered with an order already accepted',
+      true,
+      'processing',
+    ],
+    ['Zarinpal, answered with a card-to-card order', false, 'awaiting_receipt'],
+  ])(
+    'goes straight to the order’s page for %s — no upload, no gateway',
+    async (_, cardToCard, status) => {
+      // A resent key hands back the order it first made, as it now is: the
+      // answer's status decides what follows, not the method on screen.
+      postData.mockImplementation((path: string) =>
+        path === API_PATHS.CHECKOUT
+          ? Promise.resolve({ ...CREATED, status })
+          : Promise.reject(new Error(`unexpected ${path}`)),
+      );
+      advanceToPayment();
+      if (cardToCard) {
+        chooseCardToCard();
+        await attach(screenshot());
+      }
+
+      await click();
+
+      expect(postForm).not.toHaveBeenCalled();
+      expect(postData.mock.calls.map(([path]) => path)).toEqual([
+        API_PATHS.CHECKOUT,
+      ]);
+      expect(push).toHaveBeenCalledWith(RESULT_PAGE);
+    },
+  );
+
   it('saves the address only after the screenshot, and still navigates when that save fails', async () => {
     postData.mockImplementation((path: string) =>
       path === API_PATHS.CHECKOUT

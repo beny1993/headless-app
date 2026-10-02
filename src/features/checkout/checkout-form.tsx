@@ -25,6 +25,11 @@ import {
   subscribe,
 } from '@/features/storefront/cart/cart';
 import { CardToCardPanel, type CardToCardContent } from './card-to-card';
+import {
+  checkoutKeyFor,
+  forgetCheckoutKey,
+  type KeptKey,
+} from './checkout-key';
 import { OrderSummary, type SummaryLine } from './order-summary';
 import { ReceiptPicker } from './receipt-picker';
 import {
@@ -51,7 +56,11 @@ import type {
   DiscountPreviewResponse,
 } from '@/lib/hono/routes/checkout';
 import type { ShippingRateResponse } from '@/lib/hono/routes/shipping';
-import { PAYMENT_METHODS, type PaymentMethod } from '@/lib/orders/order-status';
+import {
+  ORDER_STATUSES,
+  PAYMENT_METHODS,
+  type PaymentMethod,
+} from '@/lib/orders/order-status';
 import { receiptSchema } from '@/lib/orders/receipt';
 import { toPersianDigits } from '@/lib/format';
 import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
@@ -192,10 +201,12 @@ export function CheckoutForm({
   // point; the server-side `Idempotency-Key` is the last line if one slips out.
   const inFlight = useRef(false);
   const topAlert = useRef<HTMLParagraphElement>(null);
-  // One key per checkout attempt, minted lazily on first submit, reused across
-  // retries, and dropped only once an order is created (a 422 does not consume
-  // it — nothing was created, so the retry must carry the same key).
-  const idempotencyKey = useRef<string | null>(null);
+  // The Idempotency-Key, with the exact body it was minted for: resent by
+  // every retry of that body — after a reload too (`checkout-key.ts`) — and
+  // dropped only once an order is created. A refusal does not consume it, so
+  // the retry carries the same key. This is its in-memory copy, for when
+  // storage throws.
+  const keptKey = useRef<KeptKey | null>(null);
 
   const selectedFee =
     rates.find((rate) => String(rate.provinceId) === provinceId)?.fee ?? null;
@@ -391,8 +402,6 @@ export function CheckoutForm({
     setTopError(undefined);
     setOrderMayExist(false);
 
-    if (!idempotencyKey.current) idempotencyKey.current = crypto.randomUUID();
-
     const body: CheckoutInput = {
       items: lines.map((line) => ({
         productId: line.productId,
@@ -412,16 +421,18 @@ export function CheckoutForm({
       ...(discountCode.trim() ? { discountCode: discountCode.trim() } : {}),
     };
 
+    const idempotencyKey = checkoutKeyFor(JSON.stringify(body), keptKey);
+
     // The create is the only call whose failure re-enables the form: nothing
     // after its 2xx may, or a retry would place a second order.
     let order: CheckoutResultResponse;
     try {
       order = await postData<CheckoutResultResponse>(API_PATHS.CHECKOUT, body, {
-        'Idempotency-Key': idempotencyKey.current,
+        'Idempotency-Key': idempotencyKey,
       });
     } catch (error) {
-      // Nothing was created — release the guard, keep the key so the retry stays
-      // idempotent, and re-enable the form.
+      // No order this form knows of — release the guard, keep the key so a
+      // retry of the same checkout stays idempotent, and re-enable the form.
       inFlight.current = false;
       setStatus('idle');
 
@@ -472,8 +483,20 @@ export function CheckoutForm({
     // upload or any gateway hop: an empty cart sends a fresh /checkout to the
     // shop (the effect above), so it offers nothing to submit again.
     clearCart();
-    idempotencyKey.current = null; // consumed; a fresh checkout is a fresh key
-    const screenshot = paymentMethod === PAYMENT_METHODS.COD ? receipt : null;
+    forgetCheckoutKey(keptKey); // consumed; a fresh checkout is a fresh key
+    // What follows is the answer's call, not the method on screen: a resent
+    // key hands back the order it first made, as it is now. The upload follows
+    // only a card-to-card order waiting for its receipt, the gateway only a
+    // Zarinpal order waiting for its payment; any other answer goes straight to
+    // the order's page.
+    const screenshot =
+      order.status === ORDER_STATUSES.AWAITING_RECEIPT &&
+      paymentMethod === PAYMENT_METHODS.COD
+        ? receipt
+        : null;
+    const toGateway =
+      order.status === ORDER_STATUSES.PENDING_PAYMENT &&
+      paymentMethod === PAYMENT_METHODS.ZARINPAL;
     setStatus(screenshot ? 'uploading' : 'redirecting');
 
     // The screenshot accepts the card-to-card order. A refusal or a dropped
@@ -506,7 +529,7 @@ export function CheckoutForm({
       }
     }
 
-    if (paymentMethod === PAYMENT_METHODS.ZARINPAL) {
+    if (toGateway) {
       try {
         await startZarinpalPayment(order.orderId);
       } catch {
