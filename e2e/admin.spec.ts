@@ -44,6 +44,28 @@ const sidewaysOverflow = (page: Page) =>
   });
 
 /**
+ * The upload on a waiting order's page, where the shopper lands: the picker
+ * and its button each wholly inside the first screen, at scroll 0.
+ */
+async function expectUploadOnFirstScreen(
+  page: Page,
+  prefix: 'checkout-result' | 'account-order',
+) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const fold = page.viewportSize()?.height ?? 0;
+  for (const control of [
+    page.locator('label', {
+      has: page.locator(`[data-umami-event="${prefix}-receipt-file"]`),
+    }),
+    page.locator(`[data-umami-event="${prefix}-receipt-upload"]`),
+  ]) {
+    const box = await control.boundingBox();
+    if (!box) throw new Error(`no ${prefix} upload control on the page`);
+    expect(box.y + box.height).toBeLessThanOrEqual(fold);
+  }
+}
+
+/**
  * Cancels the order open on the admin's page: the cancel button asks for the
  * reason the shopper will read, and nothing is sent without one.
  */
@@ -179,8 +201,8 @@ test.describe('an admin', () => {
     await shopper.unroute(receiptUpload);
 
     // The result page says the order is not accepted yet — never the accepted
-    // «سفارش ثبت شد!» — and puts the box to upload in above the order's
-    // details, where the shopper needs no scroll to find it.
+    // «سفارش ثبت شد!» — and puts the box to upload in first, above the card
+    // numbers and the order's details, where the shopper needs no scroll.
     await expect(
       shopper.getByRole('heading', { name: 'سفارش هنوز پذیرفته نشده است' }),
     ).toBeVisible();
@@ -199,11 +221,13 @@ test.describe('an admin', () => {
       throw new Error('the picker or the order number is not on the page');
     }
     expect(pickerTop).toBeLessThan(detailsTop);
-    // The account order page says so too.
+    await expectUploadOnFirstScreen(shopper, 'checkout-result');
+    // The account order page says so too, its upload as close at hand.
     await shopper.goto(accountOrderPath(orderId));
     await expect(
       shopper.getByText('سفارش هنوز پذیرفته نشده است'),
     ).toBeVisible();
+    await expectUploadOnFirstScreen(shopper, 'account-order');
 
     await shopper.goto(path);
     await expect(stockLeft(stock - 1)).toBeVisible();

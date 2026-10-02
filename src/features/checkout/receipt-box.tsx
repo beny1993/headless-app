@@ -61,7 +61,10 @@ const stateLine = (status: OrderStatus, receiptCount: number) => {
  * and the server re-renders the page — badge, sub-copy, this box — from the
  * order as it now is (the first receipt accepts it). Only the pick, `busy` and
  * the refusal are local; `busy` clears in `finally`, because a refresh keeps
- * this component mounted and a lingering `busy` would strand the button.
+ * this component mounted and a lingering `busy` would strand the button. Both
+ * pages keep it mounted even when the refresh moves it, from first on a
+ * waiting order to below on an accepted one: they key it in one list (their
+ * page tests pin the single mount).
  */
 export function ReceiptBox({
   orderId,

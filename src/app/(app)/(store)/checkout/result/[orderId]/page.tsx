@@ -58,27 +58,68 @@ export default async function Page({
   const cardToCard = acceptsReceipts(order)
     ? await readCardToCardPayment()
     : null;
-  // Where to pay and the box to upload in. Above the order's details while the
-  // order still waits for its receipt — the copy above says the box is right
-  // under it — and below them once the order is accepted.
-  const receiptSection = (
-    <>
-      {cardToCard && <CardToCardPanel payment={cardToCard} className="mb-7" />}
-
-      {showsReceipts(order, order.receipts.length) && (
-        <ReceiptBox
-          orderId={order.id}
-          orderStatus={order.status}
-          receipts={order.receipts.map((receipt) => ({
-            id: receipt.id,
-            uploadedAt: formatJalaliDateTime(receipt.createdAt),
-          }))}
-          eventPrefix="checkout-result"
-        />
-      )}
-    </>
+  const panel = cardToCard && (
+    <CardToCardPanel key="card-to-card" payment={cardToCard} className="mb-7" />
   );
-  const waiting = order.status === ORDER_STATUSES.AWAITING_RECEIPT;
+  const box = showsReceipts(order, order.receipts.length) && (
+    <ReceiptBox
+      key="receipts"
+      orderId={order.id}
+      orderStatus={order.status}
+      receipts={order.receipts.map((receipt) => ({
+        id: receipt.id,
+        uploadedAt: formatJalaliDateTime(receipt.createdAt),
+      }))}
+      eventPrefix="checkout-result"
+    />
+  );
+  const details = (
+    <div
+      key="details"
+      className="border-border mb-7 overflow-hidden rounded-2xl border text-start"
+    >
+      <div className="bg-secondary/50 flex items-center justify-between gap-3 p-4 text-sm">
+        <span className="nums font-bold">
+          #{toPersianDigits(order.orderNo)}
+        </span>
+        <span className="text-muted-foreground">شماره سفارش</span>
+      </div>
+      <div className="border-border flex items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+        <span className="nums">{formatJalali(order.createdAt)}</span>
+        <span className="text-muted-foreground">تاریخ ثبت</span>
+      </div>
+      <div className="border-border flex items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+        <span>{PAYMENT_METHOD_LABELS[order.paymentMethod]}</span>
+        <span className="text-muted-foreground">روش پرداخت</span>
+      </div>
+      <div className="border-border flex items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+        <span
+          className={`rounded-full px-2.5 py-1 text-xs font-medium ${status.badge}`}
+        >
+          {status.label}
+        </span>
+        <span className="text-muted-foreground">وضعیت سفارش</span>
+      </div>
+      <div className="border-border border-t p-4">
+        <OrderSummary
+          lines={toSummaryLines(order.items)}
+          subtotal={order.subtotal}
+          discount={order.discount}
+          shippingFee={order.shippingFee}
+          total={order.total}
+        />
+      </div>
+    </div>
+  );
+  // An order still waiting for its receipt leads with the box to upload it in
+  // — the copy above says it is right under it — then the card numbers, then
+  // the order's details. Accepted, the details lead. One keyed list rather
+  // than two places, so the box is moved, not mounted afresh, when the upload
+  // it took re-renders the page as accepted.
+  const sections =
+    order.status === ORDER_STATUSES.AWAITING_RECEIPT
+      ? [box, panel, details]
+      : [details, panel, box];
 
   const { icon, ring } = {
     success: {
@@ -111,43 +152,7 @@ export default async function Page({
             {sub}
           </p>
 
-          {waiting && receiptSection}
-
-          <div className="border-border mb-7 overflow-hidden rounded-2xl border text-start">
-            <div className="bg-secondary/50 flex items-center justify-between gap-3 p-4 text-sm">
-              <span className="nums font-bold">
-                #{toPersianDigits(order.orderNo)}
-              </span>
-              <span className="text-muted-foreground">شماره سفارش</span>
-            </div>
-            <div className="border-border flex items-center justify-between gap-3 border-t px-4 py-3 text-sm">
-              <span className="nums">{formatJalali(order.createdAt)}</span>
-              <span className="text-muted-foreground">تاریخ ثبت</span>
-            </div>
-            <div className="border-border flex items-center justify-between gap-3 border-t px-4 py-3 text-sm">
-              <span>{PAYMENT_METHOD_LABELS[order.paymentMethod]}</span>
-              <span className="text-muted-foreground">روش پرداخت</span>
-            </div>
-            <div className="border-border flex items-center justify-between gap-3 border-t px-4 py-3 text-sm">
-              <span
-                className={`rounded-full px-2.5 py-1 text-xs font-medium ${status.badge}`}
-              >
-                {status.label}
-              </span>
-              <span className="text-muted-foreground">وضعیت سفارش</span>
-            </div>
-            <div className="border-border border-t p-4">
-              <OrderSummary
-                lines={toSummaryLines(order.items)}
-                subtotal={order.subtotal}
-                discount={order.discount}
-                shippingFee={order.shippingFee}
-                total={order.total}
-              />
-            </div>
-          </div>
-
-          {!waiting && receiptSection}
+          {sections}
 
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             {view.showRetry && <RetryPaymentButton orderId={order.id} />}

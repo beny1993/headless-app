@@ -79,6 +79,25 @@ export default async function Page({
     order.status === ORDER_STATUSES.AWAITING_RECEIPT
       ? resultCopy(order, order.receipts.length)
       : null;
+  const panel = cardToCard && (
+    <CardToCardPanel key="card-to-card" payment={cardToCard} className="mb-5" />
+  );
+  const box = showsReceipts(order, order.receipts.length) && (
+    <ReceiptBox
+      key="receipts"
+      orderId={order.id}
+      orderStatus={order.status}
+      receipts={order.receipts.map((receipt) => ({
+        id: receipt.id,
+        uploadedAt: formatJalaliDateTime(receipt.createdAt),
+      }))}
+      eventPrefix="account-order"
+    />
+  );
+  // Waiting, the box to upload in leads and the card numbers follow: a
+  // shopper here attached their transfer's screenshot at checkout already.
+  // One keyed list, so the box is moved, not mounted afresh, when the upload
+  // it took re-renders the page as accepted.
 
   return (
     <main className="min-h-screen pt-4">
@@ -161,21 +180,7 @@ export default async function Page({
           </div>
         )}
 
-        {cardToCard && (
-          <CardToCardPanel payment={cardToCard} className="mb-5" />
-        )}
-
-        {showsReceipts(order, order.receipts.length) && (
-          <ReceiptBox
-            orderId={order.id}
-            orderStatus={order.status}
-            receipts={order.receipts.map((receipt) => ({
-              id: receipt.id,
-              uploadedAt: formatJalaliDateTime(receipt.createdAt),
-            }))}
-            eventPrefix="account-order"
-          />
-        )}
+        {waiting ? [box, panel] : [panel, box]}
 
         <div className="bg-card border-border mb-5 rounded-2xl border p-5">
           <h2 className="mb-3 font-bold">اقلام سفارش</h2>

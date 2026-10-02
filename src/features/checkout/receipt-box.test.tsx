@@ -5,7 +5,8 @@
 //   · an upload posts the file to the order's receipt route and then asks the
 //     server to re-render, clearing what it picked — and never leaves the
 //     control stuck busy, since `router.refresh()` keeps this component
-//     mounted (the lesson `order-transition.test.tsx` pins);
+//     mounted (the lesson `order-transition.test.tsx` pins; the two pages'
+//     own tests pin that it stays mounted when the refresh moves it);
 //   · a refusal shows the server's Persian sentence in the box's one alert,
 //     which is on the page from the start and only changes its text; a 409
 //     (the order moved on under the shopper) also re-renders the box from the
