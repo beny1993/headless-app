@@ -1,7 +1,8 @@
 // The pure receipt rules both sides read — no database, no storage. Which
 // orders take a receipt, which show the box, what the list's pill says, and
-// the browser-side courtesy check on a picked file (the server re-sniffs).
+// the browser-side check on a picked file, by its bytes as the server's is.
 import { describe, expect, it } from 'vitest';
+import { IMAGE_TYPE_ERROR } from '@/lib/storage/image-upload';
 import {
   ORDER_STATUS_VALUES,
   ORDER_STATUSES,
@@ -88,32 +89,76 @@ describe('receiptsLabel', () => {
 });
 
 describe('validateReceiptFile', () => {
-  const file = (size: number, type: string, name = 'رسید.jpg') =>
-    new File([new Uint8Array(size)], name, { type });
+  // Leading bytes, constructed: what the server's sniff reads.
+  const JPEG = [0xff, 0xd8, 0xff, 0xe0];
+  const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  const ascii = (text: string) => [...text].map((char) => char.charCodeAt(0));
+  // A RIFF container tagged WEBP at offset 8; bytes 4–7 are its size.
+  const WEBP = [...ascii('RIFF'), 0x24, 0, 0, 0, ...ascii('WEBP')];
 
-  it.each(['image/jpeg', 'image/png', 'image/webp'])(
-    'lets a %s through',
-    (type) => {
-      expect(validateReceiptFile(file(10, type))).toBeNull();
-    },
-  );
+  /** `signature` followed by zeros, `size` bytes in all. */
+  const file = (
+    signature: number[],
+    size: number,
+    { name = 'رسید.jpg', type = 'image/jpeg' } = {},
+  ) =>
+    new File(
+      [new Uint8Array(signature), new Uint8Array(size - signature.length)],
+      name,
+      { type },
+    );
 
-  it('takes a file of exactly the cap and refuses one byte more', () => {
-    expect(
-      validateReceiptFile(file(MAX_RECEIPT_BYTES, 'image/png')),
-    ).toBeNull();
-    expect(validateReceiptFile(file(MAX_RECEIPT_BYTES + 1, 'image/png'))).toBe(
+  it.each([
+    ['JPEG', JPEG, 'image/jpeg'],
+    ['PNG', PNG, 'image/png'],
+    ['WebP', WEBP, 'image/webp'],
+  ])('lets a %s through', async (_, signature, type) => {
+    expect(await validateReceiptFile(file(signature, 64, { type }))).toBeNull();
+  });
+
+  it('takes a file of exactly the cap and refuses one byte more', async () => {
+    expect(await validateReceiptFile(file(JPEG, MAX_RECEIPT_BYTES))).toBeNull();
+    expect(await validateReceiptFile(file(JPEG, MAX_RECEIPT_BYTES + 1))).toBe(
       RECEIPT_SIZE_ERROR,
     );
   });
 
-  it.each(['application/pdf', 'image/heic', 'image/gif', ''])(
-    'refuses a %j file in Persian',
-    (type) => {
-      const refusal = validateReceiptFile(file(10, type, 'receipt.pdf'));
-      expect(refusal).toMatch(/[؀-ۿ]/);
+  it('refuses a PDF renamed .jpg and declared a JPEG — the bytes decide', async () => {
+    const renamed = file(ascii('%PDF-1.4'), 64, {
+      name: 'receipt.jpg',
+      type: 'image/jpeg',
+    });
+    expect(await validateReceiptFile(renamed)).toBe(IMAGE_TYPE_ERROR);
+  });
+
+  it.each(['', 'application/octet-stream'])(
+    'takes a real screenshot whatever type the browser declares (%j)',
+    async (type) => {
+      expect(await validateReceiptFile(file(PNG, 64, { type }))).toBeNull();
     },
   );
+
+  it.each([
+    ['a GIF', ascii('GIF89a')],
+    ['a HEIC photo', [0, 0, 0, 0x18, ...ascii('ftypheic')]],
+    [
+      'a RIFF that is not a WebP',
+      [...ascii('RIFF'), 0x24, 0, 0, 0, ...ascii('WAVE')],
+    ],
+  ])('refuses %s', async (_, signature) => {
+    expect(await validateReceiptFile(file(signature, 64))).toBe(
+      IMAGE_TYPE_ERROR,
+    );
+  });
+
+  it.each([
+    ['an empty file', []],
+    ['a WebP cut off before its tag', [...ascii('RIFF'), 0x24, 0, 0, 0]],
+  ])('refuses %s, too short to carry a signature', async (_, bytes) => {
+    expect(await validateReceiptFile(file(bytes, bytes.length))).toBe(
+      IMAGE_TYPE_ERROR,
+    );
+  });
 });
 
 describe('the receipt copy', () => {

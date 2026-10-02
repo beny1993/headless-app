@@ -82,8 +82,12 @@ const uploadButton = () =>
   document.querySelector<HTMLButtonElement>(
     `[data-umami-event="${PREFIX}-receipt-upload"]`,
   );
-const pick = (file: File) =>
-  fireEvent.change(picker()!, { target: { files: [file] } });
+/** Picks a file and lets its byte check settle, as the browser would. */
+const pick = async (file: File) => {
+  await act(async () => {
+    fireEvent.change(picker()!, { target: { files: [file] } });
+  });
+};
 const alertRegion = () => document.querySelector('[role="alert"]');
 /** Where the cap's sentence is: read out by the box's alert, and on screen. */
 const capSaid = () => ({
@@ -92,6 +96,26 @@ const capSaid = () => ({
   ).length,
   shown: screen.queryAllByText(RECEIPT_CAP_MESSAGE).length,
 });
+
+/**
+ * Holds back `file`'s bytes until the returned `release` is called: its
+ * `slice(…).arrayBuffer()` — what the picker reads — waits for it.
+ */
+const holdBytes = (file: File) => {
+  let release = () => {};
+  const arrived = new Promise<void>((resolve) => (release = resolve));
+  const slice = file.slice.bind(file);
+  file.slice = (...args) => {
+    const head = slice(...args);
+    const read = head.arrayBuffer.bind(head);
+    head.arrayBuffer = async () => {
+      await arrived;
+      return read();
+    };
+    return head;
+  };
+  return release;
+};
 
 const screenshot = () =>
   new File(
@@ -117,10 +141,10 @@ describe('ReceiptBox', () => {
     expect(uploadButton()!.disabled).toBe(true);
   });
 
-  it('says a file was picked without ever showing its name', () => {
+  it('says a file was picked without ever showing its name', async () => {
     render(box(ORDER_STATUSES.AWAITING_RECEIPT));
 
-    pick(screenshot());
+    await pick(screenshot());
 
     expect(screen.getByText('یک تصویر انتخاب شد')).toBeTruthy();
     expect(document.body.textContent).not.toContain('IMG_20260930_1412');
@@ -128,14 +152,41 @@ describe('ReceiptBox', () => {
     expect(uploadButton()!.disabled).toBe(false);
   });
 
-  it('refuses a file that is not an image before sending anything', () => {
+  it('refuses a file that is not an image before sending anything', async () => {
     render(box(ORDER_STATUSES.AWAITING_RECEIPT));
 
-    pick(new File(['%PDF'], 'receipt.pdf', { type: 'application/pdf' }));
+    await pick(new File(['%PDF'], 'receipt.pdf', { type: 'application/pdf' }));
 
     expect(screen.getByText(IMAGE_TYPE_ERROR)).toBeTruthy();
     expect(uploadButton()!.disabled).toBe(true);
     expect(postForm).not.toHaveBeenCalled();
+  });
+
+  it('refuses a PDF renamed .jpg and declared a JPEG — its bytes decide', async () => {
+    render(box(ORDER_STATUSES.AWAITING_RECEIPT));
+
+    await pick(new File(['%PDF-1.4'], 'receipt.jpg', { type: 'image/jpeg' }));
+
+    expect(screen.getByText(IMAGE_TYPE_ERROR)).toBeTruthy();
+    expect(uploadButton()!.disabled).toBe(true);
+  });
+
+  it('keeps the latest pick when an earlier one is still being read', async () => {
+    // The earlier file's bytes arrive only after a second pick has been
+    // checked: its late verdict must not overwrite the later one's.
+    render(box(ORDER_STATUSES.AWAITING_RECEIPT));
+    const earlier = new File(['%PDF-1.4'], 'receipt.jpg', {
+      type: 'image/jpeg',
+    });
+    const release = holdBytes(earlier);
+
+    await pick(earlier);
+    await pick(screenshot());
+    expect(uploadButton()!.disabled).toBe(false);
+
+    await act(async () => release());
+    expect(alertRegion()?.textContent).toBe('');
+    expect(uploadButton()!.disabled).toBe(false);
   });
 
   it('posts the file to the order’s receipt route, then re-renders from the server', async () => {
@@ -143,7 +194,7 @@ describe('ReceiptBox', () => {
     const view = render(box(ORDER_STATUSES.AWAITING_RECEIPT));
     const file = screenshot();
 
-    pick(file);
+    await pick(file);
     fireEvent.click(uploadButton()!);
     await act(async () => {});
 
@@ -162,7 +213,7 @@ describe('ReceiptBox', () => {
     // control is not left busy — a second receipt can be picked and sent.
     view.rerender(box(ORDER_STATUSES.PROCESSING, [receipt(1)]));
     expect(screen.queryByText('یک تصویر انتخاب شد')).toBeNull();
-    pick(screenshot());
+    await pick(screenshot());
     expect(uploadButton()!.disabled).toBe(false);
   });
 
@@ -173,7 +224,7 @@ describe('ReceiptBox', () => {
     postForm.mockRejectedValue(new ApiRequestError(409, message));
     render(box(ORDER_STATUSES.AWAITING_RECEIPT));
 
-    pick(screenshot());
+    await pick(screenshot());
     fireEvent.click(uploadButton()!);
     await act(async () => {});
 
@@ -195,7 +246,7 @@ describe('ReceiptBox', () => {
     const region = alertRegion();
     expect(region?.textContent).toBe('');
 
-    pick(screenshot());
+    await pick(screenshot());
     fireEvent.click(uploadButton()!);
     await act(async () => {});
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -218,7 +269,7 @@ describe('ReceiptBox', () => {
     postForm.mockRejectedValue(new ApiRequestError(503, message));
     render(box(ORDER_STATUSES.AWAITING_RECEIPT));
 
-    pick(screenshot());
+    await pick(screenshot());
     fireEvent.click(uploadButton()!);
     await act(async () => {});
 
@@ -264,7 +315,7 @@ describe('ReceiptBox', () => {
     for (const link of links) expect(link.textContent).toContain(NEW_TAB);
   });
 
-  it('keeps its live region in place before anything is picked, changing only its words', () => {
+  it('keeps its live region in place before anything is picked, changing only its words', async () => {
     // A live region that arrives together with its text may never be
     // announced; one already on the page is, when its text changes.
     render(box(ORDER_STATUSES.AWAITING_RECEIPT));
@@ -272,7 +323,7 @@ describe('ReceiptBox', () => {
     expect(region).not.toBeNull();
     expect(region!.textContent).toBe('');
 
-    pick(screenshot());
+    await pick(screenshot());
 
     expect(document.querySelector('[aria-live="polite"]')).toBe(region);
     expect(region!.textContent).toBe('یک تصویر انتخاب شد');

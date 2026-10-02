@@ -14,10 +14,11 @@ import {
   type PaymentMethod,
 } from '@/lib/orders/order-status';
 import {
-  ACCEPTED_IMAGE_TYPES,
   formatHint,
   IMAGE_TYPE_ERROR,
   sizeError,
+  SNIFF_LENGTH,
+  sniffImageType,
 } from '@/lib/storage/image-upload';
 
 /** Receipts per order, append-only (a large order split over two transfers). */
@@ -90,14 +91,16 @@ export const receiptsLabel = (status: OrderStatus): string =>
       : 'دریافت شد؛ در حال بررسی';
 
 /**
- * The browser-side courtesy check on a picked file: the declared type and the
- * size, so an obvious refusal costs no upload. A Persian message, or `null`.
- * The server decides by the file's bytes regardless — this is not the gate.
+ * The browser-side check on a picked file, by the upload route's own rules
+ * (`readImageUpload`): the size cap, then the type read from the file's
+ * leading bytes with the same `sniffImageType` — never its name or declared
+ * type. A Persian message, or `null`. At checkout it is what unlocks
+ * «ثبت سفارش»; the server still decides.
  */
-export const validateReceiptFile = (file: File): string | null => {
-  if (!(ACCEPTED_IMAGE_TYPES as readonly string[]).includes(file.type)) {
-    return IMAGE_TYPE_ERROR;
-  }
+export const validateReceiptFile = async (
+  file: File,
+): Promise<string | null> => {
   if (file.size > MAX_RECEIPT_BYTES) return RECEIPT_SIZE_ERROR;
-  return null;
+  const head = await file.slice(0, SNIFF_LENGTH).arrayBuffer();
+  return sniffImageType(new Uint8Array(head)) ? null : IMAGE_TYPE_ERROR;
 };

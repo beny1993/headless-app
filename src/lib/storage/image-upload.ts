@@ -99,6 +99,13 @@ const RIFF = [0x52, 0x49, 0x46, 0x46];
 const WEBP = [0x57, 0x45, 0x42, 0x50];
 
 /**
+ * How many leading bytes `sniffImageType` reads: up to WEBP's tag at 8–11. A
+ * browser-side check slices this much off a picked file instead of reading all
+ * of it.
+ */
+export const SNIFF_LENGTH = 12;
+
+/**
  * The image type a file actually is, read from its leading bytes — or `null`
  * when the bytes are not one of the three we accept. This is the authority on
  * type; the caller's declared content-type is never trusted.
