@@ -201,12 +201,12 @@ export function CheckoutForm({
   // point; the server-side `Idempotency-Key` is the last line if one slips out.
   const inFlight = useRef(false);
   const topAlert = useRef<HTMLParagraphElement>(null);
-  // The Idempotency-Key, with the exact body it was minted for: resent by
-  // every retry of that body — after a reload too (`checkout-key.ts`) — and
-  // dropped only once an order is created. A refusal does not consume it, so
-  // the retry carries the same key. This is its in-memory copy, for when
-  // storage throws.
-  const keptKey = useRef<KeptKey | null>(null);
+  // The Idempotency-Keys, one per checkout body: a key is resent by every
+  // retry of its body — after a reload too (`checkout-key.ts`) — and dropped
+  // once its order is created. A refusal does not consume it, so the retry
+  // carries the same key. This is their in-memory copy, for when storage
+  // throws.
+  const keptKeys = useRef<KeptKey[]>([]);
 
   const selectedFee =
     rates.find((rate) => String(rate.provinceId) === provinceId)?.fee ?? null;
@@ -421,7 +421,7 @@ export function CheckoutForm({
       ...(discountCode.trim() ? { discountCode: discountCode.trim() } : {}),
     };
 
-    const idempotencyKey = checkoutKeyFor(JSON.stringify(body), keptKey);
+    const idempotencyKey = await checkoutKeyFor(JSON.stringify(body), keptKeys);
 
     // The create is the only call whose failure re-enables the form: nothing
     // after its 2xx may, or a retry would place a second order.
@@ -483,7 +483,7 @@ export function CheckoutForm({
     // upload or any gateway hop: an empty cart sends a fresh /checkout to the
     // shop (the effect above), so it offers nothing to submit again.
     clearCart();
-    forgetCheckoutKey(keptKey); // consumed; a fresh checkout is a fresh key
+    forgetCheckoutKey(idempotencyKey, keptKeys); // consumed: this body is new again
     // What follows is the answer's call, not the method on screen: a resent
     // key hands back the order it first made, as it is now. The upload follows
     // only a card-to-card order waiting for its receipt, the gateway only a

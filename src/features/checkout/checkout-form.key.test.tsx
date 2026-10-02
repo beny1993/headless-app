@@ -1,20 +1,24 @@
 // Pins which Idempotency-Key a checkout create carries. The server hands back
 // the order a known key already made, whatever body comes with it
-// (`createOrder`'s replay), so the key travels with the exact body it was
-// minted for:
+// (`createOrder`'s replay), so each key travels with the body it was minted
+// for — kept as the body's SHA-256, never the body:
 //   · a create whose answer was lost is resent with the same key after a
 //     reload — the form mounted afresh — so it gets that order back instead of
 //     placing a second one;
 //   · a different body is a different checkout and gets a fresh key, or the
-//     server would answer it with the old order;
+//     server would answer it with the old order — and going back to the first
+//     body resends the first key;
 //   · an order created consumes its key: buying the same cart again later is a
 //     new order;
-//   · a key kept over half an hour is not resent;
-//   · storage that throws leaves the key in memory, as before.
+//   · a key not sent for half an hour is not resent, and is pruned;
+//   · storage that throws leaves the keys in memory, as before, and a memory
+//     copy is never hidden by storage holding another body's key;
+//   · storage holds no name, phone or address.
 //
 // Mocked at the module edge only: `next/navigation` and `@/lib/api-client`'s
 // `postData` and `postForm`. The cart store and `sessionStorage` (happy-dom's)
-// run for real.
+// run for real; the body's SHA-256 is the real one, computed in step by
+// `src/test-setup.ts`'s stand-in for `crypto.subtle.digest`.
 import { act } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -23,10 +27,12 @@ import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import {
   addToCart,
   clearCart,
+  removeFromCart,
   type CartLineInput,
 } from '@/features/storefront/cart/cart';
 import { ApiRequestError } from '@/lib/api-client';
 import { API_PATHS } from '@/lib/constant/paths';
+import { CHECKOUT_KEY_STORAGE } from './checkout-key';
 
 const { push, replace } = vi.hoisted(() => ({
   push: vi.fn<(href: string) => void>(),
@@ -134,6 +140,39 @@ const keysSent = () =>
 const answerLost = () =>
   postData.mockRejectedValueOnce(new TypeError('Failed to fetch'));
 
+/** «ثبت سفارش» again, on the form as it stands. */
+const submitAgain = async () => {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: /ثبت سفارش/ }));
+  });
+};
+
+/** What `sessionStorage` holds for the checkout keys, as stored. */
+const stored = () => window.sessionStorage.getItem(CHECKOUT_KEY_STORAGE);
+
+/**
+ * Runs `body` in a browser whose storage throws on the very access, as one
+ * with storage switched off does, and counts the accesses.
+ */
+async function withoutStorage(body: () => Promise<void>) {
+  const own = Object.getOwnPropertyDescriptor(window, 'sessionStorage');
+  let accessed = 0;
+  Object.defineProperty(window, 'sessionStorage', {
+    configurable: true,
+    get() {
+      accessed += 1;
+      throw new DOMException('The operation is insecure.', 'SecurityError');
+    },
+  });
+  try {
+    await body();
+  } finally {
+    if (own) Object.defineProperty(window, 'sessionStorage', own);
+    else delete (window as { sessionStorage?: Storage }).sessionStorage;
+  }
+  expect(accessed).toBeGreaterThan(0);
+}
+
 beforeEach(() => {
   postForm.mockResolvedValue({
     id: '22222222-2222-2222-2222-222222222222',
@@ -222,17 +261,7 @@ describe('the checkout Idempotency-Key', () => {
   });
 
   it('stays in memory for a retry when storage throws, as it did before', async () => {
-    // A browser with storage switched off throws on the very access.
-    const own = Object.getOwnPropertyDescriptor(window, 'sessionStorage');
-    let accessed = 0;
-    Object.defineProperty(window, 'sessionStorage', {
-      configurable: true,
-      get() {
-        accessed += 1;
-        throw new DOMException('The operation is insecure.', 'SecurityError');
-      },
-    });
-    try {
+    await withoutStorage(async () => {
       postData.mockRejectedValueOnce(
         new ApiRequestError(422, 'ورودی نامعتبر', [
           'items.0: موجودی «اسباب‌بازی گربه» کافی نیست.',
@@ -242,18 +271,129 @@ describe('the checkout Idempotency-Key', () => {
       await placeCardToCard();
       // The refusal re-enabled the form; the shopper retries.
       postData.mockResolvedValueOnce(CREATED);
-      await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: /ثبت سفارش/ }));
+      await submitAgain();
+    });
+
+    const [refused, retried] = keysSent();
+    expect(refused).toBeTruthy();
+    expect(retried).toBe(refused);
+    expect(push).toHaveBeenCalledWith('/checkout/result/order-123');
+  });
+
+  it.each([
+    ['with storage', (body: () => Promise<void>) => body()],
+    ['with storage switched off', withoutStorage],
+  ])(
+    'resends the first key when the shopper goes back to the first cart — %s',
+    async (_, browser) => {
+      await browser(async () => {
+        answerLost();
+        openCheckout();
+        await placeCardToCard(); // cart A
+
+        act(() => addToCart(CAT_FOOD, 1));
+        answerLost();
+        await submitAgain(); // cart B
+
+        act(() => removeFromCart(CAT_FOOD.productId));
+        answerLost();
+        await submitAgain(); // cart A again
       });
 
-      expect(accessed).toBeGreaterThan(0);
-      const [refused, retried] = keysSent();
-      expect(refused).toBeTruthy();
-      expect(retried).toBe(refused);
-      expect(push).toHaveBeenCalledWith('/checkout/result/order-123');
-    } finally {
-      if (own) Object.defineProperty(window, 'sessionStorage', own);
-      else delete (window as { sessionStorage?: Storage }).sessionStorage;
+      const [a, b, aAgain] = keysSent();
+      expect(b).not.toBe(a);
+      expect(aAgain).toBe(a);
+    },
+  );
+
+  it('keeps no name, phone or address in storage — the body’s digest only', async () => {
+    answerLost();
+    openCheckout();
+    await placeCardToCard();
+
+    const raw = stored() ?? '';
+    for (const value of [
+      'سارا',
+      '09120000000',
+      '1234567890',
+      'خیابان',
+      'تهران',
+      'p1',
+    ]) {
+      expect(raw).not.toContain(value);
     }
+    expect(JSON.parse(raw)).toEqual([
+      {
+        digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+        key: keysSent()[0],
+        at: expect.any(Number),
+      },
+    ]);
+  });
+
+  it('prunes a key gone stale, and removes the list once it is empty', async () => {
+    const stale = {
+      digest: 'e'.repeat(64),
+      key: '33333333-3333-4333-8333-333333333333',
+      at: Date.now() - 31 * 60 * 1000,
+    };
+    window.sessionStorage.setItem(
+      CHECKOUT_KEY_STORAGE,
+      JSON.stringify([stale]),
+    );
+
+    answerLost();
+    openCheckout();
+    await placeCardToCard();
+    expect(stored()).not.toContain(stale.digest);
+
+    // The resend creates the order: its key is forgotten, and nothing is left.
+    postData.mockResolvedValueOnce(CREATED);
+    await submitAgain();
+    expect(stored()).toBeNull();
+  });
+
+  it('counts the half hour from the last time a key was sent', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-02T09:00:00.000Z'));
+    answerLost();
+    openCheckout();
+    await placeCardToCard();
+
+    vi.setSystemTime(new Date('2026-10-02T09:20:00.000Z'));
+    answerLost();
+    await submitAgain();
+
+    // Forty-five minutes after it was minted, twenty-five after it was last sent.
+    vi.setSystemTime(new Date('2026-10-02T09:45:00.000Z'));
+    answerLost();
+    await submitAgain();
+
+    const [first, second, third] = keysSent();
+    expect(second).toBe(first);
+    expect(third).toBe(first);
+  });
+
+  it('reuses its memory copy when storage holds only another body’s key', async () => {
+    answerLost();
+    openCheckout();
+    await placeCardToCard();
+    // Storage now speaks for another checkout only — this one is in memory.
+    window.sessionStorage.setItem(
+      CHECKOUT_KEY_STORAGE,
+      JSON.stringify([
+        {
+          digest: 'b'.repeat(64),
+          key: '44444444-4444-4444-8444-444444444444',
+          at: Date.now(),
+        },
+      ]),
+    );
+
+    answerLost();
+    await submitAgain();
+
+    const [first, resent] = keysSent();
+    expect(resent).toBe(first);
   });
 });

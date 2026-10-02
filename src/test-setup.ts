@@ -1,4 +1,5 @@
 // Global test setup, loaded by vitest.config.ts for every suite.
+import { createHash } from 'node:crypto';
 import { beforeEach } from 'vitest';
 
 import { resetRateLimitBuckets } from '@/lib/hono/middleware/rate-limit-store';
@@ -16,3 +17,20 @@ import { resetRateLimitBuckets } from '@/lib/hono/middleware/rate-limit-store';
 beforeEach(() => {
   resetRateLimitBuckets();
 });
+
+// `crypto.subtle.digest` hashes off the main thread here, so its promise
+// settles a macrotask later — after the `act` a component test clicks in has
+// flushed, and the checkout form's create (which waits on the digest of its
+// Idempotency-Key's body, `checkout-key.ts`) would race the assertions. This
+// stand-in returns the same SHA-256, computed on the spot, so it settles with
+// the microtasks `act` does flush. Any other algorithm still goes to the real
+// implementation.
+const subtle = globalThis.crypto.subtle;
+const digest = subtle.digest.bind(subtle);
+subtle.digest = async (algorithm, data) => {
+  if (algorithm !== 'SHA-256') return digest(algorithm, data);
+  const bytes = ArrayBuffer.isView(data)
+    ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+    : new Uint8Array(data);
+  return new Uint8Array(createHash('sha256').update(bytes).digest()).buffer;
+};
