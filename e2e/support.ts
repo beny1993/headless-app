@@ -331,8 +331,8 @@ export async function resultOrderId(page: Page) {
  * Cancels a card-to-card order a spec placed only to have one, through the
  * admin API (`admin` is a page signed in as the admin), with the reason every
  * admin cancel needs. Its screenshot accepted it at checkout, so it is not
- * open against the customer's cap; it is cancelled so the run leaves no order
- * in fulfilment, and its stock comes back. Call it in a `finally`.
+ * open against the customer's cap: it is cancelled for hygiene, and for the
+ * stock the specs read, which the cancel puts back. Call it in a `finally`.
  */
 export async function closeOrder(admin: Page, orderId: string) {
   await cancelOrder(admin.request, orderId);
