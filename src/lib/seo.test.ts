@@ -9,6 +9,7 @@ import {
   purchaseSentence,
   rialForStructuredData,
   SITE_JSON_LD,
+  SITE_METADATA,
   SITE_OPEN_GRAPH,
   SITE_TAGLINE,
   SITE_TWITTER,
@@ -16,6 +17,18 @@ import {
 } from './seo';
 
 describe('the site share cards', () => {
+  it('uses the full Persian shop name in the home title and both full names as aliases', () => {
+    expect(SITE_METADATA.title).toMatchObject({
+      default: 'پت‌شاپ اسموکی | فروشگاه آنلاین حیوانات خانگی',
+    });
+    for (const entity of SITE_JSON_LD['@graph']) {
+      expect(entity.alternateName).toEqual([
+        'پت‌شاپ اسموکی',
+        'Smokey Pet Shop',
+      ]);
+    }
+  });
+
   it('leave the title and description to each page', () => {
     // Next fills a card's empty fields from the page's own title and
     // description; a card that carried the site's would put the home page's
