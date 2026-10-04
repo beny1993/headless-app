@@ -132,6 +132,66 @@ redeploy with no persistent volume. The storage seam means nothing else changes.
 
 ---
 
+### Canonical domain redirects in Cloudflare
+
+The public origin is `https://smokeypetshop.ir`. A request to `www` must redirect
+at Cloudflare before reaching Coolify: on 2026-10-04, the apex worked but
+`https://www.smokeypetshop.ir/` returned `503` with `no available server`.
+An app-level redirect cannot repair a request that never reaches the app.
+The Cloudflare redirect was configured and verified later that day: both
+protocols on `www` return 301 to the HTTPS apex with path and query intact;
+the destination shop loads in a browser.
+
+1. In **DNS → Records**, ensure `www` exists and is **Proxied** (orange cloud).
+   If absent, add a **CNAME** named `www` targeting `smokeypetshop.ir`, proxied.
+2. In **Rules → Overview → Create rule → Redirect Rule**, add a Single Redirect
+   named **WWW to canonical shop** with **Custom filter expression**:
+
+   ```text
+   (http.host eq "www.smokeypetshop.ir")
+   ```
+
+3. Set the URL redirect to **Dynamic**, with expression:
+
+   ```text
+   concat("https://smokeypetshop.ir", http.request.uri.path)
+   ```
+
+   Choose **301**, enable **Preserve query string**, and deploy the rule before
+   any overlapping redirect. It covers both HTTP and HTTPS on `www` without
+   matching the apex or staging. Do not add a reverse apex-to-www rule.
+
+   If the dashboard has **Wildcard pattern** selected instead, the equivalent
+   request URL is `http*://www.smokeypetshop.ir/*` and target URL is
+   `https://smokeypetshop.ir/${2}`, with **301** and **Preserve query string** on.
+
+4. Under **SSL/TLS → Edge Certificates**, enable **Always Use HTTPS** for HTTP
+   traffic. Keep the existing TLS mode and crawler/security settings: Google's
+   successful homepage crawl does not justify weakening them.
+
+Verify the homepage, a product path, and a filtered shop URL, for example:
+
+```bash
+curl -sS -o /dev/null -D - 'https://www.smokeypetshop.ir/shop?pet=cat'
+curl -sS -o /dev/null -D - 'http://www.smokeypetshop.ir/shop?pet=cat'
+curl -sS -o /dev/null -D - 'http://smokeypetshop.ir/shop?pet=cat'
+```
+
+The redirect chain must end at `https://smokeypetshop.ir/shop?pet=cat`, retain
+the query and path, and contain no loop or 503. The canonical HTTPS URL must
+still serve the shop. If automated probes meet a bot challenge, verify in a
+browser and with Search Console's **Test live URL**; do not disable protections
+just to make a curl probe pass.
+
+After publishing site metadata changes, inspect the canonical homepage in
+Search Console and request indexing once. The Domain property already covers
+all hostname/protocol variants; keep the existing successful sitemap submission.
+A successful sitemap means discovery, not a promise of indexing or ranking.
+
+References: [Cloudflare's dashboard instructions](https://developers.cloudflare.com/rules/url-forwarding/single-redirects/create-dashboard/),
+[hostname redirects with path/query preservation](https://developers.cloudflare.com/rules/url-forwarding/examples/redirect-all-different-hostname/),
+[Google's recrawl guidance](https://developers.google.com/search/docs/crawling-indexing/ask-google-to-recrawl).
+
 ## 5. Database migrations on deploy
 
 Migrations are **Drizzle SQL files** in `src/db/migrations/`. The image applies

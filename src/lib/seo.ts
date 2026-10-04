@@ -7,24 +7,25 @@
 // Never give a layout `alternates.canonical`: every page without its own would
 // inherit it and tell Google it is a copy of that one page.
 import type { Metadata, MetadataRoute } from 'next';
-import { DEFAULT_SITE_NAME, DEFAULT_SITE_ORIGIN } from '@/constants';
+import {
+  DEFAULT_SITE_NAME,
+  DEFAULT_SITE_ORIGIN,
+  SITE_FULL_NAME,
+  SITE_LATIN_NAME,
+} from '@/constants';
 import { PATHS, productPath } from '@/lib/constant/paths';
 
 /** What the shop is, in the words its title and generated copy share. */
 export const SITE_TAGLINE = 'فروشگاه آنلاین حیوانات خانگی';
 
-const SITE_TITLE = `${DEFAULT_SITE_NAME} | ${SITE_TAGLINE}`;
-const SITE_DESCRIPTION =
-  'فروشگاه آنلاین اسموکی؛ خرید غذا، تشویقی، مکمل، لوازم بازی و بهداشت گربه و سگ در ایران.';
+const SITE_TITLE = `${SITE_FULL_NAME} | ${SITE_TAGLINE}`;
+const SITE_DESCRIPTION = `${SITE_FULL_NAME}؛ خرید آنلاین غذا، تشویقی، مکمل، لوازم بازی و بهداشت گربه و سگ در ایران.`;
 const SOCIAL_IMAGE = {
   url: '/brand/smokey-logo-primary.png',
   width: 1375,
   height: 1144,
   alt: 'لوگوی اسموکی، فروشگاه حیوانات خانگی',
 };
-
-/** The brand's Latin name, which shoppers search for as well as the Persian. */
-const LATIN_NAME = 'Smokey Pet Shop';
 
 /**
  * The share cards every page starts from. No title or description: Next fills
@@ -69,7 +70,7 @@ export const SITE_METADATA: Metadata = {
     'لوازم گربه',
     'لوازم سگ',
     'اسموکی',
-    LATIN_NAME,
+    SITE_LATIN_NAME,
   ],
   robots: {
     index: true,
@@ -148,14 +149,14 @@ export const SITE_JSON_LD = {
     {
       '@type': 'Organization',
       name: DEFAULT_SITE_NAME,
-      alternateName: LATIN_NAME,
+      alternateName: [SITE_FULL_NAME, SITE_LATIN_NAME],
       url: absoluteUrl(PATHS.HOME),
       logo: absoluteUrl(SOCIAL_IMAGE.url),
     },
     {
       '@type': 'WebSite',
       name: DEFAULT_SITE_NAME,
-      alternateName: LATIN_NAME,
+      alternateName: [SITE_FULL_NAME, SITE_LATIN_NAME],
       url: absoluteUrl(PATHS.HOME),
       inLanguage: 'fa-IR',
     },

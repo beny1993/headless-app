@@ -17,6 +17,21 @@ const pill = (event: string) =>
   document.querySelector<HTMLAnchorElement>(`[data-umami-event="${event}"]`);
 
 describe('Footer social pills', () => {
+  it('shows both full shop names alongside saved editorial branding', () => {
+    render(
+      <Footer
+        content={{ ...footer, brand: 'Smokey', tagline: 'متن دلخواه فروشگاه' }}
+        targets={NO_TARGETS}
+      />,
+    );
+    expect(screen.getByText('پت‌شاپ اسموکی')).toBeTruthy();
+    const latin = screen.getByText('Smokey Pet Shop');
+    expect(latin.getAttribute('lang')).toBe('en');
+    expect(latin.getAttribute('dir')).toBe('ltr');
+    expect(latin.closest('[aria-hidden="true"]')).toBeNull();
+    expect(screen.getByText('متن دلخواه فروشگاه')).toBeTruthy();
+  });
+
   it('links all three defaults to their profiles, in a new tab without an opener', () => {
     render(<Footer content={footer} targets={NO_TARGETS} />);
 
