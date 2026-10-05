@@ -13,10 +13,17 @@
 // returns byte-identical URLs on the server and the client (the storage driver's
 // `url()` delegates here for exactly that reason). It must be set to
 // `${LIARA_ENDPOINT}/${LIARA_BUCKET_NAME}` when the provider is `s3`.
+//
+// A receipt key has no URL at all: it throws, because a root-relative path would
+// render as a broken *public* link and a bucket URL would be a public one. The
+// authenticated receipt routes are the only readers of a receipt.
 import { getEnvVariable, VARS } from '@/lib/utils/env';
-import { UPLOAD_KEY_PREFIX } from './image-upload';
+import { isReceiptKey, UPLOAD_KEY_PREFIX } from './image-upload';
 
 export function imageSrc(key: string): string {
+  if (isReceiptKey(key)) {
+    throw new Error(`a receipt has no public URL: ${key}`);
+  }
   const base = getEnvVariable(VARS.NEXT_PUBLIC_STORAGE_BASE_URL, false, '');
   if (base && key.startsWith(`${UPLOAD_KEY_PREFIX}/`)) {
     return `${base}/${key}`;

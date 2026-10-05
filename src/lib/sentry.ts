@@ -8,6 +8,7 @@
 // have no way to read yet (see the sanctions note in `docs/DEPLOY.md`).
 import type * as Sentry from '@sentry/nextjs';
 import { stripAdminQuery } from '@/lib/admin-url';
+import { RECEIPT_KEY_PREFIX } from '@/lib/storage/image-upload';
 import { getEnvVariable, VARS } from '@/lib/utils/env';
 
 /**
@@ -222,12 +223,16 @@ export const withoutRequestBody = (
   return { ...event, request };
 };
 
-/** Where a breadcrumb keeps a URL: navigation's `from`/`to`, fetch's `url`. */
+/**
+ * Where a breadcrumb keeps a URL: navigation's `from`/`to`, and the `url` of a
+ * fetch or, on the server, of an outgoing `http` request.
+ */
 const BREADCRUMB_URL_KEYS = new Set(['from', 'to', 'url']);
 
-/** {@link withoutAdminQuery} for a breadcrumb. */
-export const withoutAdminQueryBreadcrumb = (
+/** `breadcrumb` with every URL in its data passed through `scrub`. */
+const scrubBreadcrumbUrls = (
   breadcrumb: Sentry.Breadcrumb,
+  scrub: (url: string) => string,
 ): Sentry.Breadcrumb =>
   breadcrumb.data
     ? {
@@ -236,12 +241,99 @@ export const withoutAdminQueryBreadcrumb = (
           Object.entries(breadcrumb.data).map(([key, value]) => [
             key,
             BREADCRUMB_URL_KEYS.has(key) && typeof value === 'string'
-              ? stripAdminQuery(value)
+              ? scrub(value)
               : value,
           ]),
         ),
       }
     : breadcrumb;
+
+/** {@link withoutAdminQuery} for a breadcrumb. */
+export const withoutAdminQueryBreadcrumb = (
+  breadcrumb: Sentry.Breadcrumb,
+): Sentry.Breadcrumb => scrubBreadcrumbUrls(breadcrumb, stripAdminQuery);
+
+/**
+ * A receipt's object key wherever text can carry one: from the first
+ * `receipts/` — or `receipts%2F`, or `receipts%252F`, once a redirect has
+ * percent-encoded the slash once or twice — to the end of that path, so a
+ * bucket or base path itself named `receipts` cannot leave the filename behind;
+ * and not only in a URL's path, since a redirect can move the key into a query
+ * string, which the SDK files apart from the URL as `http.query`. Any case,
+ * and on no word boundary — no lookbehind either: this module ships to the
+ * browser, and Safari before 16.4 throws on one — so it over-redacts:
+ * `/my-receipts/…` and the app's own `/api/orders/<id>/receipts/<id>` lose
+ * their tails too, which is harmless.
+ */
+const RECEIPT_KEY = new RegExp(
+  `(${RECEIPT_KEY_PREFIX}(?:/|%2F|%252F))[^?#&\\s"'<>]+`,
+  'gi',
+);
+
+/**
+ * `text` with each receipt key replaced: `receipts/[redacted]`, or
+ * `receipts%2F[redacted]` / `receipts%252F[redacted]` behind an encoded slash.
+ */
+const withoutReceiptKey = (text: string): string =>
+  text.replace(RECEIPT_KEY, '$1[redacted]');
+
+/**
+ * A breadcrumb with no receipt key in its message or in any top-level string
+ * of its data: the Node SDK records the s3 driver's own requests as `http`
+ * breadcrumbs carrying the key. Which request's scope one lands on depends on
+ * the client. The put and the delete go through the AWS SDK's `node:http`,
+ * whose `Agent.addRequest` resets a reused socket's async context, so they
+ * land on the caller's. The anonymous probe is a `fetch`, and undici resets
+ * nothing, so each of its hops — the first as well as a redirect's — lands on
+ * the scope of whichever request opened the kept-alive socket its response
+ * came back on, and goes out with whatever event that request captures. Each
+ * is scrubbed as it is added, so no event carries the key, whichever one it is.
+ */
+export const withoutReceiptKeyBreadcrumb = (
+  breadcrumb: Sentry.Breadcrumb,
+): Sentry.Breadcrumb => ({
+  ...breadcrumb,
+  // Strings only: a breadcrumb is any library's to add, and a filter that
+  // throws on an odd one throws to whoever called `addBreadcrumb`.
+  ...(typeof breadcrumb.message === 'string' && {
+    message: withoutReceiptKey(breadcrumb.message),
+  }),
+  ...(breadcrumb.data && {
+    data: Object.fromEntries(
+      Object.entries(breadcrumb.data).map(([key, value]) => [
+        key,
+        typeof value === 'string' ? withoutReceiptKey(value) : value,
+      ]),
+    ),
+  }),
+});
+
+/**
+ * An event with no receipt key in its message or in any exception's value. A
+ * storage error can quote the object it refused — AWS's AccessDenied names it
+ * (`…on resource: "arn:aws:s3:::<bucket>/receipts/<key>"`) — and a failed
+ * GetObject reaches Sentry whole: `s3Driver.get` rethrows every failure but
+ * `NoSuchKey`, `readReceipt` lets it through, and the API's error boundary
+ * (`apiErrorHandler`) captures it.
+ */
+export const withoutReceiptKeyEvent = (
+  event: Sentry.ErrorEvent,
+): Sentry.ErrorEvent => ({
+  ...event,
+  ...(typeof event.message === 'string' && {
+    message: withoutReceiptKey(event.message),
+  }),
+  ...(event.exception?.values && {
+    exception: {
+      ...event.exception,
+      values: event.exception.values.map((exception) =>
+        typeof exception.value !== 'string'
+          ? exception
+          : { ...exception, value: withoutReceiptKey(exception.value) },
+      ),
+    },
+  }),
+});
 
 /**
  * An element's screen-reader text, as the browser SDK writes it into a `ui.*`
@@ -258,7 +350,9 @@ const SCREEN_READER_TEXT = /\[(aria-label|title|alt)="[\s\S]*$/;
 export const withoutScreenReaderText = (
   breadcrumb: Sentry.Breadcrumb,
 ): Sentry.Breadcrumb =>
-  breadcrumb.category?.startsWith('ui.') && breadcrumb.message
+  typeof breadcrumb.category === 'string' &&
+  breadcrumb.category.startsWith('ui.') &&
+  typeof breadcrumb.message === 'string'
     ? {
         ...breadcrumb,
         message: breadcrumb.message.replace(SCREEN_READER_TEXT, '[$1]'),
@@ -295,8 +389,13 @@ export function sentryOptions() {
     // high-volume signal, so enabling them spends a shared event quota on data
     // nobody here reads. Errors are the whole point.
     dataCollection,
+    // The receipt-key scrub last, over whatever the others leave.
     beforeSend: (event: Sentry.ErrorEvent, hint: Sentry.EventHint) =>
-      withoutRequestBody(withoutAdminQuery(sanitizeDatabaseError(event, hint))),
+      withoutReceiptKeyEvent(
+        withoutRequestBody(
+          withoutAdminQuery(sanitizeDatabaseError(event, hint)),
+        ),
+      ),
     // Every transaction dropped, whatever the sample rate. A transaction never
     // passes `beforeSend`, so an admin search URL or a request body would ride
     // on one past every scrub above.
@@ -306,10 +405,16 @@ export function sentryOptions() {
     // its full URL, admin search included. Whole, for the reason the server
     // drops its Console integration (`withoutConsoleBreadcrumbs`): a filter
     // only knows the log lines that existed when it was written.
+    //
+    // The screen-reader cut before the receipt-key scrub: the scrub's run
+    // does not stop at `[`, so it would eat the `[aria-label="` the cut keys
+    // on whenever a class or id holds `receipts/`, and the label would leak.
     beforeBreadcrumb: (breadcrumb: Sentry.Breadcrumb) =>
       breadcrumb.category === 'console'
         ? null
-        : withoutScreenReaderText(withoutAdminQueryBreadcrumb(breadcrumb)),
+        : withoutReceiptKeyBreadcrumb(
+            withoutScreenReaderText(withoutAdminQueryBreadcrumb(breadcrumb)),
+          ),
     integrations: withoutConsoleBreadcrumbs,
   };
 }

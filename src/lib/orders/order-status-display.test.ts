@@ -28,6 +28,28 @@ describe('orderStatusBadge', () => {
     );
     expect(orderStatusBadge(ORDER_STATUSES.DELIVERED).label).toBe('تحویل شده');
     expect(orderStatusBadge(ORDER_STATUSES.CANCELLED).label).toBe('لغو شده');
+    expect(orderStatusBadge(ORDER_STATUSES.AWAITING_RECEIPT).label).toBe(
+      'در انتظار رسید واریز',
+    );
+  });
+
+  it('never lets the receipt-waiting label and a payment-waiting one match each other', () => {
+    // A locator finds text by substring. The Zarinpal badge «در انتظار پرداخت»
+    // and heading «در انتظار تایید پرداخت» must not match the card-to-card
+    // waiting badge, nor it them — «more than a hamza apart», as the story says.
+    const waiting = orderStatusBadge(ORDER_STATUSES.AWAITING_RECEIPT).label;
+    for (const other of [
+      orderStatusBadge(ORDER_STATUSES.PENDING_PAYMENT).label,
+      'در انتظار تایید پرداخت',
+    ]) {
+      expect(waiting).not.toContain(other);
+      expect(other).not.toContain(waiting);
+    }
+  });
+
+  it('gives every status a label of its own', () => {
+    const labels = ORDER_STATUS_VALUES.map((s) => orderStatusBadge(s).label);
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });
 

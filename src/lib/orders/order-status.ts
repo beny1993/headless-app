@@ -15,14 +15,32 @@
 // live in `src/logic/orders/state-machine.ts`, which imports `canTransition`
 // from here.
 import { z } from 'zod';
+import { optionalBoundedText, VISIBLE_CHAR } from '@/lib/validation/text';
 
-/** The `orders.status` column's domain. Never compare against bare strings. */
+/**
+ * The `orders.status` column's domain. Never compare against bare strings.
+ *
+ * Order matters: the pgEnum is built from `Object.values` of this object. A
+ * new value may go anywhere — drizzle-kit adds it at that position (`ADD VALUE
+ * … BEFORE …`) — but never MOVE an existing one: the database's enum order and
+ * this list must agree, or the next generate reads a difference and emits the
+ * recreate form, which rewrites `orders.status` on a live table.
+ */
 export const ORDER_STATUSES = {
   /** Zarinpal order awaiting a verified payment. Its stock is already reserved. */
   PENDING_PAYMENT: 'pending_payment',
+  /**
+   * Card-to-card order waiting for the shopper's transfer receipt. Its stock is
+   * already reserved. The first receipt uploaded accepts it into `processing`;
+   * an admin can accept it by hand (a receipt sent by DM) or cancel it.
+   */
+  AWAITING_RECEIPT: 'awaiting_receipt',
   /** Zarinpal payment verified; awaiting the admin to start fulfillment. */
   PAID: 'paid',
-  /** Fulfillment started. COD orders enter here — no gateway is involved. */
+  /**
+   * Fulfillment started: a verified Zarinpal payment the admin moved on, or an
+   * accepted card-to-card order — whose receipt the admin checks from here.
+   */
   PROCESSING: 'processing',
   SHIPPED: 'shipped',
   /** Terminal. For COD this is where the payment row flips to `paid`. */
@@ -78,6 +96,12 @@ export const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> =
       ORDER_STATUSES.CANCELLED,
       ORDER_STATUSES.FAILED,
     ],
+    // Never `paid`: a receipt is checked by a person after acceptance, and the
+    // card-to-card payment row still flips only at delivery.
+    [ORDER_STATUSES.AWAITING_RECEIPT]: [
+      ORDER_STATUSES.PROCESSING,
+      ORDER_STATUSES.CANCELLED,
+    ],
     [ORDER_STATUSES.PAID]: [
       ORDER_STATUSES.PROCESSING,
       ORDER_STATUSES.CANCELLED,
@@ -130,15 +154,26 @@ export const adminNextStatuses = (from: OrderStatus): readonly OrderStatus[] =>
   );
 
 /**
- * The status a freshly created order starts in. COD orders skip the gateway and
- * enter fulfillment directly at `processing`; Zarinpal orders wait at
- * `pending_payment` for a verified payment. This is the state machine's entry
- * edge — checkout (story 14) reads it here rather than hardcoding the rule.
+ * The status a freshly created order starts in. Card-to-card (COD) orders wait
+ * at `awaiting_receipt` for the shopper's transfer receipt; Zarinpal orders wait
+ * at `pending_payment` for a verified payment. This is the state machine's
+ * entry edge — checkout reads it here rather than hardcoding the rule.
  */
 export const initialStatusFor = (method: PaymentMethod): OrderStatus =>
   method === PAYMENT_METHODS.COD
-    ? ORDER_STATUSES.PROCESSING
+    ? ORDER_STATUSES.AWAITING_RECEIPT
     : ORDER_STATUSES.PENDING_PAYMENT;
+
+/**
+ * The statuses whose reserved stock waits on nobody in particular — a Zarinpal
+ * order until the reconcile sweep expires it, a card-to-card order until its
+ * receipt arrives or an admin acts. Both birth states, so checkout's open-order
+ * cap counts every order a shopper leaves unfinished, however it is paid.
+ */
+export const OPEN_ORDER_STATUSES: readonly OrderStatus[] = [
+  ORDER_STATUSES.PENDING_PAYMENT,
+  ORDER_STATUSES.AWAITING_RECEIPT,
+];
 
 // The domains as non-empty tuples, which is what both `pgEnum` (in
 // `src/db/schema/orders.ts`) and `z.enum` below require. The const objects are
@@ -171,6 +206,61 @@ export const paymentStatusSchema = z.enum(PAYMENT_STATUS_VALUES);
  * server-side, since legality depends on the current state, not the value alone.
  */
 export const adminTransitionTargetSchema = orderStatusSchema;
+
+/** The longest cancellation reason an admin may write — a sentence, not a letter. */
+export const CANCELLATION_REASON_MAX = 200;
+
+/** Every admin cancel must say why; the shopper reads it on their order. */
+export const CANCELLATION_REASON_REQUIRED_MESSAGE =
+  'برای لغو سفارش، دلیل را بنویس.';
+
+/**
+ * Characters that render as nothing: every default-ignorable code point (ZWNJ
+ * among them, and the Hangul fillers U+115F, U+1160, U+3164 and U+FFA0, letters
+ * by category); the blank Braille pattern U+2800 and the object replacement
+ * character U+FFFC, the placeholder pasted rich text leaves (symbols, neither
+ * drawing any ink); and the Egyptian hieroglyph full and half blanks U+13441
+ * and U+13442 and the musical null notehead U+1D159, which may draw nothing
+ * where a font has them (this Mac has none, and Chrome draws a missing-glyph
+ * box for each).
+ */
+const RENDERS_AS_NOTHING =
+  /[\p{Default_Ignorable_Code_Point}\u2800\uFFFC\u{13441}\u{13442}\u{1D159}]/gu;
+
+/**
+ * The admin transition request body, shared by the route and the panel's
+ * control so both validate one schema. `reason` is optional HERE — `{ to:
+ * 'processing' }` is a whole request — and required for a cancel by the server
+ * (`adminTransitionOrder`'s `reason_required`). A blank field becomes
+ * `undefined`, so a cancel submitted empty is refused rather than stored as an
+ * empty reason a shopper would read.
+ */
+export const adminTransitionBodySchema = z.object({
+  to: adminTransitionTargetSchema.meta({
+    description:
+      'The target status. Must be an admin-triggerable next state from the ' +
+      "order's current status; `paid`/`failed` are gateway-owned and rejected.",
+    example: 'processing',
+  }),
+  // A reason must show something once what renders as nothing is set aside:
+  // zero-width non-joiners pass the shared text rule (ZWNJ belongs inside
+  // Persian words), and the Hangul fillers and the blank Braille pattern pass
+  // `VISIBLE_CHAR` itself.
+  reason: optionalBoundedText(CANCELLATION_REASON_MAX)
+    .refine(
+      (reason) =>
+        reason === undefined ||
+        VISIBLE_CHAR.test(reason.replace(RENDERS_AS_NOTHING, '')),
+      { error: CANCELLATION_REASON_REQUIRED_MESSAGE },
+    )
+    .meta({
+      description:
+        'Why the order is cancelled, shown to the customer. Required when `to` ' +
+        'is `cancelled`; ignored otherwise.',
+    }),
+});
+
+export type AdminTransitionBody = z.infer<typeof adminTransitionBodySchema>;
 
 /**
  * Ascending productId by UTF-16 code unit (plain `<`, never `localeCompare`,

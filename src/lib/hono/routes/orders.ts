@@ -17,9 +17,14 @@ import {
   paymentStatusSchema,
   orderStatusSchema,
 } from '@/lib/orders/order-status';
+import { receiptSchema } from '@/lib/orders/receipt';
 import { getOwnedOrder, type OwnedOrder } from '@/logic/checkout/get-order';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
-import { IdParamSchema, errorResponse } from '../route-responses';
+import {
+  IdParamSchema,
+  errorResponse,
+  openapiObject,
+} from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
@@ -43,6 +48,9 @@ const OrderPaymentSchema = z
   })
   .openapi('OrderPayment');
 
+/** A receipt as its uploader sees it — the shape the upload answers with too. */
+const OrderReceiptSchema = openapiObject(receiptSchema, 'OrderReceipt');
+
 const OrderDetailSchema = z
   .object({
     orderId: z.uuid(),
@@ -61,9 +69,13 @@ const OrderDetailSchema = z
     city: z.string(),
     postalCode: z.string(),
     addressLine: z.string(),
+    /** Why an admin cancelled it, for the shopper; null unless cancelled so. */
+    cancellationReason: z.string().nullable(),
     createdAt: z.iso.datetime(),
     items: z.array(OrderItemSchema),
     payments: z.array(OrderPaymentSchema),
+    /** Card-to-card receipts, oldest first; each is read at its own route. */
+    receipts: z.array(OrderReceiptSchema),
   })
   .openapi('OrderDetail');
 
@@ -88,6 +100,7 @@ const toOrderDetail = (order: OwnedOrder): OrderDetailResponse => ({
   city: order.city,
   postalCode: order.postalCode,
   addressLine: order.addressLine,
+  cancellationReason: order.cancellationReason,
   createdAt: order.createdAt.toISOString(),
   items: order.items.map((item) => ({
     productId: item.productId,
@@ -100,6 +113,10 @@ const toOrderDetail = (order: OwnedOrder): OrderDetailResponse => ({
     method: payment.method,
     status: payment.status,
     paidAt: payment.paidAt ? payment.paidAt.toISOString() : null,
+  })),
+  receipts: order.receipts.map((receipt) => ({
+    id: receipt.id,
+    createdAt: receipt.createdAt.toISOString(),
   })),
 });
 

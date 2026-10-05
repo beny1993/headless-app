@@ -158,12 +158,24 @@ describe('resolveContent', () => {
 describe('the shop’s social handles', () => {
   it('are the footer’s default pills and the card-to-card contact', () => {
     expect(DEFAULT_CONTENT.footer.social).toEqual(FOOTER_SOCIAL_DEFAULT);
-    // The receipt inbox is the shop account, not the education one.
+    // The coordination inbox is the shop account, not the education one.
     expect(DEFAULT_CONTENT['checkout.payment'].instagram).toBe(
       FOOTER_SOCIAL_DEFAULT.instagram,
     );
     expect(DEFAULT_CONTENT['checkout.payment'].telegram).toBe(
       FOOTER_SOCIAL_DEFAULT.telegram,
     );
+  });
+});
+
+describe('the card-to-card note', () => {
+  it('says the screenshot is attached right here — never after the order is placed', () => {
+    // «همین‌جا»: the picker under the note at checkout, the receipt box under
+    // it on the order pages.
+    const { note } = DEFAULT_CONTENT['checkout.payment'];
+    expect(note).toContain('همین‌جا پیوست کن');
+    expect(note).not.toContain('بعد از «ثبت سفارش»');
+    // Not sent to anyone: the DM inbox is no longer where a receipt goes.
+    expect(note).not.toContain('بفرست');
   });
 });

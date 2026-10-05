@@ -7,10 +7,22 @@
 // The other half — what the admins actually receive, and that a failing sender
 // cannot touch the caller — is notify-new-order.integration.test.ts.
 //
-// Needs a live database — see src/db/test-db.ts — because the two hooks are
-// defined by transaction outcomes: a committed order, a won/lost CAS, the
-// partial unique index catching a concurrent replay.
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+// Needs a live database — see src/db/test-db.ts — because the hooks are
+// defined by transaction outcomes: a committed receipt that accepted its order,
+// a won/lost CAS.
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { eq, inArray } from 'drizzle-orm';
 import { orders, payments, type Payment } from '@/db/schema/orders';
 import { products } from '@/db/schema/catalog';
@@ -24,6 +36,7 @@ import type { ZarinpalClient } from '@/lib/zarinpal/client';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
+import { VARS } from '@/lib/utils/env';
 
 const mocks = vi.hoisted(() => ({ notify: vi.fn() }));
 
@@ -48,6 +61,35 @@ const { PaymentDao } = await importWithDb(() => import('@/db/dao/PaymentDao'));
 const { ShippingRateDao } = await importWithDb(
   () => import('@/db/dao/ShippingRateDao'),
 );
+const { uploadReceipt } = await importWithDb(
+  () => import('@/logic/orders/receipts'),
+);
+const { adminTransitionOrder } = await importWithDb(
+  () => import('@/logic/orders/admin-transition'),
+);
+
+/** A real JPEG header, padded: the receipt the shopper uploads. */
+const jpeg = () => {
+  const bytes = new Uint8Array(64);
+  bytes.set([0xff, 0xd8, 0xff, 0xe0]);
+  return bytes;
+};
+
+// Receipts land on the real local driver, under a throwaway root.
+let root: string;
+const originalRoot = process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT];
+beforeAll(async () => {
+  root = await mkdtemp(path.join(tmpdir(), 'smokey-alert-hooks-'));
+  process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = root;
+});
+afterAll(async () => {
+  await rm(root, { recursive: true, force: true });
+  if (originalRoot === undefined) {
+    delete process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT];
+  } else {
+    process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = originalRoot;
+  }
+});
 
 const token = () => crypto.randomUUID().slice(0, 12);
 const key = () => crypto.randomUUID();
@@ -146,57 +188,76 @@ describe.skipIf(!databaseReachable)('the new-order alert hooks', () => {
   };
 
   describe('createOrder', () => {
-    it('tells the admins about a committed card-to-card order', async () => {
-      const { user, input } = await checkout();
+    it.each([
+      [PAYMENT_METHODS.COD, ORDER_STATUSES.AWAITING_RECEIPT],
+      [PAYMENT_METHODS.ZARINPAL, ORDER_STATUSES.PENDING_PAYMENT],
+    ] as const)(
+      'says nothing at checkout about a %s order — it is not a sale yet',
+      async (paymentMethod, waiting) => {
+        // Both are born waiting: a card-to-card order for its receipt, a
+        // Zarinpal one for its payment. Their alerts come from the first
+        // receipt and from the settle — never from an unfinished checkout.
+        const { user, input } = await checkout({ paymentMethod });
 
+        const order = await createOrder(user.id, input, key());
+        fx.remember(order.id);
+
+        expect(order.status).toBe(waiting);
+        expect(mocks.notify).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  describe('uploadReceipt', () => {
+    /** A committed card-to-card checkout, waiting for its receipt. */
+    const waitingOrder = async () => {
+      const { user, input } = await checkout();
       const order = await createOrder(user.id, input);
       fx.remember(order.id);
+      return order;
+    };
+
+    it('tells the admins when the first receipt accepts the order', async () => {
+      const order = await waitingOrder();
+
+      await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg');
 
       expect(mocks.notify).toHaveBeenCalledTimes(1);
       expect(mocks.notify).toHaveBeenCalledWith(order.id);
     });
 
-    it('says nothing about a Zarinpal order — it is not paid yet', async () => {
-      // Born `pending_payment`: an unfinished checkout, and the one thing an
-      // admin must never be woken up for. Its alert comes from the settle.
-      const { user, input } = await checkout({
-        paymentMethod: PAYMENT_METHODS.ZARINPAL,
-      });
+    it('says nothing for a later receipt — the order was accepted already', async () => {
+      const order = await waitingOrder();
+      await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg');
+      mocks.notify.mockClear();
 
-      const order = await createOrder(user.id, input);
-      fx.remember(order.id);
+      await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg');
 
-      expect(order.status).toBe(ORDER_STATUSES.PENDING_PAYMENT);
       expect(mocks.notify).not.toHaveBeenCalled();
     });
 
-    it('adds nothing when the same Idempotency-Key is replayed', async () => {
-      const { user, input } = await checkout();
-      const k = key();
+    it('says nothing when an admin accepts a waiting order by hand', async () => {
+      // A receipt that came by DM: the admin who moves it on already knows.
+      const order = await waitingOrder();
 
-      const first = await createOrder(user.id, input, k);
-      const second = await createOrder(user.id, input, k);
-      fx.remember(first.id);
+      expect(
+        (await adminTransitionOrder(order.id, ORDER_STATUSES.PROCESSING))
+          .outcome,
+      ).toBe('ok');
 
-      expect(second.id).toBe(first.id);
-      expect(mocks.notify).toHaveBeenCalledTimes(1);
+      expect(mocks.notify).not.toHaveBeenCalled();
     });
 
-    it('adds nothing when the loser of a concurrent race returns the winner’s order', async () => {
-      // The OTHER replay branch: both calls get past the fast path, the loser's
-      // insert trips the partial unique index and its catch re-reads the winner.
-      // Ample stock so the collision lands on the index, not the stock guard.
-      const { user, input } = await checkout();
-      const k = key();
+    it('says nothing when an admin cancels a waiting order', async () => {
+      const order = await waitingOrder();
 
-      const [a, b] = await Promise.all([
-        createOrder(user.id, input, k),
-        createOrder(user.id, input, k),
-      ]);
-      fx.remember(a.id);
+      await adminTransitionOrder(
+        order.id,
+        ORDER_STATUSES.CANCELLED,
+        'رسیدی نرسید',
+      );
 
-      expect(b.id).toBe(a.id);
-      expect(mocks.notify).toHaveBeenCalledTimes(1);
+      expect(mocks.notify).not.toHaveBeenCalled();
     });
   });
 

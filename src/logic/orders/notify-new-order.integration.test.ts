@@ -1,4 +1,6 @@
-// WHAT the admins get, and what a failing provider may cost the caller: nothing.
+// WHAT the admins get, and what a failing provider may cost the caller —
+// the receipt upload that accepts a card-to-card order, or the settle of a
+// Zarinpal one: nothing.
 //
 // The real notify runs here against the real DAOs; only the SMS seam is mocked,
 // at its module edge (`sendSms`), so the recipient list and the message are the
@@ -6,9 +8,21 @@
 // observed with `vi.waitFor` — never a sleep.
 //
 // Needs a live database — see src/db/test-db.ts.
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { eq, inArray } from 'drizzle-orm';
-import { orders, payments } from '@/db/schema/orders';
+import { orders, paymentReceipts, payments } from '@/db/schema/orders';
 import { products } from '@/db/schema/catalog';
 import { provinces, shippingRates } from '@/db/schema/shipping';
 import { ROLES, users } from '@/db/schema/auth';
@@ -22,6 +36,7 @@ import type { ZarinpalClient } from '@/lib/zarinpal/client';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
+import { VARS } from '@/lib/utils/env';
 
 const mocks = vi.hoisted(() => ({
   sendSms: vi.fn(),
@@ -54,6 +69,32 @@ const { UserDao } = await importWithDb(() => import('@/db/dao/UserDao'));
 const { ShippingRateDao } = await importWithDb(
   () => import('@/db/dao/ShippingRateDao'),
 );
+const { uploadReceipt } = await importWithDb(
+  () => import('@/logic/orders/receipts'),
+);
+
+/** A real JPEG header, padded: the receipt that accepts the order. */
+const jpeg = () => {
+  const bytes = new Uint8Array(64);
+  bytes.set([0xff, 0xd8, 0xff, 0xe0]);
+  return bytes;
+};
+
+// Receipts land on the real local driver, under a throwaway root.
+let root: string;
+const originalRoot = process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT];
+beforeAll(async () => {
+  root = await mkdtemp(path.join(tmpdir(), 'smokey-alert-'));
+  process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = root;
+});
+afterAll(async () => {
+  await rm(root, { recursive: true, force: true });
+  if (originalRoot === undefined) {
+    delete process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT];
+  } else {
+    process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = originalRoot;
+  }
+});
 
 const token = () => crypto.randomUUID().slice(0, 12);
 const phone = () =>
@@ -143,6 +184,23 @@ describe.skipIf(!databaseReachable)('the new-order alert', () => {
     return { user, product, input };
   };
 
+  /**
+   * A card-to-card checkout, then its first receipt — the moment that accepts
+   * the order and sends the alert. Returns the upload's own answer too.
+   */
+  const accepted = async () => {
+    const { user, input, product } = await checkout();
+    const order = await createOrder(user.id, input);
+    fx.remember(order.id);
+    const upload = await uploadReceipt(
+      order.id,
+      order.userId,
+      jpeg(),
+      'image/jpeg',
+    );
+    return { order, input, product, upload };
+  };
+
   const awaitingPayment = async ({ total = 340_000 } = {}) => {
     const user = await fx.user();
     const category = await fx.category();
@@ -171,10 +229,8 @@ describe.skipIf(!databaseReachable)('the new-order alert', () => {
     const one = await admin();
     const two = await admin();
     await admin(null);
-    const { user, input } = await checkout();
 
-    const order = await createOrder(user.id, input);
-    fx.remember(order.id);
+    await accepted();
 
     const expected = (await UserDao.listAdminsWithPhone()).map(
       (row) => row.phoneNumber,
@@ -190,10 +246,7 @@ describe.skipIf(!databaseReachable)('the new-order alert', () => {
 
   it('says the order number, the total and «کارت به کارت» — and nothing else', async () => {
     await admin();
-    const { user, input } = await checkout();
-
-    const order = await createOrder(user.id, input);
-    fx.remember(order.id);
+    const { order, input } = await accepted();
 
     await vi.waitFor(() => expect(mocks.sendSms).toHaveBeenCalled());
     const [, message] = mocks.sendSms.mock.calls[0]!;
@@ -225,22 +278,26 @@ describe.skipIf(!databaseReachable)('the new-order alert', () => {
     });
   });
 
-  it('leaves the checkout untouched when the provider refuses the send', async () => {
+  it('leaves the upload untouched when the provider refuses the send', async () => {
     await admin();
     mocks.sendSms.mockRejectedValue(new Error('sms.ir refused the send'));
-    const { user, input, product } = await checkout();
 
-    const order = await createOrder(user.id, input);
-    fx.remember(order.id);
+    const { order, product, upload } = await accepted();
 
     // The shopper's answer, and the database behind it, are what they would
-    // have been with no alert at all.
-    expect(order.status).toBe(ORDER_STATUSES.PROCESSING);
+    // have been with no alert at all: the receipt kept, the order accepted.
+    expect(upload).toMatchObject({ outcome: 'ok', accepted: true });
     const [row] = await testDb
       .select()
       .from(orders)
       .where(eq(orders.id, order.id));
     expect(row.status).toBe(ORDER_STATUSES.PROCESSING);
+    expect(
+      await testDb
+        .select()
+        .from(paymentReceipts)
+        .where(eq(paymentReceipts.orderId, order.id)),
+    ).toHaveLength(1);
     const [stocked] = await testDb
       .select()
       .from(products)
@@ -276,18 +333,16 @@ describe.skipIf(!databaseReachable)('the new-order alert', () => {
     await vi.waitFor(() => expect(mocks.captureException).toHaveBeenCalled());
   });
 
-  it('leaves the checkout untouched when the provider hangs', async () => {
+  it('leaves the upload untouched when the provider hangs', async () => {
     // The 10 s timeout the SMS.ir driver puts on its own request is the bound
     // here; the caller adds none, because it never waits. A send still in
     // flight when the response goes out is the normal case, not an error.
     await admin();
     mocks.sendSms.mockReturnValue(new Promise(() => {}));
-    const { user, input } = await checkout();
 
-    const order = await createOrder(user.id, input);
-    fx.remember(order.id);
+    const { upload } = await accepted();
 
-    expect(order.status).toBe(ORDER_STATUSES.PROCESSING);
+    expect(upload).toMatchObject({ outcome: 'ok', accepted: true });
     await vi.waitFor(() => expect(mocks.sendSms).toHaveBeenCalled());
     // Nothing was reported: a slow provider is not a failure.
     expect(mocks.captureException).not.toHaveBeenCalled();

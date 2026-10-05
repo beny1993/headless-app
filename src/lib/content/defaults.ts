@@ -218,13 +218,13 @@ export const DEFAULT_CONTENT: ContentValues = {
   },
   'about.cta': { headline: 'به خانواده اسموکی خوش اومدی.', cta: 'کشف محصولات' },
   // Ships with the shop's card in slot 1 (already in the schema's stored form:
-  // sixteen ASCII digits) and the shop's own handles — the receipt inbox is the
-  // shop account, never the education one; `''` is an unused slot, the same in
+  // sixteen ASCII digits) and the shop's own handles — the coordination inbox
+  // is the shop account, never the education one; `''` is an unused slot, the same in
   // the default, a stored row and the editor. The storefront shows only filled
   // slots. A row saved before the handles were known keeps its own `''`: on
   // staging the admin fills the two fields once.
   'checkout.payment': {
-    note: 'مبلغ سفارش را به یکی از کارت‌های زیر واریز کن و رسید را برای ما بفرست. سفارش پس از تأیید واریز ارسال می‌شود.',
+    note: 'مبلغ سفارش را به یکی از کارت‌های زیر واریز کن و اسکرین‌شات رسید را همین‌جا پیوست کن. سفارش پس از بررسی رسید ارسال می‌شود.',
     bankCards: [
       { bank: '', number: '6129861927666866', holder: '' },
       { bank: '', number: '', holder: '' },

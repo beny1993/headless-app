@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import {
   expect,
   test as base,
+  type APIRequestContext,
   type Locator,
   type Page,
   type Response,
@@ -13,8 +14,17 @@ import { z } from 'zod';
 import { SEED_PRODUCTS } from '@/db/seed/catalog-data';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
 import { LOW_STOCK_THRESHOLD } from '@/features/storefront/product/availability';
-import { checkoutResultPath, productPath } from '@/lib/constant/paths';
-import type { PaymentMethod } from '@/lib/orders/order-status';
+import {
+  API_PATHS,
+  apiAdminOrderTransitionsPath,
+  checkoutResultPath,
+  productPath,
+} from '@/lib/constant/paths';
+import {
+  ORDER_STATUSES,
+  PAYMENT_METHODS,
+  type PaymentMethod,
+} from '@/lib/orders/order-status';
 
 export { expect };
 
@@ -271,14 +281,28 @@ export async function reachPayment(page: Page) {
 }
 
 /**
- * Walks the open checkout wizard and submits it. Returns wherever that leads:
- * the result page for card to card, the mock gateway for Zarinpal.
+ * Attaches the transfer's screenshot on the checkout's payment step, card to
+ * card chosen — the product photo the catalog spec uploads, a JPEG — and waits
+ * until the form has taken it: «ثبت سفارش» is locked until then.
+ */
+export async function attachReceipt(page: Page) {
+  await page
+    .locator('[data-umami-event="checkout-receipt-file"]')
+    .setInputFiles(PRODUCT_PHOTO);
+  await expect(page.getByText('یک تصویر انتخاب شد')).toBeVisible();
+}
+
+/**
+ * Walks the open checkout wizard and submits it — card to card with its
+ * screenshot attached. Returns wherever that leads: the result page for card
+ * to card, the mock gateway for Zarinpal.
  */
 export async function completeCheckout(page: Page, payment: PaymentMethod) {
   await reachPayment(page);
   await page
     .locator(`[data-umami-event="checkout-payment-${payment}"]`)
     .check();
+  if (payment === PAYMENT_METHODS.COD) await attachReceipt(page);
   await page.locator('[data-umami-event="checkout-submit-order"]').click();
 }
 
@@ -301,4 +325,48 @@ export async function resultOrderId(page: Page) {
   const prefix = checkoutResultPath('');
   await page.waitForURL((url) => url.pathname.startsWith(prefix));
   return z.uuid().parse(new URL(page.url()).pathname.slice(prefix.length));
+}
+
+/**
+ * Cancels a card-to-card order a spec placed only to have one, through the
+ * admin API (`admin` is a page signed in as the admin), with the reason every
+ * admin cancel needs. Its screenshot accepted it at checkout, so it is not
+ * open against the customer's cap: it is cancelled for hygiene, and for the
+ * stock the specs read, which the cancel puts back. Call it in a `finally`.
+ */
+export async function closeOrder(admin: Page, orderId: string) {
+  await cancelOrder(admin.request, orderId);
+}
+
+const cancelOrder = async (admin: APIRequestContext, orderId: string) => {
+  const response = await admin.post(apiAdminOrderTransitionsPath(orderId), {
+    data: {
+      to: ORDER_STATUSES.CANCELLED,
+      reason: 'بسته شده در آزمون خودکار',
+    },
+  });
+  expect(response.status(), 'closing the order').toBe(200);
+};
+
+/**
+ * For the `afterEach` of a test that is meant to move its order on (ship,
+ * cancel): closes the order only if it is STILL waiting for its receipt — as
+ * it is when its screenshot failed to store, or the test cut the upload and
+ * failed before cancelling. A waiting order is OPEN: it counts against its
+ * customer's open-order cap (`MAX_OPEN_ORDERS`, five). An order the test did
+ * move on — accepted, shipped, already cancelled — is left exactly as it is.
+ * `admin` is a request context signed in as the admin.
+ */
+export async function closeIfStillWaiting(
+  admin: APIRequestContext,
+  orderId: string,
+) {
+  const response = await admin.get(`${API_PATHS.ADMIN_ORDERS}/${orderId}`);
+  expect(response.status(), 'reading the order to close').toBe(200);
+  const { data } = z
+    .object({ data: z.object({ status: z.string() }) })
+    .parse(await response.json());
+  if (data.status === ORDER_STATUSES.AWAITING_RECEIPT) {
+    await cancelOrder(admin, orderId);
+  }
 }

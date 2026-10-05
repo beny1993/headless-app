@@ -134,6 +134,13 @@
       "when": 1790676878272,
       "tag": "0018_blank_phone_names",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790778377996,
+      "tag": "0019_card_to_card_receipts",
+      "breakpoints": true
     }
   ]
 }

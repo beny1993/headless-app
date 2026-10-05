@@ -8,9 +8,12 @@
 //   · a 2xx clears the local cart and navigates to the result page.
 //
 // Mocked at the module edge only: `next/navigation` (router recorder) and
-// `@/lib/api-client` (postData recorder — the real ApiRequestError is kept, since
-// the form branches on `instanceof`). The cart store and `parseFieldErrors` run
-// for real, so the cart-clear and error-mapping happen exactly as in production.
+// `@/lib/api-client` (postData and postForm recorders — the real ApiRequestError
+// is kept, since the form branches on `instanceof`). The cart store and
+// `parseFieldErrors` run for real, so the cart-clear and error-mapping happen
+// exactly as in production. A card-to-card checkout attaches its screenshot
+// first, and its upload succeeds unless a test says otherwise — the receipt's
+// own wiring is ./checkout-form.receipt.test.tsx's.
 import { act } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -33,10 +36,13 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, replace }),
 }));
 
-const { postData } = vi.hoisted(() => ({ postData: vi.fn() }));
+const { postData, postForm } = vi.hoisted(() => ({
+  postData: vi.fn(),
+  postForm: vi.fn(),
+}));
 vi.mock('@/lib/api-client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api-client')>();
-  return { ...actual, postData };
+  return { ...actual, postData, postForm };
 });
 
 const RATES = [{ provinceId: 1, name: 'تهران', fee: 40_000 }];
@@ -78,7 +84,30 @@ function advanceToPayment({ saveAddress = false } = {}) {
 const submitButton = () =>
   screen.getByRole('button', { name: /ثبت سفارش/ }) as HTMLButtonElement;
 
+/** Chooses card to card and attaches a screenshot — a JPEG by its bytes. */
+async function payCardToCard() {
+  fireEvent.click(screen.getByRole('radio', { name: /کارت به کارت/ }));
+  await act(async () => {
+    fireEvent.change(
+      document.querySelector('[data-umami-event="checkout-receipt-file"]')!,
+      {
+        target: {
+          files: [
+            new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], 'رسید.jpg', {
+              type: 'image/jpeg',
+            }),
+          ],
+        },
+      },
+    );
+  });
+}
+
 beforeEach(() => {
+  postForm.mockResolvedValue({
+    id: '22222222-2222-2222-2222-222222222222',
+    createdAt: '2026-10-02T09:30:00.000Z',
+  });
   clearCart();
   addToCart(CAT_TOY, 2);
   render(
@@ -97,6 +126,7 @@ afterEach(() => {
   push.mockReset();
   replace.mockReset();
   postData.mockReset();
+  postForm.mockReset();
 });
 
 describe('the checkout submit state machine', () => {
@@ -200,7 +230,7 @@ describe('the checkout submit state machine', () => {
     postData.mockResolvedValue({
       orderId: 'order-123',
       orderNo: 10_046,
-      status: 'processing',
+      status: 'awaiting_receipt',
       subtotal: 370_000,
       shippingFee: 40_000,
       discount: 0,
@@ -208,9 +238,9 @@ describe('the checkout submit state machine', () => {
     });
     advanceToPayment();
 
-    // Choose cash on delivery — the branch that navigates straight to the result
-    // page (no gateway hop).
-    fireEvent.click(screen.getByRole('radio', { name: /کارت به کارت/ }));
+    // Card to card, its screenshot attached — the branch that navigates
+    // straight to the result page (no gateway hop).
+    await payCardToCard();
 
     await act(async () => {
       fireEvent.click(submitButton());
@@ -334,14 +364,14 @@ describe('the checkout submit state machine', () => {
     postData.mockResolvedValue({
       orderId: 'order-555',
       orderNo: 10_050,
-      status: 'processing',
+      status: 'awaiting_receipt',
       subtotal: 370_000,
       shippingFee: 40_000,
       discount: 0,
       total: 410_000,
     });
     advanceToPayment({ saveAddress: true });
-    fireEvent.click(screen.getByRole('radio', { name: /کارت به کارت/ }));
+    await payCardToCard();
 
     await act(async () => {
       fireEvent.click(submitButton());
@@ -372,7 +402,7 @@ describe('the checkout submit state machine', () => {
       .mockResolvedValueOnce({
         orderId: 'order-556',
         orderNo: 10_051,
-        status: 'processing',
+        status: 'awaiting_receipt',
         subtotal: 370_000,
         shippingFee: 40_000,
         discount: 0,
@@ -382,7 +412,7 @@ describe('the checkout submit state machine', () => {
         new ApiRequestError(422, 'به سقف تعداد آدرس‌ها رسیده‌ای.'),
       );
     advanceToPayment({ saveAddress: true });
-    fireEvent.click(screen.getByRole('radio', { name: /کارت به کارت/ }));
+    await payCardToCard();
 
     await act(async () => {
       fireEvent.click(submitButton());
@@ -405,7 +435,7 @@ describe('the checkout submit state machine', () => {
         return Promise.resolve({
           orderId: 'order-900',
           orderNo: 10_060,
-          status: 'processing',
+          status: 'awaiting_receipt',
           subtotal: 370_000,
           shippingFee: 40_000,
           discount: 37_000,
@@ -430,7 +460,7 @@ describe('the checkout submit state machine', () => {
     expect(screen.getByText('کد تخفیف اعمال شد.')).toBeTruthy();
 
     advanceToPayment();
-    fireEvent.click(screen.getByRole('radio', { name: /کارت به کارت/ }));
+    await payCardToCard();
     await act(async () => {
       fireEvent.click(submitButton());
     });
@@ -490,7 +520,7 @@ describe('the checkout submit state machine', () => {
       target: { value: 'BADCODE' },
     });
     advanceToPayment();
-    fireEvent.click(screen.getByRole('radio', { name: /کارت به کارت/ }));
+    await payCardToCard();
 
     await act(async () => {
       fireEvent.click(submitButton());
@@ -503,7 +533,8 @@ describe('the checkout submit state machine', () => {
 
   it('surfaces a server error in Persian in the top-level alert', async () => {
     // A 5xx `message` is the literal `Internal server error` — English
-    // developer text the shopper must never read.
+    // developer text the shopper must never read. No answer is not a refusal
+    // either: the order may exist, so the alert says to look first.
     postData.mockRejectedValue(
       new ApiRequestError(500, 'Internal server error'),
     );
@@ -514,7 +545,7 @@ describe('the checkout submit state machine', () => {
     });
 
     expect(screen.getByRole('alert').textContent).toBe(
-      'ثبت سفارش انجام نشد. لطفاً دوباره تلاش کن.',
+      'ممکن است سفارش ثبت شده باشد؛ پیش از تلاش دوباره، «سفارش‌های من» را ببین.',
     );
     expect(submitButton().disabled).toBe(false);
     expect(getCart()).toHaveLength(1); // nothing created, cart kept

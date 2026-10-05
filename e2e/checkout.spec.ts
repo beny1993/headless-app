@@ -1,17 +1,39 @@
 import { accountOrderPath } from '@/lib/constant/paths';
 import type { Locator } from '@playwright/test';
 import {
-  completeCheckout,
+  ADMIN_STATE,
+  attachReceipt,
+  closeIfStillWaiting,
   CUSTOMER_STATE,
   expect,
   expectRendered,
   IN_STOCK_PRODUCT,
   placeOrder,
+  reachPayment,
   resultOrderId,
   test,
 } from './support';
 
 test.use({ storageState: CUSTOMER_STATE });
+
+// The card-to-card order a test placed, closed after it if it is still waiting
+// for its receipt — as it would be had its screenshot failed to store — and so
+// open against the customer's cap. Through an admin context of its own: this
+// file's pages are the customer's.
+let placedOrder: string | undefined;
+test.afterEach(async ({ browser, baseURL }) => {
+  if (!placedOrder) return;
+  const admin = await browser.newContext({
+    baseURL,
+    storageState: ADMIN_STATE,
+  });
+  try {
+    await closeIfStillWaiting(admin.request, placedOrder);
+  } finally {
+    placedOrder = undefined;
+    await admin.close();
+  }
+});
 
 /** A product photo served by `/_next/image`, and decoded. */
 async function expectOptimized(img: Locator) {
@@ -23,8 +45,10 @@ async function expectOptimized(img: Locator) {
 const gatewayButton = (action: 'pay' | 'fail') =>
   `button[name="action"][value="${action}"]`;
 
-test('card to card: the order is confirmed and listed in the account', async ({
+test('card to card: the screenshot attached at checkout accepts the order, and only its owner can read it', async ({
   page,
+  browser,
+  baseURL,
 }) => {
   await page.goto(IN_STOCK_PRODUCT);
   await page.locator('[data-umami-event="product-add-to-cart"]').click();
@@ -49,25 +73,87 @@ test('card to card: the order is confirmed and listed in the account', async ({
   await expect(
     page.locator('[data-umami-event="checkout-recipient-phone"]'),
   ).toHaveValue(/^09\d{9}$/);
-  await completeCheckout(page, 'cod');
+  await reachPayment(page);
+  await page.locator('[data-umami-event="checkout-payment-cod"]').check();
+
+  // «ثبت سفارش» stays locked until the transfer's screenshot is attached. The
+  // picker's label is a thumb's height, 44px: the input itself is sr-only.
+  const submit = page.locator('[data-umami-event="checkout-submit-order"]');
+  await expect(submit).toBeDisabled();
+  const picker = page.locator('label', {
+    has: page.locator('[data-umami-event="checkout-receipt-file"]'),
+  });
+  expect((await picker.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  await attachReceipt(page);
+  await expect(submit).toBeEnabled();
+  // The picked file is never named — a phone names a screenshot with its
+  // timestamp — so the checkout page shows no ASCII digit either.
+  await expect(page.getByRole('main')).not.toContainText(/\d/);
+
+  await submit.click();
   const orderId = await resultOrderId(page);
+  placedOrder = orderId;
+
+  // Placed and accepted in that one click: no waiting page on this path.
   await expect(
     page.getByRole('heading', { name: 'سفارش ثبت شد!' }),
   ).toBeVisible();
+  const status = page.getByText('وضعیت سفارش', { exact: true }).locator('..');
+  await expect(status).toContainText('در حال پردازش');
+  await expect(
+    page.getByText(
+      'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.',
+    ),
+  ).toHaveCount(2); // the sub-copy under the heading, and the box's own line
+
+  // The screenshot is listed with when it came: a date and a Tehran time,
+  // since one order can hold five receipts from the same day.
+  const receipt = page.locator(
+    '[data-umami-event="checkout-result-receipt-open"]',
+  );
+  await expect(receipt).toHaveCount(1);
+  // Lazy-loaded, and below the fold on a phone: it loads once it is in view.
+  await receipt.scrollIntoViewIfNeeded();
+  await expectRendered(receipt.locator('img'));
+  await expect(receipt.locator('..')).toContainText(
+    /۱۴[۰-۹]{2} ساعت [۰-۹]{2}:[۰-۹]{2}/,
+  );
 
   // Dates render in the Jalali calendar and every number goes through
-  // src/lib/format.ts: a Gregorian year or an ASCII digit skipped them.
+  // src/lib/format.ts: a Gregorian year or an ASCII digit skipped them —
+  // the receipt's upload time and the box's size hint included.
   await expect(page.getByText('تاریخ ثبت').locator('..')).toContainText(
     /۱۴[۰-۹]{2}/,
   );
   await expect(page.getByRole('main')).not.toContainText(/\d/);
 
+  // The receipt is readable in the shopper's own session, and nowhere else:
+  // uncacheable, and a 401 to anyone without a session. Fetched, never an
+  // <img>, so the answer is the route's and not a cache's.
+  const receiptUrl = await receipt.getAttribute('href');
+  if (!receiptUrl) throw new Error('the receipt thumbnail links nowhere');
+  const owned = await page.request.get(receiptUrl);
+  expect(owned.status()).toBe(200);
+  expect(owned.headers()['cache-control']).toBe('private, no-store');
+  expect(owned.headers()['content-type']).toBe('image/jpeg');
+  // An explicitly empty state: a context made in a test inherits the file's
+  // `storageState`, which is the customer's session.
+  const stranger = await browser.newContext({
+    baseURL,
+    storageState: { cookies: [], origins: [] },
+  });
+  try {
+    expect((await stranger.request.get(receiptUrl)).status()).toBe(401);
+  } finally {
+    await stranger.close();
+  }
+
   await page.locator('[data-umami-event="checkout-result-my-orders"]').click();
-  await expect(
-    page.locator(
-      `[data-umami-event="account-order-open"][href="${accountOrderPath(orderId)}"]`,
-    ),
-  ).toBeVisible();
+  const listed = page.locator(
+    `[data-umami-event="account-order-open"][href="${accountOrderPath(orderId)}"]`,
+  );
+  await expect(listed).toBeVisible();
+  await expect(listed).toContainText('در حال پردازش');
 });
 
 test('Zarinpal: paying at the mock gateway settles the order', async ({

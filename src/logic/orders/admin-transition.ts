@@ -15,7 +15,11 @@
 // route maps each to its own status code without catching control-flow as errors.
 import { db } from '@/db';
 import { OrderDao } from '@/db/dao/OrderDao';
-import { adminNextStatuses, type OrderStatus } from '@/lib/orders/order-status';
+import {
+  adminNextStatuses,
+  ORDER_STATUSES,
+  type OrderStatus,
+} from '@/lib/orders/order-status';
 import {
   InvalidTransitionError,
   transitionOrder,
@@ -28,12 +32,19 @@ type AdminTransitionResult =
   /** The target is not an admin-triggerable next state from `from`. */
   | { outcome: 'illegal'; from: OrderStatus }
   /** The order moved out of `from` before the CAS ran (lost race / stale view). */
-  | { outcome: 'conflict' };
+  | { outcome: 'conflict' }
+  /** A cancel with no reason. Every admin cancel says why — the shopper reads it. */
+  | { outcome: 'reason_required' };
 
 /**
  * Move order `orderId` to `to` on the admin's behalf. All side effects of the
- * transition (restock on cancel, the COD payment flip on delivery) happen inside
- * the same transaction as the CAS, via `transitionOrder`.
+ * transition (restock on cancel, the reason, the COD payment flip on delivery)
+ * happen inside the same transaction as the CAS, via `transitionOrder`.
+ *
+ * A cancel needs `reason` — one condition, no method or state branch, so a
+ * cancelled order always tells its shopper why. Checked after the order is
+ * known to exist and the move to be legal, so a stale or wrong request gets
+ * its real answer rather than a prompt to fill in a field.
  *
  * A `markCodPaid`-style data-corruption error is deliberately NOT folded into a
  * `conflict`: it is not an InvalidTransitionError, so it propagates and the route
@@ -42,6 +53,7 @@ type AdminTransitionResult =
 export const adminTransitionOrder = async (
   orderId: string,
   to: OrderStatus,
+  reason?: string,
 ): Promise<AdminTransitionResult> => {
   try {
     return await db.transaction(async (tx) => {
@@ -50,7 +62,12 @@ export const adminTransitionOrder = async (
       if (!adminNextStatuses(from).includes(to)) {
         return { outcome: 'illegal' as const, from };
       }
-      await transitionOrder(tx, orderId, from, to);
+      if (to === ORDER_STATUSES.CANCELLED && !reason) {
+        return { outcome: 'reason_required' as const };
+      }
+      await transitionOrder(tx, orderId, from, to, {
+        cancellationReason: reason,
+      });
       return { outcome: 'ok' as const };
     });
   } catch (error) {

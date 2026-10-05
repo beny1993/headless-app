@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { createServer, type Server } from 'node:http';
+import { createServer, get, type Server } from 'node:http';
 import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
@@ -123,7 +123,9 @@ describe('admin query string privacy', () => {
   it('sends no admin query in the request URL, its Referer or a breadcrumb', async () => {
     const event = await captureWith(SEARCH, '/admin-panel/users?q=09121234567');
 
-    expect(event).not.toContain('0912');
+    // The number, not its first digits: «0912» turns up by chance in a random
+    // event id and, for 17 minutes on 2026-10-02, in every epoch timestamp.
+    expect(event).not.toContain('9121234567');
     expect(event).toContain('https://shop.example/admin-panel/users');
     expect(event).toContain('/admin-panel/users/abc');
   });
@@ -188,6 +190,188 @@ describe('admin query string privacy', () => {
     const { requestPath } = await captureRequestError('/shop?q=royal', '/shop');
 
     expect(requestPath).toBe('/shop?q=royal');
+  });
+});
+
+// The s3 driver's own requests — the put, the anonymous probe, the delete —
+// are recorded by the Node SDK as `http` breadcrumbs, each URL ending in the
+// receipt's object key, and every event captured later in that request takes
+// them along: the exposure alarm, the probe's warning, a failed clean-up.
+describe('receipt key privacy', () => {
+  it('sends no receipt key in a breadcrumb URL', async () => {
+    const id = crypto.randomUUID();
+    Sentry.getIsolationScope().clearBreadcrumbs();
+    Sentry.addBreadcrumb({
+      category: 'http',
+      type: 'http',
+      data: {
+        url: `https://x/bucket/receipts/${id}.jpg`,
+        'http.method': 'PUT',
+        'http.query': '?x-id=PutObject',
+        status_code: 200,
+      },
+    });
+    Sentry.addBreadcrumb({
+      category: 'navigation',
+      data: {
+        from: `/bucket/receipts/${id}.png?x-id=GetObject`,
+        to: `/bucket/receipts/${id}.webp#top`,
+      },
+    });
+    captured = undefined;
+    Sentry.captureMessage('[storage] a receipt was readable anonymously');
+    await Sentry.flush(2000);
+
+    expect(captured).toBeDefined();
+    expect(captured).not.toContain(id);
+    expect(captured).toContain('https://x/bucket/receipts/[redacted]');
+    expect(captured).toContain('/bucket/receipts/[redacted]?x-id=GetObject');
+  });
+
+  // The other shapes a key reaches a breadcrumb in: a redirect hop that
+  // percent-encoded the slash, a query string (which the SDK keeps apart from
+  // the URL, as `http.query`), and a bucket whose own name is `receipts`.
+  it.each([
+    [
+      'a redirect hop that encoded the slash',
+      (id: string) => ({ url: `https://cdn/x/receipts%2F${id}.jpg` }),
+    ],
+    [
+      'a redirect hop that encoded the slash twice',
+      (id: string) => ({ url: `https://cdn/x/receipts%252F${id}.jpg` }),
+    ],
+    [
+      'a query string',
+      (id: string) => ({
+        url: 'https://cdn/x',
+        'http.query': `?file=receipts/${id}.jpg`,
+      }),
+    ],
+    [
+      'a bucket named receipts',
+      (id: string) => ({ url: `https://x/receipts/receipts/${id}.jpg` }),
+    ],
+  ])('sends no receipt key from %s', async (_, data) => {
+    const id = crypto.randomUUID();
+    Sentry.getIsolationScope().clearBreadcrumbs();
+    Sentry.addBreadcrumb({ category: 'http', type: 'http', data: data(id) });
+    captured = undefined;
+    Sentry.captureMessage('[storage] a receipt was readable anonymously');
+    await Sentry.flush(2000);
+
+    expect(captured).toBeDefined();
+    expect(captured).not.toContain(id);
+  });
+
+  // A breadcrumb is any library's to add, and a filter that throws on an odd
+  // one throws to whoever called `addBreadcrumb`. A non-string goes out as it
+  // came; a string message still has its receipt key redacted, however odd the
+  // rest of the breadcrumb is.
+  it.each([
+    ['a null message', { category: 'http', message: null }, null],
+    ['a number for a message', { category: 'http', message: 42 }, 42],
+    [
+      'a number on an element breadcrumb',
+      { category: 'ui.click', message: 42 },
+      42,
+    ],
+    [
+      'a number for a category',
+      { category: 7, message: 'receipts/x.jpg' },
+      'receipts/[redacted]',
+    ],
+  ])(
+    'passes a breadcrumb with %s through, never throwing',
+    async (_, odd, message) => {
+      Sentry.getIsolationScope().clearBreadcrumbs();
+      expect(() =>
+        Sentry.addBreadcrumb(
+          odd as unknown as Parameters<typeof Sentry.addBreadcrumb>[0],
+        ),
+      ).not.toThrow();
+      captured = undefined;
+      Sentry.captureMessage('after an odd breadcrumb');
+      await Sentry.flush(2000);
+
+      expect(captured).toBeDefined();
+      const [, [[, event]]] = JSON.parse(captured!) as [
+        unknown,
+        [[unknown, { breadcrumbs?: unknown[] }]],
+      ];
+      expect(event.breadcrumbs).toContainEqual(
+        expect.objectContaining({ category: odd.category, message }),
+      );
+    },
+  );
+
+  it('sends no receipt key that a storage error quotes', async () => {
+    // AWS's AccessDenied names the object it refused. A failed GetObject is
+    // rethrown by `readReceipt`, and the API's error boundary captures it.
+    const id = crypto.randomUUID();
+    Sentry.getIsolationScope().clearBreadcrumbs();
+    const error = new Error(
+      `User: arn:aws:iam::1:user/app is not authorized to perform: s3:GetObject on resource: "arn:aws:s3:::bucket/receipts/${id}.jpg"`,
+    );
+    error.name = 'AccessDenied';
+    const event = await capture(error);
+
+    expect(event).not.toContain(id);
+    expect(event).toContain('bucket/receipts/[redacted]');
+  });
+
+  describe('in the breadcrumbs the SDK records itself', () => {
+    let server: Server;
+    let origin = '';
+
+    beforeAll(async () => {
+      server = createServer((request, response) => {
+        // A socket per request: each breadcrumb is then recorded in the
+        // context of the request that made it, as in a test it must be.
+        response.setHeader('connection', 'close');
+        request.resume();
+        request.on('end', () => response.end('x'));
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, '127.0.0.1', resolve),
+      );
+      origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    });
+    afterAll(async () => {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    });
+
+    const httpGet = (url: string) =>
+      new Promise<void>((resolve, reject) => {
+        get(url, (response) => {
+          response.resume();
+          response.on('end', resolve);
+        }).on('error', reject);
+      });
+
+    it('sends no receipt key from a real fetch or http.request', async () => {
+      const ids = Array.from({ length: 4 }, () => crypto.randomUUID());
+      Sentry.getIsolationScope().clearBreadcrumbs();
+      await (await fetch(`${origin}/bucket/receipts/${ids[0]}.jpg`)).text();
+      await (await fetch(`${origin}/receipts/receipts/${ids[1]}.jpg`)).text();
+      await httpGet(`${origin}/bucket/x?file=receipts/${ids[2]}.jpg`);
+      await httpGet(`${origin}/bucket/x/receipts%2F${ids[3]}.jpg`);
+      captured = undefined;
+      Sentry.captureMessage('[storage] a receipt was readable anonymously');
+      await Sentry.flush(2000);
+
+      expect(captured).toBeDefined();
+      for (const id of ids) expect(captured).not.toContain(id);
+      // The SDK did record all four, each scrubbed where it filed the key:
+      // the URL, or the query it keeps apart from it.
+      for (const scrubbed of [
+        `${origin}/bucket/receipts/[redacted]`,
+        `${origin}/receipts/[redacted]`,
+        '?file=receipts/[redacted]',
+        `${origin}/bucket/x/receipts%2F[redacted]`,
+      ]) {
+        expect(captured).toContain(scrubbed);
+      }
+    });
   });
 });
 

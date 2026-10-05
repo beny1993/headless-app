@@ -23,7 +23,7 @@ import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 import { computeDiscount } from '@/lib/discount/discount-code';
 import { isZarinpalEnabled } from '@/lib/zarinpal/client';
 import {
-  ORDER_STATUSES,
+  OPEN_ORDER_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
   byProductId,
@@ -36,10 +36,6 @@ import {
   DISCOUNT_FIELD,
   assertDiscountApplicable,
 } from '@/logic/checkout/discount';
-import {
-  notifiesOnCreate,
-  notifyAdminsOfNewOrder,
-} from '@/logic/orders/notify-new-order';
 
 // Persian, customer-facing. The `errors[]` detail the route builds is
 // `${field}: ${message}`, per the design note.
@@ -55,32 +51,35 @@ const insufficientStock = (title: string) =>
   `موجودی «${title}» برای تعداد درخواستی کافی نیست.`;
 
 /**
- * Per-user cap on concurrent `pending_payment` orders (2026-09-02).
+ * Per-user cap on concurrent open orders (2026-09-02; card-to-card joined it
+ * 2026-09-30).
  *
- * A Zarinpal checkout reserves stock into a `pending_payment` order, and only
- * the reconcile sweep (`src/logic/payments/reconcile.ts`) releases an abandoned
- * one. The sweep is admin-triggered, so between runs one phone-verified account
- * looping `POST /api/checkout` could still zero the catalog (denial of
- * inventory); this cap bounds that. Raising or dropping it is Benyamin's call.
+ * Both birth states reserve stock with nothing on a clock to release it: a
+ * Zarinpal checkout's `pending_payment` waits on the admin-triggered reconcile
+ * sweep (`src/logic/payments/reconcile.ts`), and a card-to-card checkout's
+ * `awaiting_receipt` waits on the shopper's receipt or an admin. So one
+ * phone-verified account looping `POST /api/checkout` could otherwise zero the
+ * catalog (denial of inventory); this cap bounds that, for both methods
+ * (`OPEN_ORDER_STATUSES`). Raising or dropping it is Benyamin's call.
  *
- * N is generous (a real shopper rarely has >1 unpaid online order at once) yet
- * caps abuse; tune it here.
+ * N is generous (a real shopper rarely has more than one unfinished order at
+ * once) yet caps abuse; tune it here.
  */
 export const MAX_OPEN_ORDERS = 5;
 
 /**
  * Rolling per-user cap on order CREATION — every status, every payment method.
  *
- * `MAX_OPEN_ORDERS` above counts only `pending_payment`, so it never saw a COD
- * checkout at all: a COD order is `processing` from birth. One OTP-verified
- * shopper could therefore loop `POST /api/checkout` with a fresh
- * `Idempotency-Key` each time and mint orders without limit — every one of them
+ * `MAX_OPEN_ORDERS` above counts only the orders still open, so a shopper who
+ * finishes each one — pays it, or uploads a receipt — never meets it. One
+ * OTP-verified shopper could therefore loop `POST /api/checkout` with a fresh
+ * `Idempotency-Key` each time and mint orders without limit — each accepted one
  * an SMS to every admin (`notifyAdminsOfNewOrder`) and a row burying the real
  * orders on `/admin-panel/orders`. This cap is the one chokepoint that bounds
  * that, for both payment methods at once.
  *
  * 30/hour is far above any real shopper — and above the machines: the E2E
- * suite's single throwaway customer places 17 orders a run (AGENTS.md,
+ * suite's single throwaway customer places 19 orders a run (AGENTS.md,
  * «Checkout is rate-capped per account»). Keep that headroom if the suite grows.
  *
  * Deliberately NOT status-aware: cancelling an order must not give the quota
@@ -125,8 +124,9 @@ const READ_COMMITTED = { isolationLevel: 'read committed' } as const;
  *  3. In one transaction, lock this account's user row FIRST, so its checkouts
  *     run one at a time; hand back the order a queued replay of this key already
  *     created; then enforce the rolling creation cap (every method — see
- *     `MAX_ORDERS_PER_WINDOW`) and the open-order cap (Zarinpal only — see
- *     `MAX_OPEN_ORDERS`), whose counts no concurrent request can outrun.
+ *     `MAX_ORDERS_PER_WINDOW`) and the open-order cap (every order still waiting
+ *     for its payment or receipt — see `MAX_OPEN_ORDERS`), whose counts no
+ *     concurrent request can outrun.
  *  4. Per line **in productId order** (deadlock symmetry with the restock path):
  *     reject a missing or inactive product, then run the atomic oversell guard; a
  *     0-row decrement is out-of-stock. Snapshot title/sku/price from the guard's
@@ -193,7 +193,7 @@ export const createOrder = async (
     .sort(byProductId);
 
   try {
-    const result = await db.transaction(async (tx) => {
+    return await db.transaction(async (tx) => {
       // 3a. One checkout per account at a time. This account's user row is the
       // transaction's FIRST lock — product rows are locked only after it, in
       // productId order — so a second checkout of the same account waits here
@@ -218,12 +218,14 @@ export const createOrder = async (
           idempotencyKey,
           tx,
         );
-        if (existing) return { order: existing, replayed: true };
+        if (existing) return existing;
       }
 
       // 3c. The rolling creation cap: every order this user created in the
       // window, whatever its status and however it was paid. This is the one
-      // that bounds a COD loop. See MAX_ORDERS_PER_WINDOW.
+      // that bounds a loop of orders each finished in turn — paid, or given its
+      // receipt — which the open-order cap below never sees. See
+      // MAX_ORDERS_PER_WINDOW.
       const recentOrders = await OrderDao.countCreatedSince(
         userId,
         new Date(Date.now() - ORDER_RATE_WINDOW_MS),
@@ -233,13 +235,10 @@ export const createOrder = async (
         throw new CheckoutError('paymentMethod', TOO_MANY_RECENT_ORDERS);
       }
 
-      // 3d. Open-order cap. Only orders that WOULD enter `pending_payment` are
-      // gated — the one state whose reserved stock waits on the reconcile sweep —
-      // so a COD checkout (→ `processing`) is never blocked and never counted.
-      // See `MAX_OPEN_ORDERS`.
-      if (
-        initialStatusFor(input.paymentMethod) === ORDER_STATUSES.PENDING_PAYMENT
-      ) {
+      // 3d. Open-order cap. Gated when the new order would itself be open —
+      // today every checkout is, Zarinpal and card to card alike — and counted
+      // over every open order this account holds. See `MAX_OPEN_ORDERS`.
+      if (OPEN_ORDER_STATUSES.includes(initialStatusFor(input.paymentMethod))) {
         const openOrders = await OrderDao.countOpenForUser(userId, tx);
         if (openOrders >= MAX_OPEN_ORDERS) {
           throw new CheckoutError('paymentMethod', TOO_MANY_OPEN_ORDERS);
@@ -383,23 +382,12 @@ export const createOrder = async (
         );
       }
 
-      return { order, replayed: false };
+      return order;
     }, READ_COMMITTED);
-
-    // Tell the admins — AFTER the commit, and only for an order this call
-    // created: the fast path above and the unique-violation catch below return
-    // before this line, and a re-check hit under the lock comes back
-    // `replayed` — so a double-submit sends one SMS.
-    // Deliberately un-awaited and never `await`ed anywhere:
-    // `notifyAdminsOfNewOrder` catches everything and never rejects, so the
-    // shopper's response cannot be delayed or failed by a wedged SMS provider.
-    // Not Next's `after()` — the reconcile sweep and the tests call this
-    // function with no request scope at all.
-    if (!result.replayed && notifiesOnCreate(result.order.status)) {
-      void notifyAdminsOfNewOrder(result.order.id);
-    }
-
-    return result.order;
+    // No admin alert here: every checkout is born open, and an unfinished
+    // checkout never wakes an admin. A card-to-card order's alert comes when its
+    // first receipt accepts it (`uploadReceipt`); a Zarinpal order's when its
+    // payment settles (`settlePendingPayment`).
   } catch (error) {
     // A backstop since the account lock, which makes same-key requests queue.
     // A concurrent request with the same key won the race: its insert committed

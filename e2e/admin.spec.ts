@@ -4,18 +4,102 @@ import {
   adminProductFilterSchema,
   productsHref,
 } from '@/features/admin-panel/products/products-query';
-import { PATHS, PROTECTED_PATHS, adminOrderPath } from '@/lib/constant/paths';
+import type { Page } from '@playwright/test';
+import {
+  PATHS,
+  PROTECTED_PATHS,
+  accountOrderPath,
+  adminOrderPath,
+  checkoutResultPath,
+} from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import { ORDER_STATUSES } from '@/lib/orders/order-status';
 import {
   ADMIN_STATE,
   CUSTOMER_STATE,
   LOW_STOCK_PRODUCT,
+  closeIfStillWaiting,
+  closeOrder,
   expect,
+  expectRendered,
   placeOrder,
   resultOrderId,
   test,
 } from './support';
+
+/**
+ * How far the page, and its `main`, reach past their own width: both 0 when
+ * nothing pushes the screen sideways. The admin panel's `main` scrolls on its
+ * own (`overflow-y-auto`, so its x overflow is `auto` too), and a line too wide
+ * for it widens `main`, not the page.
+ */
+const sidewaysOverflow = (page: Page) =>
+  page.evaluate(() => {
+    const root = document.documentElement;
+    const main = document.querySelector('main');
+    return {
+      page: root.scrollWidth - root.clientWidth,
+      main: main ? main.scrollWidth - main.clientWidth : 0,
+    };
+  });
+
+/**
+ * A waiting order's page puts the receipt box above the card numbers: the
+ * box's top is above the card panel's. The panel is found by its fixed
+ * contact sentence, never by its note, which the admin writes.
+ */
+async function expectBoxAbovePanel(page: Page) {
+  const box = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: 'رسید پرداخت' }) });
+  const panel = page
+    .getByText('برای هماهنگی، از طریق', { exact: false })
+    .locator('..');
+  const boxTop = (await box.boundingBox())?.y;
+  const panelTop = (await panel.boundingBox())?.y;
+  if (boxTop === undefined || panelTop === undefined) {
+    throw new Error('the receipt box or the card panel is not on the page');
+  }
+  expect(boxTop).toBeLessThan(panelTop);
+}
+
+/**
+ * The upload on a waiting order's page, where the shopper lands: the picker
+ * and its button each wholly inside the first screen, at scroll 0.
+ */
+async function expectUploadOnFirstScreen(
+  page: Page,
+  prefix: 'checkout-result' | 'account-order',
+) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const fold = page.viewportSize()?.height ?? 0;
+  for (const control of [
+    page.locator('label', {
+      has: page.locator(`[data-umami-event="${prefix}-receipt-file"]`),
+    }),
+    page.locator(`[data-umami-event="${prefix}-receipt-upload"]`),
+  ]) {
+    const box = await control.boundingBox();
+    if (!box) throw new Error(`no ${prefix} upload control on the page`);
+    expect(box.y + box.height).toBeLessThanOrEqual(fold);
+  }
+}
+
+/**
+ * Cancels the order open on the admin's page: the cancel button asks for the
+ * reason the shopper will read, and nothing is sent without one.
+ */
+async function cancelWithReason(page: Page, reason: string) {
+  await page
+    .locator('[data-umami-event="admin-panel-order-transition-cancelled"]')
+    .click();
+  await page
+    .locator('[data-umami-event="admin-panel-order-cancel-reason"]')
+    .fill(reason);
+  await page
+    .locator('[data-umami-event="admin-panel-order-cancel-submit"]')
+    .click();
+}
 
 test('a signed-out visitor is sent to sign in first', async ({ page }) => {
   await page.goto(PROTECTED_PATHS.INDEX);
@@ -39,6 +123,17 @@ test.describe('a customer', () => {
 test.describe('an admin', () => {
   test.use({ storageState: ADMIN_STATE });
 
+  // Card-to-card orders a test means to move on — ship, cancel. One still
+  // waiting for its receipt is open against the customer's cap — the cut
+  // upload's, if its test fails before cancelling it — so each is closed after
+  // the test, unless the test did move it on.
+  const movedOn: string[] = [];
+  test.afterEach(async ({ page }) => {
+    for (const orderId of movedOn.splice(0)) {
+      await closeIfStillWaiting(page.request, orderId);
+    }
+  });
+
   test('sees the dashboard figures, formatted', async ({ page }) => {
     await page.goto(PROTECTED_PATHS.INDEX);
     await expect(
@@ -51,10 +146,15 @@ test.describe('an admin', () => {
     ).not.toContainText(/\d/);
   });
 
-  test('finds a new order and ships it', async ({ page, shopper }) => {
-    // The order comes from a real checkout, in the customer's own session.
+  test('finds a new order, sees its receipt and ships it', async ({
+    page,
+    shopper,
+  }) => {
+    // The order comes from a real checkout, in the customer's own session,
+    // its screenshot attached there — the upload that accepts it.
     await placeOrder(shopper, 'cod');
     const orderId = await resultOrderId(shopper);
+    movedOn.push(orderId);
 
     await page.goto(PROTECTED_PATHS.ORDERS);
     // Numbered from one down the first page, however many orders it holds.
@@ -74,8 +174,21 @@ test.describe('an admin', () => {
       )
       .click();
 
-    // Cash on delivery skips the gateway and starts in fulfilment, where
-    // shipping is the next move — and delivery is the only move after it.
+    // Accepted by its receipt: in fulfilment, where shipping is the next move
+    // — and delivery the only move after it. The receipt is on the page for
+    // the admin to check first, served through the admin's own route.
+    await expect(page).toHaveURL(
+      (url) => url.pathname === adminOrderPath(orderId),
+    );
+    await expect(
+      page.getByText('در حال پردازش', { exact: true }),
+    ).toBeVisible();
+    const receipt = page.locator(
+      '[data-umami-event="admin-panel-order-receipt-open"]',
+    );
+    await expect(receipt).toHaveCount(1);
+    await receipt.scrollIntoViewIfNeeded();
+    await expectRendered(receipt.locator('img'));
     const ship = page.locator(
       '[data-umami-event="admin-panel-order-transition-shipped"]',
     );
@@ -88,7 +201,7 @@ test.describe('an admin', () => {
     await expect(ship).toBeHidden();
   });
 
-  test('cancels an order and its stock comes back', async ({
+  test('cancels an order still waiting for its receipt, and its stock comes back', async ({
     page,
     shopper,
   }) => {
@@ -96,18 +209,112 @@ test.describe('an admin', () => {
     const stockLeft = (count: number) =>
       shopper.getByText(`تنها ${formatNumber(count)} عدد باقی مانده`);
 
+    // The screenshot never reaches the shop: its upload is cut after the
+    // order exists, as a dropped connection would cut it. Aborted, it gets no
+    // response, so the failed-request watch (which reads responses) has
+    // nothing to record.
+    const receiptUpload = '**/api/orders/*/receipts';
+    await shopper.route(receiptUpload, (route) => route.abort());
     await placeOrder(shopper, 'cod', path);
     const orderId = await resultOrderId(shopper);
+    movedOn.push(orderId);
+    await shopper.unroute(receiptUpload);
+
+    // The result page says the order is not accepted yet, never the accepted
+    // «سفارش ثبت شد!». The receipt box's top is above the card panel's, its
+    // picker above the order number, and the picker and «بارگذاری رسید» lie
+    // wholly inside the first screen at scroll 0.
+    await expect(
+      shopper.getByRole('heading', { name: 'سفارش هنوز پذیرفته نشده است' }),
+    ).toBeVisible();
+    await expect(
+      shopper.getByRole('heading', { name: 'سفارش ثبت شد!' }),
+    ).toHaveCount(0);
+    const picker = shopper.locator('label', {
+      has: shopper.locator('[data-umami-event="checkout-result-receipt-file"]'),
+    });
+    const orderNumber = shopper
+      .getByText('شماره سفارش', { exact: true })
+      .locator('..');
+    const pickerTop = (await picker.boundingBox())?.y;
+    const detailsTop = (await orderNumber.boundingBox())?.y;
+    if (pickerTop === undefined || detailsTop === undefined) {
+      throw new Error('the picker or the order number is not on the page');
+    }
+    expect(pickerTop).toBeLessThan(detailsTop);
+    await expectBoxAbovePanel(shopper);
+    await expectUploadOnFirstScreen(shopper, 'checkout-result');
+    // The account order page says so too, with its box above the card panel
+    // and its picker and button inside the first screen.
+    await shopper.goto(accountOrderPath(orderId));
+    await expect(
+      shopper.getByText('سفارش هنوز پذیرفته نشده است'),
+    ).toBeVisible();
+    await expectBoxAbovePanel(shopper);
+    await expectUploadOnFirstScreen(shopper, 'account-order');
+
     await shopper.goto(path);
     await expect(stockLeft(stock - 1)).toBeVisible();
 
+    // No receipt ever came: the admin cancels the waiting order by hand.
     await page.goto(adminOrderPath(orderId));
-    const cancel = page.locator(
-      '[data-umami-event="admin-panel-order-transition-cancelled"]',
-    );
-    await cancel.click();
+    await expect(
+      page.getByText('در انتظار رسید واریز', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('رسیدی در سایت بارگذاری نشده است.'),
+    ).toBeVisible();
+    await cancelWithReason(page, 'رسید پرداخت نرسید');
     // Cancelled is terminal: nothing is offered after it.
-    await expect(cancel).toBeHidden();
+    await expect(
+      page.locator(
+        '[data-umami-event="admin-panel-order-transition-cancelled"]',
+      ),
+    ).toBeHidden();
+
+    await shopper.goto(path);
+    await expect(stockLeft(stock)).toBeVisible();
+  });
+
+  test('cancels an accepted order with a reason the shopper then reads', async ({
+    page,
+    shopper,
+  }) => {
+    const { path, stock } = LOW_STOCK_PRODUCT;
+    const stockLeft = (count: number) =>
+      shopper.getByText(`تنها ${formatNumber(count)} عدد باقی مانده`);
+    // A pasted link: one unbroken run longer than a phone is wide, which every
+    // page that shows the reason has to wrap rather than scroll sideways.
+    const reason = `مبلغ رسید با مبلغ سفارش نمی‌خواند: https://bank.example/r/${'abcdefghij'.repeat(7)}`;
+
+    await placeOrder(shopper, 'cod', path);
+    const orderId = await resultOrderId(shopper);
+    movedOn.push(orderId);
+
+    // The admin checks the receipt and turns it down.
+    await page.goto(adminOrderPath(orderId));
+    await expect(
+      page.locator('[data-umami-event="admin-panel-order-receipt-open"]'),
+    ).toHaveCount(1);
+    await cancelWithReason(page, reason);
+    await expect(page.getByText(`دلیل لغو: ${reason}`)).toBeVisible();
+    expect(await sidewaysOverflow(page)).toEqual({ page: 0, main: 0 });
+
+    // The shopper's order says so, why, and where a transfer comes back from
+    // — and takes no more receipts.
+    await shopper.goto(accountOrderPath(orderId));
+    await expect(shopper.getByText('این سفارش لغو شد.')).toBeVisible();
+    await expect(shopper.getByText(`دلیل: ${reason}`)).toBeVisible();
+    await expect(
+      shopper.locator('[data-umami-event="account-order-receipt-file"]'),
+    ).toHaveCount(0);
+    await expect(shopper.getByText('رد شده', { exact: true })).toBeVisible();
+    expect(await sidewaysOverflow(shopper)).toEqual({ page: 0, main: 0 });
+
+    // The checkout result page says it too, in its own words.
+    await shopper.goto(checkoutResultPath(orderId));
+    await expect(shopper.getByText(reason, { exact: false })).toBeVisible();
+    expect(await sidewaysOverflow(shopper)).toEqual({ page: 0, main: 0 });
 
     await shopper.goto(path);
     await expect(stockLeft(stock)).toBeVisible();
@@ -119,32 +326,36 @@ test.describe('an admin', () => {
   }) => {
     // At least one order, so the orders list has a page to come back to.
     await placeOrder(shopper, 'cod');
-    await resultOrderId(shopper);
+    const orderId = await resultOrderId(shopper);
 
-    for (const { pastTheEnd, empty, row } of [
-      {
-        pastTheEnd: `${PROTECTED_PATHS.ORDERS}?page=999`,
-        empty: 'این صفحه سفارشی ندارد.',
-        row: 'admin-panel-orders-view',
-      },
-      {
-        // Narrowed to one seeded product, the list has exactly one page however
-        // many products the database holds: the case the pager used to hide on.
-        pastTheEnd: `${PROTECTED_PATHS.PRODUCTS}?${new URLSearchParams({
-          q: SEED_PRODUCTS[0].title,
-          page: '999',
-        })}`,
-        empty: 'این صفحه محصولی ندارد.',
-        row: 'admin-panel-products-edit',
-      },
-    ]) {
-      await page.goto(pastTheEnd);
-      await expect(page.getByText(empty)).toBeVisible();
-      // Back to the last page that exists, whether the list has one page or many.
-      await page.getByRole('link', { name: 'صفحه قبل' }).click();
-      await expect(
-        page.locator(`[data-umami-event="${row}"]`).first(),
-      ).toBeVisible();
+    try {
+      for (const { pastTheEnd, empty, row } of [
+        {
+          pastTheEnd: `${PROTECTED_PATHS.ORDERS}?page=999`,
+          empty: 'این صفحه سفارشی ندارد.',
+          row: 'admin-panel-orders-view',
+        },
+        {
+          // Narrowed to one seeded product, the list has exactly one page however
+          // many products the database holds: the case the pager used to hide on.
+          pastTheEnd: `${PROTECTED_PATHS.PRODUCTS}?${new URLSearchParams({
+            q: SEED_PRODUCTS[0].title,
+            page: '999',
+          })}`,
+          empty: 'این صفحه محصولی ندارد.',
+          row: 'admin-panel-products-edit',
+        },
+      ]) {
+        await page.goto(pastTheEnd);
+        await expect(page.getByText(empty)).toBeVisible();
+        // Back to the last page that exists, whether the list has one page or many.
+        await page.getByRole('link', { name: 'صفحه قبل' }).click();
+        await expect(
+          page.locator(`[data-umami-event="${row}"]`).first(),
+        ).toBeVisible();
+      }
+    } finally {
+      await closeOrder(page, orderId);
     }
   });
 

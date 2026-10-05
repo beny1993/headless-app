@@ -83,8 +83,22 @@ describe('CardToCardPanel', () => {
     render(<CardToCardPanel payment={empty} />);
     expect(screen.getByText(base.note)).toBeTruthy();
     // The sentence is intact, its platform names plain words, not links.
-    expect(screen.getByText(/از طریق اینستاگرام یا تلگرام با ما/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        'برای هماهنگی، از طریق اینستاگرام یا تلگرام با ما در تماس باش.',
+      ),
+    ).toBeTruthy();
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
     expect(screen.queryAllByRole('link')).toHaveLength(0);
+  });
+
+  it('never asks for the receipt by DM, nor after the order is placed', () => {
+    // The checkout shows this panel above its screenshot picker, and the order
+    // pages above their receipt box: the receipt goes in here, and at
+    // checkout it goes in before «ثبت سفارش».
+    render(<CardToCardPanel payment={filled} />);
+    expect(document.body.textContent).not.toContain('ارسال رسید');
+    expect(document.body.textContent).not.toContain('رسید را برای ما بفرست');
+    expect(document.body.textContent).not.toContain('بعد از «ثبت سفارش»');
   });
 });

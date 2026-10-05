@@ -27,6 +27,22 @@ export const ACCEPTED_IMAGE_TYPES = Object.keys(
   IMAGE_EXTENSIONS,
 ) as AcceptedImageType[];
 
+const TYPE_BY_EXTENSION = new Map<string, AcceptedImageType>(
+  Object.entries(IMAGE_EXTENSIONS).map(([type, extension]) => [
+    extension,
+    type as AcceptedImageType,
+  ]),
+);
+
+/**
+ * The content type a stored key is served with, from its extension — which
+ * `objectKeyFor` minted from the sniffed bytes — or `null` for any other
+ * extension. What the serving routes answer with, never a stored or declared
+ * type.
+ */
+export const contentTypeOfKey = (key: string): AcceptedImageType | null =>
+  TYPE_BY_EXTENSION.get(key.slice(key.lastIndexOf('.') + 1)) ?? null;
+
 /**
  * The multipart field the image arrives in. Shared by the upload route (which
  * reads it) and the admin form (which sets it) — here rather than in the route
@@ -52,6 +68,19 @@ export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 export const UPLOAD_KEY_PREFIX = 'uploads';
 
 /**
+ * Where a card-to-card payment receipt is stored: `receipts/<uuid>.<ext>` — the
+ * local driver's `<root>/receipts/` folder, the bucket's `receipts/` prefix. It
+ * is **never** a public namespace: no URL resolves a receipt key (`imageSrc`
+ * and every driver's `url()` throw on one), and only the authenticated receipt
+ * routes read one back, for the order's owner and the admins.
+ */
+export const RECEIPT_KEY_PREFIX = 'receipts';
+
+/** Whether `key` names a receipt — private by construction, see above. */
+export const isReceiptKey = (key: string): boolean =>
+  key.startsWith(`${RECEIPT_KEY_PREFIX}/`);
+
+/**
  * The filename half of a stored upload key: a v4 uuid and one of our extensions,
  * nothing else. The route validates the requested key against this before it
  * touches the filesystem, so a traversal segment (`..`, a slash, a leading dot)
@@ -68,6 +97,13 @@ const startsWith = (bytes: Uint8Array, signature: number[]): boolean =>
 // ASCII for "RIFF" (bytes 0–3) and "WEBP" (bytes 8–11) in a RIFF container.
 const RIFF = [0x52, 0x49, 0x46, 0x46];
 const WEBP = [0x57, 0x45, 0x42, 0x50];
+
+/**
+ * How many leading bytes `sniffImageType` reads: up to WEBP's tag at 8–11. A
+ * browser-side check slices this much off a picked file instead of reading all
+ * of it.
+ */
+export const SNIFF_LENGTH = 12;
 
 /**
  * The image type a file actually is, read from its leading bytes — or `null`
@@ -90,12 +126,17 @@ export function sniffImageType(bytes: Uint8Array): AcceptedImageType | null {
 
 /**
  * A fresh storage key for an image of the given (sniffed) type:
- * `uploads/<uuid>.<ext>`. The uuid is generated here, on the server, so nothing
- * the client sent — filename, path, extension — reaches the stored key. That is
- * what makes a path-traversal key impossible to produce.
+ * `uploads/<uuid>.<ext>`, or `receipts/<uuid>.<ext>` for a payment receipt. The
+ * uuid is generated here, on the server, so nothing the client sent — filename,
+ * path, extension — reaches the stored key. That is what makes a path-traversal
+ * key impossible to produce.
  */
-export function objectKeyFor(type: AcceptedImageType): string {
-  return `${UPLOAD_KEY_PREFIX}/${crypto.randomUUID()}.${IMAGE_EXTENSIONS[type]}`;
+export function objectKeyFor(
+  type: AcceptedImageType,
+  prefix:
+    typeof UPLOAD_KEY_PREFIX | typeof RECEIPT_KEY_PREFIX = UPLOAD_KEY_PREFIX,
+): string {
+  return `${prefix}/${crypto.randomUUID()}.${IMAGE_EXTENSIONS[type]}`;
 }
 
 /**
@@ -151,9 +192,8 @@ export type ImageUploadResult = z.infer<typeof imageUploadResultSchema>;
  * needs the fa-IR decimal separator — `toPersianDigits` would leave a Latin
  * full stop on a screen where every other number uses «٫».
  */
-const MAX_UPLOAD_MB = formatNumber(
-  Math.round((MAX_UPLOAD_BYTES / 1024 / 1024) * 10) / 10,
-);
+const megabytes = (maxBytes: number) =>
+  formatNumber(Math.round((maxBytes / 1024 / 1024) * 10) / 10);
 
 /**
  * The accepted formats as the admin reads them, derived from the one list that
@@ -170,11 +210,18 @@ const ACCEPTED_LABELS = ((labels: string[]) =>
 ]);
 
 /**
- * The accept-and-size hint every image field shows, and the two refusals.
- * Derived rather than written out: three hand-typed copies of «۲ مگابایت» went
- * on promising two megabytes after the cap moved, in the very field the admin
- * was looking at while a larger file uploaded fine.
+ * The accept-and-size hint an image field shows, and the size refusal, for a
+ * given ceiling — the product photos' below, a payment receipt's in
+ * `src/lib/orders/receipt.ts`. Derived rather than written out: three
+ * hand-typed copies of «۲ مگابایت» went on promising two megabytes after the
+ * cap moved, in the very field the admin was looking at while a larger file
+ * uploaded fine.
  */
-export const IMAGE_FORMAT_HINT = `${ACCEPTED_LABELS}، تا ${MAX_UPLOAD_MB} مگابایت`;
+export const formatHint = (maxBytes: number) =>
+  `${ACCEPTED_LABELS}، تا ${megabytes(maxBytes)} مگابایت`;
+export const sizeError = (maxBytes: number) =>
+  `حجم تصویر باید حداکثر ${megabytes(maxBytes)} مگابایت باشد.`;
+
+export const IMAGE_FORMAT_HINT = formatHint(MAX_UPLOAD_BYTES);
 export const IMAGE_TYPE_ERROR = `فقط تصویر ${ACCEPTED_LABELS}.`;
-export const IMAGE_SIZE_ERROR = `حجم تصویر باید حداکثر ${MAX_UPLOAD_MB} مگابایت باشد.`;
+export const IMAGE_SIZE_ERROR = sizeError(MAX_UPLOAD_BYTES);
