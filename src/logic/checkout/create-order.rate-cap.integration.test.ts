@@ -2,10 +2,11 @@
 // orders one verified account can create in an hour, whatever it pays with and
 // whatever becomes of them afterwards.
 //
-// What it defends: a COD checkout is `processing` from birth, so the open-order
-// cap next door never counted it. One shopper looping POST /api/checkout with a
-// fresh Idempotency-Key could therefore mint orders without limit — each one an
-// SMS to every admin and a row burying the real orders on /admin-panel/orders.
+// What it defends: the open-order cap next door counts only orders still open,
+// so a shopper who finishes each one — pays it, or uploads its receipt — never
+// meets it. One shopper looping POST /api/checkout with a fresh Idempotency-Key
+// could therefore mint orders without limit — each accepted one an SMS to every
+// admin and a row burying the real orders on /admin-panel/orders.
 //
 // Needs a live database — see src/db/test-db.ts: the cap is a COUNT over
 // committed rows, including ones this checkout is not allowed to see the end of.
@@ -185,7 +186,7 @@ describe.skipIf(!databaseReachable)('createOrder rate cap', () => {
     const order = await createOrder(user.id, input);
     fx.remember(order.id);
 
-    expect(order.status).toBe(ORDER_STATUSES.PROCESSING);
+    expect(order.status).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
   });
 
   it('counts orders the shopper has cancelled', async () => {
@@ -254,16 +255,25 @@ describe.skipIf(!databaseReachable)('createOrder rate cap', () => {
         result.status === 'rejected' ? [result.reason] : [],
       );
 
-    it('commits exactly the creation cap, and alerts exactly that often', async () => {
-      const size = MAX_ORDERS_PER_WINDOW + 10;
+    it('commits exactly the creation cap, and texts nobody at checkout', async () => {
+      // Three short of the cap with orders already accepted (not open), so the
+      // burst meets the creation cap and never the open-order one: a
+      // card-to-card order is open from birth, and five of those would stop
+      // the burst first.
+      const headroom = 3;
+      const size = headroom + 10;
       const { user, input } = await scenario({}, size);
+      await seedOrders(user, MAX_ORDERS_PER_WINDOW - headroom);
 
       const results = await fire(size, () =>
         createOrder(user.id, input, crypto.randomUUID()),
       );
 
       expect(await ordersOf(user.id)).toHaveLength(MAX_ORDERS_PER_WINDOW);
-      expect(mocks.notify).toHaveBeenCalledTimes(MAX_ORDERS_PER_WINDOW);
+      // A card-to-card order is texted when its first receipt accepts it, so
+      // a burst of checkouts sends nothing — each alert still costs an order
+      // this cap let through, plus a receipt.
+      expect(mocks.notify).not.toHaveBeenCalled();
       const refused = refusals(results);
       expect(refused).toHaveLength(10);
       for (const error of refused) {
@@ -272,30 +282,31 @@ describe.skipIf(!databaseReachable)('createOrder rate cap', () => {
       }
     });
 
-    it('commits exactly the open-order cap of Zarinpal checkouts', async () => {
-      vi.stubEnv('APP_CONFIG_ZARINPAL_ENABLED', 'true');
-      const size = MAX_OPEN_ORDERS + 5;
-      const { user, input } = await scenario(
-        { paymentMethod: PAYMENT_METHODS.ZARINPAL },
-        size,
-      );
+    it.each([
+      [PAYMENT_METHODS.ZARINPAL, ORDER_STATUSES.PENDING_PAYMENT],
+      [PAYMENT_METHODS.COD, ORDER_STATUSES.AWAITING_RECEIPT],
+    ] as const)(
+      'commits exactly the open-order cap of %s checkouts',
+      async (paymentMethod, waiting) => {
+        vi.stubEnv('APP_CONFIG_ZARINPAL_ENABLED', 'true');
+        const size = MAX_OPEN_ORDERS + 5;
+        const { user, input } = await scenario({ paymentMethod }, size);
 
-      const results = await fire(size, () =>
-        createOrder(user.id, input, crypto.randomUUID()),
-      );
+        const results = await fire(size, () =>
+          createOrder(user.id, input, crypto.randomUUID()),
+        );
 
-      const created = await ordersOf(user.id);
-      expect(created).toHaveLength(MAX_OPEN_ORDERS);
-      expect(
-        created.every((row) => row.status === ORDER_STATUSES.PENDING_PAYMENT),
-      ).toBe(true);
-      const refused = refusals(results);
-      expect(refused).toHaveLength(5);
-      for (const error of refused) {
-        expect(error).toBeInstanceOf(CheckoutError);
-        expect(error.message).toContain('در انتظار پرداخت');
-      }
-    });
+        const created = await ordersOf(user.id);
+        expect(created).toHaveLength(MAX_OPEN_ORDERS);
+        expect(created.every((row) => row.status === waiting)).toBe(true);
+        const refused = refusals(results);
+        expect(refused).toHaveLength(5);
+        for (const error of refused) {
+          expect(error).toBeInstanceOf(CheckoutError);
+          expect(error.message).toContain('در انتظار پرداخت');
+        }
+      },
+    );
 
     it('hands a queued replay its order back, even the order that filled the cap', async () => {
       // Five copies of one request, one below the cap. The first to commit
@@ -317,7 +328,8 @@ describe.skipIf(!databaseReachable)('createOrder rate cap', () => {
       );
       expect(ids.size).toBe(1);
       expect(await ordersOf(user.id)).toHaveLength(MAX_ORDERS_PER_WINDOW);
-      expect(mocks.notify).toHaveBeenCalledTimes(1);
+      // Card to card: its alert waits for the first receipt, not the checkout.
+      expect(mocks.notify).not.toHaveBeenCalled();
     });
   });
 });

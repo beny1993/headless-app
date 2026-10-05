@@ -16,7 +16,8 @@ import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
 import {
-  adminTransitionTargetSchema,
+  adminTransitionBodySchema,
+  CANCELLATION_REASON_REQUIRED_MESSAGE,
   orderStatusSchema,
   paymentMethodSchema,
   paymentStatusSchema,
@@ -24,7 +25,11 @@ import {
 import { adminTransitionOrder } from '@/logic/orders/admin-transition';
 import { getAdminOrder, type AdminOrder } from '@/logic/orders/get-admin-order';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
-import { IdParamSchema, errorResponse } from '../route-responses';
+import {
+  IdParamSchema,
+  errorResponse,
+  openapiObject,
+} from '../route-responses';
 import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. */
@@ -65,6 +70,17 @@ const AdminPaymentSchema = z
   })
   .openapi('AdminPayment');
 
+// A receipt for the admin: its type and size on top of the shopper's view, and
+// still no storage key — the bytes are read by id at the admin receipt route.
+const AdminReceiptSchema = z
+  .object({
+    id: z.uuid(),
+    contentType: z.string(),
+    size: z.number().int().positive(),
+    createdAt: z.iso.datetime(),
+  })
+  .openapi('AdminOrderReceipt');
+
 const AdminOrderDetailSchema = z
   .object({
     orderId: z.uuid(),
@@ -83,9 +99,12 @@ const AdminOrderDetailSchema = z
     city: z.string(),
     postalCode: z.string(),
     addressLine: z.string(),
+    /** Why an admin cancelled it; null unless it was cancelled with a reason. */
+    cancellationReason: z.string().nullable(),
     createdAt: z.iso.datetime(),
     items: z.array(AdminOrderItemSchema),
     payments: z.array(AdminPaymentSchema),
+    receipts: z.array(AdminReceiptSchema),
   })
   .openapi('AdminOrderDetail');
 
@@ -110,6 +129,7 @@ const toAdminOrderResponse = (order: AdminOrder): AdminOrderDetailResponse => ({
   city: order.city,
   postalCode: order.postalCode,
   addressLine: order.addressLine,
+  cancellationReason: order.cancellationReason,
   createdAt: order.createdAt.toISOString(),
   items: order.items.map((item) => ({
     productId: item.productId,
@@ -129,6 +149,12 @@ const toAdminOrderResponse = (order: AdminOrder): AdminOrderDetailResponse => ({
     needsManualRefund: payment.needsManualRefund,
     paidAt: payment.paidAt ? payment.paidAt.toISOString() : null,
     createdAt: payment.createdAt.toISOString(),
+  })),
+  receipts: order.receipts.map((receipt) => ({
+    id: receipt.id,
+    contentType: receipt.contentType,
+    size: receipt.size,
+    createdAt: receipt.createdAt.toISOString(),
   })),
 });
 
@@ -171,16 +197,15 @@ export const adminOrderDetailHandler: RouteHandler<
 
 // ── Status transition ────────────────────────────────────────────────────────
 
-const TransitionBodySchema = z
-  .object({
-    to: adminTransitionTargetSchema.meta({
-      description:
-        'The target status. Must be an admin-triggerable next state from the ' +
-        "order's current status; `paid`/`failed` are gateway-owned and rejected.",
-      example: 'processing',
-    }),
-  })
-  .openapi('AdminOrderTransition');
+/**
+ * The body is the panel's own schema (`adminTransitionBodySchema`), rebuilt here
+ * only to register it with the document — so the control and this route can
+ * never disagree on what a valid request is, `reason` included.
+ */
+const TransitionBodySchema = openapiObject(
+  adminTransitionBodySchema,
+  'AdminOrderTransition',
+);
 
 export const adminOrderTransitionRoute = createRoute({
   method: 'post',
@@ -207,7 +232,8 @@ export const adminOrderTransitionRoute = createRoute({
       description: 'The order after the transition',
     },
     400: errorResponse(
-      'Invalid body, or an illegal transition from the current status',
+      'Invalid body, an illegal transition from the current status, or a ' +
+        'cancel without a reason',
     ),
     401: errorResponse('No session'),
     403: errorResponse('Signed in, but not an admin'),
@@ -221,14 +247,16 @@ export const adminOrderTransitionHandler: RouteHandler<
   Env & AuthedEnv
 > = async (c) => {
   const { id } = c.req.valid('param');
-  const { to } = c.req.valid('json');
+  const { to, reason } = c.req.valid('json');
 
-  const result = await adminTransitionOrder(id, to);
+  const result = await adminTransitionOrder(id, to, reason);
   switch (result.outcome) {
     case 'not_found':
       return c.json(apiError(ADMIN_ORDER_NOT_FOUND_MESSAGE), 404);
     case 'illegal':
       return c.json(apiError(ILLEGAL_TRANSITION_MESSAGE), 400);
+    case 'reason_required':
+      return c.json(apiError(CANCELLATION_REASON_REQUIRED_MESSAGE), 400);
     case 'conflict':
       return c.json(apiError(TRANSITION_CONFLICT_MESSAGE), 409);
     case 'ok': {

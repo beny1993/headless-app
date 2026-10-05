@@ -1,17 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACCEPTED_IMAGE_TYPES,
+  contentTypeOfKey,
   IMAGE_EXTENSIONS,
   IMAGE_KEY_ERROR,
   imageKeySchema,
   imageUploadResultSchema,
   MAX_OBJECT_KEY_LENGTH,
   MAX_UPLOAD_BYTES,
+  formatHint,
+  IMAGE_FORMAT_HINT,
+  IMAGE_SIZE_ERROR,
   objectKeyFor,
+  RECEIPT_KEY_PREFIX,
+  sizeError,
   sniffImageType,
   UPLOAD_FILENAME_PATTERN,
   UPLOAD_KEY_PREFIX,
 } from './image-upload';
+
+const UUID = '123e4567-e89b-12d3-a456-426614174000';
 
 /** Build a byte array from a signature, padded so WEBP's offset-8 marker fits. */
 const bytesOf = (...signature: number[]): Uint8Array => {
@@ -94,6 +102,30 @@ describe('objectKeyFor', () => {
     );
     expect(keys.size).toBe(100);
   });
+
+  it('files a receipt under receipts/, never under the public uploads/', () => {
+    const key = objectKeyFor('image/jpeg', RECEIPT_KEY_PREFIX);
+    expect(key).toMatch(
+      /^receipts\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/,
+    );
+  });
+});
+
+describe('contentTypeOfKey', () => {
+  it.each([
+    ['receipts/a.jpg', 'image/jpeg'],
+    ['uploads/a.png', 'image/png'],
+    ['receipts/a.webp', 'image/webp'],
+  ])('serves %s as %s', (key, type) => {
+    expect(contentTypeOfKey(key)).toBe(type);
+  });
+
+  it.each(['receipts/a.svg', 'receipts/a.html', 'receipts/a', 'a.constructor'])(
+    'has no type for %s',
+    (key) => {
+      expect(contentTypeOfKey(key)).toBeNull();
+    },
+  );
 });
 
 describe('UPLOAD_FILENAME_PATTERN', () => {
@@ -109,9 +141,28 @@ describe('UPLOAD_FILENAME_PATTERN', () => {
       'products/cat-dry-food.jpg', // seed keys are served from public/, not here
       '123e4567-e89b-12d3-a456-426614174000.svg', // not an accepted extension
       '123e4567-e89b-12d3-a456-426614174000', // no extension
+      `receipts/${UUID}.jpg`, // a receipt: /uploads/* must never serve one
     ]) {
       expect(bad).not.toMatch(UPLOAD_FILENAME_PATTERN);
     }
+  });
+});
+
+describe('the accept-and-size copy', () => {
+  it('quotes the product photo cap', () => {
+    expect(IMAGE_FORMAT_HINT).toBe('JPG، PNG یا WEBP، تا ۲ مگابایت');
+    expect(IMAGE_SIZE_ERROR).toBe('حجم تصویر باید حداکثر ۲ مگابایت باشد.');
+  });
+
+  it.each([
+    [5 * 1024 * 1024, '۵'],
+    // Rounded to one place with the fa-IR decimal separator, never 4.768…
+    [5_000_000, '۴٫۸'],
+  ])('quotes a cap of %i bytes as «%s» megabytes', (bytes, shown) => {
+    expect(formatHint(bytes)).toBe(`JPG، PNG یا WEBP، تا ${shown} مگابایت`);
+    expect(sizeError(bytes)).toBe(
+      `حجم تصویر باید حداکثر ${shown} مگابایت باشد.`,
+    );
   });
 });
 
@@ -134,6 +185,13 @@ describe('imageKeySchema', () => {
   ])('refuses %s with the Persian message', (_, key) => {
     expect(imageKeySchema.safeParse(key).error?.issues[0]?.message).toBe(
       IMAGE_KEY_ERROR,
+    );
+  });
+
+  it('refuses a receipt key — no form can file a receipt as a photo', () => {
+    // A photo key is rendered through a public URL; a receipt must never be.
+    expect(imageKeySchema.safeParse(`receipts/${UUID}.jpg`).success).toBe(
+      false,
     );
   });
 

@@ -52,19 +52,31 @@ export class InvalidTransitionError extends Error {
  * Side effects, in the same transaction as the CAS:
  *   · into `cancelled` or `failed` — restock every line item (the stock reserved
  *     at checkout is returned).
+ *   · into `cancelled` — store `cancellationReason`, in the CAS itself. A reason
+ *     passed with any other move is ignored: the column says why an order was
+ *     cancelled, and nothing else.
  *   · into `delivered` for a COD order — flip the pending COD payment to `paid`.
+ *
+ * `awaiting_receipt → processing` (a card-to-card order accepted) has none.
  */
 export const transitionOrder = async (
   tx: Tx,
   orderId: string,
   from: OrderStatus,
   to: OrderStatus,
+  { cancellationReason }: { cancellationReason?: string } = {},
 ): Promise<Order> => {
   if (!canTransition(from, to)) {
     throw new InvalidTransitionError(orderId, from, to);
   }
 
-  const updated = await OrderDao.casStatus(tx, orderId, from, to);
+  const updated = await OrderDao.casStatus(
+    tx,
+    orderId,
+    from,
+    to,
+    to === ORDER_STATUSES.CANCELLED ? cancellationReason : undefined,
+  );
   if (!updated) {
     throw new InvalidTransitionError(orderId, from, to);
   }

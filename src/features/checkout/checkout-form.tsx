@@ -25,32 +25,53 @@ import {
   subscribe,
 } from '@/features/storefront/cart/cart';
 import { CardToCardPanel, type CardToCardContent } from './card-to-card';
+import {
+  checkoutKeyFor,
+  forgetCheckoutKey,
+  type KeptKey,
+} from './checkout-key';
 import { OrderSummary, type SummaryLine } from './order-summary';
+import { ReceiptPicker } from './receipt-picker';
 import {
   controlClass,
   fieldAria,
   FieldShell,
   TextField,
 } from '@/components/ui/field';
-import { postData } from '@/lib/api-client';
+import { ApiRequestError, postData, postForm } from '@/lib/api-client';
 import { normalizePostalCode, validateAddress } from '@/lib/account/address';
 import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
+import { REFUND_SENTENCE } from '@/lib/checkout/result-view';
 import { startZarinpalPayment } from '@/lib/checkout/start-zarinpal-payment';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
-import { API_PATHS, PATHS, checkoutResultPath } from '@/lib/constant/paths';
+import {
+  API_PATHS,
+  PATHS,
+  apiOrderReceiptsPath,
+  checkoutResultPath,
+} from '@/lib/constant/paths';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
 import type {
   CheckoutResultResponse,
   DiscountPreviewResponse,
 } from '@/lib/hono/routes/checkout';
 import type { ShippingRateResponse } from '@/lib/hono/routes/shipping';
-import { PAYMENT_METHODS, type PaymentMethod } from '@/lib/orders/order-status';
+import {
+  ORDER_STATUSES,
+  PAYMENT_METHODS,
+  type PaymentMethod,
+} from '@/lib/orders/order-status';
+import { receiptSchema } from '@/lib/orders/receipt';
 import { toPersianDigits } from '@/lib/format';
 import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
+import { IMAGE_FIELD_NAME } from '@/lib/storage/image-upload';
 import { cn } from '@/lib/utils';
 
-/** idle → submitting → redirecting. The button disables off `idle`. */
-type Status = 'idle' | 'submitting' | 'redirecting';
+/**
+ * idle → submitting → (uploading, card to card) → redirecting. The button
+ * disables off `idle`, and only a refused create ever returns to it.
+ */
+type Status = 'idle' | 'submitting' | 'uploading' | 'redirecting';
 
 const STEPS = ['اطلاعات', 'آدرس', 'پرداخت'] as const;
 
@@ -94,8 +115,11 @@ const stepOfField = (path: string) => STEP_OF_FIELD[path] ?? 3;
  * snapshots whatever address is in the fields at submit, untouched.
  *
  * `payment` is the `checkout.payment` content block: the card-to-card cards and
- * contact handles the last step shows under that option. The stored method stays
- * `cod` — the order is created unpaid and the admin confirms the transfer.
+ * contact handles the last step shows under that option, with the picker for
+ * the transfer's screenshot under them — «ثبت سفارش» stays locked until one
+ * passes the byte check. The stored method stays `cod`: the order is created
+ * waiting for its receipt, and the screenshot, uploaded right after the create
+ * by the order pages' own receipt route, accepts it.
  * `zarinpalEnabled` (`APP_CONFIG_ZARINPAL_ENABLED`, read by the page) is the
  * online-payment switch: off, the Zarinpal option renders disabled and card to
  * card is preselected — a display gate only; the API still accepts both methods.
@@ -146,6 +170,11 @@ export function CheckoutForm({
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [topError, setTopError] = useState<string | undefined>();
+  // A create that got no answer — a 5xx, a dropped connection — may have
+  // placed the order: the alert says to look before trying again.
+  const [orderMayExist, setOrderMayExist] = useState(false);
+  // Counts refused creates, so each one moves focus (the effect below).
+  const [refusals, setRefusals] = useState(0);
   const [status, setStatus] = useState<Status>('idle');
   // "Save this address" — a best-effort write after the order is created; a
   // failure never blocks the redirect (see `submit`).
@@ -163,16 +192,24 @@ export function CheckoutForm({
   >(null);
   const [discountError, setDiscountError] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
+  // The card-to-card transfer's screenshot: a file that passed the byte check,
+  // or the refusal of the last one picked.
+  const [receipt, setReceipt] = useState<File | null>(null);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
 
   // The authoritative double-submit guard: set synchronously, so a second click
   // in the same tick returns before `postData` runs — the disabled button is
   // defense-in-depth, not the guarantee. Never sending a second create is the
   // point; the server-side `Idempotency-Key` is the last line if one slips out.
   const inFlight = useRef(false);
-  // One key per checkout attempt, minted lazily on first submit, reused across
-  // retries, and dropped only once an order is created (a 422 does not consume
-  // it — nothing was created, so the retry must carry the same key).
-  const idempotencyKey = useRef<string | null>(null);
+  const topAlert = useRef<HTMLParagraphElement>(null);
+  const page = useRef<HTMLElement>(null);
+  // The Idempotency-Keys, one per checkout body: a key is resent by every
+  // retry of its body — after a reload too (`checkout-key.ts`) — and dropped
+  // once its order is created. A refusal does not consume it, so the retry
+  // carries the same key. This is their in-memory copy, for when storage
+  // throws.
+  const keptKeys = useRef<KeptKey[]>([]);
 
   const selectedFee =
     rates.find((rate) => String(rate.provinceId) === provinceId)?.fee ?? null;
@@ -238,6 +275,19 @@ export function CheckoutForm({
       router.replace(PATHS.SHOP);
     }
   }, [hydrated, status, lines.length, router]);
+
+  // After a refused create, focus what it says: its alert, which tops the
+  // form far above the button that sent it — or, when the refusal shows only
+  // on fields, the first field to fix. Focus also moves a screen reader there;
+  // the scroll centres it, clear of the fixed header.
+  useEffect(() => {
+    if (refusals === 0) return;
+    const target =
+      topAlert.current ??
+      page.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    target?.focus();
+    target?.scrollIntoView({ block: 'center' });
+  }, [refusals]);
 
   /**
    * Ask the server what the code takes off the current cart. Read-only — it never
@@ -355,8 +405,7 @@ export function CheckoutForm({
     inFlight.current = true;
     setStatus('submitting');
     setTopError(undefined);
-
-    if (!idempotencyKey.current) idempotencyKey.current = crypto.randomUUID();
+    setOrderMayExist(false);
 
     const body: CheckoutInput = {
       items: lines.map((line) => ({
@@ -377,45 +426,18 @@ export function CheckoutForm({
       ...(discountCode.trim() ? { discountCode: discountCode.trim() } : {}),
     };
 
+    const idempotencyKey = await checkoutKeyFor(JSON.stringify(body), keptKeys);
+
+    // The create is the only call whose failure re-enables the form: nothing
+    // after its 2xx may, or a retry would place a second order.
+    let order: CheckoutResultResponse;
     try {
-      const order = await postData<CheckoutResultResponse>(
-        API_PATHS.CHECKOUT,
-        body,
-        { 'Idempotency-Key': idempotencyKey.current },
-      );
-
-      // 2xx: the order exists and its stock is reserved. Clear the local cart
-      // NOW, before any gateway hop — an abandoned payment leaves a pending order
-      // whose result page handles retry, and the cart is not involved again.
-      clearCart();
-      idempotencyKey.current = null; // consumed; a fresh checkout is a fresh key
-      setStatus('redirecting');
-
-      // Best-effort "save this address": the order already snapshotted the
-      // address, so this only adds it to the address book. Swallowed on failure
-      // (e.g. the per-user cap) — it must never block or fail the redirect below.
-      if (saveAddress) {
-        try {
-          await postData<AddressResponse>(API_PATHS.ME_ADDRESSES, body.address);
-        } catch {
-          // intentionally ignored — checkout succeeded; saving is a convenience
-        }
-      }
-
-      if (paymentMethod === PAYMENT_METHODS.ZARINPAL) {
-        try {
-          await startZarinpalPayment(order.orderId);
-        } catch {
-          // The order is created (pending_payment); starting the gateway failed.
-          // Land on the result page — it shows "pending" and a retry button.
-          router.push(checkoutResultPath(order.orderId));
-        }
-      } else {
-        router.push(checkoutResultPath(order.orderId));
-      }
+      order = await postData<CheckoutResultResponse>(API_PATHS.CHECKOUT, body, {
+        'Idempotency-Key': idempotencyKey,
+      });
     } catch (error) {
-      // Nothing was created — release the guard, keep the key so the retry stays
-      // idempotent, and re-enable the form.
+      // No order this form knows of — release the guard, keep the key so a
+      // retry of the same checkout stays idempotent, and re-enable the form.
       inFlight.current = false;
       setStatus('idle');
 
@@ -442,10 +464,90 @@ export function CheckoutForm({
         )
         .map(([, fieldMessage]) => fieldMessage);
       if (message) top.push(message);
-      setTopError(top.length > 0 ? top.join(' ') : undefined);
+      // A 4xx is the server's refusal: nothing was created. Anything else — a
+      // 5xx, a dropped connection — leaves the outcome unknown and the order
+      // may exist, so the alert says to look before trying again instead.
+      const refused =
+        error instanceof ApiRequestError &&
+        error.status >= 400 &&
+        error.status < 500;
+      // The refund line goes only beside a refusal that blocks the order —
+      // a cart line, the method or a cap, the request's own message — where
+      // a card-to-card shopper may have transferred already. A refusal of
+      // fields they can fix has none: it shows on those fields.
+      if (refused && paymentMethod === PAYMENT_METHODS.COD && top.length > 0) {
+        top.push(REFUND_SENTENCE);
+      }
+      setOrderMayExist(!refused);
+      setTopError(refused && top.length > 0 ? top.join(' ') : undefined);
       // Jump to the earliest step that has an error so it is on screen.
       const steps = Object.keys(fields).map(stepOfField);
       if (steps.length > 0) setStep(Math.min(...steps));
+      setRefusals((count) => count + 1);
+      return;
+    }
+
+    // 2xx: the order exists and its stock is reserved. From here every path
+    // ends on this order's own page. The cart is cleared first, before the
+    // upload or any gateway hop: an empty cart sends a fresh /checkout to the
+    // shop (the effect above), so it offers nothing to submit again.
+    clearCart();
+    forgetCheckoutKey(idempotencyKey, keptKeys); // consumed: this body is new again
+    // The answer's status and the method on screen decide what follows: the
+    // upload only for card to card answered `awaiting_receipt`, the gateway
+    // only for Zarinpal answered `pending_payment`, and anything else
+    // straight to the order's page.
+    const screenshot =
+      order.status === ORDER_STATUSES.AWAITING_RECEIPT &&
+      paymentMethod === PAYMENT_METHODS.COD
+        ? receipt
+        : null;
+    const toGateway =
+      order.status === ORDER_STATUSES.PENDING_PAYMENT &&
+      paymentMethod === PAYMENT_METHODS.ZARINPAL;
+    setStatus(screenshot ? 'uploading' : 'redirecting');
+
+    // The screenshot accepts the card-to-card order. A refusal or a dropped
+    // connection is swallowed: the order waits for its receipt, and its result
+    // page says so and takes the upload again — where a retry shows the
+    // server's own refusal.
+    if (screenshot) {
+      try {
+        const form = new FormData();
+        // Named «receipt», never the shopper's own file name.
+        form.append(IMAGE_FIELD_NAME, screenshot, 'receipt');
+        await postForm(
+          apiOrderReceiptsPath(order.orderId),
+          form,
+          receiptSchema,
+        );
+      } catch {
+        // intentionally ignored — see above
+      }
+      setStatus('redirecting');
+    }
+
+    // Best-effort "save this address": the order already snapshotted the
+    // address, so this only adds it to the address book. Swallowed on failure
+    // (e.g. the per-user cap) — it must never block or fail the redirect below.
+    if (saveAddress) {
+      try {
+        await postData<AddressResponse>(API_PATHS.ME_ADDRESSES, body.address);
+      } catch {
+        // intentionally ignored — checkout succeeded; saving is a convenience
+      }
+    }
+
+    if (toGateway) {
+      try {
+        await startZarinpalPayment(order.orderId);
+      } catch {
+        // The order is created (pending_payment); starting the gateway failed.
+        // Land on the result page — it shows "pending" and a retry button.
+        router.push(checkoutResultPath(order.orderId));
+      }
+    } else {
+      router.push(checkoutResultPath(order.orderId));
     }
   };
 
@@ -453,7 +555,7 @@ export function CheckoutForm({
   const errorId = `${fieldId}-top-error`;
 
   return (
-    <main className="bg-secondary/20 min-h-screen pt-20">
+    <main ref={page} className="bg-secondary/20 min-h-screen pt-20">
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-8">
         <a
           href={PATHS.SHOP}
@@ -512,9 +614,11 @@ export function CheckoutForm({
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
           <div className="border-border bg-card rounded-2xl border p-6 lg:col-span-3">
-            {topError && (
+            {(topError || orderMayExist) && (
               <p
                 id={errorId}
+                ref={topAlert}
+                tabIndex={-1}
                 role="alert"
                 className="text-destructive border-destructive/30 bg-destructive-soft/40 mb-5 flex items-center gap-2 rounded-xl border p-3 text-sm"
               >
@@ -523,7 +627,21 @@ export function CheckoutForm({
                   className="shrink-0"
                   aria-hidden="true"
                 />
-                {topError}
+                {orderMayExist ? (
+                  <span>
+                    ممکن است سفارش ثبت شده باشد؛ پیش از تلاش دوباره، «
+                    <a
+                      href={PATHS.ACCOUNT}
+                      className="font-medium underline"
+                      data-umami-event="checkout-error-my-orders"
+                    >
+                      سفارش‌های من
+                    </a>
+                    » را ببین.
+                  </span>
+                ) : (
+                  topError
+                )}
               </p>
             )}
 
@@ -708,7 +826,7 @@ export function CheckoutForm({
                       {
                         id: PAYMENT_METHODS.COD,
                         label: 'پرداخت توسط کارت به کارت',
-                        sub: 'واریز به کارت فروشگاه و ارسال رسید',
+                        sub: 'واریز به کارت فروشگاه و بارگذاری رسید',
                         icon: <Wallet size={18} aria-hidden="true" />,
                         disabled: false,
                       },
@@ -763,7 +881,24 @@ export function CheckoutForm({
                     </p>
                   </div>
                 ) : (
-                  <CardToCardPanel payment={payment} className="mt-5" />
+                  <>
+                    <CardToCardPanel payment={payment} className="mt-5" />
+                    <p className="mt-5 mb-3 text-sm leading-relaxed">
+                      پس از واریز، اسکرین‌شات رسید را همین‌جا پیوست کن؛ سفارش
+                      فقط با رسید واریز پذیرفته می‌شود.
+                    </p>
+                    <ReceiptPicker
+                      id={`${fieldId}-receipt`}
+                      event="checkout-receipt-file"
+                      file={receipt}
+                      error={receiptError}
+                      disabled={busy}
+                      onPick={(pick) => {
+                        setReceipt(pick.file);
+                        setReceiptError(pick.error);
+                      }}
+                    />
+                  </>
                 )}
               </div>
             )}
@@ -781,18 +916,24 @@ export function CheckoutForm({
               <button
                 type="button"
                 onClick={submit}
-                disabled={busy}
-                aria-describedby={topError ? errorId : undefined}
+                disabled={
+                  busy || (paymentMethod === PAYMENT_METHODS.COD && !receipt)
+                }
+                aria-describedby={
+                  topError || orderMayExist ? errorId : undefined
+                }
                 className="bg-brand hover:bg-brand-hover text-brand-foreground mt-6 w-full rounded-xl py-3.5 font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 data-umami-event="checkout-submit-order"
               >
                 {status === 'submitting'
                   ? 'در حال ثبت سفارش…'
-                  : status === 'redirecting'
-                    ? 'در حال انتقال…'
-                    : paymentMethod === PAYMENT_METHODS.ZARINPAL
-                      ? 'پرداخت و ثبت سفارش'
-                      : 'ثبت سفارش'}
+                  : status === 'uploading'
+                    ? 'در حال ارسال رسید…'
+                    : status === 'redirecting'
+                      ? 'در حال انتقال…'
+                      : paymentMethod === PAYMENT_METHODS.ZARINPAL
+                        ? 'پرداخت و ثبت سفارش'
+                        : 'ثبت سفارش'}
               </button>
             )}
             {step > 1 && (

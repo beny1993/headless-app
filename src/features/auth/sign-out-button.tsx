@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { forgetCheckoutKeys } from '@/features/checkout/checkout-key';
 import { authClient } from '@/lib/auth/client';
 import { PATHS } from '@/lib/constant/paths';
 
@@ -14,6 +15,8 @@ export function SignOutButton({ page }: { page: 'account' | 'admin-panel' }) {
     setIsLoading(true);
     try {
       await authClient.signOut();
+      // The checkout's kept Idempotency-Keys were this shopper's.
+      forgetCheckoutKeys();
       router.push(PATHS.HOME);
       router.refresh();
     } finally {

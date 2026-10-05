@@ -22,6 +22,7 @@ import {
   SECOND_PRODUCT_PHOTO,
   THIRD_PRODUCT_PHOTO,
   apiCall,
+  closeOrder,
   completeCheckout,
   expect,
   expectFailedRequest,
@@ -441,11 +442,15 @@ test('an admin creates a discount code a shopper redeems, then switches it off',
   await applyCode();
   await expect(shopper.getByText('کد تخفیف اعمال شد.')).toBeVisible();
   await completeCheckout(shopper, 'cod');
-  await resultOrderId(shopper);
-  // The order the server priced carries the discount.
-  await expect(
-    shopper.getByRole('main').getByText('تخفیف', { exact: true }),
-  ).toBeVisible();
+  const orderId = await resultOrderId(shopper);
+  try {
+    // The order the server priced carries the discount.
+    await expect(
+      shopper.getByRole('main').getByText('تخفیف', { exact: true }),
+    ).toBeVisible();
+  } finally {
+    await closeOrder(page, orderId);
+  }
 
   await row.locator('[data-umami-event="admin-panel-discount-toggle"]').click();
   await expect(row.getByText('غیرفعال', { exact: true })).toBeVisible();

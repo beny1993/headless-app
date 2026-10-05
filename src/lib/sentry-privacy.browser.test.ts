@@ -69,15 +69,26 @@ async function capture() {
 // row's link «مشاهده کاربر {name} {phone}».
 describe('screen-reader text in element breadcrumbs', () => {
   it.each([
-    ['aria-label', 'a', 'click'],
-    ['title', 'button', 'click'],
-    ['alt', 'img', 'click'],
-    ['aria-label', 'input', 'keypress'],
+    ['aria-label', 'a', 'click', 'row', 'body > a.row[aria-label]'],
+    ['title', 'button', 'click', 'row', 'body > button.row[title]'],
+    ['alt', 'img', 'click', 'row', 'body > img.row[alt]'],
+    ['aria-label', 'input', 'keypress', 'row', 'body > input.row[aria-label]'],
+    // A class the receipt-key scrub takes for a key, in either case. That
+    // scrub runs after this cut: run first, it would eat the `[aria-label="`
+    // the cut looks for, and the label would go out whole.
+    ['aria-label', 'a', 'click', 'receipts/x', 'body > a.receipts/[redacted]'],
+    [
+      'title',
+      'button',
+      'click',
+      'RECEIPTS/x',
+      'body > button.RECEIPTS/[redacted]',
+    ],
   ])(
-    'drops the %s of a %s on %s, keeping the element',
-    async (attribute, tag, type) => {
+    'drops the %s of a %s on %s (class %s), keeping the element',
+    async (attribute, tag, type, className, message) => {
       const element = document.createElement(tag);
-      element.className = 'row';
+      element.className = className;
       element.setAttribute(attribute, `مشاهده کاربر ${NAME} ${PHONE}`);
       document.body.append(element);
       element.dispatchEvent(new Event(type, { bubbles: true }));
@@ -89,7 +100,7 @@ describe('screen-reader text in element breadcrumbs', () => {
       expect(breadcrumbs).toContainEqual(
         expect.objectContaining({
           category: type === 'click' ? 'ui.click' : 'ui.input',
-          message: `body > ${tag}.row[${attribute}]`,
+          message,
         }),
       );
     },

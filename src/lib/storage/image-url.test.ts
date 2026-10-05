@@ -46,4 +46,16 @@ describe('imageSrc', () => {
       '/products/cat-dry-food.jpg',
     );
   });
+
+  it.each([BASE, ''])(
+    'refuses to build any URL for a receipt (base %j)',
+    async (base) => {
+      // No public URL may exist for a receipt — not the bucket's, not a
+      // root-relative one: only the authenticated receipt routes read it.
+      const imageSrc = await freshImageSrc(base);
+      expect(() =>
+        imageSrc('receipts/123e4567-e89b-12d3-a456-426614174000.jpg'),
+      ).toThrow(/receipt/);
+    },
+  );
 });

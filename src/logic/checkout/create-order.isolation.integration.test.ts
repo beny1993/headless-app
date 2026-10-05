@@ -18,19 +18,12 @@ import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 import { CheckoutError } from '@/logic/checkout/checkout-error';
 
-const mocks = vi.hoisted(() => {
+vi.hoisted(() => {
   // Before any import opens a connection.
   process.env.PGOPTIONS = '-c default_transaction_isolation=repeatable\\ read';
-  return { notify: vi.fn() };
 });
 
-// A burst of real checkouts must not reach the admins' phones.
-vi.mock('@/logic/orders/notify-new-order', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/logic/orders/notify-new-order')>()),
-  notifyAdminsOfNewOrder: mocks.notify,
-}));
-
-const { createOrder, MAX_ORDERS_PER_WINDOW } = await importWithDb(
+const { createOrder, MAX_OPEN_ORDERS } = await importWithDb(
   () => import('@/logic/checkout/create-order'),
 );
 const { ShippingRateDao } = await importWithDb(
@@ -59,7 +52,7 @@ describe.skipIf(!databaseReachable)('createOrder isolation', () => {
     }
   });
 
-  it('holds the creation cap on connections that default to REPEATABLE READ', async () => {
+  it('holds the open-order cap on connections that default to REPEATABLE READ', async () => {
     // Otherwise this passes on any database, pin or no pin.
     const { rows } = await testDb.execute(
       sql`show default_transaction_isolation`,
@@ -68,7 +61,9 @@ describe.skipIf(!databaseReachable)('createOrder isolation', () => {
       { default_transaction_isolation: 'repeatable read' },
     ]);
 
-    const size = MAX_ORDERS_PER_WINDOW + 10;
+    // Every checkout is born open — a card-to-card one waits for its receipt —
+    // so a burst from one account meets the open-order cap first.
+    const size = MAX_OPEN_ORDERS + 10;
     const user = await fx.user();
     const category = await fx.category();
     const product = await fx.product(category, {
@@ -103,14 +98,14 @@ describe.skipIf(!databaseReachable)('createOrder isolation', () => {
       .select()
       .from(orders)
       .where(eq(orders.userId, user.id));
-    expect(created).toHaveLength(MAX_ORDERS_PER_WINDOW);
+    expect(created).toHaveLength(MAX_OPEN_ORDERS);
     const refused = results.flatMap((result) =>
       result.status === 'rejected' ? [result.reason] : [],
     );
     expect(refused).toHaveLength(10);
     for (const error of refused) {
       expect(error).toBeInstanceOf(CheckoutError);
-      expect(error.message).toContain('یک ساعت گذشته');
+      expect(error.message).toContain('یکی را کامل یا لغو کنید');
     }
   });
 });

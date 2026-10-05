@@ -26,8 +26,21 @@ describe.skipIf(!databaseReachable)('transitionOrder', () => {
   afterEach(() => fx.cleanup());
 
   /** Runs one transition in its own transaction, as a real caller would. */
-  const move = (id: string, from: OrderStatus, to: OrderStatus) =>
-    testDb.transaction((tx) => transitionOrder(tx, id, from, to));
+  const move = (
+    id: string,
+    from: OrderStatus,
+    to: OrderStatus,
+    options?: { cancellationReason?: string },
+  ) => testDb.transaction((tx) => transitionOrder(tx, id, from, to, options));
+
+  const reasonOf = async (id: string) => {
+    const [row] = await testDb
+      .select({ reason: orders.cancellationReason })
+      .from(orders)
+      .where(eq(orders.id, id))
+      .limit(1);
+    return row.reason;
+  };
 
   const statusOf = async (id: string) => {
     const [row] = await testDb
@@ -175,12 +188,109 @@ describe.skipIf(!databaseReachable)('transitionOrder', () => {
     expect(await stockOf(product.id)).toBe(10);
   });
 
+  /**
+   * A card-to-card order as checkout creates it: waiting for its receipt, its
+   * stock reserved, with the single pending COD payment row.
+   */
+  const waitingOrder = async (qty = 2, initialStock = 10) => {
+    const user = await fx.user();
+    const category = await fx.category();
+    const product = await fx.product(category, { stock: initialStock });
+    await ProductDao.decrementStock(testDb, product.id, qty);
+    const order = await OrderDao.create(
+      fx.buildOrder(user, [{ product, qty }], {
+        status: ORDER_STATUSES.AWAITING_RECEIPT,
+        paymentMethod: PAYMENT_METHODS.COD,
+      }),
+    );
+    fx.remember(order.id);
+    await PaymentDao.create({
+      orderId: order.id,
+      method: PAYMENT_METHODS.COD,
+      amount: order.total,
+    });
+    return { order, product, qty };
+  };
+
+  it('cancels a waiting card-to-card order: restocks and stores the reason in the same move', async () => {
+    const { order, product } = await waitingOrder(3, 10);
+    expect(await stockOf(product.id)).toBe(7);
+
+    await move(
+      order.id,
+      ORDER_STATUSES.AWAITING_RECEIPT,
+      ORDER_STATUSES.CANCELLED,
+      { cancellationReason: 'رسیدی دریافت نشد' },
+    );
+
+    expect(await statusOf(order.id)).toBe(ORDER_STATUSES.CANCELLED);
+    expect(await stockOf(product.id)).toBe(10);
+    expect(await reasonOf(order.id)).toBe('رسیدی دریافت نشد');
+  });
+
+  it('cancels an accepted card-to-card order with its reason, stock back', async () => {
+    const { order, product } = await waitingOrder(2, 10);
+    await move(
+      order.id,
+      ORDER_STATUSES.AWAITING_RECEIPT,
+      ORDER_STATUSES.PROCESSING,
+    );
+
+    await move(order.id, ORDER_STATUSES.PROCESSING, ORDER_STATUSES.CANCELLED, {
+      cancellationReason: 'مبلغ رسید با سفارش نمی‌خواند',
+    });
+
+    expect(await stockOf(product.id)).toBe(10);
+    expect(await reasonOf(order.id)).toBe('مبلغ رسید با سفارش نمی‌خواند');
+  });
+
+  it('accepts a waiting order into processing with no side effect', async () => {
+    // No restock, and the card-to-card payment stays pending: acceptance books
+    // nothing — the row flips only at delivery, exactly as before.
+    const { order, product } = await waitingOrder(2, 10);
+
+    await move(
+      order.id,
+      ORDER_STATUSES.AWAITING_RECEIPT,
+      ORDER_STATUSES.PROCESSING,
+    );
+
+    expect(await statusOf(order.id)).toBe(ORDER_STATUSES.PROCESSING);
+    expect(await stockOf(product.id)).toBe(8);
+    const [payment] = await PaymentDao.listByOrder(order.id);
+    expect(payment.status).toBe(PAYMENT_STATUSES.PENDING);
+    expect(await reasonOf(order.id)).toBeNull();
+  });
+
+  it('never stores a reason on a move that is not a cancel', async () => {
+    // The column says why an order was cancelled — nothing else writes it.
+    const { order } = await waitingOrder();
+
+    await move(
+      order.id,
+      ORDER_STATUSES.AWAITING_RECEIPT,
+      ORDER_STATUSES.PROCESSING,
+      { cancellationReason: 'نباید ذخیره شود' },
+    );
+
+    expect(await reasonOf(order.id)).toBeNull();
+  });
+
+  it('refuses paid for a waiting order — no receipt books money', async () => {
+    const { order } = await waitingOrder();
+
+    await expect(
+      move(order.id, ORDER_STATUSES.AWAITING_RECEIPT, ORDER_STATUSES.PAID),
+    ).rejects.toBeInstanceOf(InvalidTransitionError);
+    expect(await statusOf(order.id)).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
+  });
+
   it('flips the pending COD payment to paid on delivery', async () => {
     const user = await fx.user();
     const category = await fx.category();
     const product = await fx.product(category, { stock: 10 });
     await ProductDao.decrementStock(testDb, product.id, 1);
-    // COD orders enter at processing, with a pending COD payment row.
+    // An accepted COD order: processing, its payment row still pending.
     const order = await OrderDao.create(
       fx.buildOrder(user, [{ product, qty: 1 }], {
         status: ORDER_STATUSES.PROCESSING,

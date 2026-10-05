@@ -25,6 +25,7 @@ import {
   type OrderWithItems,
 } from '@/db/schema/orders';
 import {
+  OPEN_ORDER_STATUSES,
   ORDER_STATUSES,
   PAYMENT_STATUSES,
   type OrderStatus,
@@ -193,27 +194,35 @@ export class OrderDao {
    * turns that `null` into an `InvalidTransitionError`. Always run inside the
    * transaction that also performs the transition's side effects, so the status
    * change and the restock / payment flip commit together or not at all.
+   *
+   * `cancellationReason`, when given, is written by the same UPDATE — a reason
+   * can never land on an order whose cancel lost the race.
    */
   static async casStatus(
     tx: Tx,
     id: string,
     from: OrderStatus,
     to: OrderStatus,
+    cancellationReason?: string,
   ): Promise<Order | null> {
     const [row] = await tx
       .update(orders)
-      .set({ status: to })
+      .set(
+        cancellationReason === undefined
+          ? { status: to }
+          : { status: to, cancellationReason },
+      )
       .where(and(eq(orders.id, id), eq(orders.status, from)))
       .returning();
     return row ?? null;
   }
 
   /**
-   * How many `pending_payment` orders `userId` currently holds — the input to
-   * checkout's open-order cap. Only `pending_payment` counts: it is the one
-   * state whose reserved stock waits on the admin-triggered reconcile sweep, so
-   * it is the only state the cap must bound. COD enters at `processing` (a
-   * releasable state) and is deliberately excluded.
+   * How many open orders `userId` currently holds — the input to checkout's
+   * open-order cap. Open is `OPEN_ORDER_STATUSES`: an unpaid Zarinpal order
+   * (released only by the admin-triggered reconcile sweep) and a card-to-card
+   * order still waiting for its receipt (released only by an upload or an
+   * admin). Both hold reserved stock with nothing on a clock to free it.
    */
   static async countOpenForUser(
     userId: string,
@@ -223,7 +232,7 @@ export class OrderDao {
       orders,
       and(
         eq(orders.userId, userId),
-        eq(orders.status, ORDER_STATUSES.PENDING_PAYMENT),
+        inArray(orders.status, OPEN_ORDER_STATUSES),
       ),
     );
   }
@@ -262,6 +271,28 @@ export class OrderDao {
       .where(eq(orders.id, id))
       .limit(1);
     return row?.status ?? null;
+  }
+
+  /**
+   * Lock `userId`'s order for a receipt upload and read what decides it: the
+   * status and the payment method. `null` for an order that does not exist or
+   * is someone else's — the lock is taken only on the uploader's own order.
+   * Concurrent uploads to one order queue here — so only the first can accept
+   * it — and so does an admin's transition (its CAS UPDATE takes the same row
+   * lock). `no key update`: nothing here changes the key, so rows that merely
+   * reference the order are not held up.
+   */
+  static async lockForReceipt(
+    tx: Tx,
+    id: string,
+    userId: string,
+  ): Promise<{ status: OrderStatus; paymentMethod: PaymentMethod } | null> {
+    const [row] = await tx
+      .select({ status: orders.status, paymentMethod: orders.paymentMethod })
+      .from(orders)
+      .where(and(eq(orders.id, id), eq(orders.userId, userId)))
+      .for('no key update');
+    return row ?? null;
   }
 
   /** Serialize payment-attempt insertion and expiry on their shared order row. */

@@ -107,6 +107,29 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   is one atomic `UPDATE … WHERE stock >= qty RETURNING`.
 - **Payments** are keyed by gateway authority id; verification is server-side and
   idempotent (Zarinpal redirect → callback → verify; no webhooks).
+- **Card to card waits for its receipt.** A card-to-card order is born
+  `awaiting_receipt`; its first receipt accepts it into `processing`
+  (`src/logic/orders/receipts.ts`, under the order's row lock), and the admins'
+  new-order SMS goes out then, never at the create. The checkout locks
+  «ثبت سفارش» until the transfer's screenshot is attached and uploads it right
+  after the create, so a placed order is accepted at once; waiting is the
+  fallback for a screenshot that failed to store, and both shopper pages then
+  say the order is not accepted yet. Once the create has answered 2xx nothing
+  re-enables «ثبت سفارش» or mints another Idempotency-Key — every failure
+  lands on that order's own page
+  (`src/features/checkout/checkout-form.receipt.test.tsx`). The admin checks
+  the receipt and ships, or cancels — every admin cancel carries a reason the
+  shopper reads. The payment row still flips to `paid` only at delivery.
+- **A receipt is never public.** Receipts live under `receipts/` in the same
+  storage as the photos, and no URL exists for one: `imageSrc` and every
+  driver's `url()` throw on a receipt key. The only readers are the
+  authenticated routes (the order's owner, 404 to any other customer; an
+  admin), answering `private, no-store`; render one with a plain `<img>` on
+  that route, never `next/image`. On s3 the bucket's anonymous read must be
+  narrowed to `uploads/` (a bucket policy, docs/DEPLOY.md §3) before the
+  feature ships: until then every receipt upload answers 503, because the
+  driver probes each receipt it stores and finds it public — and every
+  card-to-card checkout ends on the not-accepted page.
 - **Cart is client-side** (localStorage) until checkout; the server re-prices and
   validates at order creation.
 - **Rate limits**: every `/api/*` route is budgeted per caller per minute by
@@ -262,11 +285,25 @@ the cheapest **in-stock** member's price (its head is seeded sold out and
 cheaper) and an «انتخاب» link in place of the add button that opens that
 member rather than the sold-out head, its page headed title — label, the
 head's chip reading «ناموجود», its chips carrying the shopper to a sibling's
-own slug and the cart line naming that member; checkout by card to card — Jalali date and `format.ts`-formatted numbers
-on the result page, the order in `/account` — and through the mock Zarinpal
-gateway (paid, and failed → retry → paid). Admin: anonymous visitors and
-customers turned away; the dashboard figures; an order shipped, and one
-cancelled with its stock coming back; a product added with three photos — for
+own slug and the cart line naming that member; checkout by card to card —
+«ثبت سفارش» locked until the transfer's screenshot is attached, the checkout
+page free of ASCII digits once it is, the order accepted on landing
+(«سفارش ثبت شد!», «در حال پردازش», the receipt's thumbnail rendered with its
+Jalali upload time), Jalali date and `format.ts`-formatted numbers on the
+result page, the receipt's URL answering the shopper 200 `private, no-store`
+and a request with no session exactly 401 (both probed with `request.get`),
+the order in `/account` reading «در حال پردازش» — and through the mock
+Zarinpal gateway (paid, and failed → retry → paid). Admin: anonymous visitors and
+customers turned away; the dashboard figures; an order whose receipt the admin
+sees before shipping it; one whose screenshot upload the spec cuts with
+`page.route` — its result page saying it is not accepted yet, never
+«سفارش ثبت شد!», the receipt box's top above the card panel's and its picker
+above the order number, and the account order page saying so too with its
+box above the card panel, the picker and «بارگذاری رسید» wholly inside the
+first screen at scroll 0 on both pages — cancelled while still waiting, with a
+reason, and its stock coming back; an accepted one cancelled with a reason the
+shopper then reads on their order page, no upload box left and the stock
+back; a product added with three photos — for
 both pets, filed under a sub-category and given a second category — its
 gallery read on the product page (the strip, the numbered later slides, the
 first photo as the opening image), then dragged in both directions and
@@ -345,8 +382,13 @@ suite pins it on; the disabled option is component-tested in
 (the suite blanks Umami, so the tracker never mounts; its mount is unit-tested
 in `src/app/layout.test.ts` and the tracker in
 `src/components/umami-tracker.test.tsx`) — walk a tracked link with the real
-tracker loaded and check it still swaps the page in place — and anything
-visual (RTL layout, Persian font rendering).
+tracker loaded and check it still swaps the page in place — the bucket keeping
+receipts private (the suite runs the local driver; `pnpm verify-s3` proves
+it on staging, docs/DEPLOY.md §3), a checkout whose answer is lost followed
+by a reload that resends the same order (the client's resend is
+component-tested in `src/features/checkout/checkout-form.key.test.tsx`, the
+server's replay in `src/logic/checkout/create-order.idempotency.integration.test.ts`)
+— and anything visual (RTL layout, Persian font rendering).
 
 - **It starts its own server**: `next dev` on :3100, never a running :3000 —
   that one may be another checkout on another branch. Worktrees running the
@@ -368,10 +410,21 @@ visual (RTL layout, Persian font rendering).
   server, and on 2026-09-29 it took down a parallel session's E2E run mid-suite.
 - **Checkout is rate-capped per account** (`MAX_ORDERS_PER_WINDOW` in
   `src/logic/checkout/create-order.ts`, 30 orders an hour, any status). One
-  run's throwaway customer places 17 across both viewports (`checkout` 6,
-  `admin` 6, `admin-users` 2, `admin-settings` 2, `admin-catalog` 1 at 1280px
+  run's throwaway customer places 19 across both viewports (`checkout` 6,
+  `admin` 8, `admin-users` 2, `admin-settings` 2, `admin-catalog` 1 at 1280px
   only), so a spec that adds checkouts eats into that headroom — raise the
   constant before the suite trips it with a 422 mid-run.
+- **A card-to-card order is open until its receipt arrives.** The open-order
+  cap (`MAX_OPEN_ORDERS`, five per account) counts `awaiting_receipt` as well
+  as `pending_payment`. `completeCheckout` attaches the screenshot, so the
+  run's card-to-card orders are accepted at checkout and leave the cap alone;
+  only the admin spec that cuts the upload leaves one waiting, and it cancels
+  that one itself. A spec that places an order only to have one cancels it in
+  a `finally` with `closeOrder` (`e2e/support.ts`: a cancel with a reason,
+  through the admin API), and one that means to move its order on closes it
+  after the test only if it is still waiting (`closeIfStillWaiting`), as it
+  is when its screenshot failed to store or the test failed first — or a
+  later checkout in the run could be refused with a 422.
 - **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
   customer and a fresh admin (`pnpm create-admin`) in through the real login
   page and saves their sessions, plus the customer's number
@@ -380,9 +433,16 @@ visual (RTL layout, Persian font rendering).
   for the whole machine, so a run started within a minute of the last one
   waits about a minute.
 - **What a run leaves in the dev database:** two throwaway `0999…` accounts,
-  the 17 orders counted under «Checkout is rate-capped per account», one
-  inactive `e2e-…` product (it is given three photos and has two of them
-  removed again, so one file stays under `uploads/`)
+  the 19 orders counted under «Checkout is rate-capped per account» (none left
+  open: the admin spec's waiting one is cancelled by the admin, and the users
+  spec's, the pager's, the discount's and the saved card's — accepted at
+  checkout — by `closeOrder`), 13 receipt files a run under
+  `uploads/receipts/`, one per card-to-card checkout whose screenshot stored
+  (six per width — `checkout` 1, `admin` 3: the shipped, the turned-down and
+  the pager's, the cut one storing nothing, `admin-users` 1, `admin-settings`
+  1 — and `admin-catalog`'s one at 1280px; receipts are append-only, so
+  nothing deletes them), one inactive `e2e-…` product (it is given three photos and has two of
+  them removed again, so one file stays under `uploads/`)
   filed under a seeded sub-category and a seeded second category — seeded, and
   never one the spec made, because the junction's restricting foreign key would
   pin that category for good — one switched-off `E2E…` discount code and one

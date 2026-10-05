@@ -22,13 +22,19 @@ import { s3Driver } from './s3-driver';
  * Everything a storage provider must do. `put` takes the server-generated key
  * (never a client filename), the bytes, and the sniffed content type (the S3
  * driver sends it; the local driver derives type from the extension instead).
- * `url` resolves a stored key to something the browser can load.
+ * `get` reads an object back with the app's own access — `null` when it is
+ * gone. `url` resolves a stored key to something the browser can load, and
+ * THROWS on a receipt key: a receipt has no public URL, only the authenticated
+ * receipt routes, which read it through `get`.
  */
 export type StorageDriver = {
   put(key: string, data: Uint8Array, contentType: string): Promise<void>;
+  get(key: string): Promise<Uint8Array | null>;
   delete(key: string): Promise<void>;
   url(key: string): string;
 };
+
+export { ReceiptExposedError } from './s3-driver';
 
 /** Providers with a driver behind them. Arvan/Liana's `s3` joins this list. */
 export const STORAGE_PROVIDERS = ['local', 's3'] as const;

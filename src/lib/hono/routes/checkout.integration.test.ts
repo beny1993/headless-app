@@ -161,7 +161,7 @@ describe.skipIf(!databaseReachable)('POST /api/checkout', () => {
     if (payload.status !== 'success') throw new Error(payload.message);
     const data = payload.data;
     fx.remember(data.orderId);
-    expect(data.status).toBe(ORDER_STATUSES.PROCESSING);
+    expect(data.status).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
     expect(data.subtotal).toBe(300_000);
     expect(data.shippingFee).toBe(40_000);
     expect(data.total).toBe(340_000);
@@ -203,7 +203,7 @@ describe.skipIf(!databaseReachable)('POST /api/checkout', () => {
       .from(orders)
       .where(eq(orders.id, payload.data.orderId));
     expect(row.userId).toBe(user.id); // session, not the smuggled attacker id
-    expect(row.status).toBe(ORDER_STATUSES.PROCESSING); // not 'delivered'
+    expect(row.status).toBe(ORDER_STATUSES.AWAITING_RECEIPT); // not 'delivered'
     expect(row.total).toBe(140_000); // server-computed, not 1
     expect(row.discount).toBe(0); // not 999
   });

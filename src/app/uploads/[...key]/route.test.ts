@@ -5,7 +5,7 @@
 // `key.join('/')` → gate → content-type → read — end to end, which nothing else
 // does. A traversal must be a 404 that never reads a byte off disk; a real key
 // must serve the bytes with a whitelisted, non-sniffable content type.
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -62,6 +62,18 @@ describe('GET /uploads/[...key]', () => {
 
   it('404s a well-formed key with no file behind it', async () => {
     expect((await serve([`${UUID}.webp`])).status).toBe(404);
+  });
+
+  it('never serves a receipt, though its file is right there under the root', async () => {
+    // Receipts share the local root (a `receipts/` folder beside the uploads);
+    // the public route must not be a second way in.
+    await mkdir(path.join(root, 'receipts'));
+    await writeFile(path.join(root, 'receipts', `${UUID}.jpg`), JPEG);
+
+    const res = await serve(['receipts', `${UUID}.jpg`]);
+
+    expect(res.status).toBe(404);
+    expect(new Uint8Array(await res.arrayBuffer())).not.toEqual(JPEG);
   });
 
   // The point of the suite: every traversal shape is a 404 at the gate, before

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatJalali,
+  formatJalaliDateTime,
   formatJalaliMonth,
   formatJalaliYear,
   formatNumber,
@@ -165,6 +166,55 @@ describe('formatJalali', () => {
 
   it('throws on an invalid date rather than rendering garbage', () => {
     expect(() => formatJalali(new Date('not a date'))).toThrow(RangeError);
+  });
+});
+
+// What the shop shows is the Tehran wall clock: Iran's own time, UTC+03:30
+// all year, whatever zone the server runs in (the suite runs as UTC, like the
+// container). A receipt a shopper sent at 14:05 in Tehran reads 14:05 to the
+// shopper and to the admin.
+describe('formatJalaliDateTime', () => {
+  it('formats a UTC instant as its Tehran date and 24-hour time', () => {
+    expect(formatJalaliDateTime(new Date(Date.UTC(2026, 9, 1, 10, 35)))).toBe(
+      '۹ مهر ۱۴۰۵ ساعت ۱۴:۰۵',
+    );
+  });
+
+  it('turns the day at Tehran midnight, not at UTC midnight', () => {
+    expect(formatJalaliDateTime(new Date(Date.UTC(2026, 8, 30, 20, 29)))).toBe(
+      '۸ مهر ۱۴۰۵ ساعت ۲۳:۵۹',
+    );
+    expect(formatJalaliDateTime(new Date(Date.UTC(2026, 8, 30, 20, 30)))).toBe(
+      '۹ مهر ۱۴۰۵ ساعت ۰۰:۰۰',
+    );
+  });
+
+  it('stays UTC+03:30 in summer — Iran has kept no daylight saving since 2022', () => {
+    // 10:35 UTC on 21 June: 14:05 in Tehran, not the 15:05 of the old DST.
+    expect(formatJalaliDateTime(new Date(Date.UTC(2026, 5, 21, 10, 35)))).toBe(
+      '۳۱ خرداد ۱۴۰۵ ساعت ۱۴:۰۵',
+    );
+  });
+
+  it('tells apart two receipts sent the same day', () => {
+    expect(formatJalaliDateTime(new Date(Date.UTC(2026, 9, 1, 5, 0)))).toBe(
+      '۹ مهر ۱۴۰۵ ساعت ۰۸:۳۰',
+    );
+    expect(formatJalaliDateTime(new Date(Date.UTC(2026, 9, 1, 15, 0)))).toBe(
+      '۹ مهر ۱۴۰۵ ساعت ۱۸:۳۰',
+    );
+  });
+
+  it('renders Persian digits only', () => {
+    expect(
+      formatJalaliDateTime(new Date(Date.UTC(2026, 9, 1, 10, 35))),
+    ).not.toMatch(/[0-9]/);
+  });
+
+  it('throws on an invalid date rather than rendering garbage', () => {
+    expect(() => formatJalaliDateTime(new Date('not a date'))).toThrow(
+      RangeError,
+    );
   });
 });
 

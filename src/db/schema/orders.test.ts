@@ -2,10 +2,17 @@
 // database, so they run on every `pnpm test` — the constraints they name are
 // then *enforced* against a live Postgres by the DAO integration suites.
 import { getTableColumns } from 'drizzle-orm';
-import { getTableConfig } from 'drizzle-orm/pg-core';
+import { getTableConfig, PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
-import { orderItems, orders, payments } from '@/db/schema/orders';
 import {
+  orderItems,
+  orders,
+  paymentReceipts,
+  payments,
+} from '@/db/schema/orders';
+import { MAX_RECEIPT_BYTES } from '@/lib/orders/receipt';
+import {
+  ORDER_STATUSES,
   ORDER_STATUS_VALUES,
   PAYMENT_METHOD_VALUES,
   PAYMENT_STATUS_VALUES,
@@ -28,7 +35,7 @@ describe('orders schema', () => {
     // Same guard as the auth and catalog tables: a bare `timestamp()` drops the
     // offset, so an order placed at 20:00 UTC and one at 20:00 +03:30 collapse
     // into the same instant once the account page renders a Jalali date.
-    const timestamps = [orders, orderItems, payments]
+    const timestamps = [orders, orderItems, payments, paymentReceipts]
       .flatMap((table) => Object.values(getTableColumns(table)))
       .filter((column) => column.columnType === 'PgTimestamp');
 
@@ -63,6 +70,23 @@ describe('orders schema', () => {
     expect(orders.paymentMethod.enumValues).toEqual(PAYMENT_METHOD_VALUES);
     expect(payments.method.enumValues).toEqual(PAYMENT_METHOD_VALUES);
     expect(payments.status.enumValues).toEqual(PAYMENT_STATUS_VALUES);
+  });
+
+  it('adds awaiting_receipt between pending_payment and paid', () => {
+    // drizzle-kit turns this position into `ADD VALUE … BEFORE 'paid'`. The
+    // database's enum order and this list must agree, or the next generate
+    // reads a difference and emits the recreate form, which rewrites
+    // `orders.status` on a live table.
+    const at = ORDER_STATUS_VALUES.indexOf(ORDER_STATUSES.AWAITING_RECEIPT);
+    expect(ORDER_STATUS_VALUES[at - 1]).toBe(ORDER_STATUSES.PENDING_PAYMENT);
+    expect(ORDER_STATUS_VALUES[at + 1]).toBe(ORDER_STATUSES.PAID);
+  });
+
+  it('keeps an optional cancellation reason on the order', () => {
+    // Null for every order nobody cancelled, and for those cancelled before
+    // a reason was asked for.
+    expect(orders.cancellationReason.getSQLType()).toBe('text');
+    expect(orders.cancellationReason.notNull).toBe(false);
   });
 
   it('guards money and quantity at the database level', () => {
@@ -163,5 +187,30 @@ describe('orders schema', () => {
   it('defaults a fresh payment row to pending', () => {
     expect(payments.status.default).toBe(PAYMENT_STATUS_VALUES[0]);
     expect(PAYMENT_STATUS_VALUES[0]).toBe('pending');
+  });
+});
+
+describe('payment_receipts schema', () => {
+  it('cascades a receipt with its order', () => {
+    expect(fkTargets(paymentReceipts)).toEqual([
+      { column: 'order_id', onDelete: 'cascade' },
+    ]);
+  });
+
+  it('keys each receipt by a unique, required storage key', () => {
+    // Server-minted `receipts/<uuid>.<ext>`: two rows can never share a file.
+    expect(paymentReceipts.objectKey.isUnique).toBe(true);
+    expect(paymentReceipts.objectKey.notNull).toBe(true);
+  });
+
+  it('bounds the stored size in the database, with the cap as a literal', () => {
+    // A bound parameter in DDL would reach the migration as `$1`.
+    const check = getTableConfig(paymentReceipts).checks.find(
+      (c) => c.name === 'payment_receipts_size_bounds',
+    );
+    if (!check) throw new Error('payment_receipts_size_bounds is missing');
+    const { sql, params } = new PgDialect().sqlToQuery(check.value);
+    expect(params).toEqual([]);
+    expect(sql).toContain(`<= ${MAX_RECEIPT_BYTES}`);
   });
 });

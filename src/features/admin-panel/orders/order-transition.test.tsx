@@ -4,7 +4,8 @@
 //     copy. Revert to `useState(status)` and the "follows the prop" test fails.
 //   · a click POSTs `{ to }` to the transitions endpoint and, on success, calls
 //     router.refresh() — never tracking the new status itself.
-//   · a terminal order offers nothing.
+//   · a terminal order offers nothing;
+//   · a cancel refused for its reason puts focus back in the reason field.
 //
 // Mocked at the module edge only: `next/navigation` (refresh is a recorder) and
 // `@/lib/api-client` (postData is a recorder; `ApiRequestError` stays real),
@@ -15,7 +16,11 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError } from '@/lib/api-client';
 import { apiAdminOrderTransitionsPath } from '@/lib/constant/paths';
-import { ORDER_STATUSES } from '@/lib/orders/order-status';
+import {
+  CANCELLATION_REASON_MAX,
+  CANCELLATION_REASON_REQUIRED_MESSAGE,
+  ORDER_STATUSES,
+} from '@/lib/orders/order-status';
 import { OrderTransition } from './order-transition';
 
 const { refresh, postData, toast } = vi.hoisted(() => ({
@@ -124,10 +129,201 @@ describe('OrderTransition', () => {
     );
     render(<OrderTransition orderId={ORDER_ID} status={ORDER_STATUSES.PAID} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /لغو سفارش/ }));
+    fireEvent.click(screen.getByRole('button', { name: /در حال پردازش/ }));
     await act(async () => {});
 
     expect(toast.error).toHaveBeenCalledWith('این تغییر وضعیت مجاز نیست');
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('offers a waiting card-to-card order acceptance by hand, or a cancel', () => {
+    render(
+      <OrderTransition
+        orderId={ORDER_ID}
+        status={ORDER_STATUSES.AWAITING_RECEIPT}
+      />,
+    );
+    expect(offeredTargets().sort()).toEqual(
+      [ORDER_STATUSES.PROCESSING, ORDER_STATUSES.CANCELLED].sort(),
+    );
+  });
+
+  describe('cancelling', () => {
+    const reasonField = () =>
+      document.querySelector<HTMLInputElement>(
+        '[data-umami-event="admin-panel-order-cancel-reason"]',
+      );
+    const submit = () =>
+      document.querySelector<HTMLButtonElement>(
+        '[data-umami-event="admin-panel-order-cancel-submit"]',
+      )!;
+    const openCancel = () =>
+      fireEvent.click(screen.getByRole('button', { name: /لغو سفارش/ }));
+
+    it('asks for the reason first — the cancel button alone sends nothing', () => {
+      render(
+        <OrderTransition
+          orderId={ORDER_ID}
+          status={ORDER_STATUSES.PROCESSING}
+        />,
+      );
+      expect(reasonField()).toBeNull();
+
+      openCancel();
+
+      expect(reasonField()).not.toBeNull();
+      expect(postData).not.toHaveBeenCalled();
+    });
+
+    it('refuses to send a cancel with no reason, saying so in Persian', async () => {
+      render(
+        <OrderTransition
+          orderId={ORDER_ID}
+          status={ORDER_STATUSES.PROCESSING}
+        />,
+      );
+      openCancel();
+      fireEvent.change(reasonField()!, { target: { value: '   ' } });
+      fireEvent.click(submit());
+      await act(async () => {});
+
+      expect(
+        screen.getByText(CANCELLATION_REASON_REQUIRED_MESSAGE),
+      ).toBeTruthy();
+      expect(postData).not.toHaveBeenCalled();
+    });
+
+    it('takes the admin back to the reason field when a cancel is sent without one', async () => {
+      render(
+        <OrderTransition
+          orderId={ORDER_ID}
+          status={ORDER_STATUSES.PROCESSING}
+        />,
+      );
+      openCancel();
+      submit().focus();
+      fireEvent.click(submit());
+      await act(async () => {});
+
+      expect(document.activeElement).toBe(reasonField());
+    });
+
+    it('has the field marked invalid and described by the refusal by the time focus lands on it', async () => {
+      render(
+        <OrderTransition
+          orderId={ORDER_ID}
+          status={ORDER_STATUSES.PROCESSING}
+        />,
+      );
+      openCancel();
+      const field = reasonField()!;
+      let atFocus: { invalid: string | null; message?: string | null } = {
+        invalid: null,
+      };
+      field.addEventListener('focus', () => {
+        const describedBy = field.getAttribute('aria-describedby');
+        atFocus = {
+          invalid: field.getAttribute('aria-invalid'),
+          message:
+            describedBy && document.getElementById(describedBy)?.textContent,
+        };
+      });
+      submit().focus();
+      fireEvent.click(submit());
+      await act(async () => {});
+
+      expect(atFocus).toEqual({
+        invalid: 'true',
+        message: CANCELLATION_REASON_REQUIRED_MESSAGE,
+      });
+    });
+
+    it('makes the reason a named field the browser spell-checks and never autofills', () => {
+      render(
+        <OrderTransition
+          orderId={ORDER_ID}
+          status={ORDER_STATUSES.PROCESSING}
+        />,
+      );
+      openCancel();
+
+      const field = reasonField()!;
+      expect(field.name).toBe('reason');
+      expect(field.getAttribute('autocomplete')).toBe('off');
+      expect(field.getAttribute('spellcheck')).toBe('true');
+    });
+
+    it('refuses a reason carrying a bidi control before sending it', async () => {
+      render(
+        <OrderTransition
+          orderId={ORDER_ID}
+          status={ORDER_STATUSES.PROCESSING}
+        />,
+      );
+      openCancel();
+      fireEvent.change(reasonField()!, {
+        target: { value: `دلیل${String.fromCharCode(0x202e)}` },
+      });
+      fireEvent.click(submit());
+      await act(async () => {});
+
+      expect(screen.getByText('مقدار واردشده نامعتبر است.')).toBeTruthy();
+      expect(postData).not.toHaveBeenCalled();
+    });
+
+    it('sends the trimmed reason with the cancel, then re-renders from the server', async () => {
+      postData.mockResolvedValue({});
+      const view = render(
+        <OrderTransition
+          orderId={ORDER_ID}
+          status={ORDER_STATUSES.AWAITING_RECEIPT}
+        />,
+      );
+      openCancel();
+      fireEvent.change(reasonField()!, {
+        target: { value: '  رسیدی نرسید  ' },
+      });
+      fireEvent.click(submit());
+      await act(async () => {});
+
+      expect(postData).toHaveBeenCalledWith(
+        apiAdminOrderTransitionsPath(ORDER_ID),
+        { to: ORDER_STATUSES.CANCELLED, reason: 'رسیدی نرسید' },
+      );
+      expect(refresh).toHaveBeenCalledTimes(1);
+
+      // The refresh lands: cancelled is terminal, and nothing is left open.
+      view.rerender(
+        <OrderTransition
+          orderId={ORDER_ID}
+          status={ORDER_STATUSES.CANCELLED}
+        />,
+      );
+      expect(reasonField()).toBeNull();
+      expect(screen.getByText(/وضعیت نهایی/)).toBeTruthy();
+    });
+
+    it('caps the field at the reason limit', () => {
+      render(
+        <OrderTransition
+          orderId={ORDER_ID}
+          status={ORDER_STATUSES.PROCESSING}
+        />,
+      );
+      openCancel();
+      expect(reasonField()!.maxLength).toBe(CANCELLATION_REASON_MAX);
+    });
+
+    it('tells the admin the reason is shown to the customer', () => {
+      render(
+        <OrderTransition
+          orderId={ORDER_ID}
+          status={ORDER_STATUSES.PROCESSING}
+        />,
+      );
+      expect(
+        screen.getByText(/دلیل برای مشتری نمایش داده می‌شود/),
+      ).toBeTruthy();
+    });
   });
 });
