@@ -11,6 +11,13 @@ import {
   SEED_PRODUCTS,
   SEED_SUBCATEGORIES,
 } from '@/db/seed/catalog-data';
+import {
+  DELIVERY_NOTE,
+  HANDLING_DAYS,
+  RETURN_DAYS,
+  RETURN_NOTE,
+  TRANSIT_DAYS,
+} from '@/features/storefront/product/shop-policy';
 import { SHOP_TITLE } from '@/features/storefront/shop/shop-metadata';
 import { PRODUCT_SORTS } from '@/lib/catalog/product-query';
 import { displayTitle } from '@/lib/catalog/variant';
@@ -71,7 +78,7 @@ test('the sitemap lists products, family members and shelves, each by its canoni
   );
 });
 
-test('a product page gives Google its price in Rial, its stock and its breadcrumb', async ({
+test('a product page gives Google its price in Rial, its stock, shipping, returns and breadcrumb', async ({
   page,
 }) => {
   // In the HTML the server sends, not only in the page a browser builds: a
@@ -89,13 +96,46 @@ test('a product page gives Google its price in Rial, its stock and its breadcrum
   expect(data.find((doc) => doc['@type'] === 'Product')).toMatchObject({
     name: displayTitle(product),
     sku: product.sku,
+    // A Google product category, never the Persian title Search Console
+    // reported as an invalid value.
+    category: {
+      '@type': 'CategoryCode',
+      inCodeSet:
+        'https://www.google.com/basepages/producttype/taxonomy-with-ids.en-US.txt',
+      codeValue: expect.stringMatching(/^[245]$/),
+    },
     offers: {
       url: absoluteUrl(productPath(product.slug)),
       priceCurrency: 'IRR',
       price: rialForStructuredData(product.price),
       availability: 'https://schema.org/InStock',
+      // The fee is whatever the run's provinces charge, so only its shape.
+      shippingDetails: {
+        shippingDestination: { addressCountry: 'IR' },
+        shippingRate: { currency: 'IRR' },
+        deliveryTime: {
+          handlingTime: {
+            minValue: HANDLING_DAYS.min,
+            maxValue: HANDLING_DAYS.max,
+            unitCode: 'DAY',
+          },
+          transitTime: {
+            minValue: TRANSIT_DAYS.min,
+            maxValue: TRANSIT_DAYS.max,
+            unitCode: 'DAY',
+          },
+        },
+      },
+      hasMerchantReturnPolicy: {
+        applicableCountry: 'IR',
+        merchantReturnDays: RETURN_DAYS,
+        returnFees: 'https://schema.org/ReturnFeesCustomerResponsibility',
+      },
     },
   });
+  // The same terms, where the shopper reads them.
+  await expect(page.getByText(DELIVERY_NOTE)).toBeVisible();
+  await expect(page.getByText(RETURN_NOTE)).toBeVisible();
   const trail = data.find((doc) => doc['@type'] === 'BreadcrumbList');
   expect(trail?.itemListElement).toEqual([
     expect.objectContaining({ position: 1, item: absoluteUrl(PATHS.HOME) }),
@@ -120,6 +160,16 @@ test('a product page gives Google its price in Rial, its stock and its breadcrum
 
 test('the home page names the shop for Google', async ({ page }) => {
   await page.goto(PATHS.HOME);
+  await expect(page).toHaveTitle(
+    'پت‌شاپ اسموکی | فروشگاه آنلاین حیوانات خانگی',
+  );
+  const footer = page.getByRole('contentinfo');
+  await expect(
+    footer.getByText('پت‌شاپ اسموکی', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    footer.getByText('Smokey Pet Shop', { exact: true }),
+  ).toBeVisible();
 
   // Compared as URLs: Next writes the root without its slash and the sitemap
   // with it, and those are one URL (an empty path is `/`).
@@ -132,6 +182,7 @@ test('the home page names the shop for Google', async ({ page }) => {
         expect.objectContaining({
           '@type': 'Organization',
           name: DEFAULT_SITE_NAME,
+          alternateName: ['پت‌شاپ اسموکی', 'Smokey Pet Shop'],
           url: absoluteUrl(PATHS.HOME),
         }),
       ]),

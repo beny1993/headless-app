@@ -28,6 +28,11 @@ import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { formatToman } from '@/lib/format';
 import { PATHS, shopPath } from '@/lib/constant/paths';
 import { ProductGallery } from '@/features/storefront/product/product-gallery';
+import {
+  DELIVERY_NOTE,
+  RETURN_NOTE,
+} from '@/features/storefront/product/shop-policy';
+import { rialForStructuredData } from '@/lib/seo';
 import { SHOP_TITLE } from '@/features/storefront/shop/shop-metadata';
 
 // The shop crumb reads whatever the shop page calls itself. A stand-in title
@@ -40,6 +45,9 @@ vi.mock('@/features/storefront/shop/shop-metadata', async (importOriginal) => ({
 }));
 
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
+const { ShippingRateDao } = await importWithDb(
+  () => import('@/db/dao/ShippingRateDao'),
+);
 const page = await importWithDb(() => import('./page'));
 
 /** The digest `notFound()` throws with, per the Next 16 docs. */
@@ -176,6 +184,39 @@ describe.skipIf(!databaseReachable)('the product page', () => {
       expect(text).toContain(product.title);
       expect(text).toContain('برند آزمایشی');
       expect(text).toContain('مناسب گوارش حساس');
+    });
+
+    it('states the delivery and return terms its structured data repeats', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+
+      const text = await renderedText(product.slug);
+
+      expect(text).toContain(DELIVERY_NOTE);
+      expect(text).toContain(RETURN_NOTE);
+    });
+
+    it('prices shipping in its structured data from the provinces’ fees', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(makeProduct(category));
+      vi.spyOn(ShippingRateDao, 'listActive').mockResolvedValueOnce([
+        { provinceId: 1, name: 'تهران', fee: 40_000 },
+        { provinceId: 2, name: 'فارس', fee: 90_000 },
+      ]);
+
+      // The first JSON-LD on the page is the `Product`; the trail follows it.
+      const jsonLd = findElement(await render(product.slug), JsonLd) as {
+        props: { data: { offers: Record<string, unknown> } };
+      };
+
+      expect(jsonLd.props.data.offers).toHaveProperty(
+        'shippingDetails.shippingRate',
+        {
+          '@type': 'MonetaryAmount',
+          currency: 'IRR',
+          maxValue: rialForStructuredData(90_000),
+        },
+      );
     });
 
     it('keys the gallery by product so it resets between products', async () => {

@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import { Instagram, Send } from 'lucide-react';
+import { SITE_FULL_NAME, SITE_LATIN_NAME } from '@/constants';
 import { FOOTER_TARGETS } from './nav-links';
 import {
   instagramUrl,
@@ -99,7 +100,14 @@ export function Footer({
                 {content.brand}
               </p>
             </div>
-            <p className="mt-3 text-sm leading-relaxed whitespace-pre-line">
+            <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-white/90">
+              <span>{SITE_FULL_NAME}</span>
+              <span aria-hidden="true">·</span>
+              <bdi lang="en" dir="ltr">
+                {SITE_LATIN_NAME}
+              </bdi>
+            </p>
+            <p className="mt-2 text-sm leading-relaxed whitespace-pre-line">
               {content.tagline}
             </p>
             {socials.length > 0 && (

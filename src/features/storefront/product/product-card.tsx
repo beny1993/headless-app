@@ -8,6 +8,7 @@ import { productPath } from '@/lib/constant/paths';
 import { displayTitle } from '@/lib/catalog/variant';
 import { formatToman } from '@/lib/format';
 import { imageSrc } from '@/lib/storage/image-url';
+import { cn } from '@/lib/utils';
 
 /**
  * One product tile, shared by the home page's recommendations and — when it
@@ -30,6 +31,7 @@ import { imageSrc } from '@/lib/storage/image-url';
 export function ProductCard({
   product,
   eager = false,
+  hideUnavailablePrice = false,
 }: {
   product: ProductCardRow;
   /**
@@ -38,10 +40,13 @@ export function ProductCard({
    * not the card: only the caller knows where in the list this one sits.
    */
   eager?: boolean;
+  /** The shop omits unavailable prices; home recommendations keep theirs. */
+  hideUnavailablePrice?: boolean;
 }) {
   // The **family's** stock, not this row's: a sold-out head must not grey out a
   // card whose other size is on the shelf.
   const outOfStock = !product.familyInStock;
+  const showPrice = !hideUnavailablePrice || !outOfStock;
   const imageKey = product.images[0]?.objectKey;
   // A family sends the shopper to the page to choose — adding the head straight
   // from the grid would pick a smell or a size nobody asked for. True even when
@@ -118,34 +123,41 @@ export function ProductCard({
           </p>
         )}
 
-        <div className="flex items-center justify-between gap-2">
-          <div className="nums min-w-0">
-            <p className="text-foreground font-bold">
-              {product.familyPricesVary ? (
-                // «از ۲۵۰٬۰۰۰ تومان» — the family's cheapest. The prefix is a
-                // separate span so it keeps the body type size while the number
-                // stays bold, and so `nums` still governs only the digits.
-                <>
-                  <span className="text-muted-foreground me-1 text-xs font-normal">
-                    از
-                  </span>
-                  {/* A real space, not just the margin: without it the text
+        <div
+          className={cn(
+            'flex items-center gap-2',
+            showPrice ? 'justify-between' : 'justify-end',
+          )}
+        >
+          {showPrice && (
+            <div className="nums min-w-0">
+              <p className="text-foreground font-bold">
+                {product.familyPricesVary ? (
+                  // «از ۲۵۰٬۰۰۰ تومان» — the family's cheapest. The prefix is a
+                  // separate span so it keeps the body type size while the number
+                  // stays bold, and so `nums` still governs only the digits.
+                  <>
+                    <span className="text-muted-foreground me-1 text-xs font-normal">
+                      از
+                    </span>
+                    {/* A real space, not just the margin: without it the text
                       content reads «از۱۴۹٬۰۰۰» to a screen reader and to
                       anyone who copies the line. */}{' '}
-                  {formatToman(price)}
-                </>
-              ) : (
-                formatToman(price)
-              )}
-            </p>
-            {/* A struck-through «was» price under an «از …» would be claiming a
-                discount on a price the card is not even showing. */}
-            {oldPrice && (
-              <p className="text-muted-foreground text-xs line-through">
-                {formatToman(oldPrice)}
+                    {formatToman(price)}
+                  </>
+                ) : (
+                  formatToman(price)
+                )}
               </p>
-            )}
-          </div>
+              {/* A struck-through «was» price under an «از …» would be claiming a
+                discount on a price the card is not even showing. */}
+              {oldPrice && (
+                <p className="text-muted-foreground text-xs line-through">
+                  {formatToman(oldPrice)}
+                </p>
+              )}
+            </div>
+          )}
           {mustChoose ? (
             // A real link, not a disabled button: the shopper's next step is
             // the page, where the chips are. It sits above the stretched title

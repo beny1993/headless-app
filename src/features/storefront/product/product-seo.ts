@@ -1,8 +1,9 @@
 // What a product page tells search engines: its description, its canonical and
 // share cards, and its schema.org `Product`, the structured data Google can
-// show a price and stock from.
+// show a price, stock, shipping and returns from.
 import type { Metadata } from 'next';
 import type { Product, ProductImage } from '@/db/schema/catalog';
+import { PET_TYPES, type PetType } from '@/lib/catalog/product-query';
 import { displayTitle } from '@/lib/catalog/variant';
 import { productPath } from '@/lib/constant/paths';
 import {
@@ -14,6 +15,7 @@ import {
 } from '@/lib/seo';
 import { imageSrc } from '@/lib/storage/image-url';
 import { isPurchasable } from './availability';
+import { HANDLING_DAYS, RETURN_DAYS, TRANSIT_DAYS } from './shop-policy';
 
 /** The fields read here; a `ProductDetail` has them all. */
 export type ProductForSeo = Pick<
@@ -23,6 +25,7 @@ export type ProductForSeo = Pick<
   | 'variantLabel'
   | 'sku'
   | 'brand'
+  | 'petTypes'
   | 'description'
   | 'benefit'
   | 'price'
@@ -103,13 +106,77 @@ export function productMetadata(product: ProductForSeo): Metadata {
   };
 }
 
+/** Google's product taxonomy, which a `CategoryCode` is read against. */
+const GOOGLE_TAXONOMY =
+  'https://www.google.com/basepages/producttype/taxonomy-with-ids.en-US.txt';
+
+/** Its «Animals & Pet Supplies > Pet Supplies», and the branch for each pet. */
+const PET_SUPPLIES = '2';
+const PET_SUPPLIES_FOR: Record<PetType, string> = {
+  [PET_TYPES.CAT]: '4',
+  [PET_TYPES.DOG]: '5',
+};
+
+/**
+ * The product's Google product category, by the pets it is for; a product for
+ * both sits on the branch the two share. Search Console reported the Persian
+ * category title, which this sent as plain text before, as an invalid value.
+ */
+const googleCategory = ([pet, ...others]: PetType[]) => ({
+  '@type': 'CategoryCode',
+  inCodeSet: GOOGLE_TAXONOMY,
+  codeValue: pet && others.length === 0 ? PET_SUPPLIES_FOR[pet] : PET_SUPPLIES,
+});
+
+/** A span of days, as Google reads a handling or transit time. */
+const dayRange = ({ min, max }: { min: number; max: number }) => ({
+  '@type': 'QuantitativeValue',
+  minValue: min,
+  maxValue: max,
+  unitCode: 'DAY',
+});
+
+/**
+ * Shipping anywhere in Iran, in Rial like the price. Google takes regional
+ * rates only for a few countries, Iran not among them, so fees that differ by
+ * province go in as the most a shopper can pay (`maxValue`).
+ */
+function shippingDetails(fees: number[]) {
+  const most = rialForStructuredData(Math.max(...fees));
+  const flat = fees.every((fee) => fee === fees[0]);
+  return {
+    '@type': 'OfferShippingDetails',
+    shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'IR' },
+    shippingRate: {
+      '@type': 'MonetaryAmount',
+      currency: 'IRR',
+      ...(flat ? { value: most } : { maxValue: most }),
+    },
+    deliveryTime: {
+      '@type': 'ShippingDeliveryTime',
+      handlingTime: dayRange(HANDLING_DAYS),
+      transitTime: dayRange(TRANSIT_DAYS),
+    },
+  };
+}
+
+const RETURN_POLICY = {
+  '@type': 'MerchantReturnPolicy',
+  applicableCountry: 'IR',
+  returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
+  merchantReturnDays: RETURN_DAYS,
+  returnMethod: 'https://schema.org/ReturnByMail',
+  returnFees: 'https://schema.org/ReturnFeesCustomerResponsibility',
+};
+
 /**
  * The page's schema.org `Product`. The price goes in Rial (see
  * `rialForStructuredData`), and stock through the add-to-cart button's own
- * `isPurchasable`, so low stock still reads as in stock. What the product
- * lacks is left out rather than sent as `null`.
+ * `isPurchasable`, so low stock still reads as in stock. `shippingFees` are
+ * the active provinces' fees in Toman; with none, shipping is left out. What
+ * the product lacks is left out rather than sent as `null`.
  */
-export function productJsonLd(product: ProductForSeo, categoryTitle?: string) {
+export function productJsonLd(product: ProductForSeo, shippingFees: number[]) {
   return {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -118,7 +185,7 @@ export function productJsonLd(product: ProductForSeo, categoryTitle?: string) {
     description: productDescription(product),
     sku: product.sku,
     ...(product.brand && { brand: { '@type': 'Brand', name: product.brand } }),
-    ...(categoryTitle && { category: categoryTitle }),
+    category: googleCategory(product.petTypes),
     offers: {
       '@type': 'Offer',
       url: productUrl(product),
@@ -128,6 +195,10 @@ export function productJsonLd(product: ProductForSeo, categoryTitle?: string) {
         ? 'https://schema.org/InStock'
         : 'https://schema.org/OutOfStock',
       itemCondition: 'https://schema.org/NewCondition',
+      ...(shippingFees.length > 0 && {
+        shippingDetails: shippingDetails(shippingFees),
+      }),
+      hasMerchantReturnPolicy: RETURN_POLICY,
     },
   };
 }
