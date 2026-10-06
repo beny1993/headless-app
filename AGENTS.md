@@ -139,9 +139,9 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   and `/api/ready` are exempt. Budgets live in `RATE_LIMITS`; per-order payment
   attempts are capped separately by `MAX_PAYMENT_ATTEMPTS_PER_ORDER`. The caller
   is resolved through `src/lib/auth/client-ip.ts`, the ONE header list Better
-  Auth's limiter also reads — `CF-Connecting-IP` is trusted only when
-  `APP_CONFIG_TRUST_CF_HEADER` is on, which is safe only behind a locked-down
-  origin. `/api/auth/*` is Better Auth's own and is never double-counted.
+  Auth's limiter also reads — the CDN's `X-Real-IP` is trusted only when
+  `APP_CONFIG_TRUST_REAL_IP_HEADER` is on, which is safe only behind a
+  locked-down origin whose Traefik trusts exactly the CDN's ranges. `/api/auth/*` is Better Auth's own and is never double-counted.
 - **Authz**: admin pages go through `requireAdmin()` (`src/lib/auth/session.ts`)
   — a session alone is never authorization, since customers get sessions too.
   Admin API routes mount `requireAdmin` from `src/lib/hono/middleware/auth.ts`

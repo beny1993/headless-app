@@ -26,9 +26,9 @@ const makeApp = () => {
   return app;
 };
 
-/** One request from `ip`, with the CF header trusted (the flag is on below). */
+/** One request from `ip`, with X-Real-IP trusted (the flag is on below). */
 const hit = (app: Hono, path: string, ip: string) =>
-  app.request(path, { headers: { 'cf-connecting-ip': ip } });
+  app.request(path, { headers: { 'x-real-ip': ip } });
 
 let nextIp = 0;
 /** A fresh address per test, so buckets never leak between cases. */
@@ -36,7 +36,7 @@ const freshIp = () =>
   `10.99.${Math.floor(nextIp / 250)}.${(nextIp++ % 250) + 1}`;
 
 beforeEach(() => {
-  vi.stubEnv('APP_CONFIG_TRUST_CF_HEADER', 'true');
+  vi.stubEnv('APP_CONFIG_TRUST_REAL_IP_HEADER', 'true');
   resetRateLimitBuckets();
   sentry.captureMessage.mockClear();
 });
@@ -252,7 +252,7 @@ describe('the payment callback answers a browser, not a script', () => {
 
 describe('the bucket map is bounded', () => {
   // Without this the limiter is itself a denial-of-service vector: until the
-  // origin is locked to Cloudflare a caller can rotate `cf-connecting-ip` and
+  // origin is locked to the CDN a caller can rotate `x-real-ip` and
   // mint one live entry per request, and a prune cannot reclaim entries that
   // have not expired yet.
   it('never grows past the cap, however many distinct callers arrive', async () => {
@@ -367,12 +367,12 @@ describe('the bucket map is bounded', () => {
 });
 
 describe('who the caller is', () => {
-  it('ignores a forged cf-connecting-ip when the deploy has not declared Cloudflare', async () => {
-    vi.stubEnv('APP_CONFIG_TRUST_CF_HEADER', '');
+  it('ignores a forged x-real-ip when the deploy has not declared a trusted proxy', async () => {
+    vi.stubEnv('APP_CONFIG_TRUST_REAL_IP_HEADER', '');
     resetRateLimitBuckets();
     const app = makeApp();
 
-    // Rotating the CF header must NOT mint a fresh bucket each time, or the
+    // Rotating X-Real-IP must NOT mint a fresh bucket each time, or the
     // limiter protects nothing against a direct-to-origin attacker.
     let refused = false;
     for (let i = 0; i < RATE_LIMITS.catalog + 5; i++) {
