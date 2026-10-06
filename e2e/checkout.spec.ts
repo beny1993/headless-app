@@ -1,12 +1,18 @@
-import { accountOrderPath } from '@/lib/constant/paths';
+import {
+  accountOrderPath,
+  apiOrderReceiptsPath,
+  checkoutResultPath,
+} from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import type { Locator, Page } from '@playwright/test';
+import { z } from 'zod';
 import {
   ADMIN_STATE,
   attachReceipt,
   closeIfStillWaiting,
   CUSTOMER_STATE,
   expect,
+  expectFailedRequest,
   expectRendered,
   IN_STOCK_PRODUCT,
   LOW_STOCK_PRODUCT,
@@ -231,7 +237,35 @@ test('card to card: a screenshot that fails to store is sent again from the chec
   ).toHaveCount(1);
 });
 
-test('card to card: the shopper cancels a waiting order from their account, and its stock comes back', async ({
+test('card to card: a reload keeps the waiting order’s retry, and its screenshot then accepts it', async ({
+  page,
+}) => {
+  // The upload is cut and the page reloaded: the retry that held the order
+  // went with the page, so /checkout picks the order back up from the server.
+  const receiptUpload = '**/api/orders/*/receipts';
+  await page.route(receiptUpload, (route) => route.abort());
+  await placeOrder(page, 'cod');
+  const button = page.locator('[data-umami-event="checkout-submit-order"]');
+  await expect(button).toHaveText('ارسال دوباره رسید');
+  await page.unroute(receiptUpload);
+
+  await page.reload();
+  await page.waitForURL(/\/checkout\?resume=/);
+  await expect(button).toHaveText('ارسال دوباره رسید');
+  await expect(button).toBeDisabled();
+  await attachReceipt(page);
+  await button.click();
+
+  placedOrder = await resultOrderId(page);
+  await expect(
+    page.getByRole('heading', { name: 'سفارش ثبت شد!' }),
+  ).toBeVisible();
+  // Back skips the retry: the order it held is accepted now.
+  await page.goBack();
+  await expect(page).not.toHaveURL(/\/checkout/);
+});
+
+test('card to card: the shopper cancels a waiting order from their account, its stock comes back, and the retry left open leads to it', async ({
   page,
 }) => {
   const { path, stock } = LOW_STOCK_PRODUCT;
@@ -242,26 +276,48 @@ test('card to card: the shopper cancels a waiting order from their account, and 
   const receiptUpload = '**/api/orders/*/receipts';
   await page.route(receiptUpload, (route) => route.abort());
   await placeOrder(page, 'cod', path);
-  await page
-    .locator('[data-umami-event="checkout-receipt-view-order"]')
-    .click();
-  placedOrder = await resultOrderId(page);
+  const orderId = z
+    .uuid()
+    .parse(
+      (
+        await page
+          .locator('[data-umami-event="checkout-receipt-view-order"]')
+          .getAttribute('href')
+      )?.slice(checkoutResultPath('').length),
+    );
+  placedOrder = orderId;
   await page.unroute(receiptUpload);
 
-  await page.goto(accountOrderPath(placedOrder));
-  await page.locator('[data-umami-event="account-order-cancel"]').click();
-  await page
+  // Cancelled from the account in another tab, the retry still open here.
+  const account = await page.context().newPage();
+  await account.goto(accountOrderPath(orderId));
+  await account.locator('[data-umami-event="account-order-cancel"]').click();
+  await account
     .locator('[data-umami-event="account-order-cancel-confirm"]')
     .click();
 
-  await expect(page.getByText('این سفارش لغو شد.')).toBeVisible();
+  await expect(account.getByText('این سفارش لغو شد.')).toBeVisible();
   await expect(
-    page.getByText('دلیل: به درخواست خریدار لغو شد.', { exact: false }),
+    account.getByText('دلیل: به درخواست خریدار لغو شد.', { exact: false }),
   ).toBeVisible();
   // Cancelled is final: nothing left to cancel.
   await expect(
-    page.locator('[data-umami-event="account-order-cancel"]'),
+    account.locator('[data-umami-event="account-order-cancel"]'),
   ).toHaveCount(0);
+  await account.close();
+
+  // The retry can only be refused now: it leaves for the order's page, which
+  // says why.
+  expectFailedRequest(
+    page,
+    new RegExp(`^409 .*${apiOrderReceiptsPath(orderId)}$`),
+  );
+  await attachReceipt(page);
+  await page.locator('[data-umami-event="checkout-submit-order"]').click();
+  await page.waitForURL((url) => url.pathname === checkoutResultPath(orderId));
+  await expect(
+    page.getByRole('heading', { name: 'سفارش لغو شد' }),
+  ).toBeVisible();
 
   await page.goto(path);
   await expect(stockLeft(stock)).toBeVisible();

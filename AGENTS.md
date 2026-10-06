@@ -117,12 +117,19 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   checkout, whose button becomes «ارسال دوباره رسید» for that same order —
   once the create has answered 2xx nothing sends a second create or mints
   another Idempotency-Key
-  (`src/features/checkout/checkout-form.receipt.test.tsx`). The order pages
-  show the receipt and never take an upload; an order whose screenshot never
-  arrived says it is not accepted yet and points to support, and is cancelled
-  30 minutes after its create by the order sweeps the server runs every five
-  minutes (`src/logic/orders/order-sweeps.ts`, started in
-  `src/instrumentation.ts`; nothing to configure). The admin checks
+  (`src/features/checkout/checkout-form.receipt.test.tsx`). That retry lives
+  in the page, so `/checkout` resumes it from the server after a reload: the
+  shopper's latest order still waiting, or the one `?resume=<id>` names,
+  owner-checked (`findResumableReceiptOrder`) — past the wait too, until the
+  sweep cancels it, as the receipt route takes its screenshot until then. A
+  resend the server refuses with 409 (the order cancelled meanwhile) leaves
+  for the order's page, which says why. The order
+  pages show the receipt and never take an upload; an order whose screenshot
+  never arrived states the 30-minute wait, links back to that retry with
+  «ارسال رسید», and is cancelled when the wait runs out by the order sweeps
+  the server runs every five minutes (`src/logic/orders/order-sweeps.ts`,
+  started in `src/instrumentation.ts`; nothing to configure; the wait is
+  `RECEIPT_WAIT_MS` in `src/lib/orders/receipt.ts`). The admin checks
   the receipt and ships, or cancels — every admin cancel carries a reason the
   shopper reads. The payment row still flips to `paid` only at delivery.
 - **A receipt is unlisted, not private.** Receipts live under `receipts/` in

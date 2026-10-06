@@ -36,8 +36,9 @@ the order in `/account` reading «در حال پردازش», both order pages s
 only the receipt — no upload box, no card numbers — and the line's product
 photo; a screenshot whose upload is cut keeping the shopper on the checkout,
 where «ارسال دوباره رسید» resends it to the same order, then accepted; a
-waiting order the shopper cancels from their account, its stock coming
-back — and through the mock Zarinpal gateway (paid, and failed → retry →
+reload of that retry landing on `/checkout?resume=` for the same order,
+whose screenshot then accepts it; a waiting order the shopper cancels from
+their account, its stock coming back — and through the mock Zarinpal gateway (paid, and failed → retry →
 paid). Admin: anonymous visitors and
 customers turned away; the dashboard figures; an order whose receipt the admin
 sees before shipping it; one whose screenshot upload the spec cuts with
@@ -124,7 +125,7 @@ drives the browser only for a story's new behaviour.
   already running" — stop that server, or run the suite from a worktree.
 - **Checkout is rate-capped per account** (`MAX_ORDERS_PER_WINDOW` in
   `src/logic/checkout/create-order.ts`, 30 orders an hour, any status). One
-  run's throwaway customer places 23 across both viewports (`checkout` 10,
+  run's throwaway customer places 25 across both viewports (`checkout` 12,
   `admin` 8, `admin-users` 2, `admin-settings` 2, `admin-catalog` 1 at 1280px
   only), so a spec that adds checkouts eats into that headroom — raise the
   constant before the suite trips it with a 422 mid-run.
@@ -147,14 +148,14 @@ drives the browser only for a story's new behaviour.
   for the whole machine, so a run started within a minute of the last one
   waits about a minute.
 - **What a run leaves in the dev database:** two throwaway `0999…` accounts,
-  the 23 orders counted under «Checkout is rate-capped per account» (none left
+  the 25 orders counted under «Checkout is rate-capped per account» (none left
   open: the admin spec's waiting one is cancelled by the admin, the checkout
   spec's cut one by the shopper, and the users spec's, the pager's, the
   discount's and the saved card's — accepted at checkout — by `closeOrder`),
-  15 receipt files a run under `uploads/receipts/`, one per card-to-card
-  checkout whose screenshot stored (seven per width — `checkout` 2: the
-  accepted one and the retried one, `admin` 3: the shipped, the turned-down
-  and the pager's, the cut ones storing nothing, `admin-users` 1,
+  17 receipt files a run under `uploads/receipts/`, one per card-to-card
+  checkout whose screenshot stored (eight per width — `checkout` 3: the
+  accepted one, the retried one and the resumed one, `admin` 3: the shipped,
+  the turned-down and the pager's, the cut ones storing nothing, `admin-users` 1,
   `admin-settings` 1 — and `admin-catalog`'s one at 1280px; receipts are
   append-only, so nothing deletes them), one inactive `e2e-…` product (it is given three photos and has two of
   them removed again, so one file stays under `uploads/`)

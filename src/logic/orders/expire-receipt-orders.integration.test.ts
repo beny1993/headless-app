@@ -13,11 +13,13 @@ import {
   PAYMENT_METHODS,
   type OrderStatus,
 } from '@/lib/orders/order-status';
+import { RECEIPT_WAIT_MS } from '@/lib/orders/receipt';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 
-const { expireReceiptOrders, RECEIPT_EXPIRED_REASON, RECEIPT_WAIT_MS } =
-  await importWithDb(() => import('@/logic/orders/expire-receipt-orders'));
+const { expireReceiptOrders, RECEIPT_EXPIRED_REASON } = await importWithDb(
+  () => import('@/logic/orders/expire-receipt-orders'),
+);
 const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
 

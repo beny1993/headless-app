@@ -49,6 +49,7 @@ import {
   PATHS,
   apiOrderReceiptsPath,
   checkoutResultPath,
+  checkoutResumePath,
 } from '@/lib/constant/paths';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
 import type {
@@ -71,7 +72,8 @@ import { cn } from '@/lib/utils';
  * idle → submitting → (uploading, card to card) → redirecting. The button
  * disables off `idle`, and only a refused create ever returns to it. A
  * screenshot that fails to store parks the form at `receipt-failed`, from
- * where the button only resends it to the order already created.
+ * where the button only resends it to the order already created — and a
+ * resumed order (`?resume=`) starts there.
  */
 type Status =
   'idle' | 'submitting' | 'uploading' | 'receipt-failed' | 'redirecting';
@@ -107,6 +109,20 @@ const STEP_OF_FIELD: Record<string, number> = {
 const stepOfField = (path: string) => STEP_OF_FIELD[path] ?? 3;
 
 /**
+ * A card-to-card order of the shopper's still waiting for its receipt, as the
+ * checkout resumes it (`findResumableReceiptOrder`, read by the page): its own
+ * lines and server totals, for the summary.
+ */
+export type ResumableOrder = {
+  orderId: string;
+  lines: SummaryLine[];
+  subtotal: number;
+  discount: number;
+  shippingFee: number;
+  total: number;
+};
+
+/**
  * The ported checkout wizard: customer info → delivery address (province drives
  * the fee estimate) → payment method → submit.
  *
@@ -136,6 +152,14 @@ const stepOfField = (path: string) => STEP_OF_FIELD[path] ?? 3;
  * `zarinpalEnabled` (`APP_CONFIG_ZARINPAL_ENABLED`, read by the page) is the
  * online-payment switch: off, the Zarinpal option renders disabled and card to
  * card is preselected — a display gate only; the API still accepts both methods.
+ *
+ * `resume` is the shopper's card-to-card order still waiting for its receipt,
+ * if any. The retry a failed upload leaves lives in this page, gone after a
+ * reload; so with `resumed` (the page's `?resume=` named that order) the form
+ * opens on the same retry, built from the order — from its first render, as
+ * initial state, which the page keys the form by. Without it, an empty cart is
+ * sent to that order's retry rather than the shop, and a filled cart keeps its
+ * own checkout with a note leading there.
  */
 export function CheckoutForm({
   rates,
@@ -144,6 +168,8 @@ export function CheckoutForm({
   savedAddresses = [],
   payment,
   zarinpalEnabled = true,
+  resume = null,
+  resumed = false,
 }: {
   rates: ShippingRateResponse[];
   defaultName: string;
@@ -151,9 +177,13 @@ export function CheckoutForm({
   savedAddresses?: AddressResponse[];
   payment: CardToCardContent;
   zarinpalEnabled?: boolean;
+  resume?: ResumableOrder | null;
+  resumed?: boolean;
 }) {
   const router = useRouter();
   const fieldId = useId();
+  // The order this form opens on the retry of, read once for initial state.
+  const resumedOrder = resumed ? resume : null;
 
   // The cart is read through the store's hydration-safe snapshots — empty on the
   // server and the hydrating render, the real cart immediately after. `hydrated`
@@ -167,7 +197,7 @@ export function CheckoutForm({
     () => false,
   );
 
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(resumedOrder ? 3 : 1);
   // '' is «آدرس جدید»; otherwise the index into `savedAddresses` of the picked
   // one. Only the pick is remembered — the fields it filled are the state the
   // order is built from, and stay editable on the address step.
@@ -179,7 +209,9 @@ export function CheckoutForm({
   const [postalCode, setPostalCode] = useState('');
   const [addressLine, setAddressLine] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
-    zarinpalEnabled ? PAYMENT_METHODS.ZARINPAL : PAYMENT_METHODS.COD,
+    resumedOrder || !zarinpalEnabled
+      ? PAYMENT_METHODS.COD
+      : PAYMENT_METHODS.ZARINPAL,
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [topError, setTopError] = useState<string | undefined>();
@@ -188,7 +220,9 @@ export function CheckoutForm({
   const [orderMayExist, setOrderMayExist] = useState(false);
   // Counts refused creates, so each one moves focus (the effect below).
   const [refusals, setRefusals] = useState(0);
-  const [status, setStatus] = useState<Status>('idle');
+  const [status, setStatus] = useState<Status>(
+    resumedOrder ? 'receipt-failed' : 'idle',
+  );
   // "Save this address" — a best-effort write after the order is created; a
   // failure never blocks the redirect (see `submit`).
   const [saveAddress, setSaveAddress] = useState(false);
@@ -209,18 +243,19 @@ export function CheckoutForm({
   // or the refusal of the last one picked.
   const [receipt, setReceipt] = useState<File | null>(null);
   const [receiptError, setReceiptError] = useState<string | null>(null);
-  // A card-to-card order this form created whose screenshot did not store:
-  // the form stays to resend it to this order — never to create another —
-  // and the summary shows the order, the cart being already cleared.
+  // A card-to-card order this form created whose screenshot did not store, or
+  // the resumed one: the form stays to resend it to this order — never to
+  // create another — and the summary shows the order, not the cart. A resumed
+  // order has no `address`: its «save this address» went with the old page.
   const [placed, setPlaced] = useState<{
     orderId: string;
-    address: CheckoutInput['address'];
+    address?: CheckoutInput['address'];
     lines: SummaryLine[];
     subtotal: number;
     discount: number;
     shippingFee: number;
     total: number;
-  } | null>(null);
+  } | null>(resumedOrder);
   // The resend's own double-click guard; `inFlight` stays set once an order
   // exists, so the create can never run again.
   const resending = useRef(false);
@@ -229,7 +264,8 @@ export function CheckoutForm({
   // in the same tick returns before `postData` runs — the disabled button is
   // defense-in-depth, not the guarantee. Never sending a second create is the
   // point; the server-side `Idempotency-Key` is the last line if one slips out.
-  const inFlight = useRef(false);
+  // Set from the start for a resumed order, which exists already.
+  const inFlight = useRef(resumedOrder !== null);
   const topAlert = useRef<HTMLParagraphElement>(null);
   const submitButton = useRef<HTMLButtonElement>(null);
   const page = useRef<HTMLElement>(null);
@@ -301,9 +337,9 @@ export function CheckoutForm({
   // shop instead of the result page.
   useEffect(() => {
     if (hydrated && status === 'idle' && lines.length === 0) {
-      router.replace(PATHS.SHOP);
+      router.replace(resume ? checkoutResumePath(resume.orderId) : PATHS.SHOP);
     }
-  }, [hydrated, status, lines.length, router]);
+  }, [hydrated, status, lines.length, router, resume]);
 
   // After a refused create, focus what it says: its alert, which tops the
   // form far above the button that sent it — or, when the refusal shows only
@@ -445,6 +481,14 @@ export function CheckoutForm({
       await postForm(apiOrderReceiptsPath(orderId), form, receiptSchema);
       return true;
     } catch (error) {
+      // 409: the order takes no receipt any more — cancelled while the retry
+      // waited, or its receipts are full. A resend could only be refused
+      // again; the order's page says where it stands, and why.
+      if (error instanceof ApiRequestError && error.status === 409) {
+        setStatus('redirecting');
+        router.replace(checkoutResultPath(orderId));
+        return false;
+      }
       setReceiptError(receiptRefusal(error));
       setStatus('receipt-failed');
       return false;
@@ -454,8 +498,8 @@ export function CheckoutForm({
   // Best-effort "save this address": the order already snapshotted the
   // address, so this only adds it to the address book. Swallowed on failure
   // (e.g. the per-user cap) — it must never block or fail the redirect after.
-  const saveToAddressBook = async (address: CheckoutInput['address']) => {
-    if (!saveAddress) return;
+  const saveToAddressBook = async (address?: CheckoutInput['address']) => {
+    if (!saveAddress || !address) return;
     try {
       await postData<AddressResponse>(API_PATHS.ME_ADDRESSES, address);
     } catch {
@@ -472,7 +516,9 @@ export function CheckoutForm({
     if (!stored) return;
     setStatus('redirecting');
     await saveToAddressBook(placed.address);
-    router.push(checkoutResultPath(placed.orderId));
+    // Replaces the retry in history: Back never returns to it for an order
+    // its screenshot has now accepted.
+    router.replace(checkoutResultPath(placed.orderId));
   };
 
   const submit = async () => {
@@ -677,6 +723,34 @@ export function CheckoutForm({
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
           <div className="border-border bg-card rounded-2xl border p-6 lg:col-span-3">
+            {/* Said first: a resumed retry opens here, on the payment step,
+                with no other word of the order it sends to. */}
+            {placed ? (
+              <p className="bg-warning-soft border-warning/30 mb-5 rounded-xl border p-3 text-sm leading-relaxed">
+                سفارش ثبت شده و منتظر رسید است.{' '}
+                <a
+                  href={checkoutResultPath(placed.orderId)}
+                  className="font-medium whitespace-nowrap underline"
+                  data-umami-event="checkout-receipt-view-order"
+                >
+                  مشاهده سفارش
+                </a>
+              </p>
+            ) : (
+              resume && (
+                <p className="bg-warning-soft border-warning/30 mb-5 rounded-xl border p-3 text-sm leading-relaxed">
+                  یک سفارش کارت به کارت ثبت‌شده هنوز منتظر رسید است.{' '}
+                  <a
+                    href={checkoutResumePath(resume.orderId)}
+                    className="font-medium whitespace-nowrap underline"
+                    data-umami-event="checkout-resume-open"
+                  >
+                    ارسال رسید
+                  </a>
+                </p>
+              )
+            )}
+
             {(topError || orderMayExist) && (
               <p
                 id={errorId}
@@ -900,10 +974,16 @@ export function CheckoutForm({
                       htmlFor={`${fieldId}-pay-${option.id}`}
                       className={cn(
                         'flex items-center gap-3 rounded-xl border-2 p-4 transition-colors',
-                        option.disabled
+                        // Once the order exists, the method it was created
+                        // with stays marked and the others read as locked.
+                        option.disabled ||
+                          (placed !== null && paymentMethod !== option.id)
                           ? 'border-border cursor-not-allowed opacity-60'
                           : paymentMethod === option.id
-                            ? 'border-accent-strong bg-accent/5 cursor-pointer'
+                            ? cn(
+                                'border-accent-strong bg-accent/5',
+                                placed === null && 'cursor-pointer',
+                              )
                             : 'border-border hover:border-accent/50 cursor-pointer',
                       )}
                     >
@@ -1006,18 +1086,6 @@ export function CheckoutForm({
                           ? 'پرداخت و ثبت سفارش'
                           : 'ثبت سفارش'}
               </button>
-            )}
-            {placed && (
-              <p className="text-muted-foreground mt-3 text-center text-sm">
-                سفارش ثبت شده و منتظر رسید است.{' '}
-                <a
-                  href={checkoutResultPath(placed.orderId)}
-                  className="text-foreground font-medium underline"
-                  data-umami-event="checkout-receipt-view-order"
-                >
-                  مشاهده سفارش
-                </a>
-              </p>
             )}
             {step > 1 && (
               <button

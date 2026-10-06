@@ -10,6 +10,9 @@
 //     the refusal under the picker, the button turned into «ارسال دوباره رسید»
 //     for that same order, a link to the order, the payment method locked and
 //     the order's own lines and totals in the summary;
+//   · a resend the server refuses with 409 — the order cancelled meanwhile —
+//     leaves for the order's page instead of a retry that can only fail, and
+//     a stored one replaces the retry in history;
 //   · a refused card-to-card checkout says how to get a transfer back;
 //   · the address book is written after the screenshot, and its failure still
 //     navigates.
@@ -312,13 +315,14 @@ describe('the card-to-card checkout and its screenshot', () => {
   });
 
   const NOT_ACCEPTING = 'این سفارش رسید نمی‌پذیرد.';
+  const TOO_LARGE = 'حجم تصویر بیش از حد مجاز است.';
 
   it.each([
     // A refusal the server explained: its own sentence.
     [
       'the server refuses it',
-      () => new ApiRequestError(409, NOT_ACCEPTING),
-      NOT_ACCEPTING,
+      () => new ApiRequestError(413, TOO_LARGE),
+      TOO_LARGE,
     ],
     // A 5xx's message is a developer's, never a shopper's.
     [
@@ -375,10 +379,11 @@ describe('the card-to-card checkout and its screenshot', () => {
       expect(postForm).toHaveBeenCalledTimes(2);
       expect(postForm.mock.calls[1][0]).toBe(apiOrderReceiptsPath('order-123'));
       expect(push).not.toHaveBeenCalled();
+      expect(replace).not.toHaveBeenCalled();
     },
   );
 
-  it('opens the order once a retried screenshot is stored', async () => {
+  it('opens the order once a retried screenshot is stored, in place of the retry', async () => {
     postData.mockResolvedValue(CREATED);
     postForm
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
@@ -391,7 +396,30 @@ describe('the card-to-card checkout and its screenshot', () => {
     await click();
 
     expect(creates()).toHaveLength(1);
-    expect(push).toHaveBeenCalledWith(RESULT_PAGE);
+    // Replaced, not pushed: Back never returns to a retry for an order its
+    // screenshot has accepted.
+    expect(replace).toHaveBeenCalledWith(RESULT_PAGE);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('leaves for the order’s page when the resend is refused with 409 — no retry left to fail again', async () => {
+    // Cancelled while the retry waited (its wait ran out, or the shopper
+    // cancelled it in another tab): its page says so, and why.
+    postData.mockResolvedValue(CREATED);
+    postForm
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new ApiRequestError(409, NOT_ACCEPTING));
+    advanceToPayment();
+    chooseCardToCard();
+    await attach(screenshot());
+    await click();
+
+    await click();
+
+    expect(replace).toHaveBeenCalledWith(RESULT_PAGE);
+    expect(push).not.toHaveBeenCalled();
+    expect(creates()).toHaveLength(1);
+    expect(submitButton().disabled).toBe(true);
   });
 
   it('keeps the retry locked until a screenshot is attached again', async () => {

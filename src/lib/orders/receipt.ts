@@ -21,6 +21,16 @@ import {
   sniffImageType,
 } from '@/lib/storage/image-upload';
 
+/**
+ * How long a card-to-card order waits for its receipt before the sweep cancels
+ * it (`src/logic/orders/expire-receipt-orders.ts`) — the window `/checkout`
+ * resumes it in, and the deadline its waiting page states. Benyamin's call
+ * (2026-10-06): half an hour, so a last unit an abandoned order holds is
+ * buyable again soon.
+ */
+export const RECEIPT_WAIT_MINUTES = 30;
+export const RECEIPT_WAIT_MS = RECEIPT_WAIT_MINUTES * 60 * 1000;
+
 /** Receipts per order, append-only (a large order split over two transfers). */
 export const MAX_RECEIPTS_PER_ORDER = 5;
 

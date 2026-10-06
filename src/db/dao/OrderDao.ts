@@ -325,6 +325,25 @@ export class OrderDao {
   }
 
   /**
+   * The id of `userId`'s latest order still waiting for its receipt — the one
+   * `/checkout` resumes after a reload. Owner-scoped by the session's user id.
+   */
+  static async latestAwaitingReceiptId(userId: string): Promise<string | null> {
+    const [row] = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.userId, userId),
+          eq(orders.status, ORDER_STATUSES.AWAITING_RECEIPT),
+        ),
+      )
+      .orderBy(desc(orders.createdAt))
+      .limit(1);
+    return row?.id ?? null;
+  }
+
+  /**
    * The ids of the card-to-card orders created before `cutoff` still waiting
    * for their receipt — the receipt-expiry sweep's worklist. The sweep's CAS
    * re-checks each one, so a receipt that lands in between wins.
