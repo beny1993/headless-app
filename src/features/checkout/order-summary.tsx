@@ -7,9 +7,9 @@ import { imageSrc } from '@/lib/storage/image-url';
  * One line in the summary. `lineTotal` is integer Toman (qty × unit price) —
  * `bigint` from the client cart, `number` from a server order; both format
  * exactly through `formatToman`. `imageKey` is a storage key
- * (`products/cat-toy.jpg` → `/products/cat-toy.jpg`), present on the client cart
- * and absent on a server order (order items snapshot no image — no join back to
- * `products`), so it degrades to a placeholder.
+ * (`products/cat-toy.jpg` → `/products/cat-toy.jpg`): the cart's own, or on a
+ * server order its product's current first photo (`getOwnedOrder`); a line
+ * without one degrades to a placeholder.
  */
 export type SummaryLine = {
   id: string;
@@ -26,6 +26,7 @@ export const toSummaryLines = (
     title: string;
     qty: number;
     unitPrice: number;
+    imageKey?: string;
   }[],
 ): SummaryLine[] =>
   items.map((item) => ({
@@ -33,6 +34,7 @@ export const toSummaryLines = (
     title: item.title,
     qty: item.qty,
     lineTotal: item.unitPrice * item.qty,
+    ...(item.imageKey ? { imageKey: item.imageKey } : {}),
   }));
 
 /**

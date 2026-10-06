@@ -46,6 +46,17 @@ const gatewayButton = (action: 'pay' | 'fail') =>
   `button[name="action"][value="${action}"]`;
 
 /**
+ * The order summary's one line shows its product's photo: an `alt=""` image
+ * (the title follows it), which the receipt's numbered thumbnail is not.
+ */
+async function expectLinePhoto(page: Page) {
+  const photo = page.locator('main li img[alt=""]');
+  await expect(photo).toHaveCount(1);
+  await photo.scrollIntoViewIfNeeded();
+  await expectRendered(photo);
+}
+
+/**
  * An order whose receipt is in shows just that receipt: no second upload box,
  * and no card numbers left to pay to. The panel is found by its fixed contact
  * sentence, never by its note, which the admin writes.
@@ -133,6 +144,8 @@ test('card to card: the screenshot attached at checkout accepts the order, and o
   );
   await expect(receipt).toHaveCount(1);
   await expectOnlyTheReceipt(page, 'checkout-result');
+  // The ordered line shows its product's photo, not the placeholder.
+  await expectLinePhoto(page);
   // Lazy-loaded, and below the fold on a phone: it loads once it is in view.
   await receipt.scrollIntoViewIfNeeded();
   await expectRendered(receipt.locator('img'));
@@ -180,6 +193,7 @@ test('card to card: the screenshot attached at checkout accepts the order, and o
     page.locator('[data-umami-event="account-order-receipt-open"]'),
   ).toHaveCount(1);
   await expectOnlyTheReceipt(page, 'account-order');
+  await expectLinePhoto(page);
 });
 
 test('card to card: a screenshot that fails to store is sent again from the checkout, to the same order', async ({
