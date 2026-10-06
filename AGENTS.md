@@ -119,7 +119,10 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   another Idempotency-Key
   (`src/features/checkout/checkout-form.receipt.test.tsx`). The order pages
   show the receipt and never take an upload; an order whose screenshot never
-  arrived says it is not accepted yet and points to support. The admin checks
+  arrived says it is not accepted yet and points to support, and is cancelled
+  two hours after its create by the order sweeps the server runs every 15
+  minutes (`src/logic/orders/order-sweeps.ts`, started in
+  `src/instrumentation.ts`; nothing to configure). The admin checks
   the receipt and ships, or cancels — every admin cancel carries a reason the
   shopper reads. The payment row still flips to `paid` only at delivery.
 - **A receipt is unlisted, not private.** Receipts live under `receipts/` in

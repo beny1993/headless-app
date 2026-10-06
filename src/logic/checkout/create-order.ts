@@ -54,13 +54,16 @@ const insufficientStock = (title: string) =>
  * Per-user cap on concurrent open orders (2026-09-02; card-to-card joined it
  * 2026-09-30).
  *
- * Both birth states reserve stock with nothing on a clock to release it: a
- * Zarinpal checkout's `pending_payment` waits on the admin-triggered reconcile
- * sweep (`src/logic/payments/reconcile.ts`), and a card-to-card checkout's
- * `awaiting_receipt` waits on the shopper's receipt or an admin. So one
- * phone-verified account looping `POST /api/checkout` could otherwise zero the
- * catalog (denial of inventory); this cap bounds that, for both methods
- * (`OPEN_ORDER_STATUSES`). Raising or dropping it is Benyamin's call.
+ * Both birth states reserve stock until a sweep releases it: a Zarinpal
+ * checkout's `pending_payment` after an hour (`src/logic/payments/reconcile.ts`)
+ * and a card-to-card checkout's `awaiting_receipt` after two
+ * (`src/logic/orders/expire-receipt-orders.ts`), both on the 15-minute schedule
+ * the server runs (`src/logic/orders/order-sweeps.ts`). Within that window one
+ * phone-verified account
+ * looping `POST /api/checkout` could still zero the catalog (denial of
+ * inventory); this cap bounds that, for both methods (`OPEN_ORDER_STATUSES`) —
+ * and they are exactly the orders a shopper may cancel themselves. Raising or
+ * dropping it is Benyamin's call.
  *
  * N is generous (a real shopper rarely has more than one unfinished order at
  * once) yet caps abuse; tune it here.
