@@ -2,8 +2,8 @@
 // The in-server schedule for the order sweeps (started from `register()` in
 // src/instrumentation.ts): the card-to-card receipt expiry every run, the
 // Zarinpal reconcile only while online payment is on, a failing sweep reported
-// and survived, and one schedule per process whose first run comes one
-// interval after start — never at boot.
+// and survived, and one schedule per process whose first run comes
+// FIRST_SWEEP_DELAY_MS after start — never at boot — then every interval.
 //
 // The sweeps themselves are mocked at the module edge; their own integration
 // tests prove what they do to orders.
@@ -24,8 +24,18 @@ vi.mock('@sentry/nextjs', () => ({
   captureException: mocks.captureException,
 }));
 
-const { runOrderSweeps, startOrderSweeps, SWEEP_INTERVAL_MS } =
-  await import('./order-sweeps');
+const {
+  FIRST_SWEEP_DELAY_MS,
+  runOrderSweeps,
+  startOrderSweeps,
+  SWEEP_INTERVAL_MS,
+} = await import('./order-sweeps');
+
+/** Only the timers the schedule uses: faking React's or the runner's is flaky. */
+const fakeScheduleTimers = () =>
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+  });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -82,25 +92,32 @@ describe('runOrderSweeps', () => {
 });
 
 describe('startOrderSweeps', () => {
-  it('first runs one interval after start, then every interval — never at boot', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  it('checks every five minutes, so a half-hour wait ends within 35 minutes', () => {
+    expect(SWEEP_INTERVAL_MS).toBe(5 * 60 * 1000);
+  });
+
+  it('first runs a quarter of an hour after start, then every interval — never at boot', async () => {
+    fakeScheduleTimers();
 
     startOrderSweeps();
+    await vi.advanceTimersByTimeAsync(FIRST_SWEEP_DELAY_MS - 1);
     expect(mocks.expireReceiptOrders).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(SWEEP_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(1);
     expect(mocks.expireReceiptOrders).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(SWEEP_INTERVAL_MS);
     expect(mocks.expireReceiptOrders).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(SWEEP_INTERVAL_MS);
+    expect(mocks.expireReceiptOrders).toHaveBeenCalledTimes(3);
   });
 
   it('keeps one schedule per process, however often it is started', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    fakeScheduleTimers();
 
     startOrderSweeps();
     startOrderSweeps();
-    await vi.advanceTimersByTimeAsync(SWEEP_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(FIRST_SWEEP_DELAY_MS);
 
     expect(mocks.expireReceiptOrders).toHaveBeenCalledTimes(1);
   });

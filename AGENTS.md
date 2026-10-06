@@ -120,7 +120,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   (`src/features/checkout/checkout-form.receipt.test.tsx`). The order pages
   show the receipt and never take an upload; an order whose screenshot never
   arrived says it is not accepted yet and points to support, and is cancelled
-  two hours after its create by the order sweeps the server runs every 15
+  30 minutes after its create by the order sweeps the server runs every five
   minutes (`src/logic/orders/order-sweeps.ts`, started in
   `src/instrumentation.ts`; nothing to configure). The admin checks
   the receipt and ships, or cancels — every admin cancel carries a reason the

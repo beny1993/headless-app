@@ -1,6 +1,6 @@
 // The receipt-expiry sweep: a card-to-card order whose receipt has not arrived
 // within RECEIPT_WAIT_MS is cancelled, which returns its reserved stock and
-// frees the shopper's open-order slot. Run every 15 minutes inside the server
+// frees the shopper's open-order slot. Run on the server's sweep schedule
 // (`src/logic/orders/order-sweeps.ts`); `now` is a parameter so the tests need
 // no clock.
 //
@@ -9,9 +9,10 @@
 // receipt that lands at the last moment and the sweep queue behind each other,
 // and whichever is second finds the order already moved and leaves it.
 //
-// Benyamin's call (2026-10-06): two hours, knowing that through the site an
-// order only waits when its screenshot failed to upload — so the shopper has
-// usually paid, and the cancelled page sends them to support for the refund.
+// Benyamin's call (2026-10-06): half an hour, so a last unit an abandoned order
+// holds is buyable again soon — knowing that through the site an order only
+// waits when its screenshot failed to upload, so the shopper has usually paid,
+// and the cancelled page sends them to support for the refund.
 import { db } from '@/db';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { formatNumber } from '@/lib/format';
@@ -21,13 +22,13 @@ import {
   transitionOrder,
 } from '@/logic/orders/state-machine';
 
-const HOUR_MS = 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
 
 /** How long a card-to-card order waits for its receipt before it is cancelled. */
-export const RECEIPT_WAIT_MS = 2 * HOUR_MS;
+export const RECEIPT_WAIT_MS = 30 * MINUTE_MS;
 
 /** Stored as the cancel's reason — the shopper reads it after «دلیل:». */
-export const RECEIPT_EXPIRED_REASON = `رسید پرداخت در مهلت ${formatNumber(RECEIPT_WAIT_MS / HOUR_MS)} ساعت نرسید`;
+export const RECEIPT_EXPIRED_REASON = `رسید پرداخت در مهلت ${formatNumber(RECEIPT_WAIT_MS / MINUTE_MS)} دقیقه نرسید`;
 
 /** Cancels every card-to-card order still waiting past the wait; returns how many. */
 export async function expireReceiptOrders(now = Date.now()): Promise<number> {

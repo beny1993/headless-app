@@ -12,7 +12,7 @@
 //   Pass 2 — every `pending_payment` order older than 1 h with no live
 //     (pending/paid) attempt is transitioned to `failed`, which restocks.
 //
-// Run every 15 minutes inside the server while online payment is on
+// Run every five minutes inside the server while online payment is on
 // (`src/logic/orders/order-sweeps.ts`), and by an admin through
 // `POST /payments/zarinpal/reconcile`.
 import * as Sentry from '@sentry/nextjs';

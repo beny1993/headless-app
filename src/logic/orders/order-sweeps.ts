@@ -18,7 +18,17 @@ import { getEnvFlag, VARS } from '@/lib/utils/env';
 import { expireReceiptOrders } from '@/logic/orders/expire-receipt-orders';
 import { reconcilePayments } from '@/logic/payments/reconcile';
 
-export const SWEEP_INTERVAL_MS = 15 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+
+/** Every five minutes: a card-to-card order's half-hour wait ends within 35. */
+export const SWEEP_INTERVAL_MS = 5 * MINUTE_MS;
+
+/**
+ * The first run's wait after start, longer than the interval: a sweep racing
+ * the E2E suite's seed (which resets the catalog's stock as the server starts)
+ * would restock a killed run's leftover orders behind it.
+ */
+export const FIRST_SWEEP_DELAY_MS = 15 * MINUTE_MS;
 
 const sweep = async (name: string, run: () => Promise<unknown>) => {
   try {
@@ -54,15 +64,16 @@ export async function runOrderSweeps(): Promise<void> {
 const STARTED = Symbol.for('smokey-shop.order-sweeps');
 
 /**
- * Starts the schedule, once per process. The first run comes one interval after
- * start, never at boot: a sweep racing the E2E suite's seed (which resets the
- * catalog's stock as the server starts) would restock behind it, and nothing is
- * lost by waiting — an order needs hours to expire. `unref`, so the schedule
- * never keeps a process alive on its own.
+ * Starts the schedule, once per process: the first run FIRST_SWEEP_DELAY_MS
+ * after start, never at boot, then every SWEEP_INTERVAL_MS. `unref`, so the
+ * schedule never keeps a process alive on its own.
  */
 export function startOrderSweeps(): void {
   const scope = globalThis as typeof globalThis & { [STARTED]?: true };
   if (scope[STARTED]) return;
   scope[STARTED] = true;
-  setInterval(() => void runOrderSweeps(), SWEEP_INTERVAL_MS).unref?.();
+  setTimeout(() => {
+    void runOrderSweeps();
+    setInterval(() => void runOrderSweeps(), SWEEP_INTERVAL_MS).unref?.();
+  }, FIRST_SWEEP_DELAY_MS).unref?.();
 }

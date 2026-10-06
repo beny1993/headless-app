@@ -56,14 +56,13 @@ const insufficientStock = (title: string) =>
  *
  * Both birth states reserve stock until a sweep releases it: a Zarinpal
  * checkout's `pending_payment` after an hour (`src/logic/payments/reconcile.ts`)
- * and a card-to-card checkout's `awaiting_receipt` after two
- * (`src/logic/orders/expire-receipt-orders.ts`), both on the 15-minute schedule
- * the server runs (`src/logic/orders/order-sweeps.ts`). Within that window one
- * phone-verified account
- * looping `POST /api/checkout` could still zero the catalog (denial of
- * inventory); this cap bounds that, for both methods (`OPEN_ORDER_STATUSES`) —
- * and they are exactly the orders a shopper may cancel themselves. Raising or
- * dropping it is Benyamin's call.
+ * and a card-to-card checkout's `awaiting_receipt` after half an hour
+ * (`src/logic/orders/expire-receipt-orders.ts`), both on the five-minute
+ * schedule the server runs (`src/logic/orders/order-sweeps.ts`). Within that
+ * window one phone-verified account looping `POST /api/checkout` could still
+ * zero the catalog (denial of inventory); this cap bounds that, for both
+ * methods (`OPEN_ORDER_STATUSES`) — and they are exactly the orders a shopper
+ * may cancel themselves. Raising or dropping it is Benyamin's call.
  *
  * N is generous (a real shopper rarely has more than one unfinished order at
  * once) yet caps abuse; tune it here.

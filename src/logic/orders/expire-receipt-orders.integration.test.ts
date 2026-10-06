@@ -2,7 +2,7 @@
 // receipt has not arrived within RECEIPT_WAIT_MS is cancelled by the sweep,
 // its stock returned and the reason the shopper reads stored; a younger one,
 // or one its receipt already accepted, is left alone. `now` is passed in, so
-// "two hours later" needs no clock.
+// "half an hour later" needs no clock.
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   ORDER_STATUSES,
@@ -37,6 +37,12 @@ describe.skipIf(!databaseReachable)('expireReceiptOrders', () => {
     (await ProductDao.getByIds(testDb, [id]))[0].stock;
   /** The sweep's clock, just past the wait for an order created now. */
   const later = () => Date.now() + RECEIPT_WAIT_MS + 60_000;
+
+  it('waits half an hour, and says so in minutes', () => {
+    // Benyamin's call: a held last unit is free again within the half hour.
+    expect(RECEIPT_WAIT_MS).toBe(30 * 60 * 1000);
+    expect(RECEIPT_EXPIRED_REASON).toBe('رسید پرداخت در مهلت ۳۰ دقیقه نرسید');
+  });
 
   it('cancels an order whose receipt never came, returns its stock and says why', async () => {
     const { product, order } = await placed(ORDER_STATUSES.AWAITING_RECEIPT);
