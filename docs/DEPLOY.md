@@ -107,9 +107,10 @@ never exists in the app: no response carries a receipt's key (a fresh uuid),
 the app reads one only with its own key through the authenticated routes (the
 order's owner, or an admin), and **bucket listing must stay off** — with it on,
 anyone could list every receipt. `pnpm verify-s3` round-trips a receipt (put →
-key read → no URL → gone) alongside the photo check. `src/lib/sentry.ts` still
-redacts every `receipts/<key>` from breadcrumbs and event messages, so the error
-tracker never holds a receipt's link.
+key read → no URL → gone) alongside the photo check, and fails if the bucket
+answers an anonymous listing.
+`src/lib/sentry.ts` still redacts every `receipts/<key>` from breadcrumbs and
+event messages, so the error tracker never holds a receipt's link.
 
 On the `local` driver, receipts sit in a `receipts/` folder under
 `APP_CONFIG_STORAGE_LOCAL_ROOT`, which `/uploads/*` never serves.
@@ -382,7 +383,8 @@ and deliberately not baked into the image:
 ### Before deploying card-to-card receipts (once, on production)
 
 - [ ] **Bucket listing is off** (§3): receipts share the public bucket, and
-      only their unlisted keys keep them out of sight.
+      only their unlisted keys keep them out of sight. `pnpm verify-s3` fails
+      if an anonymous listing is answered.
 - [ ] **Edit the saved `checkout.payment` row once** in
       `/admin-panel/content/checkout`. A saved row never picks up a new
       default, so until it is edited the checkout note keeps telling shoppers

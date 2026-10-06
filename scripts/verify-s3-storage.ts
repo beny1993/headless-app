@@ -13,6 +13,8 @@
  *     with the app key → `url()` refuses to build a URL → delete → gone. The
  *     bucket's public read covers receipts (Benyamin's decision, 2026-10-06):
  *     the app keeps them out of sight by never building their URL.
+ *   · the bucket's listing: an anonymous list request is refused. With it on,
+ *     one request names every receipt, so this is what keeps them unlisted.
  *
  * NOT part of `pnpm test` — it needs real credentials and writes to the live
  * bucket (briefly). Staging and production share the bucket: run it where
@@ -23,6 +25,7 @@
  */
 import './load-env';
 import { s3Driver } from '@/lib/storage/s3-driver';
+import { getEnvVariable, VARS } from '@/lib/utils/env';
 
 // A 1x1 transparent PNG, so a real image byte stream round-trips.
 const PNG_1X1 = Buffer.from(
@@ -67,6 +70,31 @@ const checkPhotos = async () => {
   }
 };
 
+/**
+ * Receipts sit in the public bucket unlisted: an anonymous listing — of the
+ * receipts, or of the whole bucket — must be refused. Only the status prints;
+ * a listing that did answer would carry receipt keys.
+ */
+const checkListingRefused = async () => {
+  const base = getEnvVariable(VARS.NEXT_PUBLIC_STORAGE_BASE_URL, true)
+    .trim()
+    .replace(/\/+$/, '');
+  for (const [label, url] of [
+    ['receipts/', `${base}/?list-type=2&prefix=receipts/&max-keys=1`],
+    ['bucket', `${base}/`],
+  ]) {
+    const answer = await anonymousGet(url);
+    const listed =
+      answer.ok || (await answer.text()).includes('<ListBucketResult');
+    console.log(`→ LIST  ${answer.status} anonymous ${label} (expect refused)`);
+    if (listed) {
+      throw new Error(
+        `the bucket lists its ${label} to anyone (${answer.status}): receipts are no longer unlisted — turn bucket listing off`,
+      );
+    }
+  }
+};
+
 const checkReceipts = async () => {
   console.log(`→ put   ${receiptKey}`);
   await s3Driver.put(receiptKey, PNG_1X1, 'image/png');
@@ -97,6 +125,7 @@ const main = async () => {
   try {
     await checkPhotos();
     await checkReceipts();
+    await checkListingRefused();
   } finally {
     // Idempotent: a second delete of a gone key succeeds.
     await Promise.allSettled([
@@ -106,7 +135,7 @@ const main = async () => {
   }
   console.log(
     '\n✓ live check OK: photos public (put → GET 200 → delete → gone); ' +
-      'receipts (put → key read → no URL → gone)',
+      'receipts (put → key read → no URL → gone); listing refused',
   );
 };
 
