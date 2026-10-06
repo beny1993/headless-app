@@ -26,6 +26,10 @@ overrides:
   # libheif CVEs reachable through sharp <0.35.4. Arrives via
   # @sentry/nextjs -> @sentry/webpack-plugin, i.e. build-time only.
   'sharp@<0.35.4': ^0.35.4
+  # GHSA-68fv-2mgg-jv7q: source-map-js <1.2.2 event-loop DoS through indexed
+  # source-map section offsets. Nine paths, all via postcss (next, and
+  # @sentry/nextjs -> webpack's minimizer): build-time CSS processing.
+  'source-map-js@>=1.0.0 <1.2.2': ^1.2.2
 
 # pnpm 11 blocks dependency build scripts by default. Without these allows,
 # install looks green but native binaries never compile.
