@@ -6,6 +6,8 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
+import { SUPPORT_PHONE } from '@/lib/constant/support';
+import { toPersianDigits } from '@/lib/format';
 import type { OwnedOrder } from '@/logic/checkout/get-order';
 import {
   acceptedCardToCardOrder,
@@ -66,5 +68,11 @@ describe('the account page of a card-to-card order', () => {
     expect(precedes(details(), box())).toBe(false);
     expect(box()?.querySelectorAll('img')).toHaveLength(1);
     expectNothingToUpload();
+  });
+
+  it('gives the support number with the banner that sends a waiting shopper to support', async () => {
+    render(await page(waitingCardToCardOrder));
+
+    expect(document.body.textContent).toContain(toPersianDigits(SUPPORT_PHONE));
   });
 });

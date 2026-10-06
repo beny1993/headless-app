@@ -9,6 +9,7 @@ import {
 import { ReceiptBox } from '@/features/checkout/receipt-box';
 import { CancelOrderButton } from '@/features/checkout/cancel-order-button';
 import { RetryPaymentButton } from '@/features/checkout/retry-payment-button';
+import { SupportLine } from '@/features/checkout/support-line';
 import {
   cancellationNote,
   resultCopy,
@@ -24,6 +25,7 @@ import {
   OPEN_ORDER_STATUSES,
   ORDER_STATUSES,
   PAYMENT_METHOD_LABELS,
+  PAYMENT_METHODS,
   PAYMENT_STATUSES,
 } from '@/lib/orders/order-status';
 import {
@@ -37,9 +39,9 @@ export const metadata: Metadata = { title: 'جزئیات سفارش' };
  * One of the customer's own orders, in full: snapshotted items and totals, the
  * delivery address, and the payment method/status — plus a "pay now" banner while
  * the order is still `pending_payment`, a «not accepted yet» banner while a
- * card-to-card order still waits for its receipt, the card-to-card details and
- * receipt box while it takes receipts, and the reason once an admin has
- * cancelled it.
+ * card-to-card order still waits for its receipt, «لغو سفارش» while the order
+ * is open, the receipt once it is in, and the reason once it is cancelled —
+ * with the support number wherever a banner sends the shopper to support.
  *
  * A server component, owner-scoped by the session id through `getOwnedOrder`: a
  * missing order and one that belongs to someone else are the same `notFound()`,
@@ -142,6 +144,7 @@ export default async function Page({
               <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
                 {waiting.sub}
               </p>
+              <SupportLine className="mt-1" />
             </div>
           </div>
         )}
@@ -165,6 +168,10 @@ export default async function Page({
                 <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed wrap-anywhere">
                   {cancellationNote(order)}
                 </p>
+              )}
+              {/* A card-to-card note sends a shopper who paid to support. */}
+              {order.paymentMethod === PAYMENT_METHODS.COD && (
+                <SupportLine className="mt-1" />
               )}
             </div>
           </div>

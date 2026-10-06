@@ -137,7 +137,7 @@ test('card to card: the screenshot attached at checkout accepts the order, and o
     page.getByText(
       'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.',
     ),
-  ).toHaveCount(2); // the sub-copy under the heading, and the box's own line
+  ).toHaveCount(1); // the sub-copy under the heading; the box does not repeat it
 
   // The screenshot is listed with when it came: a date and a Tehran time,
   // since one order can hold five receipts from the same day.

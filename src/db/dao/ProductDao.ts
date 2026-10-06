@@ -1303,7 +1303,6 @@ export class ProductDao {
     return rows.map((row) => row.categoryId);
   }
 
-  /** Two extra queries for the whole page of products, not two per product. */
   /**
    * Each product's first photo by `sortOrder` — an order's line photos. An
    * order outlives its product's listing, so a soft-deleted product counts; a
@@ -1329,6 +1328,7 @@ export class ProductDao {
     return keys;
   }
 
+  /** Two extra queries for the whole page of products, not two per product. */
   private static async withRelations<T extends Product>(
     rows: T[],
   ): Promise<(T & { images: ProductImage[]; extraCategoryIds: string[] })[]> {

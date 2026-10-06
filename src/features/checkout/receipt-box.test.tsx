@@ -54,11 +54,13 @@ describe('ReceiptBox', () => {
     // Plain <img>, never next/image: the optimizer would cache and re-serve it.
     expect(links[0].querySelector('img')?.getAttribute('src')).toBe(url);
     expect(screen.getByText('دریافت شد؛ در حال بررسی')).toBeTruthy();
+    // The pill says where the receipt stands; the page's own copy says what
+    // happens next — the box does not repeat it.
     expect(
-      screen.getByText(
+      screen.queryByText(
         'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.',
       ),
-    ).toBeTruthy();
+    ).toBeNull();
   });
 
   it('numbers each receipt for a screen reader, and says its link opens a new tab', () => {

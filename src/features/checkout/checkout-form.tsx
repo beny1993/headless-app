@@ -77,13 +77,12 @@ type Status =
   'idle' | 'submitting' | 'uploading' | 'receipt-failed' | 'redirecting';
 
 /**
- * The server's own sentence for a refused receipt — a 4xx, or the 503 that
- * says storage cannot keep a receipt private right now — else a generic one.
- * A 5xx message outside that is a developer's, never a shopper's.
+ * The server's own sentence for a refused receipt — a 4xx: the order moved on,
+ * or the file was refused — else a generic one. A 5xx message is a
+ * developer's, never a shopper's.
  */
 const receiptRefusal = (error: unknown): string =>
-  error instanceof ApiRequestError &&
-  (error.status < 500 || error.status === 503)
+  error instanceof ApiRequestError && error.status < 500
     ? error.message
     : RECEIPT_UPLOAD_FAILED;
 
@@ -232,6 +231,7 @@ export function CheckoutForm({
   // point; the server-side `Idempotency-Key` is the last line if one slips out.
   const inFlight = useRef(false);
   const topAlert = useRef<HTMLParagraphElement>(null);
+  const submitButton = useRef<HTMLButtonElement>(null);
   const page = useRef<HTMLElement>(null);
   // The Idempotency-Keys, one per checkout body: a key is resent by every
   // retry of its body — after a reload too (`checkout-key.ts`) — and dropped
@@ -317,6 +317,13 @@ export function CheckoutForm({
     target?.focus();
     target?.scrollIntoView({ block: 'center' });
   }, [refusals]);
+
+  // A failed upload hands focus back to the button that resends it: it was
+  // disabled while the upload ran, which dropped focus to <body>. The
+  // picker's alert reads the refusal out on its own.
+  useEffect(() => {
+    if (status === 'receipt-failed') submitButton.current?.focus();
+  }, [status]);
 
   /**
    * Ask the server what the code takes off the current cart. Read-only — it never
@@ -972,6 +979,7 @@ export function CheckoutForm({
               </button>
             ) : (
               <button
+                ref={submitButton}
                 type="button"
                 onClick={placed ? resendReceipt : submit}
                 disabled={
@@ -1027,76 +1035,79 @@ export function CheckoutForm({
           <div className="bg-card border-border h-fit rounded-2xl border p-5 lg:col-span-2 lg:p-6">
             <h2 className="mb-4 font-bold">خلاصه سفارش</h2>
 
-            <div className="mb-4">
-              <label
-                htmlFor={`${fieldId}-discount`}
-                className="mb-1.5 block text-sm font-medium"
-              >
-                کد تخفیف
-              </label>
-              <div className="flex gap-2">
-                <input
-                  id={`${fieldId}-discount`}
-                  type="text"
-                  dir="ltr"
-                  value={discountCode}
-                  onChange={(event) => {
-                    setDiscountCode(event.target.value);
-                    // `activeDiscount` already stops matching once the text
-                    // differs from what was applied; just clear any stale error.
-                    setDiscountError(null);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      void applyCode();
+            {/* Not once the order exists: it was placed at its discount. */}
+            {!placed && (
+              <div className="mb-4">
+                <label
+                  htmlFor={`${fieldId}-discount`}
+                  className="mb-1.5 block text-sm font-medium"
+                >
+                  کد تخفیف
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id={`${fieldId}-discount`}
+                    type="text"
+                    dir="ltr"
+                    value={discountCode}
+                    onChange={(event) => {
+                      setDiscountCode(event.target.value);
+                      // `activeDiscount` already stops matching once the text
+                      // differs from what was applied; just clear any stale error.
+                      setDiscountError(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        void applyCode();
+                      }
+                    }}
+                    placeholder="کد را وارد کن"
+                    aria-invalid={Boolean(discountError)}
+                    aria-describedby={
+                      discountError ? `${fieldId}-discount-error` : undefined
                     }
-                  }}
-                  placeholder="کد را وارد کن"
-                  aria-invalid={Boolean(discountError)}
-                  aria-describedby={
-                    discountError ? `${fieldId}-discount-error` : undefined
-                  }
-                  className={cn(
-                    controlClass(Boolean(discountError)),
-                    'h-11 min-w-0 flex-1 px-3 py-0 text-end',
-                  )}
-                  data-umami-event="checkout-discount-code"
-                />
-                <button
-                  type="button"
-                  onClick={applyCode}
-                  disabled={applying || discountCode.trim() === ''}
-                  className="border-accent-strong text-accent-strong hover:bg-accent/5 shrink-0 rounded-xl border px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                  data-umami-event="checkout-discount-apply"
-                >
-                  {applying ? '...' : 'اعمال'}
-                </button>
+                    className={cn(
+                      controlClass(Boolean(discountError)),
+                      'h-11 min-w-0 flex-1 px-3 py-0 text-end',
+                    )}
+                    data-umami-event="checkout-discount-code"
+                  />
+                  <button
+                    type="button"
+                    onClick={applyCode}
+                    disabled={applying || discountCode.trim() === ''}
+                    className="border-accent-strong text-accent-strong hover:bg-accent/5 shrink-0 rounded-xl border px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    data-umami-event="checkout-discount-apply"
+                  >
+                    {applying ? '...' : 'اعمال'}
+                  </button>
+                </div>
+                {discountError ? (
+                  <p
+                    id={`${fieldId}-discount-error`}
+                    role="alert"
+                    className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
+                  >
+                    <AlertCircle
+                      size={12}
+                      className="shrink-0"
+                      aria-hidden="true"
+                    />{' '}
+                    {discountError}
+                  </p>
+                ) : activeDiscount && activeDiscount.discount > 0 ? (
+                  <p className="text-success-strong mt-1.5 flex items-center gap-1 text-xs">
+                    <Check size={12} className="shrink-0" aria-hidden="true" />{' '}
+                    کد تخفیف اعمال شد.
+                  </p>
+                ) : activeDiscount ? (
+                  <p className="text-muted-foreground mt-1.5 text-xs">
+                    این کد برای سبد فعلی تخفیفی ندارد.
+                  </p>
+                ) : null}
               </div>
-              {discountError ? (
-                <p
-                  id={`${fieldId}-discount-error`}
-                  role="alert"
-                  className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
-                >
-                  <AlertCircle
-                    size={12}
-                    className="shrink-0"
-                    aria-hidden="true"
-                  />{' '}
-                  {discountError}
-                </p>
-              ) : activeDiscount && activeDiscount.discount > 0 ? (
-                <p className="text-success-strong mt-1.5 flex items-center gap-1 text-xs">
-                  <Check size={12} className="shrink-0" aria-hidden="true" /> کد
-                  تخفیف اعمال شد.
-                </p>
-              ) : activeDiscount ? (
-                <p className="text-muted-foreground mt-1.5 text-xs">
-                  این کد برای سبد فعلی تخفیفی ندارد.
-                </p>
-              ) : null}
-            </div>
+            )}
 
             {placed ? (
               <OrderSummary

@@ -311,14 +311,20 @@ describe('the card-to-card checkout and its screenshot', () => {
     );
   });
 
-  const STORAGE_REFUSAL =
-    'بارگذاری رسید موقتاً ممکن نیست؛ رسید را از طریق اینستاگرام یا تلگرام بفرست.';
+  const NOT_ACCEPTING = 'این سفارش رسید نمی‌پذیرد.';
 
   it.each([
+    // A refusal the server explained: its own sentence.
     [
-      'the server refuses to store it',
-      () => new ApiRequestError(503, STORAGE_REFUSAL),
-      STORAGE_REFUSAL,
+      'the server refuses it',
+      () => new ApiRequestError(409, NOT_ACCEPTING),
+      NOT_ACCEPTING,
+    ],
+    // A 5xx's message is a developer's, never a shopper's.
+    [
+      'the server fails',
+      () => new ApiRequestError(503, 'Service Unavailable'),
+      RECEIPT_UPLOAD_FAILED,
     ],
     [
       'the connection drops',
@@ -339,6 +345,13 @@ describe('the card-to-card checkout and its screenshot', () => {
       expect(push).not.toHaveBeenCalled();
       expect(receiptAlert()?.textContent).toBe(said);
       expect(submitButton().textContent).toBe('ارسال دوباره رسید');
+      // Focus is back on the button that resends, not lost to <body> when it
+      // was disabled for the upload.
+      expect(document.activeElement).toBe(submitButton());
+      // The order is placed at its discount: no code to try against it now.
+      expect(
+        document.querySelector('[data-umami-event="checkout-discount-code"]'),
+      ).toBeNull();
       expect(
         screen.getByRole('link', { name: 'مشاهده سفارش' }).getAttribute('href'),
       ).toBe(RESULT_PAGE);
@@ -368,7 +381,7 @@ describe('the card-to-card checkout and its screenshot', () => {
   it('opens the order once a retried screenshot is stored', async () => {
     postData.mockResolvedValue(CREATED);
     postForm
-      .mockRejectedValueOnce(new ApiRequestError(503, STORAGE_REFUSAL))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockResolvedValueOnce(STORED);
     advanceToPayment();
     chooseCardToCard();
@@ -383,7 +396,7 @@ describe('the card-to-card checkout and its screenshot', () => {
 
   it('keeps the retry locked until a screenshot is attached again', async () => {
     postData.mockResolvedValue(CREATED);
-    postForm.mockRejectedValue(new ApiRequestError(503, STORAGE_REFUSAL));
+    postForm.mockRejectedValue(new TypeError('Failed to fetch'));
     advanceToPayment();
     chooseCardToCard();
     await attach(screenshot());

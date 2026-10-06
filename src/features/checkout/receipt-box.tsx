@@ -1,5 +1,5 @@
 import { apiOrderReceiptPath } from '@/lib/constant/paths';
-import { ORDER_STATUSES, type OrderStatus } from '@/lib/orders/order-status';
+import type { OrderStatus } from '@/lib/orders/order-status';
 import {
   OPENS_IN_NEW_TAB,
   receiptAlt,
@@ -12,7 +12,8 @@ import {
  * authenticated route — never a public URL and never `next/image`. Nothing to
  * upload: the checkout's screenshot is the one way a receipt arrives, and an
  * order whose screenshot never did is sorted out through support. The pages
- * render it only when there is a receipt to show.
+ * render it only when there is a receipt to show. The pill says where the
+ * receipt stands; what happens next is the page's own copy to say.
  */
 export function ReceiptBox({
   orderId,
@@ -34,12 +35,6 @@ export function ReceiptBox({
           {receiptsLabel(orderStatus)}
         </span>
       </div>
-
-      {orderStatus === ORDER_STATUSES.PROCESSING && (
-        <p className="text-muted-foreground mb-4 text-sm leading-relaxed">
-          رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.
-        </p>
-      )}
 
       <ul className="flex flex-wrap gap-3">
         {receipts.map((receipt, index) => {
