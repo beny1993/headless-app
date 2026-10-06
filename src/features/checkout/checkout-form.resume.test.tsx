@@ -108,6 +108,15 @@ describe('the checkout resuming a waiting card-to-card order', () => {
     form({ resume: WAITING, resumed: true });
 
     expect(replace).not.toHaveBeenCalled();
+    // Said before the payment step it opens on: the order is placed and
+    // waiting.
+    expect(
+      screen
+        .getByText(/سفارش ثبت شده و منتظر رسید است/)
+        .compareDocumentPosition(
+          screen.getByRole('heading', { name: 'روش پرداخت' }),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(submitButton().textContent).toBe('ارسال دوباره رسید');
     // Nothing to send until a screenshot is attached.
     expect(submitButton().disabled).toBe(true);
@@ -133,7 +142,7 @@ describe('the checkout resuming a waiting card-to-card order', () => {
       apiOrderReceiptsPath(WAITING.orderId),
     );
     expect(postData).not.toHaveBeenCalled();
-    expect(push).toHaveBeenCalledWith(checkoutResultPath(WAITING.orderId));
+    expect(replace).toHaveBeenCalledWith(checkoutResultPath(WAITING.orderId));
   });
 
   it('sends an empty cart with a waiting order to that order’s retry, not the shop', () => {

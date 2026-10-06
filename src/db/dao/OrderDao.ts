@@ -325,14 +325,10 @@ export class OrderDao {
   }
 
   /**
-   * The id of `userId`'s latest order created since `since` still waiting for
-   * its receipt — the one `/checkout` resumes after a reload. Owner-scoped by
-   * the session's user id.
+   * The id of `userId`'s latest order still waiting for its receipt — the one
+   * `/checkout` resumes after a reload. Owner-scoped by the session's user id.
    */
-  static async latestAwaitingReceiptId(
-    userId: string,
-    since: Date,
-  ): Promise<string | null> {
+  static async latestAwaitingReceiptId(userId: string): Promise<string | null> {
     const [row] = await db
       .select({ id: orders.id })
       .from(orders)
@@ -340,7 +336,6 @@ export class OrderDao {
         and(
           eq(orders.userId, userId),
           eq(orders.status, ORDER_STATUSES.AWAITING_RECEIPT),
-          gte(orders.createdAt, since),
         ),
       )
       .orderBy(desc(orders.createdAt))

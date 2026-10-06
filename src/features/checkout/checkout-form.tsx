@@ -481,6 +481,14 @@ export function CheckoutForm({
       await postForm(apiOrderReceiptsPath(orderId), form, receiptSchema);
       return true;
     } catch (error) {
+      // 409: the order takes no receipt any more — cancelled while the retry
+      // waited, or its receipts are full. A resend could only be refused
+      // again; the order's page says where it stands, and why.
+      if (error instanceof ApiRequestError && error.status === 409) {
+        setStatus('redirecting');
+        router.replace(checkoutResultPath(orderId));
+        return false;
+      }
       setReceiptError(receiptRefusal(error));
       setStatus('receipt-failed');
       return false;
@@ -508,7 +516,9 @@ export function CheckoutForm({
     if (!stored) return;
     setStatus('redirecting');
     await saveToAddressBook(placed.address);
-    router.push(checkoutResultPath(placed.orderId));
+    // Replaces the retry in history: Back never returns to it for an order
+    // its screenshot has now accepted.
+    router.replace(checkoutResultPath(placed.orderId));
   };
 
   const submit = async () => {
@@ -713,17 +723,32 @@ export function CheckoutForm({
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
           <div className="border-border bg-card rounded-2xl border p-6 lg:col-span-3">
-            {resume && !placed && (
+            {/* Said first: a resumed retry opens here, on the payment step,
+                with no other word of the order it sends to. */}
+            {placed ? (
               <p className="bg-warning-soft border-warning/30 mb-5 rounded-xl border p-3 text-sm leading-relaxed">
-                یک سفارش کارت به کارت ثبت‌شده هنوز منتظر رسید است.{' '}
+                سفارش ثبت شده و منتظر رسید است.{' '}
                 <a
-                  href={checkoutResumePath(resume.orderId)}
-                  className="font-medium underline"
-                  data-umami-event="checkout-resume-open"
+                  href={checkoutResultPath(placed.orderId)}
+                  className="font-medium whitespace-nowrap underline"
+                  data-umami-event="checkout-receipt-view-order"
                 >
-                  ارسال رسید
+                  مشاهده سفارش
                 </a>
               </p>
+            ) : (
+              resume && (
+                <p className="bg-warning-soft border-warning/30 mb-5 rounded-xl border p-3 text-sm leading-relaxed">
+                  یک سفارش کارت به کارت ثبت‌شده هنوز منتظر رسید است.{' '}
+                  <a
+                    href={checkoutResumePath(resume.orderId)}
+                    className="font-medium whitespace-nowrap underline"
+                    data-umami-event="checkout-resume-open"
+                  >
+                    ارسال رسید
+                  </a>
+                </p>
+              )
             )}
 
             {(topError || orderMayExist) && (
@@ -949,10 +974,16 @@ export function CheckoutForm({
                       htmlFor={`${fieldId}-pay-${option.id}`}
                       className={cn(
                         'flex items-center gap-3 rounded-xl border-2 p-4 transition-colors',
-                        option.disabled
+                        // Once the order exists, the method it was created
+                        // with stays marked and the others read as locked.
+                        option.disabled ||
+                          (placed !== null && paymentMethod !== option.id)
                           ? 'border-border cursor-not-allowed opacity-60'
                           : paymentMethod === option.id
-                            ? 'border-accent-strong bg-accent/5 cursor-pointer'
+                            ? cn(
+                                'border-accent-strong bg-accent/5',
+                                placed === null && 'cursor-pointer',
+                              )
                             : 'border-border hover:border-accent/50 cursor-pointer',
                       )}
                     >
@@ -1055,18 +1086,6 @@ export function CheckoutForm({
                           ? 'پرداخت و ثبت سفارش'
                           : 'ثبت سفارش'}
               </button>
-            )}
-            {placed && (
-              <p className="text-muted-foreground mt-3 text-center text-sm">
-                سفارش ثبت شده و منتظر رسید است.{' '}
-                <a
-                  href={checkoutResultPath(placed.orderId)}
-                  className="text-foreground font-medium underline"
-                  data-umami-event="checkout-receipt-view-order"
-                >
-                  مشاهده سفارش
-                </a>
-              </p>
             )}
             {step > 1 && (
               <button

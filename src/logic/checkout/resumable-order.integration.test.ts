@@ -1,8 +1,8 @@
 // Needs a live database — see src/db/test-db.ts. The order `/checkout` picks
 // back up after a reload: the shopper's own card-to-card order still waiting
-// for its receipt inside the wait — their latest, or the one the URL names.
-// Anything else (someone else's, accepted, cancelled, past the wait) is not
-// resumable, and the checkout behaves as if there were none.
+// for its receipt — their latest, or the one the URL names — past the wait
+// too, until the sweep cancels it. Anything else (someone else's, accepted,
+// cancelled) is not resumable, and the checkout behaves as if there were none.
 import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { orders } from '@/db/schema/orders';
@@ -81,12 +81,18 @@ describe.skipIf(!databaseReachable)('findResumableReceiptOrder', () => {
     expect(await findResumableReceiptOrder(stranger.id, order.id)).toBeNull();
   });
 
-  it('leaves an order past its wait — the sweep is cancelling it', async () => {
+  it('still resumes an order past its wait that the sweep has not cancelled yet', async () => {
+    // The receipt route takes its screenshot until the sweep runs, so the
+    // order pages' «ارسال رسید» must still lead somewhere.
     const user = await fx.user();
-    const order = await placed(user, { ageMs: RECEIPT_WAIT_MS + MINUTE_MS });
+    const order = await placed(user, {
+      ageMs: RECEIPT_WAIT_MS + 5 * MINUTE_MS,
+    });
 
-    expect(await findResumableReceiptOrder(user.id)).toBeNull();
-    expect(await findResumableReceiptOrder(user.id, order.id)).toBeNull();
+    expect((await findResumableReceiptOrder(user.id))?.id).toBe(order.id);
+    expect((await findResumableReceiptOrder(user.id, order.id))?.id).toBe(
+      order.id,
+    );
   });
 
   it.each([ORDER_STATUSES.PROCESSING, ORDER_STATUSES.CANCELLED])(

@@ -119,8 +119,11 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   another Idempotency-Key
   (`src/features/checkout/checkout-form.receipt.test.tsx`). That retry lives
   in the page, so `/checkout` resumes it from the server after a reload: the
-  shopper's latest order still waiting inside the wait, or the one
-  `?resume=<id>` names, owner-checked (`findResumableReceiptOrder`). The order
+  shopper's latest order still waiting, or the one `?resume=<id>` names,
+  owner-checked (`findResumableReceiptOrder`) — past the wait too, until the
+  sweep cancels it, as the receipt route takes its screenshot until then. A
+  resend the server refuses with 409 (the order cancelled meanwhile) leaves
+  for the order's page, which says why. The order
   pages show the receipt and never take an upload; an order whose screenshot
   never arrived states the 30-minute wait, links back to that retry with
   «ارسال رسید», and is cancelled when the wait runs out by the order sweeps
