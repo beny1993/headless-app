@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   expireReceiptOrders: vi.fn(),
   reconcilePayments: vi.fn(),
   captureException: vi.fn(),
+  captureMessage: vi.fn(),
 }));
 vi.mock('@/logic/orders/expire-receipt-orders', () => ({
   expireReceiptOrders: mocks.expireReceiptOrders,
@@ -22,6 +23,7 @@ vi.mock('@/logic/payments/reconcile', () => ({
 }));
 vi.mock('@sentry/nextjs', () => ({
   captureException: mocks.captureException,
+  captureMessage: mocks.captureMessage,
 }));
 
 const {
@@ -133,9 +135,15 @@ describe('startOrderSweeps', () => {
     await vi.advanceTimersByTimeAsync(FIRST_SWEEP_DELAY_MS);
     expect(mocks.expireReceiptOrders).toHaveBeenCalledTimes(1);
 
-    // A hung run: two ticks come and go without starting another.
+    // A hung run: two ticks come and go without starting another, and the
+    // hang is reported once — not once per skipped tick.
     await vi.advanceTimersByTimeAsync(2 * SWEEP_INTERVAL_MS);
     expect(mocks.expireReceiptOrders).toHaveBeenCalledTimes(1);
+    expect(mocks.captureMessage).toHaveBeenCalledTimes(1);
+    expect(mocks.captureMessage).toHaveBeenCalledWith(
+      '[sweep] the previous run is still going; skipping',
+      { level: 'warning' },
+    );
 
     finish();
     await vi.advanceTimersByTimeAsync(SWEEP_INTERVAL_MS);

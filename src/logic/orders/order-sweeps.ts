@@ -68,17 +68,30 @@ const STARTED = Symbol.for('smokey-shop.order-sweeps');
  * after start, never at boot, then every SWEEP_INTERVAL_MS. A tick that finds
  * the previous run still going is skipped: a run stuck on the database (a lock
  * never released) must not be joined by another every interval until they hold
- * the whole connection pool. `unref`, so the schedule never keeps a process
- * alive on its own.
+ * the whole connection pool. The hang is reported once, not once per tick, so
+ * a stalled sweep is never silent. `unref`, so the schedule never keeps a
+ * process alive on its own.
  */
 export function startOrderSweeps(): void {
   const scope = globalThis as typeof globalThis & { [STARTED]?: true };
   if (scope[STARTED]) return;
   scope[STARTED] = true;
   let running = false;
+  let hangReported = false;
   const tick = async () => {
-    if (running) return;
+    if (running) {
+      if (!hangReported) {
+        hangReported = true;
+        Sentry.captureMessage(
+          '[sweep] the previous run is still going; skipping',
+          { level: 'warning' },
+        );
+        console.warn('[sweep] the previous run is still going; skipping');
+      }
+      return;
+    }
     running = true;
+    hangReported = false;
     try {
       await runOrderSweeps();
     } finally {
