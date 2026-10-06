@@ -216,7 +216,6 @@ export default async function ShopPage({
                   <ProductCard
                     key={product.id}
                     product={product}
-                    hideUnavailablePrice
                     // The first row at the widest grid (`xl:grid-cols-3`). One
                     // of these is the shop's LCP element, and which one depends
                     // on the viewport — so all three are eager and none is
