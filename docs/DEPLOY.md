@@ -108,7 +108,8 @@ the app reads one only with its own key through the authenticated routes (the
 order's owner, or an admin), and **bucket listing must stay off** — with it on,
 anyone could list every receipt. `pnpm verify-s3` round-trips a receipt (put →
 key read → no URL → gone) alongside the photo check, and fails if the bucket
-answers an anonymous listing.
+answers an anonymous listing. Next's image optimizer is allowed the bucket's
+`uploads/` only (`next.config.ts`), so it never proxies a receipt.
 `src/lib/sentry.ts` still redacts every `receipts/<key>` from breadcrumbs and
 event messages, so the error tracker never holds a receipt's link.
 
