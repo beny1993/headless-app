@@ -7,7 +7,10 @@ import { JsonLd } from '@/components/json-ld';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
-import { availability } from '@/features/storefront/product/availability';
+import {
+  AVAILABILITY,
+  availability,
+} from '@/features/storefront/product/availability';
 import { ProductGallery } from '@/features/storefront/product/product-gallery';
 import { ProductPurchase } from '@/features/storefront/product/product-purchase';
 import {
@@ -202,16 +205,20 @@ export default async function ProductDetailPage({ params }: Params) {
             {/* Above the price, because picking a size changes it. */}
             <VariantChips variants={product.variants} label="نوع" />
 
-            <div className="nums mb-4 flex flex-wrap items-baseline gap-3">
-              <span className="text-3xl font-black">
-                {formatToman(product.price)}
-              </span>
-              {product.oldPrice && (
-                <span className="text-muted-foreground text-lg line-through">
-                  {formatToman(product.oldPrice)}
+            {/* No price on a sold-out page, as on the shop's cards; the
+                structured data keeps it, since Google requires one per offer. */}
+            {state !== AVAILABILITY.OUT_OF_STOCK && (
+              <div className="nums mb-4 flex flex-wrap items-baseline gap-3">
+                <span className="text-3xl font-black">
+                  {formatToman(product.price)}
                 </span>
-              )}
-            </div>
+                {product.oldPrice && (
+                  <span className="text-muted-foreground text-lg line-through">
+                    {formatToman(product.oldPrice)}
+                  </span>
+                )}
+              </div>
+            )}
 
             <div className="mb-6">
               <StockNotice state={state} stock={product.stock} />
