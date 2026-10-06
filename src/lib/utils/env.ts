@@ -58,15 +58,17 @@ export enum VARS {
   // NEXT_PUBLIC_: nothing in the browser may decide this.
   APP_CONFIG_ZARINPAL_ALLOW_MOCK = 'APP_CONFIG_ZARINPAL_ALLOW_MOCK',
 
-  // `true` declares that this deploy sits behind Cloudflare, so `CF-Connecting-IP`
-  // may be trusted as the client address. Default OFF, and deliberately so: the
-  // header is attacker-supplied on any origin reachable directly, and a forged
-  // value per request mints a fresh rate-limit bucket every time — which would
-  // make both the OTP limiter and the `/api/*` limiter no protection at all.
-  // Off, both fall back to `x-forwarded-for`, which Traefik overwrites. Turn this
-  // on only once 443 refuses non-Cloudflare traffic ([[Story - Cloudflare Origin
-  // Lockdown]] / docs/DEPLOY.md §6). Fail safe, never fail open.
-  APP_CONFIG_TRUST_CF_HEADER = 'APP_CONFIG_TRUST_CF_HEADER',
+  // `true` declares that this deploy sits behind the CDN (ArvanCloud since
+  // 2026-10-06), so `X-Real-IP` may be trusted as the client address. Default
+  // OFF, and deliberately so: the header is attacker-supplied on any origin
+  // reachable directly, and a forged value per request mints a fresh rate-limit
+  // bucket every time — which would make both the OTP limiter and the `/api/*`
+  // limiter no protection at all. Off, both fall back to `x-forwarded-for`,
+  // which Traefik overwrites. Turn this on only once 443 refuses non-CDN traffic
+  // AND Traefik's `forwardedHeaders.trustedIPs` lists exactly the CDN's ranges
+  // (docs/DEPLOY.md §6) — Traefik is what keeps the CDN's X-Real-IP and replaces
+  // anyone else's. Fail safe, never fail open.
+  APP_CONFIG_TRUST_REAL_IP_HEADER = 'APP_CONFIG_TRUST_REAL_IP_HEADER',
 
   // Which storage driver `src/lib/storage` dispatches through for product image
   // uploads. `local` (the default) writes files under APP_CONFIG_STORAGE_LOCAL_ROOT

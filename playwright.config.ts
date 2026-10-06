@@ -89,11 +89,11 @@ export default defineConfig({
       APP_CONFIG_ZARINPAL_PROVIDER: 'mock',
       // Online payment is off by default; the gateway specs need the option.
       APP_CONFIG_ZARINPAL_ENABLED: 'true',
-      // On, so the rate-limit spec can present a synthetic CF-Connecting-IP and
+      // On, so the rate-limit spec can present a synthetic X-Real-IP and
       // spend its OWN budget. Off, that header is ignored, every request in the
       // run collapses into one bucket, and the spec would throttle the rest of
       // the suite instead of itself.
-      APP_CONFIG_TRUST_CF_HEADER: 'true',
+      APP_CONFIG_TRUST_REAL_IP_HEADER: 'true',
       // Off whatever .env says, or every storefront spec meets the maintenance
       // screen instead of the shop.
       APP_CONFIG_MAINTENANCE_MODE: '',

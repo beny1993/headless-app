@@ -272,7 +272,7 @@ describe('the rate limiter is mounted ahead of the routes', () => {
     let lastStatus = 0;
     for (let i = 0; i < times; i++) {
       const response = await app.request(path, {
-        headers: { 'cf-connecting-ip': ip },
+        headers: { 'x-real-ip': ip },
       });
       lastStatus = response.status;
       if (lastStatus === 429 || lastStatus === 302) break;
@@ -285,7 +285,7 @@ describe('the rate limiter is mounted ahead of the routes', () => {
   });
 
   it('covers the public catalogue, which is registered first', async () => {
-    vi.stubEnv('APP_CONFIG_TRUST_CF_HEADER', 'true');
+    vi.stubEnv('APP_CONFIG_TRUST_REAL_IP_HEADER', 'true');
 
     expect(
       await flood(API_PATHS.PRODUCTS, '198.51.100.71', RATE_LIMITS.catalog + 5),
@@ -293,7 +293,7 @@ describe('the rate limiter is mounted ahead of the routes', () => {
   });
 
   it('covers the unauthenticated payment callback', async () => {
-    vi.stubEnv('APP_CONFIG_TRUST_CF_HEADER', 'true');
+    vi.stubEnv('APP_CONFIG_TRUST_REAL_IP_HEADER', 'true');
 
     // Over budget this route redirects rather than returning the envelope, so
     // a 302 here is the limiter answering, not the handler.
@@ -307,7 +307,7 @@ describe('the rate limiter is mounted ahead of the routes', () => {
   });
 
   it('leaves the readiness probe uncounted', async () => {
-    vi.stubEnv('APP_CONFIG_TRUST_CF_HEADER', 'true');
+    vi.stubEnv('APP_CONFIG_TRUST_REAL_IP_HEADER', 'true');
 
     expect(
       await flood(API_PATHS.READY, '198.51.100.73', RATE_LIMITS.default * 2),

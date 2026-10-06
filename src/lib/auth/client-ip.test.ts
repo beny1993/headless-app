@@ -12,34 +12,34 @@ const load = async () => {
 const withHeaders = (init: Record<string, string>) => new Headers(init);
 
 afterEach(() => {
-  delete process.env[VARS.APP_CONFIG_TRUST_CF_HEADER];
+  delete process.env[VARS.APP_CONFIG_TRUST_REAL_IP_HEADER];
   vi.resetModules();
 });
 
 describe('clientIpHeaders', () => {
-  it('omits cf-connecting-ip by default, so an un-proxied deploy fails safe', async () => {
+  it('omits x-real-ip by default, so an un-proxied deploy fails safe', async () => {
     const { clientIpHeaders } = await load();
 
     expect(clientIpHeaders()).toEqual(['x-forwarded-for']);
   });
 
-  it('puts cf-connecting-ip first when the deploy declares it is behind Cloudflare', async () => {
-    process.env[VARS.APP_CONFIG_TRUST_CF_HEADER] = 'true';
+  it('puts x-real-ip first when the deploy declares a trusted proxy', async () => {
+    process.env[VARS.APP_CONFIG_TRUST_REAL_IP_HEADER] = 'true';
     const { clientIpHeaders } = await load();
 
-    expect(clientIpHeaders()).toEqual(['cf-connecting-ip', 'x-forwarded-for']);
+    expect(clientIpHeaders()).toEqual(['x-real-ip', 'x-forwarded-for']);
   });
 
   it('reads a padded " true " as on, like every other flag', async () => {
-    process.env[VARS.APP_CONFIG_TRUST_CF_HEADER] = ' true ';
+    process.env[VARS.APP_CONFIG_TRUST_REAL_IP_HEADER] = ' true ';
     const { clientIpHeaders } = await load();
 
-    expect(clientIpHeaders()).toEqual(['cf-connecting-ip', 'x-forwarded-for']);
+    expect(clientIpHeaders()).toEqual(['x-real-ip', 'x-forwarded-for']);
   });
 
   it('treats any value other than "true" as off — a typo must not open the header', async () => {
     for (const value of ['false', '1', 'yes', 'TRUE', '']) {
-      process.env[VARS.APP_CONFIG_TRUST_CF_HEADER] = value;
+      process.env[VARS.APP_CONFIG_TRUST_REAL_IP_HEADER] = value;
       const { clientIpHeaders } = await load();
 
       expect(clientIpHeaders()).toEqual(['x-forwarded-for']);
@@ -48,12 +48,12 @@ describe('clientIpHeaders', () => {
 });
 
 describe('clientIpFrom', () => {
-  it('ignores a forged cf-connecting-ip while the flag is off', async () => {
+  it('ignores a forged x-real-ip while the flag is off', async () => {
     const { clientIpFrom } = await load();
 
     const ip = clientIpFrom(
       withHeaders({
-        'cf-connecting-ip': '10.99.0.1',
+        'x-real-ip': '10.99.0.1',
         'x-forwarded-for': '10.99.0.2',
       }),
     );
@@ -61,13 +61,13 @@ describe('clientIpFrom', () => {
     expect(ip).toBe('10.99.0.2');
   });
 
-  it('prefers cf-connecting-ip over x-forwarded-for once the flag is on', async () => {
-    process.env[VARS.APP_CONFIG_TRUST_CF_HEADER] = 'true';
+  it('prefers x-real-ip over x-forwarded-for once the flag is on', async () => {
+    process.env[VARS.APP_CONFIG_TRUST_REAL_IP_HEADER] = 'true';
     const { clientIpFrom } = await load();
 
     const ip = clientIpFrom(
       withHeaders({
-        'cf-connecting-ip': '10.99.0.1',
+        'x-real-ip': '10.99.0.1',
         'x-forwarded-for': '10.99.0.2',
       }),
     );
