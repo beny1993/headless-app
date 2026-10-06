@@ -44,17 +44,22 @@ const sidewaysOverflow = (page: Page) =>
   });
 
 /**
- * A waiting order's page — its checkout screenshot never arrived — asks for
- * nothing: no receipt box, no picker, no card numbers, only the way to
- * support. The panel is found by its fixed contact sentence, never by its
- * note, which the admin writes.
+ * A waiting order's page — its checkout screenshot never arrived — takes no
+ * upload itself: no receipt box, no picker, no card numbers. It states the
+ * wait and leads back to the checkout's retry with «ارسال رسید». The panel is
+ * found by its fixed contact sentence, never by its note, which the admin
+ * writes.
  */
 async function expectNothingToUpload(page: Page) {
   await expect(
     page.getByText(
-      'رسید واریز به ما نرسید. برای ارسال رسید با پشتیبانی تماس بگیر.',
+      'رسید واریز به ما نرسید. تا ۳۰ دقیقه پس از ثبت، تصویر رسید را بفرست؛ وگرنه سفارش لغو می‌شود.',
     ),
   ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'ارسال رسید' })).toHaveAttribute(
+    'href',
+    /^\/checkout\?resume=/,
+  );
   await expect(page.getByRole('heading', { name: 'رسید پرداخت' })).toHaveCount(
     0,
   );

@@ -16,6 +16,7 @@ import {
   type OrderStatus,
   type PaymentMethod,
 } from '@/lib/orders/order-status';
+import { RECEIPT_WAIT_MINUTES } from '@/lib/orders/receipt';
 
 /** Which of the three result views an order status renders. */
 type ResultKind = 'success' | 'pending' | 'failed';
@@ -110,8 +111,8 @@ const codSub = (status: OrderStatus, receiptCount: number): string => {
  *
  * Card to card reads «سفارش ثبت شد!» once the order is accepted, and says what
  * happens next under it. Still waiting for its receipt, it says the order is
- * not accepted yet and points to support: the checkout's screenshot is the
- * one way a receipt arrives, so there is no box to upload it again in. Cancelled, it says
+ * not accepted yet and how long its screenshot has; the pages lead back to the
+ * checkout's retry (`checkoutResumePath`), the one place a receipt is sent. Cancelled, it says
  * so, with the admin's reason and the way back to a transfer: never the
  * gateway's «مبلغی از حساب شما کسر نشده است», which is false for a shopper who
  * transferred and was turned down.
@@ -138,7 +139,7 @@ export const resultCopy = (
       return {
         kind,
         title: 'سفارش هنوز پذیرفته نشده است',
-        sub: 'رسید واریز به ما نرسید. برای ارسال رسید با پشتیبانی تماس بگیر.',
+        sub: `رسید واریز به ما نرسید. تا ${formatNumber(RECEIPT_WAIT_MINUTES)} دقیقه پس از ثبت، تصویر رسید را بفرست؛ وگرنه سفارش لغو می‌شود.`,
       };
     }
     return { kind, title: 'سفارش لغو شد', sub: cancellationNote(order) };

@@ -6,6 +6,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
+import { checkoutResumePath } from '@/lib/constant/paths';
 import type { OwnedOrder } from '@/logic/checkout/get-order';
 import {
   acceptedCardToCardOrder,
@@ -58,6 +59,10 @@ describe('the result page of a card-to-card order', () => {
 
     expect(box()).toBeNull();
     expectNothingToUpload();
+    // The way back to the one place a receipt is sent: the checkout's retry.
+    expect(
+      screen.getByRole('link', { name: 'ارسال رسید' }).getAttribute('href'),
+    ).toBe(checkoutResumePath(waitingCardToCardOrder.id));
   });
 
   it('shows the receipt the checkout uploaded, and nothing to upload or pay with', async () => {

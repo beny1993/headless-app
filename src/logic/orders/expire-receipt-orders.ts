@@ -13,27 +13,23 @@
 // reported with its id and the rest still expire — one bad row must not hold
 // every other order's stock, run after run.
 //
-// Benyamin's call (2026-10-06): half an hour, so a last unit an abandoned order
-// holds is buyable again soon — knowing that through the site an order only
-// waits when its screenshot failed to upload, so the shopper has usually paid,
-// and the cancelled page sends them to support for the refund.
+// The wait is RECEIPT_WAIT_MS (src/lib/orders/receipt.ts), knowing that through
+// the site an order only waits when its screenshot failed to upload, so the
+// shopper has usually paid, and the cancelled page sends them to support for
+// the refund.
 import * as Sentry from '@sentry/nextjs';
 import { db } from '@/db';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { formatNumber } from '@/lib/format';
 import { ORDER_STATUSES } from '@/lib/orders/order-status';
+import { RECEIPT_WAIT_MINUTES, RECEIPT_WAIT_MS } from '@/lib/orders/receipt';
 import {
   InvalidTransitionError,
   transitionOrder,
 } from '@/logic/orders/state-machine';
 
-const MINUTE_MS = 60 * 1000;
-
-/** How long a card-to-card order waits for its receipt before it is cancelled. */
-export const RECEIPT_WAIT_MS = 30 * MINUTE_MS;
-
 /** Stored as the cancel's reason — the shopper reads it after «دلیل:». */
-export const RECEIPT_EXPIRED_REASON = `رسید پرداخت در مهلت ${formatNumber(RECEIPT_WAIT_MS / MINUTE_MS)} دقیقه نرسید`;
+export const RECEIPT_EXPIRED_REASON = `رسید پرداخت در مهلت ${formatNumber(RECEIPT_WAIT_MINUTES)} دقیقه نرسید`;
 
 /** Cancels every card-to-card order still waiting past the wait; returns how many. */
 export async function expireReceiptOrders(now = Date.now()): Promise<number> {

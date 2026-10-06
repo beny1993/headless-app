@@ -231,6 +231,31 @@ test('card to card: a screenshot that fails to store is sent again from the chec
   ).toHaveCount(1);
 });
 
+test('card to card: a reload keeps the waiting order’s retry, and its screenshot then accepts it', async ({
+  page,
+}) => {
+  // The upload is cut and the page reloaded: the retry that held the order
+  // went with the page, so /checkout picks the order back up from the server.
+  const receiptUpload = '**/api/orders/*/receipts';
+  await page.route(receiptUpload, (route) => route.abort());
+  await placeOrder(page, 'cod');
+  const button = page.locator('[data-umami-event="checkout-submit-order"]');
+  await expect(button).toHaveText('ارسال دوباره رسید');
+  await page.unroute(receiptUpload);
+
+  await page.reload();
+  await page.waitForURL(/\/checkout\?resume=/);
+  await expect(button).toHaveText('ارسال دوباره رسید');
+  await expect(button).toBeDisabled();
+  await attachReceipt(page);
+  await button.click();
+
+  placedOrder = await resultOrderId(page);
+  await expect(
+    page.getByRole('heading', { name: 'سفارش ثبت شد!' }),
+  ).toBeVisible();
+});
+
 test('card to card: the shopper cancels a waiting order from their account, and its stock comes back', async ({
   page,
 }) => {

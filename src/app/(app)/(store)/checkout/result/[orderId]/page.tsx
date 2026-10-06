@@ -10,13 +10,21 @@ import { ReceiptBox } from '@/features/checkout/receipt-box';
 import { RetryPaymentButton } from '@/features/checkout/retry-payment-button';
 import { SupportLine } from '@/features/checkout/support-line';
 import { resultCopy, resultView } from '@/lib/checkout/result-view';
-import { PATHS, checkoutResultPath, shopPath } from '@/lib/constant/paths';
+import {
+  PATHS,
+  checkoutResultPath,
+  checkoutResumePath,
+  shopPath,
+} from '@/lib/constant/paths';
 import {
   formatJalali,
   formatJalaliDateTime,
   toPersianDigits,
 } from '@/lib/format';
-import { PAYMENT_METHOD_LABELS } from '@/lib/orders/order-status';
+import {
+  ORDER_STATUSES,
+  PAYMENT_METHOD_LABELS,
+} from '@/lib/orders/order-status';
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
 
 export const metadata: Metadata = { title: 'نتیجه سفارش' };
@@ -129,6 +137,16 @@ export default async function Page({
 
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             {view.showRetry && <RetryPaymentButton orderId={order.id} />}
+            {/* Back to the one place a receipt is sent: the checkout's retry. */}
+            {order.status === ORDER_STATUSES.AWAITING_RECEIPT && (
+              <Link
+                href={checkoutResumePath(order.id)}
+                className="bg-brand hover:bg-brand-hover text-brand-foreground rounded-xl px-6 py-3 font-bold transition-colors"
+                data-umami-event="checkout-result-send-receipt"
+              >
+                ارسال رسید
+              </Link>
+            )}
             <Link
               href={PATHS.ACCOUNT}
               className="border-border hover:bg-secondary rounded-xl border-2 px-6 py-3 font-medium transition-colors"

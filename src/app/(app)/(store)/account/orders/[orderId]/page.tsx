@@ -15,7 +15,11 @@ import {
   resultCopy,
   resultView,
 } from '@/lib/checkout/result-view';
-import { accountOrderPath, PATHS } from '@/lib/constant/paths';
+import {
+  accountOrderPath,
+  checkoutResumePath,
+  PATHS,
+} from '@/lib/constant/paths';
 import {
   formatJalali,
   formatJalaliDateTime,
@@ -144,6 +148,14 @@ export default async function Page({
               <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
                 {waiting.sub}
               </p>
+              {/* Back to the one place a receipt is sent: the checkout's retry. */}
+              <Link
+                href={checkoutResumePath(order.id)}
+                className="bg-brand hover:bg-brand-hover text-brand-foreground mt-3 inline-flex min-h-11 items-center rounded-xl px-4 text-sm font-bold transition-colors"
+                data-umami-event="account-order-send-receipt"
+              >
+                ارسال رسید
+              </Link>
               <SupportLine className="mt-1" />
             </div>
           </div>
