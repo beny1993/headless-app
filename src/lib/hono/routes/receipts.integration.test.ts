@@ -48,8 +48,6 @@ vi.mock('@/lib/auth', () => ({ isAuthenticatedUser: mocks.getSession }));
 
 const { app } = await importWithDb(() => import('@/lib/hono'));
 const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
-const { localDriver } = await import('@/lib/storage/local-driver');
-const { ReceiptExposedError } = await import('@/lib/storage');
 const {
   IMAGE_TOO_LARGE_MESSAGE,
   INVALID_IMAGE_MESSAGE,
@@ -295,21 +293,6 @@ describe.skipIf(!databaseReachable)('receipt routes', () => {
       });
       expect(await rows(order.id)).toHaveLength(0);
       expect(await storedFiles()).toEqual([]);
-    });
-
-    it('answers 503 in Persian when storage cannot keep the receipt private', async () => {
-      const { user, order } = await placed();
-      as(user.id);
-      vi.spyOn(localDriver, 'put').mockImplementation(async (key) => {
-        throw new ReceiptExposedError(key);
-      });
-
-      await expectRefusal(
-        upload(order.id, receiptFile()),
-        503,
-        'بارگذاری رسید موقتاً ممکن نیست؛ رسید را از طریق اینستاگرام یا تلگرام بفرست.',
-      );
-      expect(await rows(order.id)).toHaveLength(0);
     });
   });
 

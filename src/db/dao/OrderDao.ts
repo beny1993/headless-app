@@ -325,6 +325,24 @@ export class OrderDao {
   }
 
   /**
+   * The ids of the card-to-card orders created before `cutoff` still waiting
+   * for their receipt — the receipt-expiry sweep's worklist. The sweep's CAS
+   * re-checks each one, so a receipt that lands in between wins.
+   */
+  static async listAwaitingReceiptBefore(cutoff: Date): Promise<string[]> {
+    const rows = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.status, ORDER_STATUSES.AWAITING_RECEIPT),
+          lt(orders.createdAt, cutoff),
+        ),
+      );
+    return rows.map((row) => row.id);
+  }
+
+  /**
    * A customer's order history: their orders, newest first, each with its line-
    * item count — one grouped query, no N+1. Owner-scoped by `userId` from the
    * session (never the URL). `groupBy(orders.id)` is sound because `id` is the PK,

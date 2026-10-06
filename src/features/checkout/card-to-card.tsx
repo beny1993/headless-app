@@ -23,15 +23,14 @@ const social = (href: string) =>
   ({ href, target: '_blank', rel: 'noopener noreferrer' }) as const;
 
 /**
- * The card-to-card instructions a shopper sees wherever the payment method is
- * chosen or shown again (checkout, the result page, an order in the account):
+ * The card-to-card instructions a shopper sees where the payment method is
+ * chosen, at checkout:
  * the admin's note, the filled card slots (an empty slot is simply absent) with a
  * copy button each, and the contact sentence — always there, with «اینستاگرام»
  * and «تلگرام» in it linking to the shop's accounts while their handles are set
  * (plain words otherwise). It asks for coordination only: the receipt itself is
- * attached in the app — at checkout, under this panel, before «ثبت سفارش», or
- * on the order's page. A client component only for the copy button; server
- * pages render it with the block they read.
+ * attached in the app, under this panel, before «ثبت سفارش». A client
+ * component only for the copy button.
  */
 export function CardToCardPanel({
   payment,

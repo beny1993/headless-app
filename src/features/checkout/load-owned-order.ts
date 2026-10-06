@@ -1,6 +1,5 @@
 import { notFound } from 'next/navigation';
 import { z } from 'zod';
-import { SiteContentDao } from '@/db/dao/SiteContentDao';
 import { requireSession } from '@/lib/auth/session';
 import { getOwnedOrder, type OwnedOrder } from '@/logic/checkout/get-order';
 
@@ -27,7 +26,3 @@ export async function loadOwnedOrder(
   if (!order) notFound();
   return order;
 }
-
-/** Where a card-to-card order sends its money — the `checkout.payment` content. */
-export const readCardToCardPayment = async () =>
-  (await SiteContentDao.getMany(['checkout.payment']))['checkout.payment'];

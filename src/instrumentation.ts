@@ -7,9 +7,20 @@ import { sentryOptions } from '@/lib/sentry';
  * privacy ones in `src/lib/sentry.ts`. Nothing here runs on the edge today, but
  * Next compiles that bundle regardless, and an unconfigured runtime is how
  * errors go missing after someone adds a route to it.
+ *
+ * The Node server also starts the order sweeps (src/logic/orders/order-sweeps.ts)
+ * — imported here, behind the runtime check, so drizzle and `pg` stay out of
+ * the edge bundle — but never during `next build`, which has no database.
  */
-export function register() {
+export async function register() {
   Sentry.init(sentryOptions());
+  if (
+    process.env.NEXT_RUNTIME === 'nodejs' &&
+    process.env.NEXT_PHASE !== 'phase-production-build'
+  ) {
+    const { startOrderSweeps } = await import('@/logic/orders/order-sweeps');
+    startOrderSweeps();
+  }
 }
 
 /**

@@ -95,10 +95,10 @@ type ResultCopy = { kind: ResultKind; title: string; sub: string };
 const codSub = (status: OrderStatus, receiptCount: number): string => {
   if (status === ORDER_STATUSES.PROCESSING) {
     // Accepted by hand (a receipt sent by DM), or processing from before
-    // receipts existed: no receipt arrived here, and the box still takes one.
-    return receiptCount > 0
-      ? 'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.'
-      : 'سفارش پذیرفته شد؛ رسید را می‌توانی پایین همین صفحه بارگذاری کنی.';
+    // receipts existed: no receipt arrived here.
+    if (receiptCount > 0) {
+      return 'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.';
+    }
   }
   return 'سفارش پذیرفته شد.';
 };
@@ -110,7 +110,8 @@ const codSub = (status: OrderStatus, receiptCount: number): string => {
  *
  * Card to card reads «سفارش ثبت شد!» once the order is accepted, and says what
  * happens next under it. Still waiting for its receipt, it says the order is
- * not accepted yet and points to the box under the copy. Cancelled, it says
+ * not accepted yet and points to support: the checkout's screenshot is the
+ * one way a receipt arrives, so there is no box to upload it again in. Cancelled, it says
  * so, with the admin's reason and the way back to a transfer: never the
  * gateway's «مبلغی از حساب شما کسر نشده است», which is false for a shopper who
  * transferred and was turned down.
@@ -137,7 +138,7 @@ export const resultCopy = (
       return {
         kind,
         title: 'سفارش هنوز پذیرفته نشده است',
-        sub: 'رسید واریز به ما نرسید. اسکرین‌شات رسید را در کادر زیر بارگذاری کن تا سفارش پذیرفته شود.',
+        sub: 'رسید واریز به ما نرسید. برای ارسال رسید با پشتیبانی تماس بگیر.',
       };
     }
     return { kind, title: 'سفارش لغو شد', sub: cancellationNote(order) };

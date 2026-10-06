@@ -166,9 +166,10 @@ export const initialStatusFor = (method: PaymentMethod): OrderStatus =>
 
 /**
  * The statuses whose reserved stock waits on nobody in particular — a Zarinpal
- * order until the reconcile sweep expires it, a card-to-card order until its
- * receipt arrives or an admin acts. Both birth states, so checkout's open-order
- * cap counts every order a shopper leaves unfinished, however it is paid.
+ * order until its payment or the reconcile sweep, a card-to-card order until
+ * its receipt, an admin or the receipt-expiry sweep. Both birth states, so
+ * checkout's open-order cap counts every order a shopper leaves unfinished,
+ * however it is paid — and they are the orders a shopper may cancel.
  */
 export const OPEN_ORDER_STATUSES: readonly OrderStatus[] = [
   ORDER_STATUSES.PENDING_PAYMENT,

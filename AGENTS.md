@@ -112,24 +112,27 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   (`src/logic/orders/receipts.ts`, under the order's row lock), and the admins'
   new-order SMS goes out then, never at the create. The checkout locks
   «ثبت سفارش» until the transfer's screenshot is attached and uploads it right
-  after the create, so a placed order is accepted at once; waiting is the
-  fallback for a screenshot that failed to store, and both shopper pages then
-  say the order is not accepted yet. Once the create has answered 2xx nothing
-  re-enables «ثبت سفارش» or mints another Idempotency-Key — every failure
-  lands on that order's own page
-  (`src/features/checkout/checkout-form.receipt.test.tsx`). The admin checks
+  after the create, so a placed order is accepted at once. That screenshot is
+  the one way a receipt arrives: a failed upload keeps the shopper on the
+  checkout, whose button becomes «ارسال دوباره رسید» for that same order —
+  once the create has answered 2xx nothing sends a second create or mints
+  another Idempotency-Key
+  (`src/features/checkout/checkout-form.receipt.test.tsx`). The order pages
+  show the receipt and never take an upload; an order whose screenshot never
+  arrived says it is not accepted yet and points to support, and is cancelled
+  30 minutes after its create by the order sweeps the server runs every five
+  minutes (`src/logic/orders/order-sweeps.ts`, started in
+  `src/instrumentation.ts`; nothing to configure). The admin checks
   the receipt and ships, or cancels — every admin cancel carries a reason the
   shopper reads. The payment row still flips to `paid` only at delivery.
-- **A receipt is never public.** Receipts live under `receipts/` in the same
-  storage as the photos, and no URL exists for one: `imageSrc` and every
-  driver's `url()` throw on a receipt key. The only readers are the
-  authenticated routes (the order's owner, 404 to any other customer; an
-  admin), answering `private, no-store`; render one with a plain `<img>` on
-  that route, never `next/image`. On s3 the bucket's anonymous read must be
-  narrowed to `uploads/` (a bucket policy, docs/DEPLOY.md §3) before the
-  feature ships: until then every receipt upload answers 503, because the
-  driver probes each receipt it stores and finds it public — and every
-  card-to-card checkout ends on the not-accepted page.
+- **A receipt is unlisted, not private.** Receipts live under `receipts/` in
+  the same public bucket as the photos (Benyamin's decision, 2026-10-06), so
+  what keeps one out of sight is that its URL never exists in the app:
+  `imageSrc` and every driver's `url()` throw on a receipt key, the key is a
+  fresh uuid no response carries, and bucket listing stays off. The only
+  readers are the authenticated routes (the order's owner, 404 to any other
+  customer; an admin), answering `private, no-store`; render one with a plain
+  `<img>` on that route, never `next/image`.
 - **Cart is client-side** (localStorage) until checkout; the server re-prices and
   validates at order creation.
 - **Rate limits**: every `/api/*` route is budgeted per caller per minute by

@@ -19,11 +19,7 @@ import { ReceiptDao } from '@/db/dao/ReceiptDao';
 import type { PaymentReceipt } from '@/db/schema/orders';
 import { ORDER_STATUSES } from '@/lib/orders/order-status';
 import { acceptsReceipts, MAX_RECEIPTS_PER_ORDER } from '@/lib/orders/receipt';
-import {
-  getStorageDriver,
-  ReceiptExposedError,
-  type StorageDriver,
-} from '@/lib/storage';
+import { getStorageDriver, type StorageDriver } from '@/lib/storage';
 import {
   contentTypeOfKey,
   objectKeyFor,
@@ -62,13 +58,7 @@ type UploadResult =
   | { outcome: 'not_found' }
   /** The order no longer takes receipts (moved on since the gate). */
   | { outcome: 'not_accepting' }
-  | { outcome: 'cap_reached' }
-  /**
-   * Storage could not keep the receipt private: refused, with no row recorded.
-   * The driver deletes the object when the bucket allows it, and the server log
-   * says whether it did.
-   */
-  | { outcome: 'exposed' };
+  | { outcome: 'cap_reached' };
 
 /**
  * Takes a file nothing will ever reference back out. A failure is reported —
@@ -110,12 +100,7 @@ export const uploadReceipt = async (
   const driver = getStorageDriver();
   const key = objectKeyFor(type, RECEIPT_KEY_PREFIX);
 
-  try {
-    await driver.put(key, bytes, type);
-  } catch (error) {
-    if (error instanceof ReceiptExposedError) return { outcome: 'exposed' };
-    throw error;
-  }
+  await driver.put(key, bytes, type);
 
   let result: UploadResult;
   try {

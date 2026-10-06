@@ -1,5 +1,6 @@
 import { accountOrderPath } from '@/lib/constant/paths';
-import type { Locator } from '@playwright/test';
+import { formatNumber } from '@/lib/format';
+import type { Locator, Page } from '@playwright/test';
 import {
   ADMIN_STATE,
   attachReceipt,
@@ -8,6 +9,7 @@ import {
   expect,
   expectRendered,
   IN_STOCK_PRODUCT,
+  LOW_STOCK_PRODUCT,
   placeOrder,
   reachPayment,
   resultOrderId,
@@ -44,6 +46,37 @@ async function expectOptimized(img: Locator) {
 /** The mock gateway's own buttons, by the action they post, not their copy. */
 const gatewayButton = (action: 'pay' | 'fail') =>
   `button[name="action"][value="${action}"]`;
+
+/**
+ * The order summary's one line shows its product's photo: an `alt=""` image
+ * (the title follows it), which the receipt's numbered thumbnail is not.
+ */
+async function expectLinePhoto(page: Page) {
+  const photo = page.locator('main li img[alt=""]');
+  await expect(photo).toHaveCount(1);
+  await photo.scrollIntoViewIfNeeded();
+  await expectRendered(photo);
+}
+
+/**
+ * An order whose receipt is in shows just that receipt: no second upload box,
+ * and no card numbers left to pay to. The panel is found by its fixed contact
+ * sentence, never by its note, which the admin writes.
+ */
+async function expectOnlyTheReceipt(
+  page: Page,
+  prefix: 'checkout-result' | 'account-order',
+) {
+  await expect(
+    page.locator(`[data-umami-event="${prefix}-receipt-file"]`),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(`[data-umami-event="${prefix}-receipt-upload"]`),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText('برای هماهنگی، از طریق', { exact: false }),
+  ).toHaveCount(0);
+}
 
 test('card to card: the screenshot attached at checkout accepts the order, and only its owner can read it', async ({
   page,
@@ -104,7 +137,7 @@ test('card to card: the screenshot attached at checkout accepts the order, and o
     page.getByText(
       'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.',
     ),
-  ).toHaveCount(2); // the sub-copy under the heading, and the box's own line
+  ).toHaveCount(1); // the sub-copy under the heading; the box does not repeat it
 
   // The screenshot is listed with when it came: a date and a Tehran time,
   // since one order can hold five receipts from the same day.
@@ -112,6 +145,9 @@ test('card to card: the screenshot attached at checkout accepts the order, and o
     '[data-umami-event="checkout-result-receipt-open"]',
   );
   await expect(receipt).toHaveCount(1);
+  await expectOnlyTheReceipt(page, 'checkout-result');
+  // The ordered line shows its product's photo, not the placeholder.
+  await expectLinePhoto(page);
   // Lazy-loaded, and below the fold on a phone: it loads once it is in view.
   await receipt.scrollIntoViewIfNeeded();
   await expectRendered(receipt.locator('img'));
@@ -154,6 +190,81 @@ test('card to card: the screenshot attached at checkout accepts the order, and o
   );
   await expect(listed).toBeVisible();
   await expect(listed).toContainText('در حال پردازش');
+  await listed.click();
+  await expect(
+    page.locator('[data-umami-event="account-order-receipt-open"]'),
+  ).toHaveCount(1);
+  await expectOnlyTheReceipt(page, 'account-order');
+  await expectLinePhoto(page);
+});
+
+test('card to card: a screenshot that fails to store is sent again from the checkout, to the same order', async ({
+  page,
+}) => {
+  // The first upload is cut, as a dropped connection would cut it; the
+  // shopper presses «ارسال دوباره رسید» and the same order is accepted.
+  const receiptUpload = '**/api/orders/*/receipts';
+  let cut = false;
+  await page.route(receiptUpload, (route) => {
+    if (cut) return route.continue();
+    cut = true;
+    return route.abort();
+  });
+  await placeOrder(page, 'cod');
+
+  const button = page.locator('[data-umami-event="checkout-submit-order"]');
+  await expect(
+    page.getByText('بارگذاری رسید ناموفق بود. دوباره تلاش کن.'),
+  ).toBeVisible();
+  await expect(button).toHaveText('ارسال دوباره رسید');
+  await expect(
+    page.locator('[data-umami-event="checkout-payment-cod"]'),
+  ).toBeDisabled();
+  await button.click();
+
+  placedOrder = await resultOrderId(page);
+  await expect(
+    page.getByRole('heading', { name: 'سفارش ثبت شد!' }),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-umami-event="checkout-result-receipt-open"]'),
+  ).toHaveCount(1);
+});
+
+test('card to card: the shopper cancels a waiting order from their account, and its stock comes back', async ({
+  page,
+}) => {
+  const { path, stock } = LOW_STOCK_PRODUCT;
+  const stockLeft = (count: number) =>
+    page.getByText(`تنها ${formatNumber(count)} عدد باقی مانده`);
+
+  // The screenshot never arrives: the order waits, open, for its receipt.
+  const receiptUpload = '**/api/orders/*/receipts';
+  await page.route(receiptUpload, (route) => route.abort());
+  await placeOrder(page, 'cod', path);
+  await page
+    .locator('[data-umami-event="checkout-receipt-view-order"]')
+    .click();
+  placedOrder = await resultOrderId(page);
+  await page.unroute(receiptUpload);
+
+  await page.goto(accountOrderPath(placedOrder));
+  await page.locator('[data-umami-event="account-order-cancel"]').click();
+  await page
+    .locator('[data-umami-event="account-order-cancel-confirm"]')
+    .click();
+
+  await expect(page.getByText('این سفارش لغو شد.')).toBeVisible();
+  await expect(
+    page.getByText('دلیل: به درخواست خریدار لغو شد.', { exact: false }),
+  ).toBeVisible();
+  // Cancelled is final: nothing left to cancel.
+  await expect(
+    page.locator('[data-umami-event="account-order-cancel"]'),
+  ).toHaveCount(0);
+
+  await page.goto(path);
+  await expect(stockLeft(stock)).toBeVisible();
 });
 
 test('Zarinpal: paying at the mock gateway settles the order', async ({

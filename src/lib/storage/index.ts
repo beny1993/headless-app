@@ -34,8 +34,6 @@ export type StorageDriver = {
   url(key: string): string;
 };
 
-export { ReceiptExposedError } from './s3-driver';
-
 /** Providers with a driver behind them. Arvan/Liana's `s3` joins this list. */
 export const STORAGE_PROVIDERS = ['local', 's3'] as const;
 

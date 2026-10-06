@@ -13,8 +13,9 @@
 //     A receipt row holds its storage key; this returns only `{ id, createdAt }`.
 import { OrderDao } from '@/db/dao/OrderDao';
 import { PaymentDao } from '@/db/dao/PaymentDao';
+import { ProductDao } from '@/db/dao/ProductDao';
 import { ReceiptDao } from '@/db/dao/ReceiptDao';
-import type { OrderWithItems } from '@/db/schema/orders';
+import type { OrderItem, OrderWithItems } from '@/db/schema/orders';
 import type { PaymentMethod, PaymentStatus } from '@/lib/orders/order-status';
 
 /** A payment attempt as a customer may see it — no gateway secrets. */
@@ -36,7 +37,9 @@ export type SafeReceipt = { id: string; createdAt: Date };
  * receipts. `cancellationReason` rides along on the row: the admin wrote it for
  * this shopper to read.
  */
-export type OwnedOrder = OrderWithItems & {
+export type OwnedOrder = Omit<OrderWithItems, 'items'> & {
+  /** Each line with its product's current first photo, when it has one. */
+  items: (OrderItem & { imageKey?: string })[];
   payments: SafePayment[];
   receipts: SafeReceipt[];
 };
@@ -64,5 +67,14 @@ export const getOwnedOrder = async (
     ({ id, createdAt }) => ({ id, createdAt }),
   );
 
-  return { ...order, payments, receipts };
+  // The snapshot holds no photo: each line shows its product's current one.
+  const covers = await ProductDao.coverImageKeys(
+    order.items.map((item) => item.productId),
+  );
+  const items = order.items.map((item) => {
+    const imageKey = covers.get(item.productId);
+    return imageKey ? { ...item, imageKey } : item;
+  });
+
+  return { ...order, items, payments, receipts };
 };

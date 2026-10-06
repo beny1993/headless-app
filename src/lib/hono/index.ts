@@ -91,7 +91,12 @@ import {
   mePetsListHandler,
   mePetsListRoute,
 } from './routes/me-pets';
-import { orderDetailHandler, orderDetailRoute } from './routes/orders';
+import {
+  orderCancelHandler,
+  orderCancelRoute,
+  orderDetailHandler,
+  orderDetailRoute,
+} from './routes/orders';
 import {
   adminOrderReceiptHandler,
   orderReceiptHandler,
@@ -210,6 +215,7 @@ authed.use('/me/*', requireAuth);
 authed.openapi(checkoutRoute, checkoutHandler);
 authed.openapi(checkoutPreviewRoute, checkoutPreviewHandler);
 authed.openapi(orderDetailRoute, orderDetailHandler);
+authed.openapi(orderCancelRoute, orderCancelHandler);
 // The upload, in the order that keeps a refused body unread: the session
 // guard (the wildcard above), then who owns the order and whether it takes a
 // receipt, then the body limit — which reads a body with no Content-Length in

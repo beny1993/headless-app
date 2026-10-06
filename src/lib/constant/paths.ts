@@ -177,6 +177,10 @@ export const apiAdminOrderTransitionsPath = (id: string) =>
 export const apiOrderReceiptsPath = (orderId: string) =>
   `${API_PATHS.ORDERS}/${encodeURIComponent(orderId)}/receipts`;
 
+/** Where the owner of an open order cancels it (`POST`). Owner-scoped by the session. */
+export const apiOrderCancelPath = (orderId: string) =>
+  `${API_PATHS.ORDERS}/${encodeURIComponent(orderId)}/cancel`;
+
 /**
  * One receipt's bytes, for the order's owner — the only URL a shopper's page
  * ever renders for a receipt (a plain `<img>`, never `next/image`).
