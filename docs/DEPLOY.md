@@ -339,29 +339,49 @@ and deliberately not baked into the image:
 - [ ] **`NEXT_PUBLIC_APP_URL`** = the real `https://` origin, set as a **build
       variable** (§1). Confirm it's the real host, not the placeholder — rebuild
       after changing it.
-- [ ] **Lock the origin to the CDN.** The domain is ArvanCloud-proxied, so the
-      client IP is resolved from `X-Real-IP` (`src/lib/auth/client-ip.ts`, read
-      by Better Auth and the `/api/*` limiter) once
-      `APP_CONFIG_TRUST_REAL_IP_HEADER=true` — without it every visitor through
-      one Arvan edge shares a rate-limit bucket. Three pieces, all or none:
-      1. **Firewall:** `/root/cloudflare-origin-lockdown.sh` keeps TCP 80/443
-         open only to the CDN's ranges, in Docker's `DOCKER-USER` chain
-         (persisted in `/etc/ufw/after.rules`). Arvan's ranges:
-         <https://www.arvancloud.ir/en/ips.txt>. **Never `ufw reload`** on that
-         host — it flushes Docker's chains.
+- [x] **Lock the origin to the CDN** (done and verified on production
+      2026-10-06). The domain is ArvanCloud-proxied, so the client IP is
+      resolved from `X-Real-IP` (`src/lib/auth/client-ip.ts`, read by Better
+      Auth and the `/api/*` limiter) once `APP_CONFIG_TRUST_REAL_IP_HEADER=true`
+      — without it every visitor through one Arvan edge shares a rate-limit
+      bucket. Three pieces; the order matters:
+      1. **App:** deploy the code, set `APP_CONFIG_TRUST_REAL_IP_HEADER=true`
+         and restart — on **every** app behind this Traefik before step 2.
+         Trusting the CDN in Traefik makes `x-forwarded-for` two hops, which
+         resolves to no caller: an app still on the old flag would put the
+         whole shop in one bucket.
       2. **Traefik:** `--entrypoints.{http,https}.forwardedheaders.trustedips`
-         (Coolify → Server → Proxy) lists exactly the CDN's ranges plus
-         `127.0.0.1/32`. Traefik keeps `X-Real-IP` only from those and replaces
-         it with the TCP peer for anyone else; a range trusted there but not
-         owned by the CDN (a stale Cloudflare range — Workers can set any
-         header) is a forged bucket per request.
-      3. **App:** `APP_CONFIG_TRUST_REAL_IP_HEADER=true`, then restart.
-      **Verify after deploy:** send a request with a bogus
-      `X-Real-IP: 203.0.113.9` through the domain and confirm the `rate_limit`
-      rows key on your real IP — never `203.0.113.9`, not one repeated Arvan
-      edge address, and not the literal `no-trusted-ip`. The "could not
-      determine a client IP" warning does **not** fire in the edge-address
-      case, so log-grepping alone will not catch it.
+         in `/data/coolify/proxy/docker-compose.yml` (Coolify → Server → Proxy)
+         lists exactly Arvan's ranges plus `127.0.0.1/32`. Traefik keeps
+         `X-Real-IP` only from those and replaces it with the TCP peer for
+         anyone else; a range trusted there but not owned by the CDN (a stale
+         Cloudflare range — Workers can set any header) is a forged bucket per
+         request. **Restart the proxy from the Coolify dashboard**, never with
+         `docker compose up` on the host: recreating the container drops the
+         per-app Docker networks Coolify attached it to, and every app on its
+         own network (Umami, Beszel) answers 504 until they are reattached —
+         this took `analytics.bendev.ir` down on 2026-10-06. To repair by hand:
+         `docker network connect <net> coolify-proxy` for each network of a
+         `traefik.enable=true` container.
+      3. **Firewall:** `/root/cloudflare-origin-lockdown.sh` keeps TCP 80/443
+         open only to the CDN ranges, in Docker's `DOCKER-USER` chain
+         (persisted in `/etc/ufw/after.rules`; re-run the script to refresh,
+         never hand-edit). It allows **both** Arvan's
+         (<https://www.arvancloud.ir/en/ips.txt>) and Cloudflare's ranges:
+         `analytics.bendev.ir`, `beszel.bendev.ir` and `coolify.bendev.ir` share
+         this Traefik and are still Cloudflare-proxied. That is safe because
+         step 2 no longer trusts Cloudflare. Its preflight aborts unless every
+         host it lists resolves to one of the two CDNs. **Never `ufw reload`**
+         on that host — it flushes Docker's chains.
+      **Verify after deploy:** through the domain, send a request to a Better
+      Auth route (`GET /api/auth/get-session` is harmless) with bogus
+      `X-Real-IP`, `X-Forwarded-For` and `CF-Connecting-IP` values, then read
+      the `rate_limit` rows for those addresses and your own exit IP: the key
+      must be your real IP — never a bogus one, not one repeated Arvan edge
+      address, and not the literal `no-trusted-ip`. (Staging's basic auth
+      answers 401 at Traefik before the app counts anything, so run it on
+      production.) The "could not determine a client IP" warning does **not**
+      fire in the edge-address case, so log-grepping alone will not catch it.
 - [ ] **Maintenance mode off:** `APP_CONFIG_MAINTENANCE_MODE` unset (or
       anything but `true`) on the production app, then restart — otherwise
       launch day shows every customer «به‌زودی برمی‌گردیم».
