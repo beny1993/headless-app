@@ -121,4 +121,24 @@ describe('startOrderSweeps', () => {
 
     expect(mocks.expireReceiptOrders).toHaveBeenCalledTimes(1);
   });
+
+  it('skips a tick while the previous run is still going, so runs never pile up', async () => {
+    fakeScheduleTimers();
+    let finish = () => {};
+    mocks.expireReceiptOrders.mockImplementationOnce(
+      () => new Promise<number>((resolve) => (finish = () => resolve(0))),
+    );
+
+    startOrderSweeps();
+    await vi.advanceTimersByTimeAsync(FIRST_SWEEP_DELAY_MS);
+    expect(mocks.expireReceiptOrders).toHaveBeenCalledTimes(1);
+
+    // A hung run: two ticks come and go without starting another.
+    await vi.advanceTimersByTimeAsync(2 * SWEEP_INTERVAL_MS);
+    expect(mocks.expireReceiptOrders).toHaveBeenCalledTimes(1);
+
+    finish();
+    await vi.advanceTimersByTimeAsync(SWEEP_INTERVAL_MS);
+    expect(mocks.expireReceiptOrders).toHaveBeenCalledTimes(2);
+  });
 });

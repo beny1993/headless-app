@@ -65,15 +65,28 @@ const STARTED = Symbol.for('smokey-shop.order-sweeps');
 
 /**
  * Starts the schedule, once per process: the first run FIRST_SWEEP_DELAY_MS
- * after start, never at boot, then every SWEEP_INTERVAL_MS. `unref`, so the
- * schedule never keeps a process alive on its own.
+ * after start, never at boot, then every SWEEP_INTERVAL_MS. A tick that finds
+ * the previous run still going is skipped: a run stuck on the database (a lock
+ * never released) must not be joined by another every interval until they hold
+ * the whole connection pool. `unref`, so the schedule never keeps a process
+ * alive on its own.
  */
 export function startOrderSweeps(): void {
   const scope = globalThis as typeof globalThis & { [STARTED]?: true };
   if (scope[STARTED]) return;
   scope[STARTED] = true;
+  let running = false;
+  const tick = async () => {
+    if (running) return;
+    running = true;
+    try {
+      await runOrderSweeps();
+    } finally {
+      running = false;
+    }
+  };
   setTimeout(() => {
-    void runOrderSweeps();
-    setInterval(() => void runOrderSweeps(), SWEEP_INTERVAL_MS).unref?.();
+    void tick();
+    setInterval(() => void tick(), SWEEP_INTERVAL_MS).unref?.();
   }, FIRST_SWEEP_DELAY_MS).unref?.();
 }

@@ -7,12 +7,17 @@
 // Each order moves in its own transaction through `transitionOrder`, whose CAS
 // takes the order's row lock — the one a receipt upload takes too — so a
 // receipt that lands at the last moment and the sweep queue behind each other,
-// and whichever is second finds the order already moved and leaves it.
+// and whichever is second finds the order already moved and leaves it. One at a
+// time on purpose: the sweep never holds more than one pool connection or one
+// order's locks, and a run only ever finds a handful. An order that fails is
+// reported with its id and the rest still expire — one bad row must not hold
+// every other order's stock, run after run.
 //
 // Benyamin's call (2026-10-06): half an hour, so a last unit an abandoned order
 // holds is buyable again soon — knowing that through the site an order only
 // waits when its screenshot failed to upload, so the shopper has usually paid,
 // and the cancelled page sends them to support for the refund.
+import * as Sentry from '@sentry/nextjs';
 import { db } from '@/db';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { formatNumber } from '@/lib/format';
@@ -50,7 +55,12 @@ export async function expireReceiptOrders(now = Date.now()): Promise<number> {
       expired += 1;
     } catch (error) {
       // Its receipt, the shopper or an admin moved it first: leave it.
-      if (!(error instanceof InvalidTransitionError)) throw error;
+      if (error instanceof InvalidTransitionError) continue;
+      Sentry.captureException(error, { extra: { orderId: id } });
+      console.error(
+        `[sweep] could not expire order ${id}; the next run retries`,
+        error,
+      );
     }
   }
   return expired;
