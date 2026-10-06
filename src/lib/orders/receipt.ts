@@ -21,6 +21,16 @@ import {
   sniffImageType,
 } from '@/lib/storage/image-upload';
 
+/**
+ * How long a card-to-card order waits for its receipt before the sweep cancels
+ * it (`src/logic/orders/expire-receipt-orders.ts`) — the window `/checkout`
+ * resumes it in, and the deadline its waiting page states. Benyamin's call
+ * (2026-10-06): half an hour, so a last unit an abandoned order holds is
+ * buyable again soon.
+ */
+export const RECEIPT_WAIT_MINUTES = 30;
+export const RECEIPT_WAIT_MS = RECEIPT_WAIT_MINUTES * 60 * 1000;
+
 /** Receipts per order, append-only (a large order split over two transfers). */
 export const MAX_RECEIPTS_PER_ORDER = 5;
 
@@ -33,6 +43,9 @@ export const MAX_RECEIPT_BYTES = 5 * 1024 * 1024;
 /** «JPG، PNG یا WEBP، تا ۵ مگابایت» — the hint under the picker. */
 export const RECEIPT_FORMAT_HINT = formatHint(MAX_RECEIPT_BYTES);
 export const RECEIPT_SIZE_ERROR = sizeError(MAX_RECEIPT_BYTES);
+/** A receipt upload that failed with no sentence of the server's to show. */
+export const RECEIPT_UPLOAD_FAILED =
+  'بارگذاری رسید ناموفق بود. دوباره تلاش کن.';
 /** A picked file whose bytes the browser could not hand over. */
 export const RECEIPT_READ_ERROR = 'این فایل خوانده نشد؛ دوباره انتخاب کن.';
 
@@ -72,17 +85,6 @@ export const acceptsReceipts = (order: ReceiptOrder): boolean =>
   order.paymentMethod === PAYMENT_METHODS.COD &&
   (order.status === ORDER_STATUSES.AWAITING_RECEIPT ||
     order.status === ORDER_STATUSES.PROCESSING);
-
-/**
- * Whether an order's page shows the receipt box: while it takes receipts, and
- * afterwards for as long as it has any to list.
- */
-export const showsReceipts = (
-  order: ReceiptOrder,
-  receiptCount: number,
-): boolean =>
-  order.paymentMethod === PAYMENT_METHODS.COD &&
-  (acceptsReceipts(order) || receiptCount > 0);
 
 /** The one pill over an order's receipts: what became of them. */
 export const receiptsLabel = (status: OrderStatus): string =>

@@ -5,9 +5,14 @@
 //     is attached, and locks again when a later pick is refused;
 //   · one click creates the order, clears the cart, stores the screenshot and
 //     only then opens the order's result page;
-//   · once the create has answered 2xx, nothing re-enables the button: a
-//     screenshot that fails to store lands the shopper on that order's own
-//     page, and a second click sends no second create;
+//   · once the create has answered 2xx, nothing sends a second create: a
+//     screenshot that fails to store keeps the shopper on the checkout with
+//     the refusal under the picker, the button turned into «ارسال دوباره رسید»
+//     for that same order, a link to the order, the payment method locked and
+//     the order's own lines and totals in the summary;
+//   · a resend the server refuses with 409 — the order cancelled meanwhile —
+//     leaves for the order's page instead of a retry that can only fail, and
+//     a stored one replaces the retry in history;
 //   · a refused card-to-card checkout says how to get a transfer back;
 //   · the address book is written after the screenshot, and its failure still
 //     navigates.
@@ -29,6 +34,7 @@ import {
   MAX_RECEIPT_BYTES,
   RECEIPT_READ_ERROR,
   RECEIPT_SIZE_ERROR,
+  RECEIPT_UPLOAD_FAILED,
   receiptSchema,
 } from '@/lib/orders/receipt';
 import { IMAGE_FIELD_NAME, IMAGE_TYPE_ERROR } from '@/lib/storage/image-upload';
@@ -99,7 +105,9 @@ const chooseCardToCard = () =>
   fireEvent.click(screen.getByRole('radio', { name: /کارت به کارت/ }));
 
 const submitButton = () =>
-  screen.getByRole('button', { name: /ثبت سفارش|در حال/ }) as HTMLButtonElement;
+  screen.getByRole('button', {
+    name: /ثبت سفارش|در حال|ارسال دوباره رسید/,
+  }) as HTMLButtonElement;
 
 const receiptInput = () =>
   document.querySelector<HTMLInputElement>(
@@ -306,34 +314,129 @@ describe('the card-to-card checkout and its screenshot', () => {
     );
   });
 
+  const NOT_ACCEPTING = 'این سفارش رسید نمی‌پذیرد.';
+  const TOO_LARGE = 'حجم تصویر بیش از حد مجاز است.';
+
   it.each([
+    // A refusal the server explained: its own sentence.
     [
-      'the server refuses to store it',
-      () =>
-        new ApiRequestError(
-          503,
-          'بارگذاری رسید موقتاً ممکن نیست؛ رسید را از طریق اینستاگرام یا تلگرام بفرست.',
-        ),
+      'the server refuses it',
+      () => new ApiRequestError(413, TOO_LARGE),
+      TOO_LARGE,
     ],
-    ['the connection drops', () => new TypeError('Failed to fetch')],
-  ])('never places a second order when %s', async (_, failure) => {
+    // A 5xx's message is a developer's, never a shopper's.
+    [
+      'the server fails',
+      () => new ApiRequestError(503, 'Service Unavailable'),
+      RECEIPT_UPLOAD_FAILED,
+    ],
+    [
+      'the connection drops',
+      () => new TypeError('Failed to fetch'),
+      RECEIPT_UPLOAD_FAILED,
+    ],
+  ])(
+    'stays on the checkout and says so when %s — never a second order',
+    async (_, failure, said) => {
+      postData.mockResolvedValue(CREATED);
+      postForm.mockRejectedValue(failure());
+      advanceToPayment();
+      chooseCardToCard();
+      await attach(screenshot());
+
+      await click();
+
+      expect(push).not.toHaveBeenCalled();
+      expect(receiptAlert()?.textContent).toBe(said);
+      expect(submitButton().textContent).toBe('ارسال دوباره رسید');
+      // Focus is back on the button that resends, not lost to <body> when it
+      // was disabled for the upload.
+      expect(document.activeElement).toBe(submitButton());
+      // The order is placed at its discount: no code to try against it now.
+      expect(
+        document.querySelector('[data-umami-event="checkout-discount-code"]'),
+      ).toBeNull();
+      expect(
+        screen.getByRole('link', { name: 'مشاهده سفارش' }).getAttribute('href'),
+      ).toBe(RESULT_PAGE);
+      // The order exists: its method cannot change under it.
+      expect(
+        (
+          screen.getByRole('radio', {
+            name: /کارت به کارت/,
+          }) as HTMLInputElement
+        ).disabled,
+      ).toBe(true);
+      // The emptied cart never sent the form to the shop, and the summary
+      // still shows what was ordered, at the server's total.
+      expect(replace).not.toHaveBeenCalled();
+      expect(screen.getByText('اسباب‌بازی گربه')).toBeTruthy();
+      expect(document.body.textContent).toContain('۴۱۰٬۰۰۰');
+
+      // The retry resends the screenshot to the same order: no second create.
+      await click();
+      expect(creates()).toHaveLength(1);
+      expect(postForm).toHaveBeenCalledTimes(2);
+      expect(postForm.mock.calls[1][0]).toBe(apiOrderReceiptsPath('order-123'));
+      expect(push).not.toHaveBeenCalled();
+      expect(replace).not.toHaveBeenCalled();
+    },
+  );
+
+  it('opens the order once a retried screenshot is stored, in place of the retry', async () => {
     postData.mockResolvedValue(CREATED);
-    postForm.mockRejectedValue(failure());
+    postForm
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(STORED);
     advanceToPayment();
     chooseCardToCard();
     await attach(screenshot());
 
     await click();
-    // The shopper tries again: no second create.
     await click();
-    expect(creates()).toHaveLength(1);
 
-    // On to the order's own page, which shows it waiting and takes the
-    // upload again — never back to a form that would create another.
-    expect(push).toHaveBeenCalledWith(RESULT_PAGE);
+    expect(creates()).toHaveLength(1);
+    // Replaced, not pushed: Back never returns to a retry for an order its
+    // screenshot has accepted.
+    expect(replace).toHaveBeenCalledWith(RESULT_PAGE);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('leaves for the order’s page when the resend is refused with 409 — no retry left to fail again', async () => {
+    // Cancelled while the retry waited (its wait ran out, or the shopper
+    // cancelled it in another tab): its page says so, and why.
+    postData.mockResolvedValue(CREATED);
+    postForm
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new ApiRequestError(409, NOT_ACCEPTING));
+    advanceToPayment();
+    chooseCardToCard();
+    await attach(screenshot());
+    await click();
+
+    await click();
+
+    expect(replace).toHaveBeenCalledWith(RESULT_PAGE);
+    expect(push).not.toHaveBeenCalled();
+    expect(creates()).toHaveLength(1);
     expect(submitButton().disabled).toBe(true);
-    // The emptied cart never sent the form to the shop instead.
-    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('keeps the retry locked until a screenshot is attached again', async () => {
+    postData.mockResolvedValue(CREATED);
+    postForm.mockRejectedValue(new TypeError('Failed to fetch'));
+    advanceToPayment();
+    chooseCardToCard();
+    await attach(screenshot());
+    await click();
+
+    // A refused pick drops the file: nothing to resend.
+    await attach(
+      new File(['%PDF'], 'receipt.pdf', { type: 'application/pdf' }),
+    );
+    expect(submitButton().disabled).toBe(true);
+    await attach(screenshot());
+    expect(submitButton().disabled).toBe(false);
   });
 
   it('tells a card-to-card shopper the server refused how to get a transfer back', async () => {

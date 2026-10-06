@@ -29,8 +29,11 @@ const storageRemotePatterns: NonNullable<
           protocol: url.protocol.replace(':', '') as 'http' | 'https',
           hostname: url.hostname,
           port: url.port,
-          // Path-style bucket URL: allow the bucket path and everything under it.
-          pathname: `${basePath}/**`,
+          // Path-style bucket URL: the bucket's `uploads/` only — the photos
+          // `imageSrc` builds bucket URLs for (UPLOAD_KEY_PREFIX). Never
+          // `receipts/`: the optimizer would hand a receipt back public and
+          // cacheable from the shop's own origin.
+          pathname: `${basePath}/uploads/**`,
         },
       ];
     })()

@@ -32,6 +32,17 @@ export const productPath = (slug: string) =>
 export const checkoutResultPath = (orderId: string) =>
   `${PATHS.CHECKOUT}/result/${encodeURIComponent(orderId)}`;
 
+/** The checkout's query key naming a waiting card-to-card order to resume. */
+export const CHECKOUT_RESUME_PARAM = 'resume';
+
+/**
+ * The checkout opened on a waiting card-to-card order's retry — the one place
+ * its receipt is sent, reached again after a reload or from the order's pages.
+ * The page owner-checks the id; a stale or foreign one is simply ignored.
+ */
+export const checkoutResumePath = (orderId: string) =>
+  `${PATHS.CHECKOUT}?${CHECKOUT_RESUME_PARAM}=${encodeURIComponent(orderId)}`;
+
 /**
  * The generic payment-failure page — where the callback lands when it cannot tie
  * the redirect to an order (unknown/absent authority, or a malformed callback
@@ -176,6 +187,10 @@ export const apiAdminOrderTransitionsPath = (id: string) =>
  */
 export const apiOrderReceiptsPath = (orderId: string) =>
   `${API_PATHS.ORDERS}/${encodeURIComponent(orderId)}/receipts`;
+
+/** Where the owner of an open order cancels it (`POST`). Owner-scoped by the session. */
+export const apiOrderCancelPath = (orderId: string) =>
+  `${API_PATHS.ORDERS}/${encodeURIComponent(orderId)}/cancel`;
 
 /**
  * One receipt's bytes, for the order's owner — the only URL a shopper's page

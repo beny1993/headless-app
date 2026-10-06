@@ -72,14 +72,15 @@ describe('resultCopy — card to card', () => {
       receiptCount,
     );
 
-  it('says a waiting order is not accepted yet, and points to the box below', () => {
+  it('says a waiting order is not accepted yet, and how long its screenshot has', () => {
     // The screenshot did not arrive: the page must not read as an accepted
-    // order (Benyamin, 2026-10-02) — the box sits directly under this copy.
+    // order (Benyamin, 2026-10-02). «ارسال رسید» under this copy leads back to
+    // the checkout's retry; the wait is the sweep's own.
     const copy = cod(ORDER_STATUSES.AWAITING_RECEIPT, null, 0);
     expect(copy).toEqual({
       kind: 'pending',
       title: 'سفارش هنوز پذیرفته نشده است',
-      sub: 'رسید واریز به ما نرسید. اسکرین‌شات رسید را در کادر زیر بارگذاری کن تا سفارش پذیرفته شود.',
+      sub: 'رسید واریز به ما نرسید. تا ۳۰ دقیقه پس از ثبت، تصویر رسید را بفرست؛ وگرنه سفارش لغو می‌شود.',
     });
     expect(copy.title).not.toBe('سفارش ثبت شد!');
   });
@@ -94,9 +95,9 @@ describe('resultCopy — card to card', () => {
 
   it('never claims a receipt arrived for an order accepted without one', () => {
     // Accepted by hand (a receipt sent by DM), or processing from before
-    // receipts existed: the box below still invites one.
+    // receipts existed.
     expect(cod(ORDER_STATUSES.PROCESSING, null, 0).sub).toBe(
-      'سفارش پذیرفته شد؛ رسید را می‌توانی پایین همین صفحه بارگذاری کنی.',
+      'سفارش پذیرفته شد.',
     );
   });
 

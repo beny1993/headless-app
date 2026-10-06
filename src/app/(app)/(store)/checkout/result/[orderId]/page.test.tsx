@@ -1,16 +1,12 @@
-// Pins where a card-to-card order's receipt box sits on the result page, and
-// that it is one mounted component whichever place it is in:
-//   · waiting for its receipt, the box comes first — before the card numbers
-//     and the order's details — so the shopper finds it without scrolling;
-//   · accepted, it follows the details, and it is the same box moved there,
-//     not a new one mounted, so it keeps its state across the
-//     `router.refresh()` that moved it.
+// Pins what a card-to-card order's result page shows about its receipt:
+// the receipt the checkout uploaded, and nothing to upload or pay with —
+// no picker, no card numbers — whether the receipt arrived or not.
 //
-// The page renders for real; `loadOwnedOrder` and the content read are mocked
-// at the module edge, and `next/navigation` for the box's `useRouter`.
+// The page renders for real; `loadOwnedOrder` is mocked at the module edge.
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
+import { checkoutResumePath } from '@/lib/constant/paths';
 import type { OwnedOrder } from '@/logic/checkout/get-order';
 import {
   acceptedCardToCardOrder,
@@ -19,10 +15,7 @@ import {
 import ResultPage from './page';
 
 const { loadOwnedOrder } = vi.hoisted(() => ({ loadOwnedOrder: vi.fn() }));
-vi.mock('@/features/checkout/load-owned-order', () => ({
-  loadOwnedOrder,
-  readCardToCardPayment: async () => DEFAULT_CONTENT['checkout.payment'],
-}));
+vi.mock('@/features/checkout/load-owned-order', () => ({ loadOwnedOrder }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
 }));
@@ -38,9 +31,8 @@ const page = async (order: OwnedOrder) => {
 };
 
 const box = () =>
-  screen.getByRole('heading', { name: 'رسید پرداخت' }).closest('section');
-const cardNumbers = () =>
-  screen.getByText(DEFAULT_CONTENT['checkout.payment'].note);
+  screen.queryByRole('heading', { name: 'رسید پرداخت' })?.closest('section') ??
+  null;
 const details = () => screen.getByText('شماره سفارش', { exact: true });
 /** Whether `first` comes before `second` in the page. */
 const precedes = (first: Node | null, second: Node | null) =>
@@ -49,23 +41,35 @@ const precedes = (first: Node | null, second: Node | null) =>
     second &&
     first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
   );
+/** Nothing on the page asks for a receipt or a transfer. */
+const expectNothingToUpload = () => {
+  expect(document.querySelector('input[type="file"]')).toBeNull();
+  expect(screen.queryByText('بارگذاری رسید')).toBeNull();
+  expect(
+    screen.queryByText(DEFAULT_CONTENT['checkout.payment'].note),
+  ).toBeNull();
+  expect(
+    screen.queryByText('برای هماهنگی، از طریق', { exact: false }),
+  ).toBeNull();
+};
 
 describe('the result page of a card-to-card order', () => {
-  it('puts the receipt box first while the order waits — before the card numbers and the details', async () => {
+  it('shows no upload box and no card numbers while the receipt has not arrived', async () => {
     render(await page(waitingCardToCardOrder));
 
-    expect(precedes(box(), cardNumbers())).toBe(true);
-    expect(precedes(cardNumbers(), details())).toBe(true);
+    expect(box()).toBeNull();
+    expectNothingToUpload();
+    // The way back to the one place a receipt is sent: the checkout's retry.
+    expect(
+      screen.getByRole('link', { name: 'ارسال رسید' }).getAttribute('href'),
+    ).toBe(checkoutResumePath(waitingCardToCardOrder.id));
   });
 
-  it('moves that same box below the details once the order is accepted', async () => {
-    const view = render(await page(waitingCardToCardOrder));
-    const mounted = box();
+  it('shows the receipt the checkout uploaded, and nothing to upload or pay with', async () => {
+    render(await page(acceptedCardToCardOrder));
 
-    view.rerender(await page(acceptedCardToCardOrder));
-
-    expect(box()).toBe(mounted);
-    expect(precedes(details(), cardNumbers())).toBe(true);
-    expect(precedes(cardNumbers(), box())).toBe(true);
+    expect(precedes(details(), box())).toBe(true);
+    expect(box()?.querySelectorAll('img')).toHaveLength(1);
+    expectNothingToUpload();
   });
 });

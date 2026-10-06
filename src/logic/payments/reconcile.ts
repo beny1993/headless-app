@@ -12,9 +12,9 @@
 //   Pass 2 — every `pending_payment` order older than 1 h with no live
 //     (pending/paid) attempt is transitioned to `failed`, which restocks.
 //
-// Admin-triggered for v1; the function is directly callable so a PaaS cron can
-// wrap it later. ponytail: no cron here — add the wrapper when order volume
-// outpaces the admin clicking the button.
+// Run every five minutes inside the server while online payment is on
+// (`src/logic/orders/order-sweeps.ts`), and by an admin through
+// `POST /payments/zarinpal/reconcile`.
 import * as Sentry from '@sentry/nextjs';
 import { db } from '@/db';
 import { OrderDao } from '@/db/dao/OrderDao';

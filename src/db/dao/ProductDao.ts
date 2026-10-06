@@ -1303,6 +1303,31 @@ export class ProductDao {
     return rows.map((row) => row.categoryId);
   }
 
+  /**
+   * Each product's first photo by `sortOrder` — an order's line photos. An
+   * order outlives its product's listing, so a soft-deleted product counts; a
+   * product with no photo is simply absent.
+   */
+  static async coverImageKeys(
+    productIds: readonly string[],
+  ): Promise<Map<string, string>> {
+    if (productIds.length === 0) return new Map();
+    const images = await db
+      .select({
+        productId: productImages.productId,
+        objectKey: productImages.objectKey,
+      })
+      .from(productImages)
+      .where(inArray(productImages.productId, [...productIds]))
+      .orderBy(asc(productImages.sortOrder), asc(productImages.createdAt));
+    // Ordered, so the first key kept per product is its cover.
+    const keys = new Map<string, string>();
+    for (const { productId, objectKey } of images) {
+      if (!keys.has(productId)) keys.set(productId, objectKey);
+    }
+    return keys;
+  }
+
   /** Two extra queries for the whole page of products, not two per product. */
   private static async withRelations<T extends Product>(
     rows: T[],

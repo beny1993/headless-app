@@ -29,9 +29,6 @@ import type { AuthedEnv } from '../middleware/auth';
 const ORDER_NOT_FOUND_MESSAGE = 'سفارش یافت نشد';
 const RECEIPT_NOT_FOUND_MESSAGE = 'رسید یافت نشد';
 const NOT_ACCEPTING_MESSAGE = 'این سفارش رسید نمی‌پذیرد.';
-/** Storage could not keep the receipt private — there is still a way to send it. */
-const RECEIPT_UNAVAILABLE_MESSAGE =
-  'بارگذاری رسید موقتاً ممکن نیست؛ رسید را از طریق اینستاگرام یا تلگرام بفرست.';
 
 type AuthedContext = Context<Env & AuthedEnv>;
 
@@ -92,8 +89,6 @@ export const orderReceiptUploadHandler = async (
       return c.json(apiError(NOT_ACCEPTING_MESSAGE), 409);
     case 'cap_reached':
       return c.json(apiError(RECEIPT_CAP_MESSAGE), 409);
-    case 'exposed':
-      return c.json(apiError(RECEIPT_UNAVAILABLE_MESSAGE), 503);
     case 'ok':
       return c.json(
         apiSuccess({

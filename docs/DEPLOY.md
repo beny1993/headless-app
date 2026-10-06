@@ -100,54 +100,18 @@ public object-read (no listing). Prove it with `pnpm verify-s3` before trusting
 it — it round-trips a real object through the live bucket. Uploads then survive a
 redeploy with no persistent volume. The storage seam means nothing else changes.
 
-**Card-to-card receipts share the bucket, under `receipts/`, and must never be
-public.** A receipt shows a bank, a card, a name and an amount. The app reads
-one back only through its authenticated routes (the order's owner, or an
-admin), so the bucket's anonymous read has to be narrowed from the whole bucket
-to `uploads/` — where every product photo lives. Liara documents only a
-whole-bucket public/private switch; the folder rule is an S3 bucket policy its
-endpoint may or may not honour, so staging decides. **Staging and production
-share the bucket: the rule is live on production the moment it lands. It is
-applied only with Benyamin's explicit go at that moment.**
-
-1. `pnpm bucket-policy` (dry run): lists every object and refuses while any
-   sits outside `uploads/` and `receipts/` — it would go dark for every
-   shopper — or when the listing is truncated without a continuation token,
-   or hands back a token it gave before. Then it prints the bucket's current
-   policy (exactly as stored, when it is not JSON) — keep a copy before
-   applying — and the one statement it would set: `s3:GetObject` for anyone
-   on `arn:aws:s3:::<bucket>/uploads/*`. It fails, as `--apply` would, while
-   the current policy cannot be read.
-2. `pnpm bucket-policy --apply`: refuses while the current policy cannot be
-   read, since there would be no copy of what it replaces; otherwise sets it
-   and reads it back, failing if the endpoint refused it
-   (`NotImplemented`/`AccessDenied`) or stored something else (a dropped
-   prefix).
-3. `pnpm verify-s3` from the staging checkout: a photo is still served to a
-   stranger (200), a receipt is refused, the app key still reads it, and no URL
-   is ever built for it. Record the output in the PR.
-4. Only then deploy the receipts feature to production.
-
-**Rollback** (product photos stop loading): set the bucket public again in the
-Liara panel. **Never flip that toggle otherwise** — it silently restores
-whole-bucket public read. The app notices: every receipt upload probes its own
-object anonymously and, if the bucket serves it, raises an error in GlitchTip
-(«a receipt was readable anonymously»), deletes the object when the bucket
-allows it, writes the key and whether the delete worked to the server log, and
-refuses the upload with a 503 until the policy is re-applied. A probe that
-cannot reach the bucket lets the upload through and leaves a GlitchTip warning
-(«receipt privacy probe could not run», with only the error's name). Neither
-carries the receipt's key, their breadcrumbs included: `src/lib/sentry.ts`
-redacts every `receipts/<key>` to `receipts/[redacted]` — and the key behind a
-percent-encoded slash, `receipts%2F<key>` or twice encoded `receipts%252F<key>`,
-to `receipts%2F[redacted]` or `receipts%252F[redacted]` — in a breadcrumb, a
-redirect hop's too, wherever it sits (path, query, a bucket itself named
-`receipts`), and in an event's message and exception values,
-which covers a storage error that quotes the object (AWS's AccessDenied names
-it). A missing `NEXT_PUBLIC_STORAGE_BASE_URL` (nothing to probe with) refuses
-the upload outright. If Liara will not keep the policy at all, the fallback is
-encrypting each receipt in the app (design note §1e): one new secret env var
-that must be backed up off-box.
+**Card-to-card receipts share the bucket, under `receipts/`, and its public
+read covers them** (Benyamin's decision, 2026-10-06). A receipt shows a bank, a
+card, a name and an amount, so what keeps one out of sight is that its URL
+never exists in the app: no response carries a receipt's key (a fresh uuid),
+the app reads one only with its own key through the authenticated routes (the
+order's owner, or an admin), and **bucket listing must stay off** — with it on,
+anyone could list every receipt. `pnpm verify-s3` round-trips a receipt (put →
+key read → no URL → gone) alongside the photo check, and fails if the bucket
+answers an anonymous listing. Next's image optimizer is allowed the bucket's
+`uploads/` only (`next.config.ts`), so it never proxies a receipt.
+`src/lib/sentry.ts` still redacts every `receipts/<key>` from breadcrumbs and
+event messages, so the error tracker never holds a receipt's link.
 
 On the `local` driver, receipts sit in a `receipts/` folder under
 `APP_CONFIG_STORAGE_LOCAL_ROOT`, which `/uploads/*` never serves.
@@ -419,19 +383,14 @@ and deliberately not baked into the image:
 
 ### Before deploying card-to-card receipts (once, on production)
 
-- [ ] **The bucket rule (§3), on Benyamin's go.** Until the bucket's anonymous
-      read is narrowed to `uploads/`, every receipt upload on the `s3` driver
-      answers 503 — the driver finds its own receipt public and deletes it —
-      so every card-to-card checkout ends on the «not accepted yet» page, its
-      order waiting for an admin to accept it by hand.
+- [ ] **Bucket listing is off** (§3): receipts share the public bucket, and
+      only their unlisted keys keep them out of sight. `pnpm verify-s3` fails
+      if an anonymous listing is answered.
 - [ ] **Edit the saved `checkout.payment` row once** in
       `/admin-panel/content/checkout`. A saved row never picks up a new
       default, so until it is edited the checkout note keeps telling shoppers
       to send the receipt by DM instead of attaching its screenshot at
       checkout.
-- [ ] **`NEXT_PUBLIC_STORAGE_BASE_URL`** is set on `s3` (a build variable):
-      without it there is nothing to probe a receipt with, and every receipt
-      upload is refused.
 - [ ] **Postgres 12 or later** (`SELECT version()`): migration 0019 adds an
       enum value inside the migrator's transaction. No migration in the same
       release may use the new `awaiting_receipt` value.

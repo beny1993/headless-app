@@ -8,7 +8,8 @@ import {
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
 } from '@/lib/orders/order-status';
-import { databaseReachable, importWithDb } from '@/db/test-db';
+import { productImages } from '@/db/schema/catalog';
+import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 
 const { getOwnedOrder } = await importWithDb(
@@ -46,6 +47,21 @@ describe.skipIf(!databaseReachable)('getOwnedOrder', () => {
     expect(result!.orderNo).toBe(order.orderNo);
     expect(result!.items).toHaveLength(1);
     expect(result!.items[0].sku).toBe(product.sku);
+  });
+
+  it('gives each line its product’s first photo, and none when it has no photo', async () => {
+    const { user, order, product } = await seedOrder();
+
+    expect((await getOwnedOrder(order.id, user.id))!.items[0].imageKey).toBe(
+      undefined,
+    );
+
+    await testDb
+      .insert(productImages)
+      .values({ productId: product.id, objectKey: 'uploads/line.jpg' });
+    expect((await getOwnedOrder(order.id, user.id))!.items[0].imageKey).toBe(
+      'uploads/line.jpg',
+    );
   });
 
   it('returns null for another user’s order (IDOR — do not leak existence)', async () => {

@@ -49,6 +49,7 @@ import {
   PATHS,
   apiOrderReceiptsPath,
   checkoutResultPath,
+  checkoutResumePath,
 } from '@/lib/constant/paths';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
 import type {
@@ -61,7 +62,7 @@ import {
   PAYMENT_METHODS,
   type PaymentMethod,
 } from '@/lib/orders/order-status';
-import { receiptSchema } from '@/lib/orders/receipt';
+import { RECEIPT_UPLOAD_FAILED, receiptSchema } from '@/lib/orders/receipt';
 import { toPersianDigits } from '@/lib/format';
 import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
 import { IMAGE_FIELD_NAME } from '@/lib/storage/image-upload';
@@ -69,9 +70,23 @@ import { cn } from '@/lib/utils';
 
 /**
  * idle → submitting → (uploading, card to card) → redirecting. The button
- * disables off `idle`, and only a refused create ever returns to it.
+ * disables off `idle`, and only a refused create ever returns to it. A
+ * screenshot that fails to store parks the form at `receipt-failed`, from
+ * where the button only resends it to the order already created — and a
+ * resumed order (`?resume=`) starts there.
  */
-type Status = 'idle' | 'submitting' | 'uploading' | 'redirecting';
+type Status =
+  'idle' | 'submitting' | 'uploading' | 'receipt-failed' | 'redirecting';
+
+/**
+ * The server's own sentence for a refused receipt — a 4xx: the order moved on,
+ * or the file was refused — else a generic one. A 5xx message is a
+ * developer's, never a shopper's.
+ */
+const receiptRefusal = (error: unknown): string =>
+  error instanceof ApiRequestError && error.status < 500
+    ? error.message
+    : RECEIPT_UPLOAD_FAILED;
 
 const STEPS = ['اطلاعات', 'آدرس', 'پرداخت'] as const;
 
@@ -92,6 +107,20 @@ const STEP_OF_FIELD: Record<string, number> = {
 
 /** `items.*` / `discountCode` (and anything unlisted) live on the last step. */
 const stepOfField = (path: string) => STEP_OF_FIELD[path] ?? 3;
+
+/**
+ * A card-to-card order of the shopper's still waiting for its receipt, as the
+ * checkout resumes it (`findResumableReceiptOrder`, read by the page): its own
+ * lines and server totals, for the summary.
+ */
+export type ResumableOrder = {
+  orderId: string;
+  lines: SummaryLine[];
+  subtotal: number;
+  discount: number;
+  shippingFee: number;
+  total: number;
+};
 
 /**
  * The ported checkout wizard: customer info → delivery address (province drives
@@ -119,10 +148,18 @@ const stepOfField = (path: string) => STEP_OF_FIELD[path] ?? 3;
  * the transfer's screenshot under them — «ثبت سفارش» stays locked until one
  * passes the byte check. The stored method stays `cod`: the order is created
  * waiting for its receipt, and the screenshot, uploaded right after the create
- * by the order pages' own receipt route, accepts it.
+ * to the order's receipt route, accepts it.
  * `zarinpalEnabled` (`APP_CONFIG_ZARINPAL_ENABLED`, read by the page) is the
  * online-payment switch: off, the Zarinpal option renders disabled and card to
  * card is preselected — a display gate only; the API still accepts both methods.
+ *
+ * `resume` is the shopper's card-to-card order still waiting for its receipt,
+ * if any. The retry a failed upload leaves lives in this page, gone after a
+ * reload; so with `resumed` (the page's `?resume=` named that order) the form
+ * opens on the same retry, built from the order — from its first render, as
+ * initial state, which the page keys the form by. Without it, an empty cart is
+ * sent to that order's retry rather than the shop, and a filled cart keeps its
+ * own checkout with a note leading there.
  */
 export function CheckoutForm({
   rates,
@@ -131,6 +168,8 @@ export function CheckoutForm({
   savedAddresses = [],
   payment,
   zarinpalEnabled = true,
+  resume = null,
+  resumed = false,
 }: {
   rates: ShippingRateResponse[];
   defaultName: string;
@@ -138,9 +177,13 @@ export function CheckoutForm({
   savedAddresses?: AddressResponse[];
   payment: CardToCardContent;
   zarinpalEnabled?: boolean;
+  resume?: ResumableOrder | null;
+  resumed?: boolean;
 }) {
   const router = useRouter();
   const fieldId = useId();
+  // The order this form opens on the retry of, read once for initial state.
+  const resumedOrder = resumed ? resume : null;
 
   // The cart is read through the store's hydration-safe snapshots — empty on the
   // server and the hydrating render, the real cart immediately after. `hydrated`
@@ -154,7 +197,7 @@ export function CheckoutForm({
     () => false,
   );
 
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(resumedOrder ? 3 : 1);
   // '' is «آدرس جدید»; otherwise the index into `savedAddresses` of the picked
   // one. Only the pick is remembered — the fields it filled are the state the
   // order is built from, and stay editable on the address step.
@@ -166,7 +209,9 @@ export function CheckoutForm({
   const [postalCode, setPostalCode] = useState('');
   const [addressLine, setAddressLine] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
-    zarinpalEnabled ? PAYMENT_METHODS.ZARINPAL : PAYMENT_METHODS.COD,
+    resumedOrder || !zarinpalEnabled
+      ? PAYMENT_METHODS.COD
+      : PAYMENT_METHODS.ZARINPAL,
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [topError, setTopError] = useState<string | undefined>();
@@ -175,7 +220,9 @@ export function CheckoutForm({
   const [orderMayExist, setOrderMayExist] = useState(false);
   // Counts refused creates, so each one moves focus (the effect below).
   const [refusals, setRefusals] = useState(0);
-  const [status, setStatus] = useState<Status>('idle');
+  const [status, setStatus] = useState<Status>(
+    resumedOrder ? 'receipt-failed' : 'idle',
+  );
   // "Save this address" — a best-effort write after the order is created; a
   // failure never blocks the redirect (see `submit`).
   const [saveAddress, setSaveAddress] = useState(false);
@@ -196,13 +243,31 @@ export function CheckoutForm({
   // or the refusal of the last one picked.
   const [receipt, setReceipt] = useState<File | null>(null);
   const [receiptError, setReceiptError] = useState<string | null>(null);
+  // A card-to-card order this form created whose screenshot did not store, or
+  // the resumed one: the form stays to resend it to this order — never to
+  // create another — and the summary shows the order, not the cart. A resumed
+  // order has no `address`: its «save this address» went with the old page.
+  const [placed, setPlaced] = useState<{
+    orderId: string;
+    address?: CheckoutInput['address'];
+    lines: SummaryLine[];
+    subtotal: number;
+    discount: number;
+    shippingFee: number;
+    total: number;
+  } | null>(resumedOrder);
+  // The resend's own double-click guard; `inFlight` stays set once an order
+  // exists, so the create can never run again.
+  const resending = useRef(false);
 
   // The authoritative double-submit guard: set synchronously, so a second click
   // in the same tick returns before `postData` runs — the disabled button is
   // defense-in-depth, not the guarantee. Never sending a second create is the
   // point; the server-side `Idempotency-Key` is the last line if one slips out.
-  const inFlight = useRef(false);
+  // Set from the start for a resumed order, which exists already.
+  const inFlight = useRef(resumedOrder !== null);
   const topAlert = useRef<HTMLParagraphElement>(null);
+  const submitButton = useRef<HTMLButtonElement>(null);
   const page = useRef<HTMLElement>(null);
   // The Idempotency-Keys, one per checkout body: a key is resent by every
   // retry of its body — after a reload too (`checkout-key.ts`) — and dropped
@@ -272,9 +337,9 @@ export function CheckoutForm({
   // shop instead of the result page.
   useEffect(() => {
     if (hydrated && status === 'idle' && lines.length === 0) {
-      router.replace(PATHS.SHOP);
+      router.replace(resume ? checkoutResumePath(resume.orderId) : PATHS.SHOP);
     }
-  }, [hydrated, status, lines.length, router]);
+  }, [hydrated, status, lines.length, router, resume]);
 
   // After a refused create, focus what it says: its alert, which tops the
   // form far above the button that sent it — or, when the refusal shows only
@@ -288,6 +353,13 @@ export function CheckoutForm({
     target?.focus();
     target?.scrollIntoView({ block: 'center' });
   }, [refusals]);
+
+  // A failed upload hands focus back to the button that resends it: it was
+  // disabled while the upload ran, which dropped focus to <body>. The
+  // picker's alert reads the refusal out on its own.
+  useEffect(() => {
+    if (status === 'receipt-failed') submitButton.current?.focus();
+  }, [status]);
 
   /**
    * Ask the server what the code takes off the current cart. Read-only — it never
@@ -399,6 +471,56 @@ export function CheckoutForm({
   const goBack = () =>
     setStep(step === 3 && skipAddress ? 1 : Math.max(1, step - 1));
 
+  /** Stores the screenshot on the order; on failure says why, under the picker. */
+  const storeReceipt = async (orderId: string, file: File) => {
+    setStatus('uploading');
+    try {
+      const form = new FormData();
+      // Named «receipt», never the shopper's own file name.
+      form.append(IMAGE_FIELD_NAME, file, 'receipt');
+      await postForm(apiOrderReceiptsPath(orderId), form, receiptSchema);
+      return true;
+    } catch (error) {
+      // 409: the order takes no receipt any more — cancelled while the retry
+      // waited, or its receipts are full. A resend could only be refused
+      // again; the order's page says where it stands, and why.
+      if (error instanceof ApiRequestError && error.status === 409) {
+        setStatus('redirecting');
+        router.replace(checkoutResultPath(orderId));
+        return false;
+      }
+      setReceiptError(receiptRefusal(error));
+      setStatus('receipt-failed');
+      return false;
+    }
+  };
+
+  // Best-effort "save this address": the order already snapshotted the
+  // address, so this only adds it to the address book. Swallowed on failure
+  // (e.g. the per-user cap) — it must never block or fail the redirect after.
+  const saveToAddressBook = async (address?: CheckoutInput['address']) => {
+    if (!saveAddress || !address) return;
+    try {
+      await postData<AddressResponse>(API_PATHS.ME_ADDRESSES, address);
+    } catch {
+      // intentionally ignored — checkout succeeded; saving is a convenience
+    }
+  };
+
+  /** «ارسال دوباره رسید»: the screenshot again, to the order already created. */
+  const resendReceipt = async () => {
+    if (!placed || !receipt || resending.current) return;
+    resending.current = true;
+    const stored = await storeReceipt(placed.orderId, receipt);
+    resending.current = false;
+    if (!stored) return;
+    setStatus('redirecting');
+    await saveToAddressBook(placed.address);
+    // Replaces the retry in history: Back never returns to it for an order
+    // its screenshot has now accepted.
+    router.replace(checkoutResultPath(placed.orderId));
+  };
+
   const submit = async () => {
     if (inFlight.current) return; // authoritative double-submit guard
     if (!validateStep(3)) return;
@@ -508,35 +630,22 @@ export function CheckoutForm({
     setStatus(screenshot ? 'uploading' : 'redirecting');
 
     // The screenshot accepts the card-to-card order. A refusal or a dropped
-    // connection is swallowed: the order waits for its receipt, and its result
-    // page says so and takes the upload again — where a retry shows the
-    // server's own refusal.
-    if (screenshot) {
-      try {
-        const form = new FormData();
-        // Named «receipt», never the shopper's own file name.
-        form.append(IMAGE_FIELD_NAME, screenshot, 'receipt');
-        await postForm(
-          apiOrderReceiptsPath(order.orderId),
-          form,
-          receiptSchema,
-        );
-      } catch {
-        // intentionally ignored — see above
-      }
-      setStatus('redirecting');
+    // connection keeps the shopper here, the refusal under the picker, to
+    // resend it to this same order (`resendReceipt`).
+    if (screenshot && !(await storeReceipt(order.orderId, screenshot))) {
+      setPlaced({
+        orderId: order.orderId,
+        address: body.address,
+        lines: summaryLines,
+        subtotal: order.subtotal,
+        discount: order.discount,
+        shippingFee: order.shippingFee,
+        total: order.total,
+      });
+      return;
     }
-
-    // Best-effort "save this address": the order already snapshotted the
-    // address, so this only adds it to the address book. Swallowed on failure
-    // (e.g. the per-user cap) — it must never block or fail the redirect below.
-    if (saveAddress) {
-      try {
-        await postData<AddressResponse>(API_PATHS.ME_ADDRESSES, body.address);
-      } catch {
-        // intentionally ignored — checkout succeeded; saving is a convenience
-      }
-    }
+    setStatus('redirecting');
+    await saveToAddressBook(body.address);
 
     if (toGateway) {
       try {
@@ -614,6 +723,34 @@ export function CheckoutForm({
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
           <div className="border-border bg-card rounded-2xl border p-6 lg:col-span-3">
+            {/* Said first: a resumed retry opens here, on the payment step,
+                with no other word of the order it sends to. */}
+            {placed ? (
+              <p className="bg-warning-soft border-warning/30 mb-5 rounded-xl border p-3 text-sm leading-relaxed">
+                سفارش ثبت شده و منتظر رسید است.{' '}
+                <a
+                  href={checkoutResultPath(placed.orderId)}
+                  className="font-medium whitespace-nowrap underline"
+                  data-umami-event="checkout-receipt-view-order"
+                >
+                  مشاهده سفارش
+                </a>
+              </p>
+            ) : (
+              resume && (
+                <p className="bg-warning-soft border-warning/30 mb-5 rounded-xl border p-3 text-sm leading-relaxed">
+                  یک سفارش کارت به کارت ثبت‌شده هنوز منتظر رسید است.{' '}
+                  <a
+                    href={checkoutResumePath(resume.orderId)}
+                    className="font-medium whitespace-nowrap underline"
+                    data-umami-event="checkout-resume-open"
+                  >
+                    ارسال رسید
+                  </a>
+                </p>
+              )
+            )}
+
             {(topError || orderMayExist) && (
               <p
                 id={errorId}
@@ -837,10 +974,16 @@ export function CheckoutForm({
                       htmlFor={`${fieldId}-pay-${option.id}`}
                       className={cn(
                         'flex items-center gap-3 rounded-xl border-2 p-4 transition-colors',
-                        option.disabled
+                        // Once the order exists, the method it was created
+                        // with stays marked and the others read as locked.
+                        option.disabled ||
+                          (placed !== null && paymentMethod !== option.id)
                           ? 'border-border cursor-not-allowed opacity-60'
                           : paymentMethod === option.id
-                            ? 'border-accent-strong bg-accent/5 cursor-pointer'
+                            ? cn(
+                                'border-accent-strong bg-accent/5',
+                                placed === null && 'cursor-pointer',
+                              )
                             : 'border-border hover:border-accent/50 cursor-pointer',
                       )}
                     >
@@ -850,7 +993,9 @@ export function CheckoutForm({
                         id={`${fieldId}-pay-${option.id}`}
                         value={option.id}
                         checked={paymentMethod === option.id}
-                        disabled={option.disabled}
+                        // Locked once the order exists: it was created with
+                        // this method.
+                        disabled={option.disabled || placed !== null}
                         onChange={() => setPaymentMethod(option.id)}
                         className="accent-accent-strong size-5"
                         data-umami-event={`checkout-payment-${option.id}`}
@@ -892,7 +1037,7 @@ export function CheckoutForm({
                       event="checkout-receipt-file"
                       file={receipt}
                       error={receiptError}
-                      disabled={busy}
+                      disabled={busy && status !== 'receipt-failed'}
                       onPick={(pick) => {
                         setReceipt(pick.file);
                         setReceiptError(pick.error);
@@ -914,10 +1059,14 @@ export function CheckoutForm({
               </button>
             ) : (
               <button
+                ref={submitButton}
                 type="button"
-                onClick={submit}
+                onClick={placed ? resendReceipt : submit}
                 disabled={
-                  busy || (paymentMethod === PAYMENT_METHODS.COD && !receipt)
+                  placed
+                    ? status !== 'receipt-failed' || !receipt
+                    : busy ||
+                      (paymentMethod === PAYMENT_METHODS.COD && !receipt)
                 }
                 aria-describedby={
                   topError || orderMayExist ? errorId : undefined
@@ -929,11 +1078,13 @@ export function CheckoutForm({
                   ? 'در حال ثبت سفارش…'
                   : status === 'uploading'
                     ? 'در حال ارسال رسید…'
-                    : status === 'redirecting'
-                      ? 'در حال انتقال…'
-                      : paymentMethod === PAYMENT_METHODS.ZARINPAL
-                        ? 'پرداخت و ثبت سفارش'
-                        : 'ثبت سفارش'}
+                    : status === 'receipt-failed'
+                      ? 'ارسال دوباره رسید'
+                      : status === 'redirecting'
+                        ? 'در حال انتقال…'
+                        : paymentMethod === PAYMENT_METHODS.ZARINPAL
+                          ? 'پرداخت و ثبت سفارش'
+                          : 'ثبت سفارش'}
               </button>
             )}
             {step > 1 && (
@@ -952,84 +1103,97 @@ export function CheckoutForm({
           <div className="bg-card border-border h-fit rounded-2xl border p-5 lg:col-span-2 lg:p-6">
             <h2 className="mb-4 font-bold">خلاصه سفارش</h2>
 
-            <div className="mb-4">
-              <label
-                htmlFor={`${fieldId}-discount`}
-                className="mb-1.5 block text-sm font-medium"
-              >
-                کد تخفیف
-              </label>
-              <div className="flex gap-2">
-                <input
-                  id={`${fieldId}-discount`}
-                  type="text"
-                  dir="ltr"
-                  value={discountCode}
-                  onChange={(event) => {
-                    setDiscountCode(event.target.value);
-                    // `activeDiscount` already stops matching once the text
-                    // differs from what was applied; just clear any stale error.
-                    setDiscountError(null);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      void applyCode();
+            {/* Not once the order exists: it was placed at its discount. */}
+            {!placed && (
+              <div className="mb-4">
+                <label
+                  htmlFor={`${fieldId}-discount`}
+                  className="mb-1.5 block text-sm font-medium"
+                >
+                  کد تخفیف
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id={`${fieldId}-discount`}
+                    type="text"
+                    dir="ltr"
+                    value={discountCode}
+                    onChange={(event) => {
+                      setDiscountCode(event.target.value);
+                      // `activeDiscount` already stops matching once the text
+                      // differs from what was applied; just clear any stale error.
+                      setDiscountError(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        void applyCode();
+                      }
+                    }}
+                    placeholder="کد را وارد کن"
+                    aria-invalid={Boolean(discountError)}
+                    aria-describedby={
+                      discountError ? `${fieldId}-discount-error` : undefined
                     }
-                  }}
-                  placeholder="کد را وارد کن"
-                  aria-invalid={Boolean(discountError)}
-                  aria-describedby={
-                    discountError ? `${fieldId}-discount-error` : undefined
-                  }
-                  className={cn(
-                    controlClass(Boolean(discountError)),
-                    'h-11 min-w-0 flex-1 px-3 py-0 text-end',
-                  )}
-                  data-umami-event="checkout-discount-code"
-                />
-                <button
-                  type="button"
-                  onClick={applyCode}
-                  disabled={applying || discountCode.trim() === ''}
-                  className="border-accent-strong text-accent-strong hover:bg-accent/5 shrink-0 rounded-xl border px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                  data-umami-event="checkout-discount-apply"
-                >
-                  {applying ? '...' : 'اعمال'}
-                </button>
+                    className={cn(
+                      controlClass(Boolean(discountError)),
+                      'h-11 min-w-0 flex-1 px-3 py-0 text-end',
+                    )}
+                    data-umami-event="checkout-discount-code"
+                  />
+                  <button
+                    type="button"
+                    onClick={applyCode}
+                    disabled={applying || discountCode.trim() === ''}
+                    className="border-accent-strong text-accent-strong hover:bg-accent/5 shrink-0 rounded-xl border px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    data-umami-event="checkout-discount-apply"
+                  >
+                    {applying ? '...' : 'اعمال'}
+                  </button>
+                </div>
+                {discountError ? (
+                  <p
+                    id={`${fieldId}-discount-error`}
+                    role="alert"
+                    className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
+                  >
+                    <AlertCircle
+                      size={12}
+                      className="shrink-0"
+                      aria-hidden="true"
+                    />{' '}
+                    {discountError}
+                  </p>
+                ) : activeDiscount && activeDiscount.discount > 0 ? (
+                  <p className="text-success-strong mt-1.5 flex items-center gap-1 text-xs">
+                    <Check size={12} className="shrink-0" aria-hidden="true" />{' '}
+                    کد تخفیف اعمال شد.
+                  </p>
+                ) : activeDiscount ? (
+                  <p className="text-muted-foreground mt-1.5 text-xs">
+                    این کد برای سبد فعلی تخفیفی ندارد.
+                  </p>
+                ) : null}
               </div>
-              {discountError ? (
-                <p
-                  id={`${fieldId}-discount-error`}
-                  role="alert"
-                  className="text-destructive mt-1.5 flex items-center gap-1 text-xs"
-                >
-                  <AlertCircle
-                    size={12}
-                    className="shrink-0"
-                    aria-hidden="true"
-                  />{' '}
-                  {discountError}
-                </p>
-              ) : activeDiscount && activeDiscount.discount > 0 ? (
-                <p className="text-success-strong mt-1.5 flex items-center gap-1 text-xs">
-                  <Check size={12} className="shrink-0" aria-hidden="true" /> کد
-                  تخفیف اعمال شد.
-                </p>
-              ) : activeDiscount ? (
-                <p className="text-muted-foreground mt-1.5 text-xs">
-                  این کد برای سبد فعلی تخفیفی ندارد.
-                </p>
-              ) : null}
-            </div>
+            )}
 
-            <OrderSummary
-              lines={summaryLines}
-              subtotal={subtotalForDisplay}
-              discount={discountForDisplay}
-              shippingFee={selectedFee}
-              total={estimatedTotal}
-            />
+            {placed ? (
+              <OrderSummary
+                lines={placed.lines}
+                subtotal={placed.subtotal}
+                discount={placed.discount}
+                shippingFee={placed.shippingFee}
+                total={placed.total}
+              />
+            ) : (
+              <OrderSummary
+                lines={summaryLines}
+                subtotal={subtotalForDisplay}
+                discount={discountForDisplay}
+                shippingFee={selectedFee}
+                total={estimatedTotal}
+              />
+            )}
             <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
               مبلغ نهایی هنگام ثبت سفارش توسط سرور دوباره محاسبه می‌شود.
             </p>

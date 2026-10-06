@@ -16,6 +16,7 @@ import {
   type OrderStatus,
   type PaymentMethod,
 } from '@/lib/orders/order-status';
+import { RECEIPT_WAIT_MINUTES } from '@/lib/orders/receipt';
 
 /** Which of the three result views an order status renders. */
 type ResultKind = 'success' | 'pending' | 'failed';
@@ -95,10 +96,10 @@ type ResultCopy = { kind: ResultKind; title: string; sub: string };
 const codSub = (status: OrderStatus, receiptCount: number): string => {
   if (status === ORDER_STATUSES.PROCESSING) {
     // Accepted by hand (a receipt sent by DM), or processing from before
-    // receipts existed: no receipt arrived here, and the box still takes one.
-    return receiptCount > 0
-      ? 'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.'
-      : 'سفارش پذیرفته شد؛ رسید را می‌توانی پایین همین صفحه بارگذاری کنی.';
+    // receipts existed: no receipt arrived here.
+    if (receiptCount > 0) {
+      return 'رسید دریافت شد و سفارش پذیرفته شد؛ پس از بررسی رسید، ارسال می‌شود.';
+    }
   }
   return 'سفارش پذیرفته شد.';
 };
@@ -110,7 +111,8 @@ const codSub = (status: OrderStatus, receiptCount: number): string => {
  *
  * Card to card reads «سفارش ثبت شد!» once the order is accepted, and says what
  * happens next under it. Still waiting for its receipt, it says the order is
- * not accepted yet and points to the box under the copy. Cancelled, it says
+ * not accepted yet and how long its screenshot has; the pages lead back to the
+ * checkout's retry (`checkoutResumePath`), the one place a receipt is sent. Cancelled, it says
  * so, with the admin's reason and the way back to a transfer: never the
  * gateway's «مبلغی از حساب شما کسر نشده است», which is false for a shopper who
  * transferred and was turned down.
@@ -137,7 +139,7 @@ export const resultCopy = (
       return {
         kind,
         title: 'سفارش هنوز پذیرفته نشده است',
-        sub: 'رسید واریز به ما نرسید. اسکرین‌شات رسید را در کادر زیر بارگذاری کن تا سفارش پذیرفته شود.',
+        sub: `رسید واریز به ما نرسید. تا ${formatNumber(RECEIPT_WAIT_MINUTES)} دقیقه پس از ثبت، تصویر رسید را بفرست؛ وگرنه سفارش لغو می‌شود.`,
       };
     }
     return { kind, title: 'سفارش لغو شد', sub: cancellationNote(order) };

@@ -23,9 +23,10 @@ overrides:
   # GHSA-2883-xcg3-v3hh: js-yaml <4.3.2 unbounded CPU on empty merge keys.
   # 27 transitive paths, all tooling.
   'js-yaml@>=4.0.0 <4.3.2': ^4.3.2
-  # libheif CVEs reachable through sharp <0.35.4. Arrives via
-  # @sentry/nextjs -> @sentry/webpack-plugin, i.e. build-time only.
-  'sharp@<0.35.4': ^0.35.4
+  # libheif CVEs reachable through sharp <0.35.4, and GHSA-wq5f-xc86-pv6w
+  # (CVE-2026-96889, its librsvg) through sharp <0.35.5. Arrives via next (the
+  # image optimizer, at runtime) and @sentry/nextjs -> @sentry/webpack-plugin.
+  'sharp@<0.35.5': ^0.35.5
   # GHSA-68fv-2mgg-jv7q: source-map-js <1.2.2 event-loop DoS through indexed
   # source-map section offsets. Nine paths, all via postcss (next, and
   # @sentry/nextjs -> webpack's minimizer): build-time CSS processing.

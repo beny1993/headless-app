@@ -14,6 +14,28 @@ describe('toSummaryLines', () => {
     ]);
   });
 
+  it('carries a line’s photo when the order has one', () => {
+    expect(
+      toSummaryLines([
+        {
+          id: 'a',
+          title: 'غذای خشک',
+          qty: 1,
+          unitPrice: 185_000,
+          imageKey: 'uploads/a.jpg',
+        },
+      ]),
+    ).toEqual([
+      {
+        id: 'a',
+        title: 'غذای خشک',
+        qty: 1,
+        lineTotal: 185_000,
+        imageKey: 'uploads/a.jpg',
+      },
+    ]);
+  });
+
   it('is empty for an order with no items', () => {
     expect(toSummaryLines([])).toEqual([]);
   });
