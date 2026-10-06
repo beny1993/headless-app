@@ -1,13 +1,11 @@
-// The s3 driver's half of the receipt privacy contract: a receipt lives in the
-// same bucket as the product photos, written private and uncacheable, read back
-// with the app's key — and, because the bucket's anonymous-read rule is one
-// panel toggle away from covering it again, every upload is probed as a
-// stranger would see it. Readable → refused, with the alarm raised; the object
-// deleted when the bucket allows it, and the key and whether it went on the
-// server console.
+// The s3 driver's receipts: stored in the same public bucket as the product
+// photos, under `receipts/`, uncacheable, read back with the app's key — and
+// never given a URL by the app: a shopper or an admin reads one only through
+// the authenticated receipt routes. No probe: the bucket's public read covers
+// receipts by Benyamin's decision (2026-10-06).
 //
 // The AWS SDK and the network are mocked at the module edge; nothing here
-// reaches a bucket. The live proof is `pnpm verify-s3`, on staging, by hand.
+// reaches a bucket.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -92,162 +90,16 @@ describe('s3Driver — receipts', () => {
     });
   });
 
-  it('probes the stored receipt the way a stranger would: its public URL, one byte, uncached', async () => {
-    const { s3Driver } = await freshDriver();
+  it('stores a receipt with nothing checked over the network — nor a public base needed', async () => {
+    const { s3Driver } = await freshDriver('');
 
     await s3Driver.put(RECEIPT, bytes, 'image/jpeg');
 
-    expect(mocks.fetch).toHaveBeenCalledTimes(1);
-    const [url, init] = mocks.fetch.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`${BASE}/${RECEIPT}`);
-    expect(new Headers(init.headers).get('range')).toBe('bytes=0-0');
-    // Anonymous: nothing that could authorize the read rides along.
-    expect(new Headers(init.headers).get('authorization')).toBeNull();
-    expect(init.cache).toBe('no-store');
-  });
-
-  // Any 2xx: a 200, the 206 the one-byte range asks for, or the 203 of a
-  // proxy that transformed what it fetched.
-  it.each([200, 203, 206])(
-    'raises the alarm when the bucket serves a receipt to anyone (%i): Sentry first and keyless, the key on the server console, the object deleted, the upload refused',
-    async (status) => {
-      const { s3Driver, ReceiptExposedError } = await freshDriver();
-      mocks.fetch.mockResolvedValue(new Response('x', { status }));
-      const consoleError = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => {});
-
-      await expect(
-        s3Driver.put(RECEIPT, bytes, 'image/jpeg'),
-      ).rejects.toBeInstanceOf(ReceiptExposedError);
-
-      expect(mocks.captureMessage).toHaveBeenCalledTimes(1);
-      expect(mocks.captureMessage).toHaveBeenCalledWith(
-        '[storage] a receipt was readable anonymously',
-        { level: 'error' },
-      );
-      // Reported before the delete is even tried, so a failing delete cannot
-      // swallow the alarm.
-      const [, deleteCall] = mocks.send.mock.invocationCallOrder;
-      expect(mocks.captureMessage.mock.invocationCallOrder[0]).toBeLessThan(
-        deleteCall,
-      );
-      expect(mocks.DeleteObjectCommand).toHaveBeenCalledWith({
-        Bucket: 'smokeypetshop',
-        Key: RECEIPT,
-      });
-      expect(commandsSent()).toEqual(['PutObject', 'DeleteObject']);
-      // The key goes to the server's own console, never to the error tracker.
-      expect(consoleError.mock.calls.flat().join(' ')).toContain(RECEIPT);
-      expect(consoleError.mock.calls.flat().join(' ')).toContain(
-        'deleted: true',
-      );
-    },
-  );
-
-  it('refuses the upload even when the exposed receipt cannot be deleted, and says so on the console', async () => {
-    const { s3Driver, ReceiptExposedError } = await freshDriver();
-    mocks.fetch.mockResolvedValue(new Response('x', { status: 200 }));
-    mocks.send.mockImplementation(async (command: { __command: string }) => {
-      if (command.__command === 'DeleteObject') {
-        throw Object.assign(new Error('Service Unavailable'), {
-          name: 'ServiceUnavailable',
-        });
-      }
-      return {};
-    });
-    const consoleError = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => {});
-
-    await expect(
-      s3Driver.put(RECEIPT, bytes, 'image/jpeg'),
-    ).rejects.toBeInstanceOf(ReceiptExposedError);
-
-    expect(mocks.captureMessage).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(mocks.captureMessage.mock.calls)).not.toContain(
-      RECEIPT,
-    );
-    const logged = consoleError.mock.calls.flat().join(' ');
-    expect(logged).toContain(RECEIPT);
-    expect(logged).toContain('deleted: false');
-  });
-
-  it('takes a 200 as exposure even when letting its body go fails', async () => {
-    // The status is what the bucket answered; a cancel that rejects afterwards
-    // changes nothing about it, and must not turn exposure into a pass.
-    const { s3Driver, ReceiptExposedError } = await freshDriver();
-    mocks.fetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      body: { cancel: () => Promise.reject(new TypeError('cancel failed')) },
-    });
-
-    await expect(
-      s3Driver.put(RECEIPT, bytes, 'image/jpeg'),
-    ).rejects.toBeInstanceOf(ReceiptExposedError);
-    expect(commandsSent()).toEqual(['PutObject', 'DeleteObject']);
-  });
-
-  it.each([401, 403, 404, 500])(
-    'keeps a receipt the bucket will not serve to a stranger (%i)',
-    async (status) => {
-      const { s3Driver } = await freshDriver();
-      mocks.fetch.mockResolvedValue(new Response(null, { status }));
-
-      await expect(
-        s3Driver.put(RECEIPT, bytes, 'image/jpeg'),
-      ).resolves.toBeUndefined();
-
-      expect(commandsSent()).toEqual(['PutObject']);
-      expect(mocks.captureMessage).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each([
-    ['cannot reach the bucket', new TypeError('fetch failed'), 'TypeError'],
-    [
-      'times out',
-      new DOMException(
-        'The operation was aborted due to timeout',
-        'TimeoutError',
-      ),
-      'TimeoutError',
-    ],
-  ])(
-    'keeps the receipt when the probe %s, but warns Sentry without the key',
-    async (_, failure, reason) => {
-      // Liara unreachable is not proof of exposure; a shopper is never refused
-      // for it — but a probe that never ran is no proof of privacy either.
-      const { s3Driver } = await freshDriver();
-      mocks.fetch.mockRejectedValue(failure);
-
-      await expect(
-        s3Driver.put(RECEIPT, bytes, 'image/jpeg'),
-      ).resolves.toBeUndefined();
-
-      expect(commandsSent()).toEqual(['PutObject']);
-      expect(mocks.captureMessage).toHaveBeenCalledTimes(1);
-      expect(mocks.captureMessage).toHaveBeenCalledWith(
-        '[storage] receipt privacy probe could not run',
-        { level: 'warning', extra: { reason } },
-      );
-    },
-  );
-
-  it('refuses a receipt outright when there is no public base to probe, storing nothing', async () => {
-    // Nothing to probe with means nothing proves the receipt private.
-    const { s3Driver, ReceiptExposedError } = await freshDriver('');
-
-    await expect(
-      s3Driver.put(RECEIPT, bytes, 'image/jpeg'),
-    ).rejects.toBeInstanceOf(ReceiptExposedError);
-
-    expect(mocks.send).not.toHaveBeenCalled();
+    expect(commandsSent()).toEqual(['PutObject']);
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
-  it('never probes a product photo, which is public on purpose', async () => {
+  it('stores a product photo cacheable forever', async () => {
     const { s3Driver } = await freshDriver();
 
     await s3Driver.put(PHOTO, bytes, 'image/jpeg');

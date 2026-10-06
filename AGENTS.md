@@ -122,16 +122,14 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   arrived says it is not accepted yet and points to support. The admin checks
   the receipt and ships, or cancels — every admin cancel carries a reason the
   shopper reads. The payment row still flips to `paid` only at delivery.
-- **A receipt is never public.** Receipts live under `receipts/` in the same
-  storage as the photos, and no URL exists for one: `imageSrc` and every
-  driver's `url()` throw on a receipt key. The only readers are the
-  authenticated routes (the order's owner, 404 to any other customer; an
-  admin), answering `private, no-store`; render one with a plain `<img>` on
-  that route, never `next/image`. On s3 the bucket's anonymous read must be
-  narrowed to `uploads/` (a bucket policy, docs/DEPLOY.md §3) before the
-  feature ships: until then every receipt upload answers 503, because the
-  driver probes each receipt it stores and finds it public — and every
-  card-to-card checkout ends on the not-accepted page.
+- **A receipt is unlisted, not private.** Receipts live under `receipts/` in
+  the same public bucket as the photos (Benyamin's decision, 2026-10-06), so
+  what keeps one out of sight is that its URL never exists in the app:
+  `imageSrc` and every driver's `url()` throw on a receipt key, the key is a
+  fresh uuid no response carries, and bucket listing stays off. The only
+  readers are the authenticated routes (the order's owner, 404 to any other
+  customer; an admin), answering `private, no-store`; render one with a plain
+  `<img>` on that route, never `next/image`.
 - **Cart is client-side** (localStorage) until checkout; the server re-prices and
   validates at order creation.
 - **Rate limits**: every `/api/*` route is budgeted per caller per minute by

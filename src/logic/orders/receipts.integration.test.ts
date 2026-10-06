@@ -60,7 +60,6 @@ const { transitionOrder } = await importWithDb(
   () => import('@/logic/orders/state-machine'),
 );
 const { localDriver } = await import('@/lib/storage/local-driver');
-const { ReceiptExposedError } = await import('@/lib/storage');
 
 /** A real JPEG header, padded: the bytes are what gets sniffed and stored. */
 const jpeg = (size = 64) => {
@@ -411,22 +410,6 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
       ]);
       expect(await receiptRows(order.id)).toHaveLength(MAX_RECEIPTS_PER_ORDER);
       expect(await storedFiles()).toHaveLength(MAX_RECEIPTS_PER_ORDER);
-    });
-
-    it('refuses, storing nothing and accepting nothing, when storage exposes the receipt', async () => {
-      const { order } = await placed();
-      vi.spyOn(localDriver, 'put').mockImplementation(async (key) => {
-        throw new ReceiptExposedError(key);
-      });
-
-      expect(
-        await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg'),
-      ).toEqual({
-        outcome: 'exposed',
-      });
-      expect(await receiptRows(order.id)).toHaveLength(0);
-      expect(await statusOf(order.id)).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
-      expect(mocks.notify).not.toHaveBeenCalled();
     });
 
     it('reports a failed clean-up by its code alone — never the key or the path', async () => {
