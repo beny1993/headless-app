@@ -31,7 +31,6 @@ import { cn } from '@/lib/utils';
 export function ProductCard({
   product,
   eager = false,
-  hideUnavailablePrice = false,
 }: {
   product: ProductCardRow;
   /**
@@ -40,13 +39,10 @@ export function ProductCard({
    * not the card: only the caller knows where in the list this one sits.
    */
   eager?: boolean;
-  /** The shop omits unavailable prices; home recommendations keep theirs. */
-  hideUnavailablePrice?: boolean;
 }) {
   // The **family's** stock, not this row's: a sold-out head must not grey out a
   // card whose other size is on the shelf.
   const outOfStock = !product.familyInStock;
-  const showPrice = !hideUnavailablePrice || !outOfStock;
   const imageKey = product.images[0]?.objectKey;
   // A family sends the shopper to the page to choose — adding the head straight
   // from the grid would pick a smell or a size nobody asked for. True even when
@@ -126,10 +122,10 @@ export function ProductCard({
         <div
           className={cn(
             'flex items-center gap-2',
-            showPrice ? 'justify-between' : 'justify-end',
+            outOfStock ? 'justify-end' : 'justify-between',
           )}
         >
-          {showPrice && (
+          {!outOfStock && (
             <div className="nums min-w-0">
               <p className="text-foreground font-bold">
                 {product.familyPricesVary ? (

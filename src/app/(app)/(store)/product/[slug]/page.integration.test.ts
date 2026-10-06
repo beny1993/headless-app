@@ -283,6 +283,17 @@ describe.skipIf(!databaseReachable)('the product page', () => {
       ]);
     });
 
+    it('shows no price at all for a sold-out product', async () => {
+      const category = await makeCategory();
+      const product = await ProductDao.create(
+        makeProduct(category, { price: 285_000, oldPrice: 320_000, stock: 0 }),
+      );
+
+      const text = await renderedText(product.slug);
+
+      expect(text.filter((entry) => entry.endsWith('تومان'))).toEqual([]);
+    });
+
     it('links the breadcrumb back into the shop, filtered by its category', async () => {
       const category = await makeCategory();
       const product = await ProductDao.create(makeProduct(category));

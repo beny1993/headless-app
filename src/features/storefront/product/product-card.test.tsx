@@ -38,7 +38,7 @@ afterEach(cleanup);
 describe('ProductCard price visibility', () => {
   it('hides both prices for an unavailable shop product while retaining its status and link', () => {
     const { container, getByRole, getByText } = render(
-      <ProductCard product={standalone} hideUnavailablePrice />,
+      <ProductCard product={standalone} />,
     );
 
     expect(container.textContent).not.toContain('تومان');
@@ -65,7 +65,7 @@ describe('ProductCard price visibility', () => {
         familyPricesVary,
       };
       const { container, getByRole, getByText } = render(
-        <ProductCard product={product} hideUnavailablePrice />,
+        <ProductCard product={product} />,
       );
 
       expect(container.textContent).not.toContain('تومان');
@@ -89,7 +89,7 @@ describe('ProductCard price visibility', () => {
       familyOpenSlug: 'cat-food-large',
     };
     const { container, getByRole, queryByText } = render(
-      <ProductCard product={product} hideUnavailablePrice />,
+      <ProductCard product={product} />,
     );
 
     expect(container.textContent).toContain(
@@ -108,7 +108,7 @@ describe('ProductCard price visibility', () => {
   it('shows a stocked standalone product’s current price, previous price and add action', () => {
     const product = { ...standalone, stock: 4, familyInStock: true };
     const { container, getByRole, getByText } = render(
-      <ProductCard product={product} hideUnavailablePrice />,
+      <ProductCard product={product} />,
     );
 
     expect(container.textContent).toContain(formatToman(product.price));
@@ -129,33 +129,11 @@ describe('ProductCard price visibility', () => {
         familyMinPrice: 0,
         familyInStock,
       };
-      const { container } = render(
-        <ProductCard product={product} hideUnavailablePrice />,
-      );
+      const { container } = render(<ProductCard product={product} />);
 
       expect(container.textContent?.includes(formatToman(0))).toBe(
         familyInStock,
       );
     },
   );
-
-  it('preserves the homepage default for an unavailable standalone product', () => {
-    const { container } = render(<ProductCard product={standalone} />);
-
-    expect(container.textContent).toContain(formatToman(standalone.price));
-    expect(container.textContent).toContain(formatToman(standalone.oldPrice!));
-  });
-
-  it('preserves the homepage default for an unavailable family', () => {
-    const product = {
-      ...standalone,
-      familyHasMembers: true,
-      familyPricesVary: true,
-    };
-    const { container } = render(<ProductCard product={product} />);
-
-    expect(container.textContent).toContain(
-      `از ${formatToman(product.familyMinPrice)}`,
-    );
-  });
 });

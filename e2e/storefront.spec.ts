@@ -308,8 +308,9 @@ test('shop grid and list hide sold-out prices and keep buyable prices', async ({
 
   await cardsFor(page, soldOut.title).click();
   await expect(page).toHaveURL(new RegExp(`${soldOut.slug}$`));
-  // Price visibility on the detail page stays as before.
-  await expect(page.locator('main')).toContainText(formatToman(soldOut.price));
+  // The detail page hides it too.
+  await expect(page.locator('main')).toContainText('ناموجود');
+  await expect(page.locator('main')).not.toContainText('تومان');
 });
 
 test('every sort lists the products in stock before the sold-out ones', async ({
