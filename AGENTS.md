@@ -30,7 +30,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/lib/hono/` | API app, router factory, response envelope, routes |
 | `src/lib/hono/middleware/` | Cross-cutting middleware: the `requireAdmin`/`requireAuth` guards, and the `/api/*` rate limiter (the one deliberate `app.use('*')` — see its mount comment) |
 | `src/lib/auth/`, `src/lib/utils/env.ts` | Better Auth, env accessor |
-| `src/lib/seo.ts` | What search engines read: the root metadata, `absoluteUrl` (every canonical, sitemap `<loc>` and JSON-LD link goes through it, so a page's canonical and its sitemap entry match; the root aside, which Next writes without its slash, and the two are one URL), `purchaseSentence` (the one generated meta description), the site's JSON-LD, the breadcrumb builder and the `sitemap.xml` entries. The site share cards carry no title or description, so Next fills each page's from its own; a page that sets its own `openGraph`/`twitter` spreads `SITE_OPEN_GRAPH`/`SITE_TWITTER` back in, since Next *replaces* a nested metadata object rather than merging it. Never put `alternates.canonical` in a layout, or every page without its own claims to be that one. `src/app/sitemap.ts` lists only shelves that show products, the pet shelves included (`listStockedShelves` in `src/logic/seo/stocked-shelves.ts`, through `ProductDao.hasShelfProducts`), and, while maintenance mode is on, only the fixed pages. A product's metadata and `Product` JSON-LD live in `src/features/storefront/product/product-seo.ts` — its `category` a Google product taxonomy code by pet, never the Persian title, which Search Console reported as invalid — and the delivery and return terms its `Offer` repeats in `shop-policy.ts` beside it, which the product page also states under its add button; a shop URL's title, heading and index rules in `src/features/storefront/shop/shop-metadata.ts` (`shelfTitle`; a search, a sorted/filtered/resized view and a page that lists nothing are `noindex` with no canonical, still titled and described by their shelf; the canonical is `buildShopHref`'s); `<JsonLd>` (`src/components/json-ld.tsx`) renders the JSON-LD escaped |
+| `src/lib/seo.ts` | What search engines read: root metadata, `absoluteUrl` (every canonical, sitemap `<loc>` and JSON-LD link), site JSON-LD, breadcrumbs, sitemap entries. Canonicals belong on pages: a layout's `alternates.canonical` makes every page without its own claim to be that one. The rest of SEO, each file headed by its own rules: `src/app/sitemap.ts` + `src/logic/seo/stocked-shelves.ts`, `src/features/storefront/product/product-seo.ts` + `shop-policy.ts`, `src/features/storefront/shop/shop-metadata.ts`, `src/components/json-ld.tsx` |
 | `src/lib/sentry.ts` | The one `Sentry.init` options object, shared by all three runtimes (`register()` in `src/instrumentation.ts` for Node and edge, `src/instrumentation-client.ts` for the browser). Owns the privacy contract: explicit `dataCollection` opt-outs and the removal of the console-breadcrumb integration, without which every OTP in the server log rides along on the next event |
 | `src/lib/content/` | Storefront editorial content: the client-safe zod schemas + key enum + area map + `isVisible` (`site-content.ts`), the saved-link contract + `resolveLink` (`link.ts`; its id → slug targets load in `src/logic/content/link-targets.ts`), the typed defaults + `resolveContent` fallback (`defaults.ts`), and the header/footer request-time read `readSiteChrome` (`chrome.ts`, `await connection()`). Values live in the `site_content` table; the page-organized admin editor is `/admin-panel/content/[area]` |
 | `src/features/<area>/<feature>/` | Feature components; route files stay thin |
@@ -69,7 +69,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 - **Env vars**: names live in the `VARS` enum in `src/lib/utils/env.ts`, template
   in `.env.example`. `NEXT_PUBLIC_*` must also be listed in `STATIC_INLINED_VARS`
   there. Never commit `.env`.
-- **Route paths**: import from `src/lib/constant/paths.ts`; never hardcode.
+- **Route paths**: import from `src/lib/constant/paths.ts`.
 - **Persian display formatting**: every number, price and date goes through
   `src/lib/format.ts` (`formatToman`, `formatNumber`, `toPersianDigits`,
   `formatJalali`, `formatJalaliYear`) — never a Persian numeral literal or an
@@ -77,9 +77,9 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   different thousands separators.
 - **Styling**: Tailwind v4, CSS-first config in `src/app/globals.css`;
   tokens port from `design/src/styles/theme.css`. Merge classes with `cn()`.
-  Fonts are **self-hosted** (`src/lib/fonts.ts` → `src/assets/fonts/`) — never
-  `next/font/google`, which fetches from Google at build time and fails on
-  Iranian infrastructure.
+  Fonts are **self-hosted** with `next/font/local` (`src/lib/fonts.ts` →
+  `src/assets/fonts/`); `next/font/google` fetches from Google at build time
+  and fails on Iranian infrastructure.
   Storefront and admin are `lang="fa" dir="rtl"` — use logical properties
   (`ms-*`/`me-*`, `start`/`end`), never `left`/`right`.
 - **Persian UI copy** in components; identifiers, comments and commits in English.
@@ -264,105 +264,8 @@ covered by their pure modules' unit tests plus browser verification.
 
 ### End-to-end tests
 
-`pnpm test:e2e` (Playwright, `e2e/`) is the regression walk QA used to do by
-hand, run at 1280px and again at 375px. Storefront: phone-OTP sign-in for a
-customer and an admin; home → shop → product → cart drawer (quantity, removal,
-empty state) and a sold-out product; the sort control stepped through all
-three orderings on the sold-out product's pet shelf, every in-stock card
-listed before any sold-out one, and «فقط محصولات موجود» hiding it there
-until its chip is removed; the home page's category mosaic with no
-empty cell and its tall tiles two rows tall (three at 1280px, two at 375px); a
-both-pets product under either pet
-filter and under its sub-category's parent, reading «گربه و سگ» on its page —
-each of those shelves also checked for a product it must *not* list; the one
-seeded product with a gallery walked at both widths, its last thumbnail — two
-slides away, the jump a one-slide test cannot make — opening the photo it
-names; a product
-in two categories listed once under that parent and once under each of its own,
-its breadcrumb naming parent then sub-category and both its categories linked
-in the spec row; a product family listed as **one** card reading «از …» with
-the cheapest **in-stock** member's price (its head is seeded sold out and
-cheaper) and an «انتخاب» link in place of the add button that opens that
-member rather than the sold-out head, its page headed title — label, the
-head's chip reading «ناموجود», its chips carrying the shopper to a sibling's
-own slug and the cart line naming that member; checkout by card to card —
-«ثبت سفارش» locked until the transfer's screenshot is attached, the checkout
-page free of ASCII digits once it is, the order accepted on landing
-(«سفارش ثبت شد!», «در حال پردازش», the receipt's thumbnail rendered with its
-Jalali upload time), Jalali date and `format.ts`-formatted numbers on the
-result page, the receipt's URL answering the shopper 200 `private, no-store`
-and a request with no session exactly 401 (both probed with `request.get`),
-the order in `/account` reading «در حال پردازش» — and through the mock
-Zarinpal gateway (paid, and failed → retry → paid). Admin: anonymous visitors and
-customers turned away; the dashboard figures; an order whose receipt the admin
-sees before shipping it; one whose screenshot upload the spec cuts with
-`page.route` — its result page saying it is not accepted yet, never
-«سفارش ثبت شد!», the receipt box's top above the card panel's and its picker
-above the order number, and the account order page saying so too with its
-box above the card panel, the picker and «بارگذاری رسید» wholly inside the
-first screen at scroll 0 on both pages — cancelled while still waiting, with a
-reason, and its stock coming back; an accepted one cancelled with a reason the
-shopper then reads on their order page, no upload box left and the stock
-back; a product added with three photos — for
-both pets, filed under a sub-category and given a second category — its
-gallery read on the product page (the strip, the numbered later slides, the
-first photo as the opening image), then dragged in both directions and
-reordered with the arrow keys — the arrow moves leaving focus on the handle
-that moved, the second drag marking its tile while it runs and leaving none marked after — and the shopper's
-opening photo checked once afterwards (three photos, not two: a drag or a
-click that travels only one cell is the single case `scroll-snap-stop: always`
-lets through, and dragging toward the *end* is the direction that moves the
-tile under the pointer), then two photos removed — the first of them from the
-keyboard — whose `uploads/…` files stop
-serving while the kept one goes on serving (all probed with `request.get`,
-never an `<img>`: `next/image` caches what it optimized, so a deleted file
-renders on from `.next/cache`) — repriced, found
-under both category filters and taken off the shop; a sub-category nested under
-a category the panel then refuses to delete until it is emptied; a category
-given a photo that its home-page tile then shows (the file probed with
-`request.get`), a new one picked in its edit row that the tile then follows,
-and a plain tile once the photo is removed; a photo picked through the button
-in the list's last row — below the fold, so `main` has scrolled — with the
-panel frame still filling the screen (read-only, so both widths); a product
-family's members each listed and named by their own label, the head's
-«زیرمجموعه‌ی» select disabled because it has members and a member's live
-(read-only, so it runs at both widths and leaves nothing behind); a discount
-code a shopper redeems,
-then cannot once it is switched off; a shipping rate that checkout then
-charges, and one fee applied to every province at once (a dot-grouped
-`25.000` refused at the field before any confirm, then cancelled at the
-confirm, then confirmed) that checkout then charges; a province an admin adds, that checkout and the address book then
-offer and, once it is switched off, no longer offer — a saved address on it
-flagged in both — until it is switched back on; a home headline that the
-storefront then shows; a product the home grid already shows, picked for the
-first «انتخاب‌های اسموکی» box — the seeded family offered by its head's row and
-never a member's (matched by id) — that the grid then shows first and only
-there, every other box still filled; home categories an admin picks in the
-content editor, leading the strip in the order picked, and two more dragged
-into the opposite order — by mouse at 1280px, by a finger through Chrome's own
-touch input at 375px, where the grip's `touch-none` is all that keeps the drag
-from turning into a scroll — the grip's row marked while the gesture runs and
-none after, the arrow keys leaving focus on the grip that moved, then listed
-so by the reopened editor and led with by the strip; the users area — its two
-customer counts formatted, the new-this-month one read again, the same, off the
-dashboard's tile, the run's customer on the first page, a search by the number
-they typed (`0999…`, stored `+98…`) listing exactly their row, their account
-page, with the sidebar's «کاربران» lit on both, opening one of their orders,
-whose «مشاهده حساب سفارش‌دهنده» leads back to that same account — and
-anonymous visitors and customers turned away from the list and a detail page.
-For search engines: `sitemap.xml` listing a seeded
-product, a family member and their shelves by the URL each page names as its
-canonical; a product page's `Product` JSON-LD priced in Rial, with its Google
-product category, shipping and return policy — those terms also shown on the
-page — and its breadcrumb, both in the HTML the server sends; the home page's
-canonical, share card and `Organization`; a category shelf named by its category in the
-tab, its heading and its share card, its breadcrumb leading back to the whole
-shop with the slashes hidden from screen readers; a sorted view of it (still
-described by its shelf), a search and a page past the end kept out of the
-index with no canonical; and the about page's canonical and share card. Every
-page a spec opens is also checked for console errors, failed requests and requests to any host but the app's own (the `test`
-fixture in `e2e/support.ts`). QA runs it instead of re-walking those flows and
-drives the browser only for a story's new behaviour.
+`pnpm test:e2e` (Playwright, `e2e/`) is the core-flow regression walk, run at
+1280px and again at 375px.
 
 **Every new feature ships with E2E coverage (Benyamin's standing rule,
 2026-09-14).** A story that adds or changes something a shopper or an admin
@@ -372,117 +275,17 @@ with it. Prove the spec like a component test: put the bug back, watch it
 fail, restore. Only a change with no user-facing flow (a helper, a migration,
 docs) is exempt.
 
-**Not covered — still walked by hand when a story touches them:** content
-areas other than the home headline, the featured boxes and the home categories,
-a wrong or resent login code, maintenance
-mode switched on (the suite pins it off; the gate is unit-tested in
-`src/app/(app)/(store)/layout.test.ts`), Zarinpal switched off at checkout (the
-suite pins it on; the disabled option is component-tested in
-`src/features/checkout/checkout-form.submit.test.tsx`), analytics switched on
-(the suite blanks Umami, so the tracker never mounts; its mount is unit-tested
-in `src/app/layout.test.ts` and the tracker in
-`src/components/umami-tracker.test.tsx`) — walk a tracked link with the real
-tracker loaded and check it still swaps the page in place — the bucket keeping
-receipts private (the suite runs the local driver; `pnpm verify-s3` proves
-it on staging, docs/DEPLOY.md §3), a checkout whose answer is lost followed
-by a reload that resends the same order (the client's resend is
-component-tested in `src/features/checkout/checkout-form.key.test.tsx`, the
-server's replay in `src/logic/checkout/create-order.idempotency.integration.test.ts`)
-— and anything visual (RTL layout, Persian font rendering).
-
-- **It starts its own server**: `next dev` on :3100, never a running :3000 —
-  that one may be another checkout on another branch. Worktrees running the
-  suite at the same time each pick their own with `E2E_PORT=3101 pnpm test:e2e`
-  (validated in `playwright.config.ts`; :3100 when unset). Before it: migrate,
-  `seed-catalog` and `seed-shipping`, all idempotent (the seed also puts back
-  the stock the specs spend). `webServer.env` pins console SMS with the code on
-  the login page, mock Zarinpal switched on (`APP_CONFIG_ZARINPAL_ENABLED`,
-  off by default) and local storage, and blanks Sentry, Umami and the S3 image
-  base URL over whatever `.env` says. Only the dev Postgres has to
-  be up already. Next allows one `next dev` per checkout: if `pnpm dev` is
-  running in the same checkout, the suite stops at "Another next dev server is
-  already running" — stop that server, or run the suite from a worktree.
 - **A worktree has no `.env`**:
   `DOTENV_CONFIG_PATH=<main checkout>/.env pnpm test:e2e`.
 - **Stop only the server you started (Benyamin, 2026-09-29).** A QA or cleanup
   step ends a dev server by the PID it launched (or `lsof -ti :<its port>`),
   never by pattern — `pkill -f next-server` also kills every other worktree's
   server, and on 2026-09-29 it took down a parallel session's E2E run mid-suite.
-- **Checkout is rate-capped per account** (`MAX_ORDERS_PER_WINDOW` in
-  `src/logic/checkout/create-order.ts`, 30 orders an hour, any status). One
-  run's throwaway customer places 19 across both viewports (`checkout` 6,
-  `admin` 8, `admin-users` 2, `admin-settings` 2, `admin-catalog` 1 at 1280px
-  only), so a spec that adds checkouts eats into that headroom — raise the
-  constant before the suite trips it with a 422 mid-run.
-- **A card-to-card order is open until its receipt arrives.** The open-order
-  cap (`MAX_OPEN_ORDERS`, five per account) counts `awaiting_receipt` as well
-  as `pending_payment`. `completeCheckout` attaches the screenshot, so the
-  run's card-to-card orders are accepted at checkout and leave the cap alone;
-  only the admin spec that cuts the upload leaves one waiting, and it cancels
-  that one itself. A spec that places an order only to have one cancels it in
-  a `finally` with `closeOrder` (`e2e/support.ts`: a cancel with a reason,
-  through the admin API), and one that means to move its order on closes it
-  after the test only if it is still waiting (`closeIfStillWaiting`), as it
-  is when its screenshot failed to store or the test failed first — or a
-  later checkout in the run could be refused with a 422.
-- **Sign in once per role, never per test.** `e2e/auth.setup.ts` signs a fresh
-  customer and a fresh admin (`pnpm create-admin`) in through the real login
-  page and saves their sessions, plus the customer's number
-  (`customerPhone()`, for the users spec); specs opt in with
-  `test.use({ storageState })` (`e2e/support.ts`). send-otp allows 3 a minute
-  for the whole machine, so a run started within a minute of the last one
-  waits about a minute.
-- **What a run leaves in the dev database:** two throwaway `0999…` accounts,
-  the 19 orders counted under «Checkout is rate-capped per account» (none left
-  open: the admin spec's waiting one is cancelled by the admin, and the users
-  spec's, the pager's, the discount's and the saved card's — accepted at
-  checkout — by `closeOrder`), 13 receipt files a run under
-  `uploads/receipts/`, one per card-to-card checkout whose screenshot stored
-  (six per width — `checkout` 1, `admin` 3: the shipped, the turned-down and
-  the pager's, the cut one storing nothing, `admin-users` 1, `admin-settings`
-  1 — and `admin-catalog`'s one at 1280px; receipts are append-only, so
-  nothing deletes them), one inactive `e2e-…` product (it is given three photos and has two of
-  them removed again, so one file stays under `uploads/`)
-  filed under a seeded sub-category and a seeded second category — seeded, and
-  never one the spec made, because the junction's restricting foreign key would
-  pin that category for good — one switched-off `E2E…` discount code and one
-  inactive «استان آزمایشی …»
-  province with the customer's address on it — those three specs run at 1280px
-  only, since none of those rows can be deleted. The sub-category spec deletes
-  both rows it creates, so it runs at both widths, and so does the category-photo
-  spec — whose two photo files stay under `uploads/`, per width per run, since
-  nothing deletes a category's replaced or removed photo. The card-to-card spec leaves a
-  `checkout.payment` content row equal to the default (it puts the old values
-  back in a `finally`). The shipping-rate, headline and featured-box
-  specs put the old value back, the two home-categories specs save the block
-  again from a tab they left untouched (the API has no read, and this restores the
-  picks' order too — on a fresh database it leaves a `home.categories` row
-  equal to the default), the one-fee-for-all spec puts every province's
-  own fee back (through the API, all attempted before any failure is reported), the province spec switches its province
-  off, and the catalog spec switches its product off (through the API), even when they fail.
-- **Leaked active test products break shelf pagination.** Shelves list
-  in-stock products first, then newest-first, 12 a page, so a stray active `test-…`/`e2e-…` product pushes a
-  seeded one to a later page and a spec that looks for it on page one fails.
-  The seed's sweep switches off any not updated for an hour.
-- **Leaked top-level test categories crowd the home strip.** It shows the
-  first six by sort order, then title, and a killed integration run leaves its
-  «دسته آزمایشی …» category at sort order 0 with nothing to switch it off. The
-  category-photo spec survives them because its «آزمون عکس …» title sorts first
-  under the dev database's `en_US.utf8` collation. Its own leftovers can still
-  crowd it out: a run killed or timed out mid-spec leaves its «آزمون عکس …»
-  row, and with six of those beside it the new tile misses the strip whenever
-  its random id sorts last among them — one run in seven, more with every
-  further leftover. Delete them.
-- **Uploaded images never count as failed requests.** A dev database keeps the
-  uploads it was given while `.env` pointed at object storage, and this run's
-  local driver has no file for them. The catalog spec proves the upload path
-  instead: it uploads a photo and checks that it renders.
-- **Selectors are the `data-umami-event` names** (roles for headings and
-  dialogs). App routes come from `paths.ts`, and the product and province a
-  spec uses from the seed data in `src/db/seed/`, never restated. Renaming an
-  event is a spec change.
-- **Browser: the installed Google Chrome** (`channel: 'chrome'`), no download.
-  A failure keeps its trace and screenshot: `pnpm exec playwright show-report`.
+
+**Read [`e2e/README.md`](e2e/README.md)** before writing or changing a spec,
+running the suite, chasing a red or flaky run, or cleaning up what a run
+leaves in the dev database. It also lists the flows the suite does not
+cover, which QA walks by hand when a story touches them.
 
 ## Quality gates — all must pass before a story is done
 
