@@ -575,8 +575,12 @@ test('a card an admin saves is what card-to-card checkout shows', async ({
     await shopper.locator('[data-umami-event="checkout-submit-order"]').click();
     const orderId = await resultOrderId(shopper);
     try {
-      // The result page repeats it, for a second transfer.
-      await expect(shopper.getByText(shown)).toBeVisible();
+      // The screenshot accepted the order: the result page shows the receipt
+      // and asks for no second transfer, so the card is not repeated there.
+      await expect(
+        shopper.getByRole('heading', { name: 'سفارش ثبت شد!' }),
+      ).toBeVisible();
+      await expect(shopper.getByText(shown)).toHaveCount(0);
       await expect(shopper.getByRole('main')).not.toContainText(/\d/);
     } finally {
       await closeOrder(page, orderId);
