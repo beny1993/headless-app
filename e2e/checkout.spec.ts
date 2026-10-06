@@ -1,5 +1,5 @@
 import { accountOrderPath } from '@/lib/constant/paths';
-import type { Locator } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import {
   ADMIN_STATE,
   attachReceipt,
@@ -44,6 +44,26 @@ async function expectOptimized(img: Locator) {
 /** The mock gateway's own buttons, by the action they post, not their copy. */
 const gatewayButton = (action: 'pay' | 'fail') =>
   `button[name="action"][value="${action}"]`;
+
+/**
+ * An order whose receipt is in shows just that receipt: no second upload box,
+ * and no card numbers left to pay to. The panel is found by its fixed contact
+ * sentence, never by its note, which the admin writes.
+ */
+async function expectOnlyTheReceipt(
+  page: Page,
+  prefix: 'checkout-result' | 'account-order',
+) {
+  await expect(
+    page.locator(`[data-umami-event="${prefix}-receipt-file"]`),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(`[data-umami-event="${prefix}-receipt-upload"]`),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText('برای هماهنگی، از طریق', { exact: false }),
+  ).toHaveCount(0);
+}
 
 test('card to card: the screenshot attached at checkout accepts the order, and only its owner can read it', async ({
   page,
@@ -112,6 +132,7 @@ test('card to card: the screenshot attached at checkout accepts the order, and o
     '[data-umami-event="checkout-result-receipt-open"]',
   );
   await expect(receipt).toHaveCount(1);
+  await expectOnlyTheReceipt(page, 'checkout-result');
   // Lazy-loaded, and below the fold on a phone: it loads once it is in view.
   await receipt.scrollIntoViewIfNeeded();
   await expectRendered(receipt.locator('img'));
@@ -154,6 +175,11 @@ test('card to card: the screenshot attached at checkout accepts the order, and o
   );
   await expect(listed).toBeVisible();
   await expect(listed).toContainText('در حال پردازش');
+  await listed.click();
+  await expect(
+    page.locator('[data-umami-event="account-order-receipt-open"]'),
+  ).toHaveCount(1);
+  await expectOnlyTheReceipt(page, 'account-order');
 });
 
 test('Zarinpal: paying at the mock gateway settles the order', async ({

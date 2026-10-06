@@ -1,11 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Check, Clock, XCircle } from 'lucide-react';
-import { CardToCardPanel } from '@/features/checkout/card-to-card';
-import {
-  loadOwnedOrder,
-  readCardToCardPayment,
-} from '@/features/checkout/load-owned-order';
+import { loadOwnedOrder } from '@/features/checkout/load-owned-order';
 import {
   OrderSummary,
   toSummaryLines,
@@ -20,18 +16,14 @@ import {
   formatJalaliDateTime,
   toPersianDigits,
 } from '@/lib/format';
-import {
-  ORDER_STATUSES,
-  PAYMENT_METHOD_LABELS,
-} from '@/lib/orders/order-status';
+import { PAYMENT_METHOD_LABELS } from '@/lib/orders/order-status';
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
-import { acceptsReceipts, showsReceipts } from '@/lib/orders/receipt';
 
 export const metadata: Metadata = { title: 'نتیجه سفارش' };
 
 /**
- * The one checkout result page, for a card-to-card order (its transfer details
- * and receipt box while it takes receipts) and every Zarinpal outcome.
+ * The one checkout result page, for a card-to-card order (the receipt its
+ * checkout uploaded, once it is in) and every Zarinpal outcome.
  * It branches on the order's SERVER status (`getOwnedOrder`, owner-scoped by the
  * session id), never on the callback's query — which strips `Authority`/`Status`
  * anyway. A server component so `requireSession` is the re-login path: the
@@ -52,18 +44,10 @@ export default async function Page({
   const view = resultView(order.status);
   const { title, sub } = resultCopy(order, order.receipts.length);
   const status = orderStatusBadge(order.status);
-  // Where to send the money, for as long as the order takes a receipt — a
-  // second transfer under a daily card limit needs the numbers too. Accepted
-  // into shipping, or cancelled, it has nothing left to pay here.
-  const cardToCard = acceptsReceipts(order)
-    ? await readCardToCardPayment()
-    : null;
-  const panel = cardToCard && (
-    <CardToCardPanel key="card-to-card" payment={cardToCard} className="mb-7" />
-  );
-  const box = showsReceipts(order, order.receipts.length) && (
+  // The receipt the checkout uploaded, once it is in. Nothing to upload or
+  // pay with here: the checkout's screenshot is the one way a receipt arrives.
+  const box = order.receipts.length > 0 && (
     <ReceiptBox
-      key="receipts"
       orderId={order.id}
       orderStatus={order.status}
       receipts={order.receipts.map((receipt) => ({
@@ -74,10 +58,7 @@ export default async function Page({
     />
   );
   const details = (
-    <div
-      key="details"
-      className="border-border mb-7 overflow-hidden rounded-2xl border text-start"
-    >
+    <div className="border-border mb-7 overflow-hidden rounded-2xl border text-start">
       <div className="bg-secondary/50 flex items-center justify-between gap-3 p-4 text-sm">
         <span className="nums font-bold">
           #{toPersianDigits(order.orderNo)}
@@ -111,14 +92,6 @@ export default async function Page({
       </div>
     </div>
   );
-  // An order still waiting for its receipt leads with the box to upload it in
-  // — the copy above says it is right under it — then the card numbers, then
-  // the order's details. Accepted, the details lead. Keyed, so the refresh
-  // moves the box rather than mounting a new one.
-  const sections =
-    order.status === ORDER_STATUSES.AWAITING_RECEIPT
-      ? [box, panel, details]
-      : [details, panel, box];
 
   const { icon, ring } = {
     success: {
@@ -151,7 +124,8 @@ export default async function Page({
             {sub}
           </p>
 
-          {sections}
+          {details}
+          {box}
 
           <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
             {view.showRetry && <RetryPaymentButton orderId={order.id} />}

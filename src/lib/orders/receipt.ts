@@ -73,17 +73,6 @@ export const acceptsReceipts = (order: ReceiptOrder): boolean =>
   (order.status === ORDER_STATUSES.AWAITING_RECEIPT ||
     order.status === ORDER_STATUSES.PROCESSING);
 
-/**
- * Whether an order's page shows the receipt box: while it takes receipts, and
- * afterwards for as long as it has any to list.
- */
-export const showsReceipts = (
-  order: ReceiptOrder,
-  receiptCount: number,
-): boolean =>
-  order.paymentMethod === PAYMENT_METHODS.COD &&
-  (acceptsReceipts(order) || receiptCount > 0);
-
 /** The one pill over an order's receipts: what became of them. */
 export const receiptsLabel = (status: OrderStatus): string =>
   status === ORDER_STATUSES.CANCELLED

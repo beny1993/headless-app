@@ -6,7 +6,6 @@ import { IMAGE_TYPE_ERROR } from '@/lib/storage/image-upload';
 import {
   ORDER_STATUS_VALUES,
   ORDER_STATUSES,
-  PAYMENT_METHOD_VALUES,
   PAYMENT_METHODS,
   type OrderStatus,
 } from '@/lib/orders/order-status';
@@ -19,7 +18,6 @@ import {
   RECEIPT_SIZE_ERROR,
   receiptSchema,
   receiptsLabel,
-  showsReceipts,
   validateReceiptFile,
 } from './receipt';
 
@@ -46,36 +44,6 @@ describe('acceptsReceipts', () => {
       acceptsReceipts({ paymentMethod: PAYMENT_METHODS.ZARINPAL, status }),
     ).toBe(false);
   });
-});
-
-describe('showsReceipts', () => {
-  it('shows the box on a card-to-card order that takes receipts, with none yet', () => {
-    expect(showsReceipts(cod(ORDER_STATUSES.AWAITING_RECEIPT), 0)).toBe(true);
-  });
-
-  it.each([
-    ORDER_STATUSES.SHIPPED,
-    ORDER_STATUSES.DELIVERED,
-    ORDER_STATUSES.CANCELLED,
-  ])('keeps the uploaded receipts visible on a %s order', (status) => {
-    expect(showsReceipts(cod(status), 1)).toBe(true);
-  });
-
-  it.each([ORDER_STATUSES.SHIPPED, ORDER_STATUSES.CANCELLED])(
-    'shows nothing on a %s order that never had a receipt',
-    (status) => {
-      expect(showsReceipts(cod(status), 0)).toBe(false);
-    },
-  );
-
-  it.each(PAYMENT_METHOD_VALUES.filter((m) => m !== PAYMENT_METHODS.COD))(
-    'never shows on a %s order',
-    (paymentMethod) => {
-      expect(
-        showsReceipts({ paymentMethod, status: ORDER_STATUSES.PROCESSING }, 0),
-      ).toBe(false);
-    },
-  );
 });
 
 describe('receiptsLabel', () => {

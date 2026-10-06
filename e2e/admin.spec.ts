@@ -44,45 +44,24 @@ const sidewaysOverflow = (page: Page) =>
   });
 
 /**
- * A waiting order's page puts the receipt box above the card numbers: the
- * box's top is above the card panel's. The panel is found by its fixed
- * contact sentence, never by its note, which the admin writes.
+ * A waiting order's page — its checkout screenshot never arrived — asks for
+ * nothing: no receipt box, no picker, no card numbers, only the way to
+ * support. The panel is found by its fixed contact sentence, never by its
+ * note, which the admin writes.
  */
-async function expectBoxAbovePanel(page: Page) {
-  const box = page
-    .locator('section')
-    .filter({ has: page.getByRole('heading', { name: 'رسید پرداخت' }) });
-  const panel = page
-    .getByText('برای هماهنگی، از طریق', { exact: false })
-    .locator('..');
-  const boxTop = (await box.boundingBox())?.y;
-  const panelTop = (await panel.boundingBox())?.y;
-  if (boxTop === undefined || panelTop === undefined) {
-    throw new Error('the receipt box or the card panel is not on the page');
-  }
-  expect(boxTop).toBeLessThan(panelTop);
-}
-
-/**
- * The upload on a waiting order's page, where the shopper lands: the picker
- * and its button each wholly inside the first screen, at scroll 0.
- */
-async function expectUploadOnFirstScreen(
-  page: Page,
-  prefix: 'checkout-result' | 'account-order',
-) {
-  await page.evaluate(() => window.scrollTo(0, 0));
-  const fold = page.viewportSize()?.height ?? 0;
-  for (const control of [
-    page.locator('label', {
-      has: page.locator(`[data-umami-event="${prefix}-receipt-file"]`),
-    }),
-    page.locator(`[data-umami-event="${prefix}-receipt-upload"]`),
-  ]) {
-    const box = await control.boundingBox();
-    if (!box) throw new Error(`no ${prefix} upload control on the page`);
-    expect(box.y + box.height).toBeLessThanOrEqual(fold);
-  }
+async function expectNothingToUpload(page: Page) {
+  await expect(
+    page.getByText(
+      'رسید واریز به ما نرسید. برای ارسال رسید با پشتیبانی تماس بگیر.',
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'رسید پرداخت' })).toHaveCount(
+    0,
+  );
+  await expect(page.locator('input[type="file"]')).toHaveCount(0);
+  await expect(
+    page.getByText('برای هماهنگی، از طریق', { exact: false }),
+  ).toHaveCount(0);
 }
 
 /**
@@ -221,37 +200,20 @@ test.describe('an admin', () => {
     await shopper.unroute(receiptUpload);
 
     // The result page says the order is not accepted yet, never the accepted
-    // «سفارش ثبت شد!». The receipt box's top is above the card panel's, its
-    // picker above the order number, and the picker and «بارگذاری رسید» lie
-    // wholly inside the first screen at scroll 0.
+    // «سفارش ثبت شد!», and offers no second upload.
     await expect(
       shopper.getByRole('heading', { name: 'سفارش هنوز پذیرفته نشده است' }),
     ).toBeVisible();
     await expect(
       shopper.getByRole('heading', { name: 'سفارش ثبت شد!' }),
     ).toHaveCount(0);
-    const picker = shopper.locator('label', {
-      has: shopper.locator('[data-umami-event="checkout-result-receipt-file"]'),
-    });
-    const orderNumber = shopper
-      .getByText('شماره سفارش', { exact: true })
-      .locator('..');
-    const pickerTop = (await picker.boundingBox())?.y;
-    const detailsTop = (await orderNumber.boundingBox())?.y;
-    if (pickerTop === undefined || detailsTop === undefined) {
-      throw new Error('the picker or the order number is not on the page');
-    }
-    expect(pickerTop).toBeLessThan(detailsTop);
-    await expectBoxAbovePanel(shopper);
-    await expectUploadOnFirstScreen(shopper, 'checkout-result');
-    // The account order page says so too, with its box above the card panel
-    // and its picker and button inside the first screen.
+    await expectNothingToUpload(shopper);
+    // The account order page says so too.
     await shopper.goto(accountOrderPath(orderId));
     await expect(
       shopper.getByText('سفارش هنوز پذیرفته نشده است'),
     ).toBeVisible();
-    await expectBoxAbovePanel(shopper);
-    await expectUploadOnFirstScreen(shopper, 'account-order');
+    await expectNothingToUpload(shopper);
 
     await shopper.goto(path);
     await expect(stockLeft(stock - 1)).toBeVisible();

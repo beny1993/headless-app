@@ -119,7 +119,7 @@ const stepOfField = (path: string) => STEP_OF_FIELD[path] ?? 3;
  * the transfer's screenshot under them — «ثبت سفارش» stays locked until one
  * passes the byte check. The stored method stays `cod`: the order is created
  * waiting for its receipt, and the screenshot, uploaded right after the create
- * by the order pages' own receipt route, accepts it.
+ * to the order's receipt route, accepts it.
  * `zarinpalEnabled` (`APP_CONFIG_ZARINPAL_ENABLED`, read by the page) is the
  * online-payment switch: off, the Zarinpal option renders disabled and card to
  * card is preselected — a display gate only; the API still accepts both methods.
@@ -509,8 +509,7 @@ export function CheckoutForm({
 
     // The screenshot accepts the card-to-card order. A refusal or a dropped
     // connection is swallowed: the order waits for its receipt, and its result
-    // page says so and takes the upload again — where a retry shows the
-    // server's own refusal.
+    // page says so and points to support — there is no second upload.
     if (screenshot) {
       try {
         const form = new FormData();

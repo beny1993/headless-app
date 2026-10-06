@@ -1,11 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ChevronRight, Clock, XCircle } from 'lucide-react';
-import { CardToCardPanel } from '@/features/checkout/card-to-card';
-import {
-  loadOwnedOrder,
-  readCardToCardPayment,
-} from '@/features/checkout/load-owned-order';
+import { loadOwnedOrder } from '@/features/checkout/load-owned-order';
 import {
   OrderSummary,
   toSummaryLines,
@@ -32,7 +28,6 @@ import {
   orderStatusBadge,
   paymentStatusBadge,
 } from '@/lib/orders/order-status-display';
-import { acceptsReceipts, showsReceipts } from '@/lib/orders/receipt';
 
 export const metadata: Metadata = { title: 'جزئیات سفارش' };
 
@@ -65,13 +60,6 @@ export default async function Page({
   const payment =
     order.payments.find((p) => p.status === PAYMENT_STATUSES.PAID) ??
     order.payments.at(-1);
-  // Where to send the money, for as long as the order takes a receipt — the
-  // one page a shopper comes back to for the card number and the upload. The
-  // card-to-card payment row flips to `paid` only on delivery, so the order
-  // status is the gate, not the payment status.
-  const cardToCard = acceptsReceipts(order)
-    ? await readCardToCardPayment()
-    : null;
   const cancelled = order.status === ORDER_STATUSES.CANCELLED;
   // A card-to-card order whose receipt never arrived: the result page's own
   // words, so the two pages cannot disagree about whether it was accepted.
@@ -79,12 +67,10 @@ export default async function Page({
     order.status === ORDER_STATUSES.AWAITING_RECEIPT
       ? resultCopy(order, order.receipts.length)
       : null;
-  const panel = cardToCard && (
-    <CardToCardPanel key="card-to-card" payment={cardToCard} className="mb-5" />
-  );
-  const box = showsReceipts(order, order.receipts.length) && (
+  // The receipt the checkout uploaded, once it is in. Nothing to upload or
+  // pay with here: the checkout's screenshot is the one way a receipt arrives.
+  const box = order.receipts.length > 0 && (
     <ReceiptBox
-      key="receipts"
       orderId={order.id}
       orderStatus={order.status}
       receipts={order.receipts.map((receipt) => ({
@@ -176,11 +162,7 @@ export default async function Page({
           </div>
         )}
 
-        {/* Waiting, the box to upload in leads and the card numbers follow:
-            a shopper here attached their transfer's screenshot at checkout
-            already. Keyed, so the refresh moves the box rather than mounting
-            a new one. */}
-        {waiting ? [box, panel] : [panel, box]}
+        {box}
 
         <div className="bg-card border-border mb-5 rounded-2xl border p-5">
           <h2 className="mb-3 font-bold">اقلام سفارش</h2>
