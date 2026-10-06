@@ -195,6 +195,17 @@ test.describe('an admin', () => {
     const receiptUpload = '**/api/orders/*/receipts';
     await shopper.route(receiptUpload, (route) => route.abort());
     await placeOrder(shopper, 'cod', path);
+    // The checkout stays, says the screenshot did not go, and offers it again
+    // to this order. The shopper leaves through the order's link instead.
+    await expect(
+      shopper.getByText('بارگذاری رسید ناموفق بود. دوباره تلاش کن.'),
+    ).toBeVisible();
+    await expect(
+      shopper.locator('[data-umami-event="checkout-submit-order"]'),
+    ).toHaveText('ارسال دوباره رسید');
+    await shopper
+      .locator('[data-umami-event="checkout-receipt-view-order"]')
+      .click();
     const orderId = await resultOrderId(shopper);
     movedOn.push(orderId);
     await shopper.unroute(receiptUpload);

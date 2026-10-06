@@ -182,6 +182,39 @@ test('card to card: the screenshot attached at checkout accepts the order, and o
   await expectOnlyTheReceipt(page, 'account-order');
 });
 
+test('card to card: a screenshot that fails to store is sent again from the checkout, to the same order', async ({
+  page,
+}) => {
+  // The first upload is cut, as a dropped connection would cut it; the
+  // shopper presses «ارسال دوباره رسید» and the same order is accepted.
+  const receiptUpload = '**/api/orders/*/receipts';
+  let cut = false;
+  await page.route(receiptUpload, (route) => {
+    if (cut) return route.continue();
+    cut = true;
+    return route.abort();
+  });
+  await placeOrder(page, 'cod');
+
+  const button = page.locator('[data-umami-event="checkout-submit-order"]');
+  await expect(
+    page.getByText('بارگذاری رسید ناموفق بود. دوباره تلاش کن.'),
+  ).toBeVisible();
+  await expect(button).toHaveText('ارسال دوباره رسید');
+  await expect(
+    page.locator('[data-umami-event="checkout-payment-cod"]'),
+  ).toBeDisabled();
+  await button.click();
+
+  placedOrder = await resultOrderId(page);
+  await expect(
+    page.getByRole('heading', { name: 'سفارش ثبت شد!' }),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-umami-event="checkout-result-receipt-open"]'),
+  ).toHaveCount(1);
+});
+
 test('Zarinpal: paying at the mock gateway settles the order', async ({
   page,
 }) => {

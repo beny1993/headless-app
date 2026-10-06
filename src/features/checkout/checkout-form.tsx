@@ -61,7 +61,7 @@ import {
   PAYMENT_METHODS,
   type PaymentMethod,
 } from '@/lib/orders/order-status';
-import { receiptSchema } from '@/lib/orders/receipt';
+import { RECEIPT_UPLOAD_FAILED, receiptSchema } from '@/lib/orders/receipt';
 import { toPersianDigits } from '@/lib/format';
 import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
 import { IMAGE_FIELD_NAME } from '@/lib/storage/image-upload';
@@ -69,9 +69,23 @@ import { cn } from '@/lib/utils';
 
 /**
  * idle → submitting → (uploading, card to card) → redirecting. The button
- * disables off `idle`, and only a refused create ever returns to it.
+ * disables off `idle`, and only a refused create ever returns to it. A
+ * screenshot that fails to store parks the form at `receipt-failed`, from
+ * where the button only resends it to the order already created.
  */
-type Status = 'idle' | 'submitting' | 'uploading' | 'redirecting';
+type Status =
+  'idle' | 'submitting' | 'uploading' | 'receipt-failed' | 'redirecting';
+
+/**
+ * The server's own sentence for a refused receipt — a 4xx, or the 503 that
+ * says storage cannot keep a receipt private right now — else a generic one.
+ * A 5xx message outside that is a developer's, never a shopper's.
+ */
+const receiptRefusal = (error: unknown): string =>
+  error instanceof ApiRequestError &&
+  (error.status < 500 || error.status === 503)
+    ? error.message
+    : RECEIPT_UPLOAD_FAILED;
 
 const STEPS = ['اطلاعات', 'آدرس', 'پرداخت'] as const;
 
@@ -196,6 +210,21 @@ export function CheckoutForm({
   // or the refusal of the last one picked.
   const [receipt, setReceipt] = useState<File | null>(null);
   const [receiptError, setReceiptError] = useState<string | null>(null);
+  // A card-to-card order this form created whose screenshot did not store:
+  // the form stays to resend it to this order — never to create another —
+  // and the summary shows the order, the cart being already cleared.
+  const [placed, setPlaced] = useState<{
+    orderId: string;
+    address: CheckoutInput['address'];
+    lines: SummaryLine[];
+    subtotal: number;
+    discount: number;
+    shippingFee: number;
+    total: number;
+  } | null>(null);
+  // The resend's own double-click guard; `inFlight` stays set once an order
+  // exists, so the create can never run again.
+  const resending = useRef(false);
 
   // The authoritative double-submit guard: set synchronously, so a second click
   // in the same tick returns before `postData` runs — the disabled button is
@@ -399,6 +428,46 @@ export function CheckoutForm({
   const goBack = () =>
     setStep(step === 3 && skipAddress ? 1 : Math.max(1, step - 1));
 
+  /** Stores the screenshot on the order; on failure says why, under the picker. */
+  const storeReceipt = async (orderId: string, file: File) => {
+    setStatus('uploading');
+    try {
+      const form = new FormData();
+      // Named «receipt», never the shopper's own file name.
+      form.append(IMAGE_FIELD_NAME, file, 'receipt');
+      await postForm(apiOrderReceiptsPath(orderId), form, receiptSchema);
+      return true;
+    } catch (error) {
+      setReceiptError(receiptRefusal(error));
+      setStatus('receipt-failed');
+      return false;
+    }
+  };
+
+  // Best-effort "save this address": the order already snapshotted the
+  // address, so this only adds it to the address book. Swallowed on failure
+  // (e.g. the per-user cap) — it must never block or fail the redirect after.
+  const saveToAddressBook = async (address: CheckoutInput['address']) => {
+    if (!saveAddress) return;
+    try {
+      await postData<AddressResponse>(API_PATHS.ME_ADDRESSES, address);
+    } catch {
+      // intentionally ignored — checkout succeeded; saving is a convenience
+    }
+  };
+
+  /** «ارسال دوباره رسید»: the screenshot again, to the order already created. */
+  const resendReceipt = async () => {
+    if (!placed || !receipt || resending.current) return;
+    resending.current = true;
+    const stored = await storeReceipt(placed.orderId, receipt);
+    resending.current = false;
+    if (!stored) return;
+    setStatus('redirecting');
+    await saveToAddressBook(placed.address);
+    router.push(checkoutResultPath(placed.orderId));
+  };
+
   const submit = async () => {
     if (inFlight.current) return; // authoritative double-submit guard
     if (!validateStep(3)) return;
@@ -508,34 +577,22 @@ export function CheckoutForm({
     setStatus(screenshot ? 'uploading' : 'redirecting');
 
     // The screenshot accepts the card-to-card order. A refusal or a dropped
-    // connection is swallowed: the order waits for its receipt, and its result
-    // page says so and points to support — there is no second upload.
-    if (screenshot) {
-      try {
-        const form = new FormData();
-        // Named «receipt», never the shopper's own file name.
-        form.append(IMAGE_FIELD_NAME, screenshot, 'receipt');
-        await postForm(
-          apiOrderReceiptsPath(order.orderId),
-          form,
-          receiptSchema,
-        );
-      } catch {
-        // intentionally ignored — see above
-      }
-      setStatus('redirecting');
+    // connection keeps the shopper here, the refusal under the picker, to
+    // resend it to this same order (`resendReceipt`).
+    if (screenshot && !(await storeReceipt(order.orderId, screenshot))) {
+      setPlaced({
+        orderId: order.orderId,
+        address: body.address,
+        lines: summaryLines,
+        subtotal: order.subtotal,
+        discount: order.discount,
+        shippingFee: order.shippingFee,
+        total: order.total,
+      });
+      return;
     }
-
-    // Best-effort "save this address": the order already snapshotted the
-    // address, so this only adds it to the address book. Swallowed on failure
-    // (e.g. the per-user cap) — it must never block or fail the redirect below.
-    if (saveAddress) {
-      try {
-        await postData<AddressResponse>(API_PATHS.ME_ADDRESSES, body.address);
-      } catch {
-        // intentionally ignored — checkout succeeded; saving is a convenience
-      }
-    }
+    setStatus('redirecting');
+    await saveToAddressBook(body.address);
 
     if (toGateway) {
       try {
@@ -849,7 +906,9 @@ export function CheckoutForm({
                         id={`${fieldId}-pay-${option.id}`}
                         value={option.id}
                         checked={paymentMethod === option.id}
-                        disabled={option.disabled}
+                        // Locked once the order exists: it was created with
+                        // this method.
+                        disabled={option.disabled || placed !== null}
                         onChange={() => setPaymentMethod(option.id)}
                         className="accent-accent-strong size-5"
                         data-umami-event={`checkout-payment-${option.id}`}
@@ -891,7 +950,7 @@ export function CheckoutForm({
                       event="checkout-receipt-file"
                       file={receipt}
                       error={receiptError}
-                      disabled={busy}
+                      disabled={busy && status !== 'receipt-failed'}
                       onPick={(pick) => {
                         setReceipt(pick.file);
                         setReceiptError(pick.error);
@@ -914,9 +973,12 @@ export function CheckoutForm({
             ) : (
               <button
                 type="button"
-                onClick={submit}
+                onClick={placed ? resendReceipt : submit}
                 disabled={
-                  busy || (paymentMethod === PAYMENT_METHODS.COD && !receipt)
+                  placed
+                    ? status !== 'receipt-failed' || !receipt
+                    : busy ||
+                      (paymentMethod === PAYMENT_METHODS.COD && !receipt)
                 }
                 aria-describedby={
                   topError || orderMayExist ? errorId : undefined
@@ -928,12 +990,26 @@ export function CheckoutForm({
                   ? 'در حال ثبت سفارش…'
                   : status === 'uploading'
                     ? 'در حال ارسال رسید…'
-                    : status === 'redirecting'
-                      ? 'در حال انتقال…'
-                      : paymentMethod === PAYMENT_METHODS.ZARINPAL
-                        ? 'پرداخت و ثبت سفارش'
-                        : 'ثبت سفارش'}
+                    : status === 'receipt-failed'
+                      ? 'ارسال دوباره رسید'
+                      : status === 'redirecting'
+                        ? 'در حال انتقال…'
+                        : paymentMethod === PAYMENT_METHODS.ZARINPAL
+                          ? 'پرداخت و ثبت سفارش'
+                          : 'ثبت سفارش'}
               </button>
+            )}
+            {placed && (
+              <p className="text-muted-foreground mt-3 text-center text-sm">
+                سفارش ثبت شده و منتظر رسید است.{' '}
+                <a
+                  href={checkoutResultPath(placed.orderId)}
+                  className="text-foreground font-medium underline"
+                  data-umami-event="checkout-receipt-view-order"
+                >
+                  مشاهده سفارش
+                </a>
+              </p>
             )}
             {step > 1 && (
               <button
@@ -1022,13 +1098,23 @@ export function CheckoutForm({
               ) : null}
             </div>
 
-            <OrderSummary
-              lines={summaryLines}
-              subtotal={subtotalForDisplay}
-              discount={discountForDisplay}
-              shippingFee={selectedFee}
-              total={estimatedTotal}
-            />
+            {placed ? (
+              <OrderSummary
+                lines={placed.lines}
+                subtotal={placed.subtotal}
+                discount={placed.discount}
+                shippingFee={placed.shippingFee}
+                total={placed.total}
+              />
+            ) : (
+              <OrderSummary
+                lines={summaryLines}
+                subtotal={subtotalForDisplay}
+                discount={discountForDisplay}
+                shippingFee={selectedFee}
+                total={estimatedTotal}
+              />
+            )}
             <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
               مبلغ نهایی هنگام ثبت سفارش توسط سرور دوباره محاسبه می‌شود.
             </p>
