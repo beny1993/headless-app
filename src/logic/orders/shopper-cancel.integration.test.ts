@@ -9,6 +9,7 @@ import {
   ORDER_STATUSES,
   OPEN_ORDER_STATUSES,
   PAYMENT_METHODS,
+  PAYMENT_STATUSES,
   type OrderStatus,
 } from '@/lib/orders/order-status';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
@@ -19,6 +20,7 @@ const { shopperCancelOrder, SHOPPER_CANCEL_REASON } = await importWithDb(
 );
 const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
+const { PaymentDao } = await importWithDb(() => import('@/db/dao/PaymentDao'));
 
 describe.skipIf(!databaseReachable)('shopperCancelOrder', () => {
   const fx = new OrderFixtures();
@@ -110,5 +112,42 @@ describe.skipIf(!databaseReachable)('shopperCancelOrder', () => {
       'ok',
     ]);
     expect(await stockOf(product.id)).toBe(3 + 2);
+  });
+
+  it('refuses while an online payment is still going through, and moves nothing', async () => {
+    // The shopper may have paid at the gateway without coming back: a cancel
+    // now would leave money taken on a cancelled order.
+    const { user, product, order } = await placed(
+      ORDER_STATUSES.PENDING_PAYMENT,
+    );
+    await PaymentDao.create({
+      orderId: order.id,
+      method: PAYMENT_METHODS.ZARINPAL,
+      status: PAYMENT_STATUSES.PENDING,
+      amount: order.total,
+      authority: `A-test-${crypto.randomUUID()}`,
+    });
+
+    expect(await shopperCancelOrder(order.id, user.id)).toEqual({
+      outcome: 'payment_pending',
+    });
+    expect((await OrderDao.getById(order.id))?.status).toBe(
+      ORDER_STATUSES.PENDING_PAYMENT,
+    );
+    expect(await stockOf(product.id)).toBe(3);
+  });
+
+  it('still cancels a card-to-card order, whose own payment row waits until delivery', async () => {
+    const { user, order } = await placed(ORDER_STATUSES.AWAITING_RECEIPT);
+    await PaymentDao.create({
+      orderId: order.id,
+      method: PAYMENT_METHODS.COD,
+      status: PAYMENT_STATUSES.PENDING,
+      amount: order.total,
+    });
+
+    expect(await shopperCancelOrder(order.id, user.id)).toEqual({
+      outcome: 'ok',
+    });
   });
 });

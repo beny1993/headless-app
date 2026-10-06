@@ -149,7 +149,10 @@ describe.skipIf(!databaseReachable)('POST /api/orders/:id/cancel', () => {
     const order = await OrderDao.create(
       fx.buildOrder(user, [{ product, qty: 1 }], {
         status,
-        paymentMethod: PAYMENT_METHODS.COD,
+        paymentMethod:
+          status === ORDER_STATUSES.PENDING_PAYMENT
+            ? PAYMENT_METHODS.ZARINPAL
+            : PAYMENT_METHODS.COD,
       }),
     );
     fx.remember(order.id);
@@ -198,6 +201,27 @@ describe.skipIf(!databaseReachable)('POST /api/orders/:id/cancel', () => {
       'این سفارش دیگر قابل لغو نیست.',
     );
     expect(await statusOf(order.id)).toBe(ORDER_STATUSES.PROCESSING);
+  });
+
+  it('refuses with 409 while an online payment is still going through', async () => {
+    const { user, order } = await seedOrder(ORDER_STATUSES.PENDING_PAYMENT);
+    await PaymentDao.create({
+      orderId: order.id,
+      method: PAYMENT_METHODS.ZARINPAL,
+      status: PAYMENT_STATUSES.PENDING,
+      amount: order.total,
+      authority: `A-test-${crypto.randomUUID()}`,
+    });
+    asUser(user.id);
+
+    const response = await cancel(order.id);
+    const payload = (await response.json()) as ApiResponse<unknown>;
+
+    expect(response.status).toBe(409);
+    expect(payload.status === 'error' && payload.message).toBe(
+      'پرداخت آنلاین این سفارش هنوز در جریان است؛ کمی بعد دوباره امتحان کن.',
+    );
+    expect(await statusOf(order.id)).toBe(ORDER_STATUSES.PENDING_PAYMENT);
   });
 
   it('rejects a non-uuid id with 400', async () => {

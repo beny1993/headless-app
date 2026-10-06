@@ -32,6 +32,8 @@ import type { AuthedEnv } from '../middleware/auth';
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
 const ORDER_NOT_FOUND_MESSAGE = 'سفارش یافت نشد';
 const NOT_CANCELLABLE_MESSAGE = 'این سفارش دیگر قابل لغو نیست.';
+const PAYMENT_PENDING_MESSAGE =
+  'پرداخت آنلاین این سفارش هنوز در جریان است؛ کمی بعد دوباره امتحان کن.';
 
 const OrderItemSchema = z
   .object({
@@ -188,7 +190,8 @@ export const orderCancelRoute = createRoute({
     401: errorResponse('No session'),
     404: errorResponse('No such order for this user'),
     409: errorResponse(
-      'The order is no longer open: accepted, paid, shipped or cancelled',
+      'The order is no longer open (accepted, paid, shipped or cancelled), ' +
+        'or an online payment attempt on it is still live',
     ),
   },
 });
@@ -204,6 +207,8 @@ export const orderCancelHandler: RouteHandler<
       return c.json(apiError(ORDER_NOT_FOUND_MESSAGE), 404);
     case 'not_allowed':
       return c.json(apiError(NOT_CANCELLABLE_MESSAGE), 409);
+    case 'payment_pending':
+      return c.json(apiError(PAYMENT_PENDING_MESSAGE), 409);
     case 'ok':
       return c.json(apiSuccess({ status: ORDER_STATUSES.CANCELLED }), 200);
   }

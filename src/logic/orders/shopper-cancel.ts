@@ -8,13 +8,22 @@
 // receipt upload takes, so a cancel and the receipt that would accept the order
 // queue behind each other and only one wins.
 //
-// A `pending_payment` cancel can race a Zarinpal verify: the verify's CAS then
-// loses and its payment write rolls back, so money taken at the gateway sits on
-// a cancelled order — the window an admin cancel already has, and the reason
-// the cancelled page points to support for a refund.
+// No cancel while an online payment is still going through: a shopper who paid
+// at the gateway and never came back would otherwise cancel an order the
+// reconcile sweep then verifies as paid — `verify.ts` keeps the money with
+// `needsManualRefund` on a cancelled order. Race-free under the lock: a new
+// payment attempt takes the same order row (`request.ts`), so either the
+// attempt lands first and this sees it, or the cancel does and the attempt is
+// refused. The order waits for its verify, or for the sweep to expire it.
 import { db } from '@/db';
 import { OrderDao } from '@/db/dao/OrderDao';
-import { OPEN_ORDER_STATUSES, ORDER_STATUSES } from '@/lib/orders/order-status';
+import { PaymentDao } from '@/db/dao/PaymentDao';
+import {
+  OPEN_ORDER_STATUSES,
+  ORDER_STATUSES,
+  PAYMENT_METHODS,
+  PAYMENT_STATUSES,
+} from '@/lib/orders/order-status';
 import {
   InvalidTransitionError,
   transitionOrder,
@@ -28,7 +37,9 @@ type ShopperCancelResult =
   /** Missing, or someone else's — one answer. */
   | { outcome: 'not_found' }
   /** No longer open: accepted, paid, shipped, or already cancelled. */
-  | { outcome: 'not_allowed' };
+  | { outcome: 'not_allowed' }
+  /** An online payment attempt is still live on it: wait for its verify. */
+  | { outcome: 'payment_pending' };
 
 export const shopperCancelOrder = async (
   orderId: string,
@@ -40,6 +51,19 @@ export const shopperCancelOrder = async (
       if (!order) return { outcome: 'not_found' as const };
       if (!OPEN_ORDER_STATUSES.includes(order.status)) {
         return { outcome: 'not_allowed' as const };
+      }
+      // A card-to-card order's own payment row stays pending until delivery;
+      // only a gateway attempt can still turn into money.
+      const attempts = await PaymentDao.listByOrder(orderId, tx);
+      if (
+        attempts.some(
+          (attempt) =>
+            attempt.method === PAYMENT_METHODS.ZARINPAL &&
+            (attempt.status === PAYMENT_STATUSES.PENDING ||
+              attempt.status === PAYMENT_STATUSES.PAID),
+        )
+      ) {
+        return { outcome: 'payment_pending' as const };
       }
       await transitionOrder(
         tx,
