@@ -147,7 +147,7 @@ describe('rate limiting', () => {
   it('resolves the caller from the same header list the Hono limiter uses', () => {
     // Not "an equal list" — the same call. Two limiters that disagree about
     // who a caller is would bucket one visitor two ways, and nothing would say
-    // so. This is also what makes APP_CONFIG_TRUST_CF_HEADER a single switch
+    // so. This is also what makes APP_CONFIG_TRUST_REAL_IP_HEADER a single switch
     // instead of two that can drift apart.
     expect(options.advanced?.ipAddress?.ipAddressHeaders).toEqual(
       clientIpHeaders(),
@@ -170,22 +170,22 @@ describe('sessions', () => {
 describe('client IP resolution', () => {
   const ipAddress = options.advanced?.ipAddress;
 
-  // CHANGED 2026-09-19 (issue #59 item 1): this block used to assert
-  // `ipAddressHeaders[0] === 'cf-connecting-ip'` unconditionally. That is the
-  // defect, not the contract. Cloudflare sets the header itself and overwrites
-  // a client copy, so it is trustworthy *through Cloudflare* — but on an origin
-  // reachable directly it is a string the caller picked, and a fresh value per
-  // request mints a fresh bucket, which is no limit at all. It is now gated on
-  // APP_CONFIG_TRUST_CF_HEADER, and the gate defaults OFF so an un-proxied
+  // CHANGED 2026-09-19 (issue #59 item 1): this block used to assert the
+  // CDN's client-IP header first unconditionally. That is the defect, not the
+  // contract: the header is trustworthy only through the proxy that sets it,
+  // and on an origin reachable directly it is a string the caller picked — a
+  // fresh value per request mints a fresh bucket, which is no limit at all.
+  // It is gated on APP_CONFIG_TRUST_REAL_IP_HEADER (CF-Connecting-IP until the
+  // 2026-10-06 move to Arvan), and the gate defaults OFF so an un-proxied
   // deploy fails safe. Per-header behaviour is covered in client-ip.test.ts.
 
-  it('does not trust CF-Connecting-IP unless the deploy declares Cloudflare', () => {
+  it('does not trust X-Real-IP unless the deploy declares a trusted proxy', () => {
     // The suite runs with the flag unset, i.e. the shipped default.
-    expect(ipAddress?.ipAddressHeaders).not.toContain('cf-connecting-ip');
+    expect(ipAddress?.ipAddressHeaders).not.toContain('x-real-ip');
   });
 
   it('keeps x-forwarded-for as the fallback', () => {
-    // A grey-clouded (DNS-only) domain sends no CF header, and the integration
+    // A deploy with no CDN in front sends no X-Real-IP, and the integration
     // suite drives x-forwarded-for directly.
     expect(ipAddress?.ipAddressHeaders).toContain('x-forwarded-for');
   });

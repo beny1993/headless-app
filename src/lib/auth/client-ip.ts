@@ -8,13 +8,15 @@ import { getEnvFlag, VARS } from '@/lib/utils/env';
  * about who a caller is — a disagreement would put one of them in a different
  * bucket than the other, silently.
  *
- * `CF-Connecting-IP` is trusted ONLY when the deploy declares it is behind
- * Cloudflare. Cloudflare sets that header itself and overwrites any client copy,
- * so it cannot be forged *through* Cloudflare — but on an origin reachable
- * directly it is just a string the caller chose, and a fresh value per request
- * mints a fresh rate-limit bucket every time, which is no rate limit at all.
- * Default off means an un-proxied deploy falls back to `x-forwarded-for`
- * (which Traefik overwrites) rather than failing open.
+ * `X-Real-IP` is trusted ONLY when the deploy declares it is behind the CDN.
+ * ArvanCloud sets it to the visitor's address, and Traefik keeps it only from
+ * the ranges in its `forwardedHeaders.trustedIPs`, replacing it with the TCP
+ * peer for anyone else — so it cannot be forged *through* the CDN. On an origin
+ * reachable directly it is just a string the caller chose, and a fresh value per
+ * request mints a fresh rate-limit bucket every time, which is no rate limit at
+ * all. Default off means an un-proxied deploy falls back to `x-forwarded-for`
+ * (which Traefik overwrites) rather than failing open. Back behind Cloudflare
+ * this would be `cf-connecting-ip` again: Cloudflare does not set X-Real-IP.
  *
  * This is a function, not a constant, so the flag is read from the environment
  * rather than baked into the build — it is a runtime switch, like the other
@@ -28,8 +30,8 @@ import { getEnvFlag, VARS } from '@/lib/utils/env';
  * the two are guaranteed to agree per process, not per request.
  */
 export const clientIpHeaders = (): string[] =>
-  getEnvFlag(VARS.APP_CONFIG_TRUST_CF_HEADER)
-    ? ['cf-connecting-ip', 'x-forwarded-for']
+  getEnvFlag(VARS.APP_CONFIG_TRUST_REAL_IP_HEADER)
+    ? ['x-real-ip', 'x-forwarded-for']
     : ['x-forwarded-for'];
 
 /**

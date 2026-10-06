@@ -96,8 +96,8 @@ export const rateLimitGroupFor = (path: string): RateLimitGroup | null => {
 // ponytail: fixed budgets in a per-process Map — a dozen lines, no dependency.
 // Ceilings: (1) budgets reset on every redeploy; (2) a second instance behind a
 // load balancer would get its own budget — today there is one Coolify VPS and
-// one replica (docs/DEPLOY.md §5); (3) while APP_CONFIG_TRUST_CF_HEADER is on
-// and the origin is not yet locked to Cloudflare, a forged CF-Connecting-IP can
+// one replica (docs/DEPLOY.md §5); (3) while APP_CONFIG_TRUST_REAL_IP_HEADER is on
+// and the origin is not yet locked to the CDN, a forged X-Real-IP can
 // still mint keys — bounded by MAX_RATE_LIMIT_BUCKETS, closed for good by the
 // origin lockdown. Upgrade path when a second replica appears: Better Auth's
 // `rate_limit` table behind a RateLimitDao with a `hono:` key prefix, swapped in
@@ -138,7 +138,7 @@ const RESERVED_SENTINEL_SLOTS = Object.keys(RATE_LIMITS).length;
  * Shouts once when traffic starts landing in a shared bucket.
  *
  * Both routes into one are misconfigurations that otherwise look exactly like
- * normal operation: a deploy behind a proxy with APP_CONFIG_TRUST_CF_HEADER
+ * normal operation: a deploy behind a proxy with APP_CONFIG_TRUST_REAL_IP_HEADER
  * off resolves no caller at all, so the WHOLE SHOP shares one budget per group
  * and nothing says why sign-in suddenly fails; and a map at its cap means
  * something is minting addresses. A limit that trips silently is a shop that is
@@ -150,7 +150,7 @@ const warnSharedBucket = (reason: string) => {
   const message =
     `[rate-limit] counting requests in a SHARED bucket (${reason}). ` +
     'Every affected caller now spends one budget between them. If this is a ' +
-    'Cloudflare-fronted deploy, set APP_CONFIG_TRUST_CF_HEADER=true.';
+    'CDN-fronted deploy, set APP_CONFIG_TRUST_REAL_IP_HEADER=true.';
   console.warn(message);
   // A static import, never a lazy `import()` again: that one was still loading
   // when rate-limit.test.ts ended, and vitest's teardown failed the whole run

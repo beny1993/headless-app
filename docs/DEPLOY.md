@@ -184,65 +184,41 @@ On the `local` driver, receipts sit in a `receipts/` folder under
 
 ---
 
-### Canonical domain redirects in Cloudflare
+### CDN: ArvanCloud (since 2026-10-06)
 
-The public origin is `https://smokeypetshop.ir`. A request to `www` must redirect
-at Cloudflare before reaching Coolify: on 2026-10-04, the apex worked but
-`https://www.smokeypetshop.ir/` returned `503` with `no available server`.
-An app-level redirect cannot repair a request that never reaches the app.
-The Cloudflare redirect was configured and verified later that day: both
-protocols on `www` return 301 to the HTTPS apex with path and query intact;
-the destination shop loads in a browser.
+The public origin is `https://smokeypetshop.ir`, fronted by **ArvanCloud** CDN
+and DNS (nameservers `g.ns.arvancdn.ir` / `s.ns.arvancdn.ir`, set at nic.ir).
+It replaced Cloudflare on 2026-10-06: Cloudflare was unreachable from Iranian
+networks, and with its proxy off the origin lockdown (§6) dropped every visitor.
+The Cloudflare zone is paused, not deleted.
 
-1. In **DNS → Records**, ensure `www` exists and is **Proxied** (orange cloud).
-   If absent, add a **CNAME** named `www` targeting `smokeypetshop.ir`, proxied.
-2. In **Rules → Overview → Create rule → Redirect Rule**, add a Single Redirect
-   named **WWW to canonical shop** with **Custom filter expression**:
+In the Arvan panel:
 
-   ```text
-   (http.host eq "www.smokeypetshop.ir")
-   ```
+1. **DNS:** `A` records for the apex, `www` and `stage` → the VPS, all with the
+   CDN (cloud) on — a grey record bypasses Arvan and the firewall drops it.
+2. **HTTPS:** Arvan's free certificate on; HTTP → HTTPS redirect on.
+3. **www redirect:** a rule sending `www.smokeypetshop.ir` to
+   `https://smokeypetshop.ir` with **301**, path and query preserved. Do not add
+   a reverse apex-to-www rule. An app-level redirect cannot repair a request
+   that never reaches the app: Coolify serves the apex only, and `www` reaching
+   Traefik answers `503 no available server`.
 
-3. Set the URL redirect to **Dynamic**, with expression:
-
-   ```text
-   concat("https://smokeypetshop.ir", http.request.uri.path)
-   ```
-
-   Choose **301**, enable **Preserve query string**, and deploy the rule before
-   any overlapping redirect. It covers both HTTP and HTTPS on `www` without
-   matching the apex or staging. Do not add a reverse apex-to-www rule.
-
-   If the dashboard has **Wildcard pattern** selected instead, the equivalent
-   request URL is `http*://www.smokeypetshop.ir/*` and target URL is
-   `https://smokeypetshop.ir/${2}`, with **301** and **Preserve query string** on.
-
-4. Under **SSL/TLS → Edge Certificates**, enable **Always Use HTTPS** for HTTP
-   traffic. Keep the existing TLS mode and crawler/security settings: Google's
-   successful homepage crawl does not justify weakening them.
-
-Verify the homepage, a product path, and a filtered shop URL, for example:
+Verify (from an Iranian connection — a VPN exit says nothing about what
+shoppers see):
 
 ```bash
 curl -sS -o /dev/null -D - 'https://www.smokeypetshop.ir/shop?pet=cat'
-curl -sS -o /dev/null -D - 'http://www.smokeypetshop.ir/shop?pet=cat'
-curl -sS -o /dev/null -D - 'http://smokeypetshop.ir/shop?pet=cat'
+curl -sS -o /dev/null -D - 'https://smokeypetshop.ir/'
 ```
 
-The redirect chain must end at `https://smokeypetshop.ir/shop?pet=cat`, retain
-the query and path, and contain no loop or 503. The canonical HTTPS URL must
-still serve the shop. If automated probes meet a bot challenge, verify in a
-browser and with Search Console's **Test live URL**; do not disable protections
-just to make a curl probe pass.
+The first must be a 301 to `https://smokeypetshop.ir/shop?pet=cat`; the second
+a 200 with `server: ArvanCloud`.
 
 After publishing site metadata changes, inspect the canonical homepage in
 Search Console and request indexing once. The Domain property already covers
 all hostname/protocol variants; keep the existing successful sitemap submission.
-A successful sitemap means discovery, not a promise of indexing or ranking.
 
-References: [Cloudflare's dashboard instructions](https://developers.cloudflare.com/rules/url-forwarding/single-redirects/create-dashboard/),
-[hostname redirects with path/query preservation](https://developers.cloudflare.com/rules/url-forwarding/examples/redirect-all-different-hostname/),
-[Google's recrawl guidance](https://developers.google.com/search/docs/crawling-indexing/ask-google-to-recrawl).
+---
 
 ## 5. Database migrations on deploy
 
@@ -363,23 +339,29 @@ and deliberately not baked into the image:
 - [ ] **`NEXT_PUBLIC_APP_URL`** = the real `https://` origin, set as a **build
       variable** (§1). Confirm it's the real host, not the placeholder — rebuild
       after changing it.
-- [ ] **Lock the origin to Cloudflare.** The domain is Cloudflare-proxied, so
-      `src/lib/auth/index.ts` resolves the client IP from `CF-Connecting-IP`
-      (`advanced.ipAddress.ipAddressHeaders`) — without it Better Auth's IP rate
-      limiter buckets every visitor together. Cloudflare overwrites that header,
-      so it cannot be forged _through_ Cloudflare — but a request that reaches
-      the VPS **directly** carries whatever header it likes, and a fresh forged
-      value per request mints a fresh rate-limit bucket each time. So the origin
-      must refuse non-Cloudflare traffic: allow 443 only from
-      [Cloudflare's published ranges](https://www.cloudflare.com/ips/), or use a
-      Cloudflare Tunnel so the origin has no public port at all. Until then the
-      IP axis is bypassable; the per-phone `otp_send_log` throttle still bounds
-      the SMS bill.
-      **Verify after deploy:** hit the site through the domain and confirm
-      `rate_limit` rows key on real visitor IPs — not one repeated Cloudflare
-      edge address, and not the literal `no-trusted-ip`. Note that the
-      "could not determine a client IP" warning does **not** fire in the
-      Cloudflare-edge case, so log-grepping alone will not catch it.
+- [ ] **Lock the origin to the CDN.** The domain is ArvanCloud-proxied, so the
+      client IP is resolved from `X-Real-IP` (`src/lib/auth/client-ip.ts`, read
+      by Better Auth and the `/api/*` limiter) once
+      `APP_CONFIG_TRUST_REAL_IP_HEADER=true` — without it every visitor through
+      one Arvan edge shares a rate-limit bucket. Three pieces, all or none:
+      1. **Firewall:** `/root/cloudflare-origin-lockdown.sh` keeps TCP 80/443
+         open only to the CDN's ranges, in Docker's `DOCKER-USER` chain
+         (persisted in `/etc/ufw/after.rules`). Arvan's ranges:
+         <https://www.arvancloud.ir/en/ips.txt>. **Never `ufw reload`** on that
+         host — it flushes Docker's chains.
+      2. **Traefik:** `--entrypoints.{http,https}.forwardedheaders.trustedips`
+         (Coolify → Server → Proxy) lists exactly the CDN's ranges plus
+         `127.0.0.1/32`. Traefik keeps `X-Real-IP` only from those and replaces
+         it with the TCP peer for anyone else; a range trusted there but not
+         owned by the CDN (a stale Cloudflare range — Workers can set any
+         header) is a forged bucket per request.
+      3. **App:** `APP_CONFIG_TRUST_REAL_IP_HEADER=true`, then restart.
+      **Verify after deploy:** send a request with a bogus
+      `X-Real-IP: 203.0.113.9` through the domain and confirm the `rate_limit`
+      rows key on your real IP — never `203.0.113.9`, not one repeated Arvan
+      edge address, and not the literal `no-trusted-ip`. The "could not
+      determine a client IP" warning does **not** fire in the edge-address
+      case, so log-grepping alone will not catch it.
 - [ ] **Maintenance mode off:** `APP_CONFIG_MAINTENANCE_MODE` unset (or
       anything but `true`) on the production app, then restart — otherwise
       launch day shows every customer «به‌زودی برمی‌گردیم».
@@ -513,8 +495,8 @@ whoever asked. Anyone who can reach staging can send a code for a known admin
 number and read it back: one request, admin session. The 3-per-minute throttle
 does not stop a single targeted attempt, and it never did. Production is
 strictly safer after this change; staging is strictly less safe. **So staging
-must not be publicly routable** — put it behind the Cloudflare origin lockdown
-([[Story - Cloudflare Origin Lockdown]]) or behind basic auth before this ships.
+must not be publicly routable** — put it behind basic auth (the CDN origin
+lockdown, §6, keeps out direct traffic, not visitors) before this ships.
 Treat every staging admin account as compromised-by-design: never reuse a
 production phone number or session there.
 
