@@ -4,8 +4,8 @@
 // browser-redirect route answers a redirect instead of JSON, and that the
 // probe Coolify polls is never counted.
 //
-// Every request here carries a synthetic `CF-Connecting-IP`, so the spec spends
-// its OWN bucket. `playwright.config.ts` turns APP_CONFIG_TRUST_CF_HEADER on for
+// Every request here carries a synthetic `X-Real-IP`, so the spec spends
+// its OWN bucket. `playwright.config.ts` turns APP_CONFIG_TRUST_REAL_IP_HEADER on for
 // exactly this reason — without it the header is ignored, this spec's flood
 // lands in the bucket shared by the whole run, and it would throttle the other
 // specs instead of itself. `page.request` is invisible to the `test` fixture's
@@ -21,7 +21,7 @@ test.describe('API rate limiting', () => {
   test('throttles the public catalogue and says so in Persian', async ({
     page,
   }) => {
-    const headers = { 'cf-connecting-ip': ip('11') };
+    const headers = { 'x-real-ip': ip('11') };
     let throttled: { status: number; body: string } | null = null;
 
     // Well past the catalogue budget. The first over-budget answer ends it.
@@ -46,7 +46,7 @@ test.describe('API rate limiting', () => {
   }) => {
     // Zarinpal sends the shopper's own browser here, so a JSON body would
     // render as raw text in their window right after they paid.
-    const headers = { 'cf-connecting-ip': ip('12') };
+    const headers = { 'x-real-ip': ip('12') };
     let redirect: { status: number; location: string | null } | null = null;
 
     for (let i = 0; i < 120; i++) {
@@ -66,7 +66,7 @@ test.describe('API rate limiting', () => {
 
   test('never throttles the readiness probe', async ({ page }) => {
     // A counted probe marks the container unhealthy and rolls the deploy back.
-    const headers = { 'cf-connecting-ip': ip('13') };
+    const headers = { 'x-real-ip': ip('13') };
 
     for (let i = 0; i < 200; i++) {
       const res = await page.request.get(API_PATHS.READY, { headers });
@@ -77,8 +77,8 @@ test.describe('API rate limiting', () => {
   test('one caller being throttled does not affect another', async ({
     page,
   }) => {
-    const spender = { 'cf-connecting-ip': ip('14') };
-    const bystander = { 'cf-connecting-ip': ip('15') };
+    const spender = { 'x-real-ip': ip('14') };
+    const bystander = { 'x-real-ip': ip('15') };
 
     for (let i = 0; i < 200; i++) {
       const res = await page.request.get(API_PATHS.PRODUCTS, {

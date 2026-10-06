@@ -67,26 +67,27 @@ export const auth = betterAuth({
   advanced: {
     cookiePrefix: 'token',
     ipAddress: {
-      // Cloudflare proxies the domain, so the true client IP arrives in
-      // `CF-Connecting-IP` — Cloudflare sets it itself and overwrites any
-      // client-supplied copy, so it cannot be forged *through* Cloudflare.
+      // ArvanCloud proxies the domain (Cloudflare until 2026-10-06), so the
+      // true client IP arrives in `X-Real-IP` — Arvan sets it, and Traefik keeps
+      // it only from the ranges in `forwardedHeaders.trustedIPs`, so it cannot
+      // be forged *through* the CDN.
       //
       // Without this the rate limiter below is useless here. Better Auth's
       // default reads `x-forwarded-for` and trusts it only when it holds a
-      // SINGLE address; behind Cloudflare + Traefik it holds either the
-      // Cloudflare edge address (so every visitor through one Cloudflare colo
-      // shares a bucket) or two hops (so `getIp` returns null and EVERY request
+      // SINGLE address; behind the CDN + Traefik it holds either the CDN
+      // edge address (so every visitor through one edge shares a bucket) or
+      // two hops (so `getIp` returns null and EVERY request
       // collapses into the one shared `no-trusted-ip` bucket — 3 OTP sends per
       // minute for the entire shop). Neither failure is visible in a log.
       //
-      // **This is only sound while the origin refuses non-Cloudflare traffic.**
+      // **This is only sound while the origin refuses non-CDN traffic.**
       // Reachable directly, the header is attacker-supplied and a forged value
-      // per request mints a fresh bucket each time. Lock 443 to Cloudflare's
-      // published ranges (or use a Tunnel). The per-phone `otp_send_log`
+      // per request mints a fresh bucket each time. Lock 443 to the CDN's
+      // published ranges (docs/DEPLOY.md §6). The per-phone `otp_send_log`
       // throttle bounds the SMS bill either way; this axis bounds the noise.
       //
-      // `x-forwarded-for` stays as the fallback for a grey-clouded (DNS-only)
-      // domain and for local/integration runs, which send it directly.
+      // `x-forwarded-for` stays as the fallback for a deploy with no CDN in
+      // front and for local/integration runs, which send it directly.
       //
       // Deliberately NO `trustedProxies`. It looks like the tidier fix, but it
       // switches the forwarded-header branch to a right-to-left chain walk that
@@ -94,11 +95,11 @@ export const auth = betterAuth({
       // ranges a Docker Traefik sits in (10.0.0.0/8) would then swallow the
       // 10.99.x.x addresses `auth.integration.test.ts` uses as CLIENTS,
       // resolving them to null and putting the whole suite in one bucket. The
-      // Cloudflare header removes the need to walk the chain at all.
+      // CDN's X-Real-IP removes the need to walk the chain at all.
       // ONE list, shared with the Hono rate limiter (src/lib/auth/client-ip.ts).
       // Two copies would let the two limiters bucket the same caller differently,
-      // invisibly. `cf-connecting-ip` is in the list only when
-      // APP_CONFIG_TRUST_CF_HEADER says this deploy is behind Cloudflare — see that
+      // invisibly. `x-real-ip` is in the list only when
+      // APP_CONFIG_TRUST_REAL_IP_HEADER says this deploy is behind the CDN — see that
       // module for why trusting it unconditionally is worse than not trusting it.
       ipAddressHeaders: clientIpHeaders(),
     },
