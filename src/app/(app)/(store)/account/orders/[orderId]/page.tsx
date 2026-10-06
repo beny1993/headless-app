@@ -7,6 +7,7 @@ import {
   toSummaryLines,
 } from '@/features/checkout/order-summary';
 import { ReceiptBox } from '@/features/checkout/receipt-box';
+import { CancelOrderButton } from '@/features/checkout/cancel-order-button';
 import { RetryPaymentButton } from '@/features/checkout/retry-payment-button';
 import {
   cancellationNote,
@@ -20,6 +21,7 @@ import {
   toPersianDigits,
 } from '@/lib/format';
 import {
+  OPEN_ORDER_STATUSES,
   ORDER_STATUSES,
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUSES,
@@ -142,6 +144,12 @@ export default async function Page({
               </p>
             </div>
           </div>
+        )}
+
+        {/* An open order — the kind checkout's open-order cap counts — is the
+            shopper's to cancel. */}
+        {OPEN_ORDER_STATUSES.includes(order.status) && (
+          <CancelOrderButton orderId={order.id} />
         )}
 
         {cancelled && (

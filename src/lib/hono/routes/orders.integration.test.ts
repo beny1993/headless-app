@@ -7,10 +7,11 @@ import {
   ORDER_STATUSES,
   PAYMENT_METHODS,
   PAYMENT_STATUSES,
+  type OrderStatus,
 } from '@/lib/orders/order-status';
 import { databaseReachable, importWithDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
-import { API_PATHS } from '@/lib/constant/paths';
+import { API_PATHS, apiOrderCancelPath } from '@/lib/constant/paths';
 import type { ApiResponse } from '@/lib/hono/envelope';
 
 const mocks = vi.hoisted(() => ({ getSession: vi.fn() }));
@@ -126,5 +127,81 @@ describe.skipIf(!databaseReachable)('GET /api/orders/:id', () => {
     expect(raw).not.toContain('cardPan');
     expect(raw).not.toContain('gatewayResponse');
     expect(raw).not.toContain('6274-****-****-1234');
+  });
+});
+
+describe.skipIf(!databaseReachable)('POST /api/orders/:id/cancel', () => {
+  const fx = new OrderFixtures();
+  afterEach(() => {
+    mocks.getSession.mockReset();
+    return fx.cleanup();
+  });
+
+  const asUser = (id: string) =>
+    mocks.getSession.mockResolvedValue({
+      user: { id, email: 'c@example.com', role: 'customer' },
+      session: { id: 's1' },
+    });
+
+  const seedOrder = async (status: OrderStatus) => {
+    const user = await fx.user();
+    const product = await fx.product(await fx.category(), { stock: 5 });
+    const order = await OrderDao.create(
+      fx.buildOrder(user, [{ product, qty: 1 }], {
+        status,
+        paymentMethod: PAYMENT_METHODS.COD,
+      }),
+    );
+    fx.remember(order.id);
+    return { user, order };
+  };
+
+  const cancel = (id: string) =>
+    app.request(apiOrderCancelPath(id), { method: 'POST' });
+  const statusOf = async (id: string) => (await OrderDao.getById(id))?.status;
+
+  it('rejects an unauthenticated request with 401', async () => {
+    const { order } = await seedOrder(ORDER_STATUSES.AWAITING_RECEIPT);
+    mocks.getSession.mockResolvedValue(null);
+
+    expect((await cancel(order.id)).status).toBe(401);
+    expect(await statusOf(order.id)).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
+  });
+
+  it('cancels the owner’s waiting order', async () => {
+    const { user, order } = await seedOrder(ORDER_STATUSES.AWAITING_RECEIPT);
+    asUser(user.id);
+
+    const response = await cancel(order.id);
+
+    expect(response.status).toBe(200);
+    expect(await statusOf(order.id)).toBe(ORDER_STATUSES.CANCELLED);
+  });
+
+  it('answers another user’s order with 404 and leaves it be (IDOR)', async () => {
+    const { order } = await seedOrder(ORDER_STATUSES.AWAITING_RECEIPT);
+    asUser((await fx.user()).id);
+
+    expect((await cancel(order.id)).status).toBe(404);
+    expect(await statusOf(order.id)).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
+  });
+
+  it('refuses an accepted order with 409 in Persian', async () => {
+    const { user, order } = await seedOrder(ORDER_STATUSES.PROCESSING);
+    asUser(user.id);
+
+    const response = await cancel(order.id);
+    const payload = (await response.json()) as ApiResponse<unknown>;
+
+    expect(response.status).toBe(409);
+    expect(payload.status === 'error' && payload.message).toBe(
+      'این سفارش دیگر قابل لغو نیست.',
+    );
+    expect(await statusOf(order.id)).toBe(ORDER_STATUSES.PROCESSING);
+  });
+
+  it('rejects a non-uuid id with 400', async () => {
+    asUser((await fx.user()).id);
+    expect((await cancel('not-a-uuid')).status).toBe(400);
   });
 });

@@ -1,4 +1,5 @@
 import { accountOrderPath } from '@/lib/constant/paths';
+import { formatNumber } from '@/lib/format';
 import type { Locator, Page } from '@playwright/test';
 import {
   ADMIN_STATE,
@@ -8,6 +9,7 @@ import {
   expect,
   expectRendered,
   IN_STOCK_PRODUCT,
+  LOW_STOCK_PRODUCT,
   placeOrder,
   reachPayment,
   resultOrderId,
@@ -227,6 +229,42 @@ test('card to card: a screenshot that fails to store is sent again from the chec
   await expect(
     page.locator('[data-umami-event="checkout-result-receipt-open"]'),
   ).toHaveCount(1);
+});
+
+test('card to card: the shopper cancels a waiting order from their account, and its stock comes back', async ({
+  page,
+}) => {
+  const { path, stock } = LOW_STOCK_PRODUCT;
+  const stockLeft = (count: number) =>
+    page.getByText(`تنها ${formatNumber(count)} عدد باقی مانده`);
+
+  // The screenshot never arrives: the order waits, open, for its receipt.
+  const receiptUpload = '**/api/orders/*/receipts';
+  await page.route(receiptUpload, (route) => route.abort());
+  await placeOrder(page, 'cod', path);
+  await page
+    .locator('[data-umami-event="checkout-receipt-view-order"]')
+    .click();
+  placedOrder = await resultOrderId(page);
+  await page.unroute(receiptUpload);
+
+  await page.goto(accountOrderPath(placedOrder));
+  await page.locator('[data-umami-event="account-order-cancel"]').click();
+  await page
+    .locator('[data-umami-event="account-order-cancel-confirm"]')
+    .click();
+
+  await expect(page.getByText('این سفارش لغو شد.')).toBeVisible();
+  await expect(
+    page.getByText('دلیل: به درخواست خریدار لغو شد.', { exact: false }),
+  ).toBeVisible();
+  // Cancelled is final: nothing left to cancel.
+  await expect(
+    page.locator('[data-umami-event="account-order-cancel"]'),
+  ).toHaveCount(0);
+
+  await page.goto(path);
+  await expect(stockLeft(stock)).toBeVisible();
 });
 
 test('Zarinpal: paying at the mock gateway settles the order', async ({

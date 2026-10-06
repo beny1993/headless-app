@@ -13,12 +13,14 @@ import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
 import {
+  ORDER_STATUSES,
   paymentMethodSchema,
   paymentStatusSchema,
   orderStatusSchema,
 } from '@/lib/orders/order-status';
 import { receiptSchema } from '@/lib/orders/receipt';
 import { getOwnedOrder, type OwnedOrder } from '@/logic/checkout/get-order';
+import { shopperCancelOrder } from '@/logic/orders/shopper-cancel';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
 import {
   IdParamSchema,
@@ -29,6 +31,7 @@ import type { AuthedEnv } from '../middleware/auth';
 
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
 const ORDER_NOT_FOUND_MESSAGE = 'سفارش یافت نشد';
+const NOT_CANCELLABLE_MESSAGE = 'این سفارش دیگر قابل لغو نیست.';
 
 const OrderItemSchema = z
   .object({
@@ -155,4 +158,53 @@ export const orderDetailHandler: RouteHandler<
   if (!order) return c.json(apiError(ORDER_NOT_FOUND_MESSAGE), 404);
 
   return c.json(apiSuccess(toOrderDetail(order)), 200);
+};
+
+/**
+ * POST /api/orders/{id}/cancel — the owner cancels their own open order (waiting
+ * for its receipt or its online payment): the way out of checkout's open-order
+ * cap. Owner-scoped by `shopperCancelOrder`, so someone else's order is a 404
+ * like a missing one; one that has left the shopper's hands is a 409.
+ */
+export const orderCancelRoute = createRoute({
+  method: 'post',
+  path: '/orders/{id}/cancel',
+  tags: ['orders'],
+  summary: 'Cancel one of your own open orders (auth required, owner only)',
+  request: { params: IdParamSchema },
+  responses: {
+    200: {
+      content: {
+        'application/json': {
+          schema: apiSuccessSchema(
+            z.object({ status: orderStatusSchema }),
+            'OrderCancelResponse',
+          ),
+        },
+      },
+      description: 'Cancelled; its reserved stock is back on the shelf',
+    },
+    400: errorResponse('The id is not a valid uuid'),
+    401: errorResponse('No session'),
+    404: errorResponse('No such order for this user'),
+    409: errorResponse(
+      'The order is no longer open: accepted, paid, shipped or cancelled',
+    ),
+  },
+});
+
+export const orderCancelHandler: RouteHandler<
+  typeof orderCancelRoute,
+  Env & AuthedEnv
+> = async (c) => {
+  const { id } = c.req.valid('param');
+  const result = await shopperCancelOrder(id, c.get('user').id);
+  switch (result.outcome) {
+    case 'not_found':
+      return c.json(apiError(ORDER_NOT_FOUND_MESSAGE), 404);
+    case 'not_allowed':
+      return c.json(apiError(NOT_CANCELLABLE_MESSAGE), 409);
+    case 'ok':
+      return c.json(apiSuccess({ status: ORDER_STATUSES.CANCELLED }), 200);
+  }
 };
