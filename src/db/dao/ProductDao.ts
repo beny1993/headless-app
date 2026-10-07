@@ -1233,12 +1233,19 @@ export class ProductDao {
    * nothing left pointing at them, since the only sweep derives its work from
    * `product_images`. The rows are gone either way — a wholesale replace is
    * last-write-wins by construction — but the files need not be stranded.
+   *
+   * Takes the product's row lock first, as {@link appendImage} and the
+   * admin's hard delete do, and answers `null` when the product is gone —
+   * deleted after the caller read it — having written nothing, where the
+   * INSERT would otherwise fail on the foreign key.
    */
   static async setImages(
     productId: string,
     objectKeys: string[],
-  ): Promise<{ images: ProductImage[]; removedKeys: string[] }> {
+  ): Promise<{ images: ProductImage[]; removedKeys: string[] } | null> {
     return db.transaction(async (tx) => {
+      if (!(await ProductDao.lockRow(tx, productId))) return null;
+
       const removed = await tx
         .delete(productImages)
         .where(eq(productImages.productId, productId))

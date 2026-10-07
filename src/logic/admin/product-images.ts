@@ -40,6 +40,17 @@ import {
 } from '@/lib/storage/image-upload';
 import { getStorageDriver, type StorageDriver } from '@/lib/storage';
 
+/**
+ * The product went between the route's read and the gallery write — the
+ * admin's hard delete got there first. The route answers 404.
+ */
+export class ProductGoneError extends Error {
+  constructor() {
+    super('The product was deleted before its gallery was written.');
+    this.name = 'ProductGoneError';
+  }
+}
+
 /** What the upload route hands back — the stored key and a URL to render it. */
 export type StoredImage = {
   id: string;
@@ -132,7 +143,8 @@ export async function appendProductImage(
  * images, which is the ownership check the API leans on, since a body reaches
  * here having been checked for shape and nothing else. Returns `null` when a
  * key belongs to no image of this product, having written nothing at all; the
- * route turns that into a 400.
+ * route turns that into a 400. Throws {@link ProductGoneError} when the
+ * product was deleted before the write, which also writes nothing.
  *
  * The deleted set is whatever the write actually removed, restricted to
  * `uploads/`. It is *not* «everything previous», and not a diff of the
@@ -157,9 +169,9 @@ export async function setProductImageOrder(
   // row deleted here too, and deriving the set from the snapshot would leave
   // its file behind with nothing referencing it — invisible to this loop
   // forever, since the loop works from the rows.
-  const { images, removedKeys } = await ProductDao.setImages(product.id, [
-    ...objectKeys,
-  ]);
+  const written = await ProductDao.setImages(product.id, [...objectKeys]);
+  if (!written) throw new ProductGoneError();
+  const { images, removedKeys } = written;
 
   for (const objectKey of removedKeys) {
     if (!isOurUpload(objectKey)) continue;

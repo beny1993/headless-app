@@ -25,6 +25,7 @@ import {
   HARD_DELETE_BLOCKERS,
 } from '@/lib/catalog/product-delete';
 import { hasMembersMessage } from '@/lib/catalog/variant';
+import { RECEIPT_KEY_PREFIX } from '@/lib/storage/image-upload';
 
 const { remove } = vi.hoisted(() => ({ remove: vi.fn() }));
 vi.mock('@/lib/storage', () => ({
@@ -251,12 +252,16 @@ describe.skipIf(!databaseReachable)(
         expect(remove).not.toHaveBeenCalled();
       });
 
-      it('deletes only the uploaded files, never a bundled asset', async () => {
+      it('deletes only the uploaded files, never a bundled asset or a receipt', async () => {
+        // A receipt's key never belongs on a product, but if one ever did, the
+        // filter is what keeps the order's proof of payment from being deleted.
+        const receiptKey = `${RECEIPT_KEY_PREFIX}/${crypto.randomUUID()}.jpg`;
         const category = await fx.category();
         const product = await fx.product(category);
         await photos(product, [
           'uploads/one.jpg',
           'products/cat-dry-food.jpg',
+          receiptKey,
           'uploads/two.webp',
         ]);
 

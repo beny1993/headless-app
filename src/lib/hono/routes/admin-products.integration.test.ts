@@ -243,6 +243,17 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       expect(res.status).toBe(403);
     });
 
+    it('refuses a DELETE before it validates the intent — 403 to a customer, 401 with no session', async () => {
+      // The same authorize-before-parse, for the query string: an unknown
+      // `confirm` would be the validator's 400, so a 403/401 proves the guard
+      // answered first.
+      const target = `${apiAdminProductPath(faker.string.uuid())}?confirm=purge`;
+      asCustomer();
+      expect((await json(target, 'DELETE')).status).toBe(403);
+      anon();
+      expect((await json(target, 'DELETE')).status).toBe(401);
+    });
+
     it('leaves the public product read reachable unauthenticated', async () => {
       // The regression for a leaking `/admin/*` guard: mounting the admin router
       // must not put the public catalog behind auth.
@@ -1103,6 +1114,34 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       expect(await fileExists(keys[1])).toBe(false);
       expect(await fileExists(keys[0])).toBe(true);
       expect(await fileExists(keys[2])).toBe(true);
+    });
+
+    it('answers 404 when the product is deleted while the reorder waits', async () => {
+      // The route reads the product, then a delete commits before the write
+      // runs. Without the write's own row lock its INSERT met the gone row's
+      // foreign key and the reorder answered 500; with it, the write sees the
+      // row is gone and writes nothing.
+      const { product, keys } = await withPhotos(1);
+      const realFind = ProductDao.findByIdForAdmin;
+      const spy = vi
+        .spyOn(ProductDao, 'findByIdForAdmin')
+        .mockImplementationOnce(async (id) => {
+          const found = await realFind(id);
+          await testDb.delete(products).where(eq(products.id, id));
+          return found;
+        });
+
+      let res: Response;
+      try {
+        res = await json(apiAdminProductImagesPath(product.id), 'PUT', {
+          objectKeys: keys,
+        });
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(res.status).toBe(404);
+      expect(await storedKeys(product.id)).toEqual([]);
     });
 
     it('refuses another product’s key and leaves both galleries alone', async () => {

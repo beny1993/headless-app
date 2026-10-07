@@ -1984,11 +1984,11 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       await ProductDao.appendImage(product.id, 'uploads/raced-in.jpg', 5);
 
       // The caller still believes the gallery is just the one photo.
-      const { removedKeys } = await ProductDao.setImages(product.id, [
+      const written = await ProductDao.setImages(product.id, [
         'uploads/known.jpg',
       ]);
 
-      expect(removedKeys).toEqual(['uploads/raced-in.jpg']);
+      expect(written?.removedKeys).toEqual(['uploads/raced-in.jpg']);
     });
 
     it('reports nothing removed when the list is unchanged', async () => {
@@ -2001,7 +2001,22 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       ]);
 
       // A reorder deletes nothing, however many rows it rewrites.
-      expect(reordered.removedKeys).toEqual([]);
+      expect(reordered?.removedKeys).toEqual([]);
+    });
+
+    it('answers null for a product that is gone, and writes nothing', async () => {
+      // The product row is locked first, as `appendImage` does, so a write
+      // against a product that is gone answers null instead of failing on the
+      // INSERT's foreign key.
+      const id = crypto.randomUUID();
+
+      expect(await ProductDao.setImages(id, ['uploads/orphan.jpg'])).toBeNull();
+      expect(
+        await testDb
+          .select()
+          .from(productImages)
+          .where(eq(productImages.productId, id)),
+      ).toEqual([]);
     });
   });
 

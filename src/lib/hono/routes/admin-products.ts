@@ -40,6 +40,7 @@ import {
 } from '@/lib/catalog/product-delete';
 import {
   appendProductImage,
+  ProductGoneError,
   setProductImageOrder,
 } from '@/logic/admin/product-images';
 import { removeProduct } from '@/logic/admin/product-removal';
@@ -469,8 +470,15 @@ export const productImagesOrderHandler: RouteHandler<
   // can only check shape, so this is the whole gate — a key from another
   // product, a bundled `products/…` asset that is not this one's, or any other
   // string writes nothing and deletes nothing.
-  const stored = await setProductImageOrder(product, objectKeys);
-  if (!stored) return c.json(apiError(PRODUCT_MESSAGES.images), 400);
-
-  return c.json(apiSuccess(stored), 200);
+  try {
+    const stored = await setProductImageOrder(product, objectKeys);
+    if (!stored) return c.json(apiError(PRODUCT_MESSAGES.images), 400);
+    return c.json(apiSuccess(stored), 200);
+  } catch (error) {
+    // Deleted between the read above and the write: as gone as never found.
+    if (error instanceof ProductGoneError) {
+      return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
+    }
+    throw error;
+  }
 };

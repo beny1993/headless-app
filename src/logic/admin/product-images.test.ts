@@ -29,7 +29,11 @@ vi.mock('@/lib/storage', () => ({
   getStorageDriver: () => ({ put, delete: remove, url }),
 }));
 
-import { appendProductImage, setProductImageOrder } from './product-images';
+import {
+  ProductGoneError,
+  appendProductImage,
+  setProductImageOrder,
+} from './product-images';
 
 const PRODUCT_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -195,6 +199,18 @@ describe('setProductImageOrder', () => {
       'uploads/b.jpg',
       'uploads/a.jpg',
     ]);
+  });
+
+  it('throws ProductGoneError and deletes nothing when the product went before the write', async () => {
+    // The DAO locks the product row first and answers null when it is gone —
+    // deleted between the route's read and this write. The route makes it 404.
+    const product = productWith('uploads/a.jpg', 'uploads/b.jpg');
+    setImages.mockResolvedValueOnce(null);
+
+    await expect(
+      setProductImageOrder(product, ['uploads/a.jpg']),
+    ).rejects.toBeInstanceOf(ProductGoneError);
+    expect(deletedKeys()).toEqual([]);
   });
 
   it('deletes the removed photo and no other', async () => {
