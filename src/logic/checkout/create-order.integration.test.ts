@@ -31,9 +31,8 @@ import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 
-const { createOrder, MAX_OPEN_ORDERS } = await importWithDb(
-  () => import('@/logic/checkout/create-order'),
-);
+const { createOrder, MAX_OPEN_ORDERS, PRODUCT_UNAVAILABLE } =
+  await importWithDb(() => import('@/logic/checkout/create-order'));
 const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
 const { transitionOrder } = await importWithDb(
   () => import('@/logic/orders/state-machine'),
@@ -277,6 +276,42 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
         ),
       ).rejects.toMatchObject({ field: 'items.0' });
       expect(await stockOf(product.id)).toBe(5); // reservation rolled back
+      expect(await ordersForUser(user.id)).toHaveLength(0);
+    });
+
+    it('calls a product deleted mid-transaction unavailable, not out of stock', async () => {
+      // The admin's hard delete can land between the pre-load and the
+      // reservation: the decrement then matches no row, exactly as it does
+      // for too little stock. The line must still read «no longer available»
+      // — telling a shopper a deleted product is sold out sends them back to
+      // wait for a restock that will never come.
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 5 });
+      const prov = await province();
+
+      const realGetByIds = ProductDao.getByIds;
+      vi.spyOn(ProductDao, 'getByIds').mockImplementationOnce(
+        async (executor, ids) => {
+          const rows = await realGetByIds(executor, ids);
+          // Present at load, gone before reserve (pool autocommit; the tx
+          // holds no lock on the product yet).
+          await testDb
+            .delete(productsTable)
+            .where(eq(productsTable.id, product.id));
+          return rows;
+        },
+      );
+
+      await expect(
+        createOrder(
+          user.id,
+          buildInput(prov, [{ productId: product.id, qty: 1 }]),
+        ),
+      ).rejects.toMatchObject({
+        field: 'items.0',
+        message: PRODUCT_UNAVAILABLE,
+      });
       expect(await ordersForUser(user.id)).toHaveLength(0);
     });
 
