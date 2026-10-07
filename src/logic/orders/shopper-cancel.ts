@@ -52,8 +52,9 @@ export const shopperCancelOrder = async (
       if (!OPEN_ORDER_STATUSES.includes(order.status)) {
         return { outcome: 'not_allowed' as const };
       }
-      // A card-to-card order's own payment row stays pending until delivery;
-      // only a gateway attempt can still turn into money.
+      // A card-to-card order's own payment row stays pending until the order
+      // ships, which an open order has not; only a gateway attempt can still
+      // turn into money.
       const attempts = await PaymentDao.listByOrder(orderId, tx);
       if (
         attempts.some(

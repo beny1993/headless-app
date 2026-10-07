@@ -270,8 +270,9 @@ export const productInputSchema = z
       VARIANT_MESSAGES.labelLength,
     ),
     // A real editable field — the design's «نمایش در فروشگاه» toggle. The list's
-    // DELETE route deactivates (or, when nothing references the product,
-    // deletes it outright); an admin may also deactivate by unchecking this.
+    // DELETE route deactivates; with `confirm=delete` it deletes outright when
+    // nothing references the product, and `confirm=deactivate` never deletes.
+    // An admin may also deactivate by unchecking this.
     isActive: z.boolean(),
   })
   // A full-body contract, not a patch: `oldPrice > price` is a cross-field rule,

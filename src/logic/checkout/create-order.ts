@@ -273,13 +273,13 @@ export const createOrder = async (
         );
         // 0 rows: the atomic `stock >= qty` guard did not match — or the row
         // is gone, hard-deleted by the admin after the load above. Read it
-        // again in this transaction to tell the two apart: a deleted product
-        // is unavailable, not out of stock.
+        // again in this transaction to tell them apart: a product that is
+        // gone or no longer active is unavailable, not out of stock.
         if (!reserved) {
-          const [stillThere] = await ProductDao.getByIds(tx, [line.productId]);
+          const [current] = await ProductDao.getByIds(tx, [line.productId]);
           throw new CheckoutError(
             field,
-            stillThere
+            current?.isActive
               ? insufficientStock(displayTitle(product))
               : PRODUCT_UNAVAILABLE,
           );
