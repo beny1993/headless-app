@@ -17,6 +17,7 @@
 import type { PetType } from '@/db/schema/catalog';
 import { PET_EMOJI } from '@/lib/catalog/product-query';
 import { LINK_TYPES, type Link } from '@/lib/content/link';
+import { shopPath, type ShopFilters } from '@/lib/constant/paths';
 
 type LifeMomentTarget = {
   /** Rendered as decoration next to the card title, not as a functional icon. */
@@ -57,6 +58,22 @@ export const ROUTINE_TARGETS = [
   { emoji: '🌤️', categories: ['supplements', 'hygiene'] },
   { emoji: '🌙', categories: ['treats', 'wet-food'] },
 ] as const satisfies readonly RoutineTarget[];
+
+/**
+ * A code-side shelf link, kept to categories the catalogue has: a slug it does
+ * not know is dropped and the pet kept, as `resolveLink` does for a saved link
+ * to a deleted category. The built-in slugs (here, in `quiz.ts` and the featured
+ * story's button) are the seed's, and the shop answers a category it does not
+ * know with a 404.
+ */
+export function knownShelfPath(
+  filters: ShopFilters,
+  categorySlugs: readonly string[],
+): string {
+  const known =
+    filters.category !== undefined && categorySlugs.includes(filters.category);
+  return shopPath(known ? filters : { pet: filters.pet });
+}
 
 /**
  * The emoji on moment card `index`: the code one (`LIFE_MOMENT_TARGETS`) until a

@@ -12,7 +12,7 @@ import {
 } from './quiz';
 import type { PetType } from '@/db/schema/catalog';
 import type { ContentValue } from '@/lib/content/site-content';
-import { shopPath } from '@/lib/constant/paths';
+import { knownShelfPath } from './content';
 
 const optionButton =
   'rounded-xl border-2 border-border hover:border-accent-strong hover:bg-accent/5 font-medium transition-colors duration-200';
@@ -31,8 +31,11 @@ const optionButton =
  */
 export function JourneySection({
   content,
+  categorySlugs,
 }: {
   content: ContentValue<'home.journey'>;
+  /** Every category the catalogue has, so the result link names one. */
+  categorySlugs: readonly string[];
 }) {
   const [step, setStep] = useState(0);
   const [pet, setPet] = useState<PetType | null>(null);
@@ -150,7 +153,10 @@ export function JourneySection({
               </p>
               <div className="flex flex-wrap justify-center gap-3">
                 <Link
-                  href={shopPath(quizFilters({ pet, need }))}
+                  href={knownShelfPath(
+                    quizFilters({ pet, need }),
+                    categorySlugs,
+                  )}
                   className="bg-brand hover:bg-brand-hover text-brand-foreground rounded-xl px-6 py-3 font-bold transition-colors"
                   data-umami-event="home-quiz-results-click"
                 >

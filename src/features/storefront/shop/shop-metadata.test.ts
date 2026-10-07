@@ -3,7 +3,12 @@ import { DEFAULT_SITE_ORIGIN } from '@/constants';
 import { PRODUCT_SORTS } from '@/lib/catalog/product-query';
 import { absoluteUrl, purchaseSentence } from '@/lib/seo';
 import { PATHS, shopPath } from '@/lib/constant/paths';
-import { SHOP_TITLE, shelfTitle, shopMetadata } from './shop-metadata';
+import {
+  isUnknownCategory,
+  SHOP_TITLE,
+  shelfTitle,
+  shopMetadata,
+} from './shop-metadata';
 import { buildShopHref, parseShopQuery, updateShopQuery } from './shop-query';
 
 const categories = [
@@ -35,6 +40,36 @@ describe('shelfTitle', () => {
     expect(
       titleFor({ category: 'no-such-category', pet: 'cat' }),
     ).toBeUndefined();
+  });
+});
+
+describe('isUnknownCategory', () => {
+  const unknownFor = (params: Record<string, string>) =>
+    isUnknownCategory(parseShopQuery(params), categories);
+
+  it('is a category slug no category has, alone or with any other filter', () => {
+    expect(unknownFor({ category: 'toys' })).toBe(true);
+    expect(unknownFor({ category: 'toys', pet: 'cat', page: '2' })).toBe(true);
+  });
+
+  it('is never a known category, nor a URL that names no category', () => {
+    expect(unknownFor({ category: 'dry-food' })).toBe(false);
+    expect(unknownFor({ category: 'treats', pet: 'dog' })).toBe(false);
+    expect(unknownFor({})).toBe(false);
+    expect(unknownFor({ pet: 'cat', q: 'توپ' })).toBe(false);
+  });
+
+  it('knows nothing when there are no categories at all', () => {
+    expect(
+      isUnknownCategory(parseShopQuery({ category: 'dry-food' }), []),
+    ).toBe(true);
+    expect(isUnknownCategory(parseShopQuery({}), [])).toBe(false);
+  });
+
+  it('reads a category the parser emptied as no category, as the listing does', () => {
+    const nul = String.fromCharCode(0);
+    expect(parseShopQuery({ category: nul }).category).toBe('');
+    expect(unknownFor({ category: nul })).toBe(false);
   });
 });
 

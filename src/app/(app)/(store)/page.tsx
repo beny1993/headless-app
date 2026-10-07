@@ -72,6 +72,9 @@ export default async function HomePage() {
   const tiles = categories
     .filter((category) => category.parentId === null)
     .map(({ id, title, slug, imageKey }) => ({ id, title, slug, imageKey }));
+  // Every slug, sub-categories included: the sections' built-in links are
+  // checked against it, since the shop answers an unknown category with a 404.
+  const categorySlugs = categories.map(({ slug }) => slug);
 
   // Every section is editable now, and each renders unless the admin has
   // explicitly hidden it (`isVisible` = "shown unless visible === false"); an
@@ -88,6 +91,7 @@ export default async function HomePage() {
         <LifeMomentsSection
           content={content['home.moments']}
           targets={targets}
+          categorySlugs={categorySlugs}
         />
       )}
       {isVisible(recommends) && (
@@ -97,12 +101,16 @@ export default async function HomePage() {
         />
       )}
       {isVisible(content['home.journey']) && (
-        <JourneySection content={content['home.journey']} />
+        <JourneySection
+          content={content['home.journey']}
+          categorySlugs={categorySlugs}
+        />
       )}
       {isVisible(content['home.guide']) && (
         <FeaturedStorySection
           content={content['home.guide']}
           targets={targets}
+          categorySlugs={categorySlugs}
         />
       )}
       {isVisible(content['home.routine']) && (

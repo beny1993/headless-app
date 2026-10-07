@@ -1,9 +1,9 @@
 import Image from 'next/image';
 import type { ContentValue } from '@/lib/content/site-content';
 import { imageSrc } from '@/lib/storage/image-url';
-import { shopPath } from '@/lib/constant/paths';
 import { ContentLink } from '@/features/storefront/content-link';
 import { resolveLink, type LinkTargets } from '@/lib/content/link';
+import { knownShelfPath } from './content';
 
 /**
  * «راهنمای اسموکی» — an editorial block above the fold of the lower page.
@@ -21,9 +21,12 @@ import { resolveLink, type LinkTargets } from '@/lib/content/link';
 export function FeaturedStorySection({
   content,
   targets,
+  categorySlugs,
 }: {
   content: ContentValue<'home.guide'>;
   targets: LinkTargets;
+  /** Every category the catalogue has, so the code fallback names one. */
+  categorySlugs: readonly string[];
 }) {
   return (
     <section className="bg-ink py-24">
@@ -51,7 +54,7 @@ export function FeaturedStorySection({
             <ContentLink
               {...resolveLink(
                 content.ctaLink,
-                shopPath({ category: 'wet-food' }),
+                knownShelfPath({ category: 'wet-food' }, categorySlugs),
                 targets,
               )}
               className="bg-brand hover:bg-brand-hover text-brand-foreground self-start rounded-xl px-6 py-3 font-bold transition-colors"

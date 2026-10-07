@@ -25,17 +25,42 @@ import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import { PATHS, shopPath } from '@/lib/constant/paths';
 import type { LinkTargets } from '@/lib/content/link';
 import type { ContentValue } from '@/lib/content/site-content';
+import { SEED_CATEGORIES } from '@/db/seed/catalog-data';
 
 afterEach(cleanup);
 
 const NO_TARGETS: LinkTargets = { categories: {}, products: {} };
+const SEED_SLUGS = SEED_CATEGORIES.map((row) => row.slug);
 const TREATS_ID = '7e6d5c4b-3a2f-4e1d-9c0b-a9f8e7d6c5b4';
 
 describe('LifeMomentsSection card links', () => {
+  it('narrows a card with no saved destination to its pet when the catalogue lacks its category', () => {
+    const content = DEFAULT_CONTENT['home.moments'];
+    const { container } = render(
+      <LifeMomentsSection
+        content={content}
+        targets={NO_TARGETS}
+        categorySlugs={[]}
+      />,
+    );
+
+    const anchors = [...container.querySelectorAll('a')];
+    content.cards.forEach((card, i) => {
+      const anchor = anchors.find((a) => a.textContent?.includes(card.title));
+      expect(anchor?.getAttribute('href'), `card ${i}`).toBe(
+        shopPath({ pet: LIFE_MOMENT_TARGETS[i].filters.pet }),
+      );
+    });
+  });
+
   it('renders each card’s title/desc inside the <a> with that card’s own target', () => {
     const content = DEFAULT_CONTENT['home.moments'];
     const { container } = render(
-      <LifeMomentsSection content={content} targets={NO_TARGETS} />,
+      <LifeMomentsSection
+        content={content}
+        targets={NO_TARGETS}
+        categorySlugs={SEED_SLUGS}
+      />,
     );
 
     const anchors = [...container.querySelectorAll('a')];
@@ -52,7 +77,11 @@ describe('LifeMomentsSection card links', () => {
   it('renders the «مشاهده همه» label on the bare shop link', () => {
     const content = DEFAULT_CONTENT['home.moments'];
     const { container } = render(
-      <LifeMomentsSection content={content} targets={NO_TARGETS} />,
+      <LifeMomentsSection
+        content={content}
+        targets={NO_TARGETS}
+        categorySlugs={SEED_SLUGS}
+      />,
     );
     const seeAll = [...container.querySelectorAll('a')].find((a) =>
       a.textContent?.includes(content.cta),
@@ -75,6 +104,7 @@ describe('LifeMomentsSection card links', () => {
       <LifeMomentsSection
         content={{ ...content, cards }}
         targets={{ categories: { [TREATS_ID]: 'treats' }, products: {} }}
+        categorySlugs={SEED_SLUGS}
       />,
     );
     const anchors = [...container.querySelectorAll('a')];
@@ -101,7 +131,11 @@ describe('LifeMomentsSection card links', () => {
       ctaLink: { type: 'page', page: 'about' } as const,
     };
     const { container } = render(
-      <LifeMomentsSection content={content} targets={NO_TARGETS} />,
+      <LifeMomentsSection
+        content={content}
+        targets={NO_TARGETS}
+        categorySlugs={SEED_SLUGS}
+      />,
     );
     const seeAll = [...container.querySelectorAll('a')].find((a) =>
       a.textContent?.includes(content.cta),
