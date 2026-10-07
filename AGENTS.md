@@ -131,7 +131,10 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   started in `src/instrumentation.ts`; nothing to configure; the wait is
   `RECEIPT_WAIT_MS` in `src/lib/orders/receipt.ts`). The admin checks
   the receipt and ships, or cancels — every admin cancel carries a reason the
-  shopper reads. The payment row still flips to `paid` only at delivery.
+  shopper reads. Shipping is the admin's word that the receipt checked out:
+  the receipt reads «تأیید شد» and the payment row flips to `paid` in the same
+  move (`transitionOrder`), so revenue counts the order from then; delivery
+  settles one shipped before that rule.
 - **A receipt is unlisted, not private.** Receipts live under `receipts/` in
   the same public bucket as the photos (Benyamin's decision, 2026-10-06), so
   what keeps one out of sight is that its URL never exists in the app:

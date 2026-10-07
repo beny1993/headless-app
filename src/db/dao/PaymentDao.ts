@@ -158,33 +158,35 @@ export class PaymentDao {
   }
 
   /**
-   * Flips an order's pending COD payment row to `paid` — the side effect of the
-   * `shipped → delivered` transition for a cash-on-delivery order. Always run
-   * inside the transition's transaction.
+   * Flips an order's card-to-card (`cod`) payment row to `paid` — the side
+   * effect of the transitions into `shipped` and `delivered`. Always run inside
+   * the transition's transaction.
    *
-   * Matches exactly the one row that should exist (method `cod`, status
-   * `pending`) and throws if it updated anything other than a single row: a COD
-   * order reaching `delivered` with no pending COD payment is data corruption,
-   * not a no-op, and must roll the transition back rather than pass silently.
+   * The one row (the partial unique index allows no second) is flipped while
+   * `pending` and returned as it is once `paid`: shipping pays it, so delivery
+   * finds it paid — unless the order shipped while payments waited for
+   * delivery. No such row at all is data corruption, not a no-op: it throws,
+   * and the transition rolls back rather than pass silently.
    */
   static async markCodPaid(tx: Tx, orderId: string): Promise<Payment> {
-    const rows = await tx
+    const ofOrder = and(
+      eq(payments.orderId, orderId),
+      eq(payments.method, PAYMENT_METHODS.COD),
+    );
+    const [flipped] = await tx
       .update(payments)
       .set({ status: PAYMENT_STATUSES.PAID, paidAt: new Date() })
-      .where(
-        and(
-          eq(payments.orderId, orderId),
-          eq(payments.method, PAYMENT_METHODS.COD),
-          eq(payments.status, PAYMENT_STATUSES.PENDING),
-        ),
-      )
+      .where(and(ofOrder, eq(payments.status, PAYMENT_STATUSES.PENDING)))
       .returning();
+    if (flipped) return flipped;
 
-    if (rows.length !== 1) {
-      throw new Error(
-        `markCodPaid expected exactly one pending COD payment for order ${orderId}, updated ${rows.length}`,
-      );
-    }
-    return rows[0];
+    const [paid] = await tx
+      .select()
+      .from(payments)
+      .where(and(ofOrder, eq(payments.status, PAYMENT_STATUSES.PAID)));
+    if (paid) return paid;
+    throw new Error(
+      `markCodPaid found no pending or paid COD payment for order ${orderId}`,
+    );
   }
 }
