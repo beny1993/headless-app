@@ -998,6 +998,37 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       );
     });
 
+    it('answers 404 when the product is deleted while the upload is in flight, and keeps no file', async () => {
+      // The route reads the product, then a delete commits before the row
+      // write. The append's own row lock sees the product gone: that is a
+      // 404, not «the gallery is full», and the bytes already written go.
+      const category = await makeCategory();
+      const product = await makeProduct(category);
+      asAdmin();
+      const before = await readdir(storageRoot);
+      const realFind = ProductDao.findByIdForAdmin;
+      const spy = vi
+        .spyOn(ProductDao, 'findByIdForAdmin')
+        .mockImplementationOnce(async (id) => {
+          const found = await realFind(id);
+          await testDb.delete(products).where(eq(products.id, id));
+          return found;
+        });
+
+      let res: Response;
+      try {
+        res = await upload(
+          product.id,
+          new File([jpegBytes()], 'late.jpg', { type: 'image/jpeg' }),
+        );
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(res.status).toBe(404);
+      expect((await readdir(storageRoot)).sort()).toEqual(before.sort());
+    });
+
     it('refuses a sixth photo without reading or storing it', async () => {
       const category = await makeCategory();
       const product = await makeProduct(category);

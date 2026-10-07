@@ -2035,7 +2035,8 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
         5,
       );
 
-      expect(added?.sortOrder).toBe(2);
+      if (typeof added === 'string') throw new Error(`refused: ${added}`);
+      expect(added.sortOrder).toBe(2);
       expect(
         (await ProductDao.getBySlug(product.slug))?.images.map(
           (image) => image.objectKey,
@@ -2054,7 +2055,7 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
         1,
       );
 
-      expect(refused).toBeNull();
+      expect(refused).toBe('full');
       expect(
         (await ProductDao.getBySlug(product.slug))?.images.map(
           (image) => image.objectKey,
@@ -2062,14 +2063,16 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       ).toEqual(['products/a.jpg']);
     });
 
-    it('refuses for a product that does not exist', async () => {
+    it('tells a product that does not exist apart from a full gallery', async () => {
+      // A delete can land between the upload route's read and this write; the
+      // caller answers 404 for this and «gallery full» only for the other.
       expect(
         await ProductDao.appendImage(
           '11111111-1111-4111-8111-111111111111',
           'uploads/a.jpg',
           5,
         ),
-      ).toBeNull();
+      ).toBe('gone');
     });
 
     // The reason this method exists. An append built on `setImages` reads the
@@ -2089,7 +2092,7 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
         ),
       );
 
-      const accepted = results.filter((image) => image !== null);
+      const accepted = results.filter((image) => typeof image !== 'string');
       expect(accepted).toHaveLength(max);
 
       const stored = (await ProductDao.getBySlug(product.slug))?.images ?? [];

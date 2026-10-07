@@ -41,8 +41,8 @@ import {
 import { getStorageDriver, type StorageDriver } from '@/lib/storage';
 
 /**
- * The product went between the route's read and the gallery write — the
- * admin's hard delete got there first. The route answers 404.
+ * The product went between the route's read and a gallery write — the
+ * admin's hard delete got there first. The routes answer 404.
  */
 export class ProductGoneError extends Error {
   constructor() {
@@ -102,6 +102,10 @@ export const deleteQuietly = (
  *
  * The caller enforces the count ceiling *before* reading the body, so a refused
  * photo is never buffered and can never leave an orphaned file behind.
+ *
+ * Returns `null` when the gallery filled while the bytes were in flight, and
+ * throws {@link ProductGoneError} when the product was deleted meanwhile; the
+ * file just written is taken back out on both.
  */
 export async function appendProductImage(
   product: ProductWithImages,
@@ -123,12 +127,13 @@ export async function appendProductImage(
     MAX_PRODUCT_IMAGES,
   );
 
-  if (!image) {
+  if (image === 'full' || image === 'gone') {
     // The gallery filled while these bytes were in flight, or the product went.
     // The file has no row and never will, so take it back out — the only other
     // deleter works out what to delete from `product_images` and would never
     // see it.
     await deleteQuietly(driver, key);
+    if (image === 'gone') throw new ProductGoneError();
     return null;
   }
 

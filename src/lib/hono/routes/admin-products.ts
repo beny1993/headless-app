@@ -392,12 +392,20 @@ export const productImageUploadHandler = async (
   // upload — the only difference is what happens with the bytes afterwards.
   const { bytes, type } = await readImageUpload(c);
 
-  const stored = await appendProductImage(product, bytes, type);
-  // The check above is the fast path, which keeps a refused photo from being
-  // buffered at all; this is the one that still holds when two uploads race.
-  // Same refusal either way, so an admin cannot tell which caught it.
-  if (!stored) return c.json(apiError(PRODUCT_MESSAGES.imagesMax), 400);
-  return c.json(apiSuccess(stored), 201);
+  try {
+    const stored = await appendProductImage(product, bytes, type);
+    // The check above is the fast path, which keeps a refused photo from being
+    // buffered at all; this is the one that still holds when two uploads race.
+    // Same refusal either way, so an admin cannot tell which caught it.
+    if (!stored) return c.json(apiError(PRODUCT_MESSAGES.imagesMax), 400);
+    return c.json(apiSuccess(stored), 201);
+  } catch (error) {
+    // Deleted between the read above and the write: as gone as never found.
+    if (error instanceof ProductGoneError) {
+      return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
+    }
+    throw error;
+  }
 };
 
 // ── Gallery: store the order (JSON) ───────────────────────────────────────────

@@ -123,7 +123,7 @@ describe('appendProductImage', () => {
     // so deleting it left the suite green while a driver failure turned an
     // ordinary 400 into an unhandled rejection — on the one path that is
     // already recovering from a race, with the orphan still on disk.
-    appendImage.mockResolvedValue(null);
+    appendImage.mockResolvedValue('full');
     remove.mockRejectedValue(new Error('disk gone'));
 
     const stored = await appendProductImage(
@@ -140,7 +140,7 @@ describe('appendProductImage', () => {
     // The refusal lands after the bytes are written, and the only other
     // deleter works from `product_images` — so a file left here is one nothing
     // would ever collect.
-    appendImage.mockResolvedValue(null);
+    appendImage.mockResolvedValue('full');
 
     const stored = await appendProductImage(
       productWith('uploads/a.jpg'),
@@ -153,6 +153,21 @@ describe('appendProductImage', () => {
     expect(deletedKeys()).toEqual([written]);
     // And nothing that was already on the product.
     expect(deletedKeys()).not.toContain('uploads/a.jpg');
+  });
+
+  it('throws ProductGoneError, and takes its file back out, when the product went in flight', async () => {
+    // Not «the gallery is full»: the route answers 404 for this one. The file
+    // is already written either way, and nothing else would ever collect it.
+    appendImage.mockResolvedValue('gone');
+
+    await expect(
+      appendProductImage(
+        productWith('uploads/a.jpg'),
+        new Uint8Array([0xff, 0xd8, 0xff]),
+        'image/jpeg',
+      ),
+    ).rejects.toBeInstanceOf(ProductGoneError);
+    expect(deletedKeys()).toEqual([put.mock.calls[0][0]]);
   });
 
   it('stores the bytes under the server-generated key before recording it', async () => {

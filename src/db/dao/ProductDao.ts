@@ -1084,9 +1084,10 @@ export class ProductDao {
    * RETURNING`. Two checkouts racing for the last unit cannot both win —
    * Postgres serializes the row's update and re-checks `stock >= qty` against the
    * committed row, not a stale read, so the loser matches no row. Returns the
-   * updated product, or `null` when stock was insufficient (or the id unknown);
-   * the caller turns that `null` into an out-of-stock answer, not an order it
-   * cannot fill. The `products_stock_non_negative` CHECK is the backstop under
+   * updated product, or `null` when stock was insufficient or the row is gone;
+   * checkout re-reads the row to tell those apart, answering out of stock for
+   * an active product and unavailable for a deleted or deactivated one, never
+   * an order it cannot fill. The `products_stock_non_negative` CHECK is the backstop under
    * this — see the catalog schema.
    *
    * `executor` runs it inside checkout's transaction, so a later failure there
@@ -1274,8 +1275,10 @@ export class ProductDao {
 
   /**
    * Append one image to a product's gallery, refusing once it holds `max`.
-   * Returns the stored row, or `null` when the gallery is full or the product
-   * is gone — either way the caller still holds a file nothing references.
+   * Returns the stored row, or why it stored nothing: `'full'` at the ceiling,
+   * `'gone'` when the product was deleted after the caller read it. Either way
+   * the caller still holds a file nothing references; the two are told apart
+   * because the upload route answers them differently (400 and 404).
    *
    * Atomic where an append built on `setImages` cannot be. `setImages` replaces
    * the list, so an append on top of it has to read the current keys first, and
@@ -1290,30 +1293,26 @@ export class ProductDao {
    * fast path that keeps a refused photo from being buffered at all. This is
    * the one that holds when two uploads race.
    *
-   * It does not serialize an upload against a gallery-order write: that one
-   * replaces the list wholesale, so it wins, and the photo appended here can
-   * lose its row to it. What it must never do is lose the *file* with it,
-   * which is why `setImages` reports the keys it removed.
+   * A gallery-order write takes the same row lock, so the two queue, but the
+   * order write replaces the list wholesale: a photo appended before it whose
+   * key the admin's list does not name loses its row to it. What it must
+   * never lose is the *file*, which is why `setImages` reports the keys it
+   * removed.
    */
   static async appendImage(
     productId: string,
     objectKey: string,
     limit: number,
-  ): Promise<ProductImage | null> {
+  ): Promise<ProductImage | 'full' | 'gone'> {
     return db.transaction(async (tx) => {
-      const [locked] = await tx
-        .select({ id: products.id })
-        .from(products)
-        .where(eq(products.id, productId))
-        .for('update');
-      if (!locked) return null;
+      if (!(await ProductDao.lockRow(tx, productId))) return 'gone';
 
       const existing = await tx
         .select({ sortOrder: productImages.sortOrder })
         .from(productImages)
         .where(eq(productImages.productId, productId));
 
-      if (existing.length >= limit) return null;
+      if (existing.length >= limit) return 'full';
 
       const [row] = await tx
         .insert(productImages)
@@ -1329,7 +1328,7 @@ export class ProductDao {
           ),
         })
         .returning();
-      return row ?? null;
+      return row;
     });
   }
 
