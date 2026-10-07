@@ -40,7 +40,12 @@ import {
   MAX_PRODUCT_IMAGES,
   PRODUCT_MESSAGES,
 } from '@/lib/catalog/product-input';
-import { DELETE_OUTCOMES } from '@/lib/catalog/product-delete';
+import {
+  DELETE_INTENTS,
+  DELETE_OUTCOMES,
+  productDeleteSearch,
+  type DeleteIntent,
+} from '@/lib/catalog/product-delete';
 import { VARIANT_MESSAGES, hasMembersMessage } from '@/lib/catalog/variant';
 import { SKU_ALPHABET, SKU_SUFFIX_LENGTH } from '@/lib/catalog/sku';
 import type { ApiResponse } from '@/lib/hono/envelope';
@@ -61,6 +66,10 @@ const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
 const { readLocalUpload } = await importWithDb(
   () => import('@/lib/storage/local-driver'),
 );
+
+/** The DELETE path carrying the intent the admin confirmed. */
+const remove = (id: string, confirm: DeleteIntent) =>
+  `${apiAdminProductPath(id)}${productDeleteSearch({ confirm })}`;
 
 /** An upload refusal: the status and the exact error envelope, message included. */
 const expectRefusal = async (
@@ -664,12 +673,34 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
     const rowOf = async (id: string) =>
       (await testDb.select().from(products).where(eq(products.id, id)))[0];
 
+    /** Upload one photo through the route and return its stored key. */
+    const uploadPhoto = async (productId: string) => {
+      const form = new FormData();
+      form.set(
+        'file',
+        new File([jpegBytes()], 'p.jpg', { type: 'image/jpeg' }),
+      );
+      const uploaded = await parse<{ objectKey: string }>(
+        await app.request(apiAdminProductImagesPath(productId), {
+          method: 'POST',
+          body: form,
+        }),
+      );
+      if (uploaded.body.status !== 'success') throw new Error('upload failed');
+      return uploaded.body.data.objectKey;
+    };
+    const fileExists = async (key: string) =>
+      (await readLocalUpload(key.split('/')[1])) !== null;
+
     it('deletes a never-ordered product and answers exactly `{ outcome: deleted }`', async () => {
       const category = await makeCategory();
       const product = await makeProduct(category);
       asAdmin();
 
-      const res = await json(apiAdminProductPath(product.id), 'DELETE');
+      const res = await json(
+        remove(product.id, DELETE_INTENTS.DELETE),
+        'DELETE',
+      );
 
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({
@@ -696,7 +727,11 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       orders.remember(order.id);
       asAdmin();
 
-      const res = await json(apiAdminProductPath(product.id), 'DELETE');
+      // The admin confirmed «حذف»; the order turned it into a deactivation.
+      const res = await json(
+        remove(product.id, DELETE_INTENTS.DELETE),
+        'DELETE',
+      );
 
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({
@@ -717,30 +752,55 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       const category = await makeCategory();
       const product = await makeProduct(category);
       asAdmin();
-      const form = new FormData();
-      form.set(
-        'file',
-        new File([jpegBytes()], 'p.jpg', { type: 'image/jpeg' }),
-      );
-      const uploaded = await parse<{ objectKey: string }>(
-        await app.request(apiAdminProductImagesPath(product.id), {
-          method: 'POST',
-          body: form,
-        }),
-      );
-      if (uploaded.body.status !== 'success') throw new Error('upload failed');
-      const key = uploaded.body.data.objectKey;
-      expect(await readLocalUpload(key.split('/')[1])).not.toBeNull();
+      const key = await uploadPhoto(product.id);
+      expect(await fileExists(key)).toBe(true);
 
-      await json(apiAdminProductPath(product.id), 'DELETE');
+      await json(remove(product.id, DELETE_INTENTS.DELETE), 'DELETE');
 
-      expect(await readLocalUpload(key.split('/')[1])).toBeNull();
+      expect(await fileExists(key)).toBe(false);
     });
+
+    it('only deactivates a deletable product when that is what was confirmed, keeping its files', async () => {
+      const category = await makeCategory();
+      const product = await makeProduct(category);
+      asAdmin();
+      const key = await uploadPhoto(product.id);
+
+      const res = await json(
+        remove(product.id, DELETE_INTENTS.DEACTIVATE),
+        'DELETE',
+      );
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        status: 'success',
+        data: { outcome: DELETE_OUTCOMES.DEACTIVATED },
+      });
+      expect((await rowOf(product.id)).isActive).toBe(false);
+      expect(await fileExists(key)).toBe(true);
+    });
+
+    it.each([
+      ['missing', apiAdminProductPath],
+      ['unknown', (id: string) => `${apiAdminProductPath(id)}?confirm=purge`],
+    ])(
+      'refuses a %s intent with 400 and touches nothing',
+      async (_, urlFor) => {
+        const category = await makeCategory();
+        const product = await makeProduct(category);
+        asAdmin();
+
+        const res = await json(urlFor(product.id), 'DELETE');
+
+        expect(res.status).toBe(400);
+        expect((await rowOf(product.id)).isActive).toBe(true);
+      },
+    );
 
     it('404s an unknown id', async () => {
       asAdmin();
       const res = await json(
-        apiAdminProductPath(faker.string.uuid()),
+        remove(faker.string.uuid(), DELETE_INTENTS.DELETE),
         'DELETE',
       );
       expect(res.status).toBe(404);
@@ -1309,7 +1369,7 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       await create(category, { variantOf: head.id, variantLabel: 'اقیانوس' });
 
       const { status, body: envelope } = await parse(
-        await json(apiAdminProductPath(head.id), 'DELETE'),
+        await json(remove(head.id, DELETE_INTENTS.DEACTIVATE), 'DELETE'),
       );
 
       // The sentence is the envelope's `message`, not a field-keyed `errors[]`
@@ -1355,7 +1415,7 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       });
 
       const { status, body: envelope } = await parse<{ outcome: string }>(
-        await json(apiAdminProductPath(member.id), 'DELETE'),
+        await json(remove(member.id, DELETE_INTENTS.DELETE), 'DELETE'),
       );
 
       expect(status).toBe(200);

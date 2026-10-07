@@ -20,6 +20,7 @@ import {
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import {
+  DELETE_INTENTS,
   DELETE_OUTCOMES,
   HARD_DELETE_BLOCKERS,
 } from '@/lib/catalog/product-delete';
@@ -119,7 +120,9 @@ describe.skipIf(!databaseReachable)(
           .values({ productId: product.id, categoryId: extra.id });
         await photos(product, ['uploads/a.jpg']);
 
-        expect(await removeProduct(product.id)).toBe(DELETE_OUTCOMES.DELETED);
+        expect(await removeProduct(product.id, DELETE_INTENTS.DELETE)).toBe(
+          DELETE_OUTCOMES.DELETED,
+        );
 
         expect(await rowOf(product.id)).toBeUndefined();
         expect(await imageKeysOf(product.id)).toEqual([]);
@@ -143,7 +146,9 @@ describe.skipIf(!databaseReachable)(
         const category = await fx.category();
         const product = await fx.product(category, { isActive: false });
 
-        expect(await removeProduct(product.id)).toBe(DELETE_OUTCOMES.DELETED);
+        expect(await removeProduct(product.id, DELETE_INTENTS.DELETE)).toBe(
+          DELETE_OUTCOMES.DELETED,
+        );
         expect(await rowOf(product.id)).toBeUndefined();
       });
 
@@ -152,7 +157,9 @@ describe.skipIf(!databaseReachable)(
         const head = await headOf(category);
         const one = await member(category, head);
 
-        expect(await removeProduct(one.id)).toBe(DELETE_OUTCOMES.DELETED);
+        expect(await removeProduct(one.id, DELETE_INTENTS.DELETE)).toBe(
+          DELETE_OUTCOMES.DELETED,
+        );
         expect(await rowOf(one.id)).toBeUndefined();
         expect((await rowOf(head.id)).isActive).toBe(true);
       });
@@ -163,7 +170,7 @@ describe.skipIf(!databaseReachable)(
         await photos(product, ['uploads/ordered.jpg']);
         await order(product);
 
-        expect(await removeProduct(product.id)).toBe(
+        expect(await removeProduct(product.id, DELETE_INTENTS.DELETE)).toBe(
           DELETE_OUTCOMES.DEACTIVATED,
         );
 
@@ -179,24 +186,47 @@ describe.skipIf(!databaseReachable)(
         const head = await headOf(category);
         await member(category, head, { isActive: false });
 
-        expect(await removeProduct(head.id)).toBe(DELETE_OUTCOMES.DEACTIVATED);
+        expect(await removeProduct(head.id, DELETE_INTENTS.DELETE)).toBe(
+          DELETE_OUTCOMES.DEACTIVATED,
+        );
         expect((await rowOf(head.id)).isActive).toBe(false);
       });
 
-      it('refuses a head with active members, as the soft delete always has', async () => {
-        const category = await fx.category();
-        const head = await headOf(category);
-        await member(category, head);
+      it.each([DELETE_INTENTS.DELETE, DELETE_INTENTS.DEACTIVATE])(
+        'refuses a head with active members, as the soft delete always has (%s)',
+        async (intent) => {
+          const category = await fx.category();
+          const head = await headOf(category);
+          await member(category, head);
 
-        await expect(removeProduct(head.id)).rejects.toThrow(
-          hasMembersMessage(1),
+          await expect(removeProduct(head.id, intent)).rejects.toThrow(
+            hasMembersMessage(1),
+          );
+          // A refusal that half-applied would be worse than one that did not fire.
+          expect((await rowOf(head.id)).isActive).toBe(true);
+        },
+      );
+
+      it('only deactivates when that is all the admin confirmed, even if it could be deleted', async () => {
+        // The modal read a blocker that has since gone, and the server must
+        // never do more than the admin confirmed.
+        const category = await fx.category();
+        const product = await fx.product(category);
+        await photos(product, ['uploads/kept.jpg']);
+
+        expect(await removeProduct(product.id, DELETE_INTENTS.DEACTIVATE)).toBe(
+          DELETE_OUTCOMES.DEACTIVATED,
         );
-        // A refusal that half-applied would be worse than one that did not fire.
-        expect((await rowOf(head.id)).isActive).toBe(true);
+
+        expect((await rowOf(product.id)).isActive).toBe(false);
+        expect(await imageKeysOf(product.id)).toEqual(['uploads/kept.jpg']);
+        expect(remove).not.toHaveBeenCalled();
       });
 
       it('answers null for an unknown id', async () => {
-        expect(await removeProduct(crypto.randomUUID())).toBeNull();
+        expect(
+          await removeProduct(crypto.randomUUID(), DELETE_INTENTS.DELETE),
+        ).toBeNull();
       });
 
       it('falls back to deactivating when the delete hits a foreign key the check missed', async () => {
@@ -210,7 +240,7 @@ describe.skipIf(!databaseReachable)(
         await order(product);
         vi.spyOn(OrderDao, 'orderedProductIds').mockResolvedValue(new Set());
 
-        expect(await removeProduct(product.id)).toBe(
+        expect(await removeProduct(product.id, DELETE_INTENTS.DELETE)).toBe(
           DELETE_OUTCOMES.DEACTIVATED,
         );
 
@@ -230,7 +260,9 @@ describe.skipIf(!databaseReachable)(
           'uploads/two.webp',
         ]);
 
-        expect(await removeProduct(product.id)).toBe(DELETE_OUTCOMES.DELETED);
+        expect(await removeProduct(product.id, DELETE_INTENTS.DELETE)).toBe(
+          DELETE_OUTCOMES.DELETED,
+        );
 
         expect(remove.mock.calls.map(([key]) => key).sort()).toEqual([
           'uploads/one.jpg',
@@ -245,7 +277,9 @@ describe.skipIf(!databaseReachable)(
         remove.mockRejectedValue(new Error('EACCES'));
         vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-        expect(await removeProduct(product.id)).toBe(DELETE_OUTCOMES.DELETED);
+        expect(await removeProduct(product.id, DELETE_INTENTS.DELETE)).toBe(
+          DELETE_OUTCOMES.DELETED,
+        );
         expect(await rowOf(product.id)).toBeUndefined();
       });
     });

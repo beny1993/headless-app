@@ -7,10 +7,11 @@ import { toast } from 'sonner';
 import { useModalDialog } from '@/hooks/use-modal-dialog';
 import { ApiRequestError, delData } from '@/lib/api-client';
 import {
+  DELETE_INTENTS,
   DELETE_OUTCOMES,
   HARD_DELETE_BLOCKERS,
   productDeleteResultSchema,
-  type DeleteOutcome,
+  productDeleteSearch,
   type HardDeleteBlocker,
 } from '@/lib/catalog/product-delete';
 import { apiAdminProductPath } from '@/lib/constant/paths';
@@ -23,21 +24,18 @@ const BLOCKED_BECAUSE: Record<HardDeleteBlocker, string> = {
     'زیرمجموعه دارد و زیرمجموعه‌هایش به آن وصل‌اند.',
 };
 
-/** The toast for a server that did something other than the modal promised. */
-const INSTEAD: Record<DeleteOutcome, (title: string) => string> = {
-  [DELETE_OUTCOMES.DEACTIVATED]: (title) =>
-    `«${title}» در این فاصله سفارش یا زیرمجموعه پیدا کرد؛ حذف نشد و فقط غیرفعال شد.`,
-  [DELETE_OUTCOMES.DELETED]: (title) =>
-    `«${title}» دیگر سفارش یا زیرمجموعه‌ای نداشت و حذف شد.`,
-};
+/** The toast for a confirmed delete the server turned into a deactivation. */
+const deactivatedInstead = (title: string) =>
+  `«${title}» در این فاصله سفارش یا زیرمجموعه پیدا کرد؛ حذف نشد و فقط غیرفعال شد.`;
 
 /**
  * The admin list's 🗑. It opens a confirmation that promises what the list
  * knows: a permanent delete when nothing references the product (`blocker`
- * null), otherwise a deactivation and the reason. The server decides again
- * under the product's row lock and answers which one it did; when that is not
- * what the modal promised — an order landed in between — a warning toast says
- * what actually happened. A failure is an error toast.
+ * null), otherwise a deactivation and the reason. The request carries that
+ * intent, and the server never does more: a confirmed deactivation stays one.
+ * A confirmed delete is decided again under the product's row lock, and when
+ * an order landed in between it comes back as a deactivation, which a warning
+ * toast then says. A failure is an error toast.
  */
 export function DeleteProductButton({
   id,
@@ -53,21 +51,27 @@ export function DeleteProductButton({
   const { open, show, close, dialogProps } = useModalDialog();
   const headingId = useId();
   const descriptionId = useId();
-  const promised =
-    blocker === null ? DELETE_OUTCOMES.DELETED : DELETE_OUTCOMES.DEACTIVATED;
+  const intent =
+    blocker === null ? DELETE_INTENTS.DELETE : DELETE_INTENTS.DEACTIVATE;
 
   const confirm = async () => {
     if (busy) return;
     setBusy(true);
     try {
       const result = productDeleteResultSchema.safeParse(
-        await delData(apiAdminProductPath(id)),
+        await delData(
+          `${apiAdminProductPath(id)}${productDeleteSearch({ confirm: intent })}`,
+        ),
       );
       close();
       // A 2xx that is not the promised shape still did something; the refresh
       // below shows what, so only a readable outcome earns a toast.
-      if (result.success && result.data.outcome !== promised) {
-        toast.warning(INSTEAD[result.data.outcome](title));
+      if (
+        intent === DELETE_INTENTS.DELETE &&
+        result.success &&
+        result.data.outcome === DELETE_OUTCOMES.DEACTIVATED
+      ) {
+        toast.warning(deactivatedInstead(title));
       }
       router.refresh();
     } catch (error) {
@@ -147,7 +151,7 @@ export function DeleteProductButton({
               disabled={busy}
               aria-busy={busy}
               data-umami-event={
-                blocker === null
+                intent === DELETE_INTENTS.DELETE
                   ? 'admin-panel-products-delete-confirm'
                   : 'admin-panel-products-deactivate-confirm'
               }

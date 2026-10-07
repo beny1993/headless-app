@@ -2,8 +2,11 @@
 // deactivate it as before. It reads `OrderDao` (is it on an order line?) and
 // writes through `ProductDao`, hence src/logic/.
 //
-// Both references restrict — `order_items.product_id` and `products.variant_of`
-// — so the decision has to be made where it cannot go stale: in one
+// The caller passes what the admin confirmed, and this never does more: a
+// `deactivate` only ever deactivates, even for a product that could now be
+// deleted. A `delete` still has to be decided again, because both references
+// restrict — `order_items.product_id` and `products.variant_of` — and the
+// decision has to be made where it cannot go stale: in one
 // transaction, under the product's own `FOR UPDATE` lock. A checkout inserting
 // an order line takes `FOR KEY SHARE` on the product through that foreign key,
 // which waits on this lock, and a member being written locks its head the same
@@ -15,8 +18,10 @@ import { db, type Executor } from '@/db';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import {
+  DELETE_INTENTS,
   DELETE_OUTCOMES,
   HARD_DELETE_BLOCKERS,
+  type DeleteIntent,
   type DeleteOutcome,
   type HardDeleteBlocker,
 } from '@/lib/catalog/product-delete';
@@ -45,15 +50,22 @@ export async function hardDeleteBlockers(
 }
 
 /**
- * Deletes the product when nothing references it, else deactivates it, and
- * says which. `null` for an unknown id. A head with active members is refused
- * with `ProductVariantError`, exactly as the soft delete always refused it.
+ * Deletes the product when the admin confirmed a delete and nothing references
+ * it; otherwise deactivates it. Says which. `null` for an unknown id. A head
+ * with active members is refused with `ProductVariantError` for either intent,
+ * exactly as the soft delete always refused it.
  */
-export async function removeProduct(id: string): Promise<DeleteOutcome | null> {
+export async function removeProduct(
+  id: string,
+  intent: DeleteIntent,
+): Promise<DeleteOutcome | null> {
   const removed = await db.transaction(async (tx) => {
     if (!(await ProductDao.lockRow(tx, id))) return null;
 
-    if (!(await hardDeleteBlockers([id], tx)).has(id)) {
+    if (
+      intent === DELETE_INTENTS.DELETE &&
+      !(await hardDeleteBlockers([id], tx)).has(id)
+    ) {
       const keys = await ProductDao.hardDelete(tx, id);
       if (keys) return { outcome: DELETE_OUTCOMES.DELETED, keys };
     }

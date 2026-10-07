@@ -34,7 +34,10 @@ import {
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
 import { generateSku } from '@/lib/catalog/sku';
-import { productDeleteResultSchema } from '@/lib/catalog/product-delete';
+import {
+  productDeleteQuerySchema,
+  productDeleteResultSchema,
+} from '@/lib/catalog/product-delete';
 import {
   appendProductImage,
   setProductImageOrder,
@@ -296,8 +299,8 @@ export const productDeleteRoute = createRoute({
   path: '/admin/products/{id}',
   tags: ['admin'],
   summary:
-    'Delete a product nothing references, else deactivate it (admin only)',
-  request: { params: IdParamSchema },
+    'Delete a product nothing references, else deactivate it — never more than `confirm` says (admin only)',
+  request: { params: IdParamSchema, query: productDeleteQuerySchema },
   responses: {
     200: {
       content: {
@@ -309,8 +312,9 @@ export const productDeleteRoute = createRoute({
         },
       },
       description:
-        'What was done: `deleted` (the row, its images and their uploaded files are gone) or `deactivated` (an order line or a family member references it, so the row stays with is_active=false)',
+        'What was done: `deleted` (the row, its images and their uploaded files are gone) or `deactivated` (the admin confirmed only that, or an order line or a family member references it, so the row stays with is_active=false)',
     },
+    400: errorResponse('`confirm` missing, or not `delete`/`deactivate`'),
     409: errorResponse(
       'A family head whose active members would be left with nothing to hang off',
     ),
@@ -325,10 +329,12 @@ export const productDeleteHandler: RouteHandler<
   Env & AuthedEnv
 > = async (c) => {
   const { id } = c.req.valid('param');
+  const { confirm } = c.req.valid('query');
   try {
-    // The logic decides under the row lock: an ordered product or a family
-    // head keeps its row so past order snapshots keep resolving.
-    const outcome = await removeProduct(id);
+    // The logic decides under the row lock, never past what the admin
+    // confirmed: an ordered product or a family head keeps its row so past
+    // order snapshots keep resolving.
+    const outcome = await removeProduct(id, confirm);
     if (!outcome) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
     return c.json(apiSuccess({ outcome }), 200);
   } catch (error) {

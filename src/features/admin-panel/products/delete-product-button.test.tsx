@@ -1,7 +1,7 @@
 // Pins the 🗑 control's wiring: the modal promises what the list knows (delete,
 // or deactivate and why), cancelling or Escape sends nothing, a confirmed click
-// DELETEs and refreshes, and the toast says so when the server did something
-// other than what the modal promised. Mocked at the module edge:
+// DELETEs with the intent the modal showed and refreshes, and the toast says so
+// when a confirmed delete came back as a deactivation. Mocked at the module edge:
 // `next/navigation`, `@/lib/api-client` and `sonner` are recorders. Nothing
 // here asserts on `showModal()` — happy-dom implements `<dialog>` only partly.
 import { act } from 'react';
@@ -9,8 +9,11 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError } from '@/lib/api-client';
 import {
+  DELETE_INTENTS,
   DELETE_OUTCOMES,
   HARD_DELETE_BLOCKERS,
+  productDeleteSearch,
+  type DeleteIntent,
   type HardDeleteBlocker,
 } from '@/lib/catalog/product-delete';
 import { apiAdminProductPath } from '@/lib/constant/paths';
@@ -39,6 +42,10 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
+
+/** The request the button must send for what its modal showed. */
+const sentWith = (confirm: DeleteIntent) =>
+  `${apiAdminProductPath(ID)}${productDeleteSearch({ confirm })}`;
 
 const renderButton = (blocker: HardDeleteBlocker | null = null) =>
   render(<DeleteProductButton id={ID} title={TITLE} blocker={blocker} />);
@@ -138,7 +145,7 @@ describe('DeleteProductButton', () => {
 
       await confirm();
 
-      expect(delData).toHaveBeenCalledWith(apiAdminProductPath(ID));
+      expect(delData).toHaveBeenCalledWith(sentWith(DELETE_INTENTS.DELETE));
       expect(refresh).toHaveBeenCalledTimes(1);
       expect(toast.warning).not.toHaveBeenCalled();
       expect(toast.error).not.toHaveBeenCalled();
@@ -185,18 +192,24 @@ describe('DeleteProductButton', () => {
       expect(refresh).toHaveBeenCalledTimes(1);
     });
 
-    it('says so when a promised deactivation came back as a delete', async () => {
-      delData.mockResolvedValue({ outcome: DELETE_OUTCOMES.DELETED });
-      renderButton(HARD_DELETE_BLOCKERS.MEMBERS);
-      await open();
+    it.each([HARD_DELETE_BLOCKERS.ORDERS, HARD_DELETE_BLOCKERS.MEMBERS])(
+      'asks only to deactivate when its modal offered only that (%s)',
+      async (blocker) => {
+        // The server never does more than this: a blocker that has since
+        // gone does not turn «غیرفعال» into a delete.
+        delData.mockResolvedValue({ outcome: DELETE_OUTCOMES.DEACTIVATED });
+        renderButton(blocker);
+        await open();
 
-      await confirm('admin-panel-products-deactivate-confirm');
+        await confirm('admin-panel-products-deactivate-confirm');
 
-      expect(toast.warning).toHaveBeenCalledTimes(1);
-      const [message] = toast.warning.mock.calls[0] as [string];
-      expect(message).toContain(TITLE);
-      expect(message).toContain('حذف شد');
-    });
+        expect(delData).toHaveBeenCalledWith(
+          sentWith(DELETE_INTENTS.DEACTIVATE),
+        );
+        expect(toast.warning).not.toHaveBeenCalled();
+        expect(refresh).toHaveBeenCalledTimes(1);
+      },
+    );
 
     it('reports a transport failure as the retry advice, with the button usable again', async () => {
       delData.mockRejectedValue(new Error('network down'));

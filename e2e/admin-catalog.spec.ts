@@ -4,6 +4,10 @@ import { z } from 'zod';
 import { PET_TYPES } from '@/db/schema/catalog';
 import { SEED_CATEGORIES, SEED_SUBCATEGORIES } from '@/db/seed/catalog-data';
 import { SUBCATEGORY_PREFIX } from '@/lib/catalog/category-tree';
+import {
+  DELETE_INTENTS,
+  productDeleteSearch,
+} from '@/lib/catalog/product-delete';
 import { SKU_SUFFIX_LENGTH, skuPreview } from '@/lib/catalog/sku';
 import {
   API_PATHS,
@@ -424,8 +428,11 @@ test('an admin adds a product with photos, reorders them, reprices it and delete
     // Its last photo's file went with it.
     expect((await page.request.get(`/${uploadedKeys[1]}`)).status()).toBe(404);
   } finally {
-    // A safety net only: after the delete above this answers 404.
-    await page.request.delete(apiAdminProductPath(productId));
+    // A safety net only: after the delete above this answers 404. Never
+    // ordered, so a `delete` really removes it if the test failed first.
+    await page.request.delete(
+      `${apiAdminProductPath(productId)}${productDeleteSearch({ confirm: DELETE_INTENTS.DELETE })}`,
+    );
   }
 });
 
@@ -500,7 +507,9 @@ test('an admin can only deactivate a product a shopper has ordered', async ({
   } finally {
     if (orderId) await closeOrder(page, orderId);
     // A safety net: deactivates it if the test failed before the list did.
-    await page.request.delete(apiAdminProductPath(productId));
+    await page.request.delete(
+      `${apiAdminProductPath(productId)}${productDeleteSearch({ confirm: DELETE_INTENTS.DEACTIVATE })}`,
+    );
   }
 });
 
