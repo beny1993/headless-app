@@ -221,9 +221,9 @@ export const payments = pgTable(
     // At most one COD payment row per order — the DB-enforced twin of the
     // `authority` unique index that anchors Zarinpal idempotency. COD has no
     // authority, so without this a checkout bug or a double-submit could plant a
-    // second COD row; `markCodPaid` would then match two rows at delivery, throw,
-    // and leave the order permanently undeliverable. This refuses the bad write
-    // instead. Zarinpal attempts are unconstrained here (an order legitimately
+    // second COD row, and the order would hold two payments for its one
+    // transfer, both flipped `paid` by `markCodPaid` when it ships. This refuses
+    // the bad write instead. Zarinpal attempts are unconstrained here (an order legitimately
     // retries the gateway), which is why the predicate is `method = 'cod'`.
     // Assumes a COD order only ever holds the single row created at checkout:
     // true today (a COD row goes pending → paid and never `failed`). If a

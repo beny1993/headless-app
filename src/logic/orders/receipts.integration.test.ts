@@ -259,27 +259,20 @@ describe.skipIf(!databaseReachable)('card-to-card receipts', () => {
       expect(mocks.notify).toHaveBeenCalledWith(order.id);
     });
 
-    it('books nothing at acceptance — the payment still flips only at delivery', async () => {
+    it('books nothing at acceptance — the payment flips once the admin ships it', async () => {
       const { order } = await placed();
       await uploadReceipt(order.id, order.userId, jpeg(), 'image/jpeg');
 
       const [before] = await PaymentDao.listByOrder(order.id);
       expect(before.status).toBe(PAYMENT_STATUSES.PENDING);
 
+      // Shipping is the admin's word that the receipt checked out.
       await testDb.transaction((tx) =>
         transitionOrder(
           tx,
           order.id,
           ORDER_STATUSES.PROCESSING,
           ORDER_STATUSES.SHIPPED,
-        ),
-      );
-      await testDb.transaction((tx) =>
-        transitionOrder(
-          tx,
-          order.id,
-          ORDER_STATUSES.SHIPPED,
-          ORDER_STATUSES.DELIVERED,
         ),
       );
       const [after] = await PaymentDao.listByOrder(order.id);

@@ -74,9 +74,9 @@ export type AdminOrderRow = {
  * The order statuses that represent a booked sale — the first half of the
  * revenue definition. The second half (an actually-settled payment) is
  * `hasPaidPayment` below; an order counts as revenue only when BOTH hold, so a
- * COD order still pending at `processing`/`shipped` is excluded (its cash is
- * collected at delivery) and a paid order later `cancelled` is excluded (the
- * money is being refunded). See `revenueSummary`.
+ * card-to-card order is excluded until the admin, its receipt checked, ships
+ * it (its payment flips then) and a paid order later `cancelled` is excluded
+ * (the money is being refunded). See `revenueSummary`.
  */
 const REVENUE_ORDER_STATUSES: readonly OrderStatus[] = [
   ORDER_STATUSES.PAID,
