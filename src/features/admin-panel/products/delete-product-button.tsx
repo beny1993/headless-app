@@ -122,6 +122,18 @@ export function DeleteProductButton({
 
       <dialog
         {...dialogProps}
+        // Not dismissible while the request runs: closing then hid a delete
+        // that still landed. Escape reaches the hook's handler as a keydown
+        // and the browser as a `cancel`, so both are held back.
+        onKeyDown={(event) => {
+          if (!busy) dialogProps.onKeyDown(event);
+        }}
+        onClick={(event) => {
+          if (!busy) dialogProps.onClick(event);
+        }}
+        onCancel={(event) => {
+          if (busy) event.preventDefault();
+        }}
         role="alertdialog"
         aria-labelledby={headingId}
         aria-describedby={descriptionId}
@@ -151,8 +163,9 @@ export function DeleteProductButton({
             <button
               type="button"
               onClick={close}
+              disabled={busy}
               data-umami-event="admin-panel-products-delete-cancel"
-              className="border-border hover:bg-secondary min-h-11 rounded-xl border-2 px-4 py-2 text-sm font-medium transition-colors"
+              className="border-border hover:bg-secondary min-h-11 rounded-xl border-2 px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60"
             >
               انصراف
             </button>
@@ -178,6 +191,10 @@ export function DeleteProductButton({
               {blocker === null ? 'حذف' : 'غیرفعال'}
             </button>
           </div>
+          {/* The spinner is decoration; this is what a screen reader hears. */}
+          <span role="status" className="sr-only">
+            {busy ? 'در حال انجام…' : ''}
+          </span>
         </div>
       </dialog>
     </>

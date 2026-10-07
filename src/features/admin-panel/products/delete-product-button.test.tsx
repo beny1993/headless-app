@@ -177,10 +177,50 @@ describe('DeleteProductButton', () => {
       await confirm();
       expect(delData).toHaveBeenCalledTimes(1);
 
+      // Announced, not only drawn: the spinner is aria-hidden.
+      expect(screen.getByRole('status').textContent).toBe('در حال انجام…');
+
       await act(async () => {
         answer({ outcome: DELETE_OUTCOMES.DELETED });
       });
       expect(refresh).toHaveBeenCalledTimes(1);
+      // The dialog has closed, so the region is hidden — and empty again.
+      expect(screen.getByRole('status', { hidden: true }).textContent).toBe('');
+    });
+
+    it('cannot be dismissed while the request runs — cancel, Escape and the backdrop all wait', async () => {
+      // Closing mid-request hid a delete that still landed, and left the
+      // dimmed trigger clickable underneath.
+      delData.mockReturnValue(new Promise(() => undefined));
+      renderButton(null);
+      await open();
+      await confirm();
+      const dialog = document.querySelector('dialog')!;
+
+      expect(event('admin-panel-products-delete-cancel').disabled).toBe(true);
+      await act(async () => {
+        fireEvent.keyDown(dialog, { key: 'Escape' });
+        fireEvent.click(dialog);
+      });
+      expect(trigger().getAttribute('aria-expanded')).toBe('true');
+      // The browser's own Escape arrives as a `cancel` event; it is refused.
+      const cancel = new Event('cancel', { cancelable: true });
+      await act(async () => {
+        dialog.dispatchEvent(cancel);
+      });
+      expect(cancel.defaultPrevented).toBe(true);
+    });
+
+    it('can be dismissed by the backdrop when nothing is running', async () => {
+      renderButton(null);
+      await open();
+
+      await act(async () => {
+        fireEvent.click(document.querySelector('dialog')!);
+      });
+
+      expect(trigger().getAttribute('aria-expanded')).toBe('false');
+      expect(delData).not.toHaveBeenCalled();
     });
 
     it('says so when a promised delete came back as a deactivation', async () => {
