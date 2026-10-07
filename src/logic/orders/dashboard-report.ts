@@ -4,9 +4,10 @@
 //
 // Revenue definition (see OrderDao.revenueSummary): an order counts iff its
 // status is a booked one {paid, processing, shipped, delivered} AND it has a
-// settled payment. So a COD order still pending at processing/shipped is not
-// revenue (its cash arrives at delivery), and a paid order later cancelled is
-// not revenue (it is being refunded). Money is summed as integer Toman.
+// settled payment. So a card-to-card order is not revenue until the admin, its
+// receipt checked, ships it (its payment flips then), and a paid order later
+// cancelled is not revenue (it is being refunded). Money is summed as integer
+// Toman.
 //
 // Months are bucketed by *Jalali* month via Intl (format.ts), never by Gregorian
 // month — a Gregorian bucket straddles two Jalali months and would mislabel the

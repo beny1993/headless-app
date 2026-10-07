@@ -183,6 +183,14 @@ test.describe('an admin', () => {
       ),
     ).toBeVisible();
     await expect(ship).toBeHidden();
+
+    // Shipped, its receipt checked: the shopper reads the transfer as paid,
+    // beside the receipt it approved.
+    await shopper.goto(accountOrderPath(orderId));
+    await expect(shopper.getByText('تأیید شد', { exact: true })).toBeVisible();
+    await expect(
+      shopper.getByText('پرداخت شده', { exact: true }),
+    ).toBeVisible();
   });
 
   test('cancels an order still waiting for its receipt, and its stock comes back', async ({
