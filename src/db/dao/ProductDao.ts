@@ -1,10 +1,12 @@
 // All Drizzle DB access goes through DAOs like this one. Multi-DAO operations
 // belong in src/logic/, not in route handlers or components. Never write raw SQL.
 //
-// Products are soft-deleted, never removed: `order_items` snapshots a product's
-// title, sku and unit price, and support needs the row behind that snapshot to
-// still exist. There is deliberately no hard-delete method here — the storefront
-// reads filter on `is_active` instead.
+// A product that has been ordered is soft-deleted, never removed: `order_items`
+// snapshots its title, sku and unit price, and support needs the row behind
+// that snapshot to still exist. The storefront reads filter on `is_active`.
+// `hardDelete` removes only a row nothing references — both `order_items` and
+// `variant_of` restrict — and `src/logic/admin/product-removal.ts` is what
+// decides between the two.
 import {
   and,
   asc,
@@ -24,8 +26,9 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
-import { db, type Executor } from '@/db';
+import { db, type Executor, type Tx } from '@/db';
 import { escapeLike } from '@/db/dao/like-pattern';
+import { pgErrorOf } from '@/db/pg-error';
 import {
   DEFAULT_PRODUCT_PAGE_SIZE,
   PRODUCT_SORTS,
@@ -645,7 +648,24 @@ export class ProductDao {
     return (await ProductDao.countActiveMembers(id)) > 0;
   }
 
-  /** How many **active** rows point at this one. See `softDelete` for why. */
+  /**
+   * Which of `ids` have any member at all — active or not, since an inactive
+   * member still holds `variant_of`'s restricting key. One query for a whole
+   * page of the admin list.
+   */
+  static async idsWithMembers(
+    executor: Executor,
+    ids: readonly string[],
+  ): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await executor
+      .selectDistinct({ headId: products.variantOf })
+      .from(products)
+      .where(inArray(products.variantOf, [...ids]));
+    return new Set(rows.flatMap(({ headId }) => (headId ? [headId] : [])));
+  }
+
+  /** How many **active** rows point at this one. See `deactivate` for why. */
   private static async countActiveMembers(
     id: string,
     executor: Executor = db,
@@ -660,7 +680,7 @@ export class ProductDao {
    * Refuses hiding a product that still has active members.
    *
    * Both doors route through it — the edit form's visibility checkbox via
-   * {@link update}, and the panel's «حذف» button via {@link softDelete} — so
+   * {@link update}, and the panel's 🗑 via {@link deactivate} — so
    * neither can answer the refusal differently, which is exactly how the two
    * came apart before.
    */
@@ -686,13 +706,17 @@ export class ProductDao {
    * One row, not a pair: `assertFamilyRules` has already locked this one when
    * the write names a head, and when it does not there is nothing else to take,
    * so no transaction here holds two of these locks in a disagreeing order.
+   *
+   * Answers whether the row exists: the admin's 🗑 takes this lock first and
+   * turns `false` into its 404.
    */
-  private static async lockRow(executor: Executor, id: string): Promise<void> {
-    await executor
+  static async lockRow(executor: Executor, id: string): Promise<boolean> {
+    const [locked] = await executor
       .select({ id: products.id })
       .from(products)
       .where(eq(products.id, id))
       .for('update');
+    return locked !== undefined;
   }
 
   /**
@@ -961,8 +985,9 @@ export class ProductDao {
   }
 
   /**
-   * The only removal path there is: the row stays, the storefront stops seeing
-   * it, the admin panel still does.
+   * Deactivates: the row stays, the storefront stops seeing it, the admin
+   * panel still does. The removal for a product that has been ordered or has
+   * members; {@link hardDelete} is the one for a product nothing references.
    */
   static async softDelete(
     id: string,
@@ -970,26 +995,69 @@ export class ProductDao {
     // In a transaction so the count and the write see one snapshot: on the pool
     // they were two autocommit statements, and a member created between them
     // left the orphan the guard exists to prevent.
-    //
-    // **Active members only.** Counting the inactive ones too would be a dead
-    // end: deactivate every smell and the head could never be deactivated
-    // after them, since the rows still point at it and nothing but re-pointing
-    // each one by hand would clear the way. An inactive head over inactive
-    // members is harmless — none of them is listed anywhere.
-    return db.transaction(async (tx) => {
-      await ProductDao.assertNoActiveMembers(tx, id);
+    return db.transaction((tx) => ProductDao.deactivate(tx, id));
+  }
 
-      const [row] = await tx
-        .update(products)
-        .set({ isActive: false })
-        .where(eq(products.id, id))
-        .returning();
-      if (!row) return null;
-      return {
-        ...row,
-        extraCategoryIds: await ProductDao.readExtraCategories(tx, id),
-      };
-    });
+  /**
+   * {@link softDelete} inside a transaction the caller already holds — the
+   * admin's 🗑, which decides between this and {@link hardDelete} under one
+   * row lock. Opening a second transaction there would take a second pooled
+   * connection and wait on the lock its own caller holds.
+   *
+   * **Active members only.** Counting the inactive ones too would be a dead
+   * end: deactivate every smell and the head could never be deactivated after
+   * them, since the rows still point at it and nothing but re-pointing each one
+   * by hand would clear the way. An inactive head over inactive members is
+   * harmless — none of them is listed anywhere.
+   */
+  static async deactivate(
+    executor: Executor,
+    id: string,
+  ): Promise<ProductWithExtraCategories | null> {
+    await ProductDao.assertNoActiveMembers(executor, id);
+
+    const [row] = await executor
+      .update(products)
+      .set({ isActive: false })
+      .where(eq(products.id, id))
+      .returning();
+    if (!row) return null;
+    return {
+      ...row,
+      extraCategoryIds: await ProductDao.readExtraCategories(executor, id),
+    };
+  }
+
+  /**
+   * Removes the row for good, with its images and extra categories, and
+   * returns the image keys the delete itself took — the files the caller
+   * then deletes. Never a list read before the transaction: a photo appended
+   * between that read and the delete would keep its file with no row left
+   * pointing at it.
+   *
+   * Takes a `Tx`, not an `Executor`: it runs in a savepoint of the caller's
+   * transaction, which holds the row lock. `order_items.product_id` and
+   * `products.variant_of` both restrict, so a row something still references
+   * fails with 23503;
+   * that rolls back to the savepoint, the images come back, and this answers
+   * `null` with the caller's transaction still usable — the caller then
+   * deactivates instead. Any other failure is rethrown.
+   */
+  static async hardDelete(tx: Tx, id: string): Promise<string[] | null> {
+    try {
+      return await tx.transaction(async (savepoint) => {
+        const images = await savepoint
+          .delete(productImages)
+          .where(eq(productImages.productId, id))
+          .returning({ objectKey: productImages.objectKey });
+        // `product_categories` cascades with the row.
+        await savepoint.delete(products).where(eq(products.id, id));
+        return images.map((image) => image.objectKey);
+      });
+    } catch (error) {
+      if (pgErrorOf(error)?.code === '23503') return null;
+      throw error;
+    }
   }
 
   /**

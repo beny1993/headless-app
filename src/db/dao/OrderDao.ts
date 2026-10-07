@@ -398,6 +398,23 @@ export class OrderDao {
   }
 
   /**
+   * Which of `ids` any order line names — in any order, of any status, since
+   * `order_items.product_id` restricts either way. What keeps a product from
+   * the admin's hard delete; one query for a whole page of the admin list.
+   */
+  static async orderedProductIds(
+    executor: Executor,
+    ids: readonly string[],
+  ): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await executor
+      .selectDistinct({ productId: orderItems.productId })
+      .from(orderItems)
+      .where(inArray(orderItems.productId, [...ids]));
+    return new Set(rows.map((row) => row.productId));
+  }
+
+  /**
    * One page of the admin orders list: every order in the store, newest first,
    * each with its line-item count and a settled-payment flag, optionally filtered
    * to one status, plus the size of that whole set for the pager. Store-wide by

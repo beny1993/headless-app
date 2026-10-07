@@ -1,5 +1,6 @@
-// Admin product CRUD — create, update (full body), soft delete, and the two
-// gallery writes (append one photo, store the whole order).
+// Admin product CRUD — create, update (full body), delete (or deactivate, when
+// something references the product), and the two gallery writes (append one
+// photo, store the whole order).
 // Mounted under `/admin/*` behind `requireAdmin` in ../index.ts; the guard runs
 // before every handler here (401 without a session, 403 without the admin role),
 // so nothing below re-checks authorization.
@@ -33,10 +34,12 @@ import {
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
 import { generateSku } from '@/lib/catalog/sku';
+import { productDeleteResultSchema } from '@/lib/catalog/product-delete';
 import {
   appendProductImage,
   setProductImageOrder,
 } from '@/logic/admin/product-images';
+import { removeProduct } from '@/logic/admin/product-removal';
 import { readImageUpload } from '../image-upload';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
 import { errorResponse, IdParamSchema } from '../route-responses';
@@ -72,7 +75,7 @@ const AdminProductSchema = ProductSchema.omit({ images: true })
   })
   .openapi('AdminProduct');
 
-/** The admin product payload — what create/update/delete return. */
+/** The admin product payload — what create and update return. */
 export type AdminProductResponse = z.infer<typeof AdminProductSchema>;
 
 /** Project a DAO row to the admin response — drops `searchText`, ISO the dates. */
@@ -286,22 +289,27 @@ export const productUpdateHandler: RouteHandler<
   }
 };
 
-// ── Soft delete ────────────────────────────────────────────────────────────────
+// ── Delete (or deactivate) ─────────────────────────────────────────────────────
 
 export const productDeleteRoute = createRoute({
   method: 'delete',
   path: '/admin/products/{id}',
   tags: ['admin'],
-  summary: 'Soft-delete a product — sets is_active=false (admin only)',
+  summary:
+    'Delete a product nothing references, else deactivate it (admin only)',
   request: { params: IdParamSchema },
   responses: {
     200: {
       content: {
         'application/json': {
-          schema: apiSuccessSchema(AdminProductSchema, 'AdminProductDeleted'),
+          schema: apiSuccessSchema(
+            productDeleteResultSchema,
+            'AdminProductDeleted',
+          ),
         },
       },
-      description: 'The deactivated product (the row is kept, never removed)',
+      description:
+        'What was done: `deleted` (the row, its images and their uploaded files are gone) or `deactivated` (an order line or a family member references it, so the row stays with is_active=false)',
     },
     409: errorResponse(
       'A family head whose active members would be left with nothing to hang off',
@@ -318,10 +326,11 @@ export const productDeleteHandler: RouteHandler<
 > = async (c) => {
   const { id } = c.req.valid('param');
   try {
-    // Soft delete only — the row stays so past order snapshots keep resolving.
-    const removed = await ProductDao.softDelete(id);
-    if (!removed) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
-    return c.json(apiSuccess(toAdminProduct(removed)), 200);
+    // The logic decides under the row lock: an ordered product or a family
+    // head keeps its row so past order snapshots keep resolving.
+    const outcome = await removeProduct(id);
+    if (!outcome) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
+    return c.json(apiSuccess({ outcome }), 200);
   } catch (error) {
     // Deactivating could not fail before families existed, so this handler had
     // no catch at all: a head with members escaped as a 500.

@@ -57,8 +57,9 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
 
   afterEach(async () => {
     if (createdCategoryIds.length === 0) return;
-    // Raw deletes: this is test teardown, not an application path. The DAO
-    // deliberately has no hard delete (see the suite above).
+    // Raw deletes: this is test teardown, not an application path. The DAO's
+    // `hardDelete` takes one row inside a caller's transaction and returns
+    // null for one a member still points at, so it is no teardown tool.
     const mine = await testDb
       .select({ id: products.id })
       .from(products)

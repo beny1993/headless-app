@@ -30,6 +30,7 @@ import {
   type Category,
 } from '@/db/schema/catalog';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
+import { OrderFixtures } from '@/db/order-test-fixtures';
 import {
   API_PATHS,
   apiAdminProductImagesPath,
@@ -39,6 +40,7 @@ import {
   MAX_PRODUCT_IMAGES,
   PRODUCT_MESSAGES,
 } from '@/lib/catalog/product-input';
+import { DELETE_OUTCOMES } from '@/lib/catalog/product-delete';
 import { VARIANT_MESSAGES, hasMembersMessage } from '@/lib/catalog/variant';
 import { SKU_ALPHABET, SKU_SUFFIX_LENGTH } from '@/lib/catalog/sku';
 import type { ApiResponse } from '@/lib/hono/envelope';
@@ -55,6 +57,7 @@ vi.mock('@/lib/auth', () => ({ isAuthenticatedUser: mocks.getSession }));
 
 const { app } = await importWithDb(() => import('@/lib/hono'));
 const { ProductDao } = await importWithDb(() => import('@/db/dao/ProductDao'));
+const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
 const { readLocalUpload } = await importWithDb(
   () => import('@/lib/storage/local-driver'),
 );
@@ -639,12 +642,16 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
     });
   });
 
-  // ── Soft delete ─────────────────────────────────────────────────────────────
+  // ── Delete (or deactivate) ──────────────────────────────────────────────────
 
   describe('DELETE /admin/products/{id}', () => {
-    it('soft-deletes: keeps the row, hides it from the storefront, keeps it in admin', async () => {
-      const category = await makeCategory();
-      const product = await ProductDao.create({
+    const orders = new OrderFixtures();
+    // Orders first: `order_items` restricts, so the outer teardown could not
+    // remove an ordered product while its order is still there.
+    afterEach(() => orders.cleanup());
+
+    const makeProduct = (category: Category) =>
+      ProductDao.create({
         title: 'حذف‌شدنی',
         slug: `d-${faker.string.alphanumeric(8).toLowerCase()}`,
         sku: `D-${faker.string.alphanumeric(8).toUpperCase()}`,
@@ -653,27 +660,81 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
         categoryId: category.id,
         petTypes: [PET_TYPES.CAT],
       });
+
+    const rowOf = async (id: string) =>
+      (await testDb.select().from(products).where(eq(products.id, id)))[0];
+
+    it('deletes a never-ordered product and answers exactly `{ outcome: deleted }`', async () => {
+      const category = await makeCategory();
+      const product = await makeProduct(category);
       asAdmin();
-      const { status, body: envelope } = await parse<{ isActive: boolean }>(
-        await json(apiAdminProductPath(product.id), 'DELETE'),
+
+      const res = await json(apiAdminProductPath(product.id), 'DELETE');
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        status: 'success',
+        data: { outcome: DELETE_OUTCOMES.DELETED },
+      });
+      expect(await rowOf(product.id)).toBeUndefined();
+      // Gone from the admin read too, not merely hidden.
+      const admin = await ProductDao.listForAdmin({
+        categorySlug: category.slug,
+      });
+      expect(admin.map((p) => p.id)).not.toContain(product.id);
+    });
+
+    it('deactivates an ordered product and answers exactly `{ outcome: deactivated }`', async () => {
+      const category = await makeCategory();
+      const product = await makeProduct(category);
+      const user = await orders.user();
+      const order = await OrderDao.create(
+        orders.buildOrder(user, [{ product }]) as Parameters<
+          typeof OrderDao.create
+        >[0],
       );
-      expect(status).toBe(200);
-      if (envelope.status !== 'success') throw new Error(envelope.message);
-      expect(envelope.data.isActive).toBe(false);
+      orders.remember(order.id);
+      asAdmin();
 
-      // Row still there.
-      const inDb = await testDb
-        .select()
-        .from(products)
-        .where(eq(products.id, product.id));
-      expect(inDb).toHaveLength(1);
+      const res = await json(apiAdminProductPath(product.id), 'DELETE');
 
-      // Gone from the storefront read, still in the admin read.
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        status: 'success',
+        data: { outcome: DELETE_OUTCOMES.DEACTIVATED },
+      });
+      // The row stays for the order behind it, hidden from the storefront and
+      // still in the admin read.
+      expect((await rowOf(product.id)).isActive).toBe(false);
       expect(await ProductDao.getBySlug(product.slug)).toBeNull();
       const admin = await ProductDao.listForAdmin({
         categorySlug: category.slug,
       });
       expect(admin.map((p) => p.id)).toContain(product.id);
+    });
+
+    it('deletes the uploaded photo files along with the row', async () => {
+      const category = await makeCategory();
+      const product = await makeProduct(category);
+      asAdmin();
+      const form = new FormData();
+      form.set(
+        'file',
+        new File([jpegBytes()], 'p.jpg', { type: 'image/jpeg' }),
+      );
+      const uploaded = await parse<{ objectKey: string }>(
+        await app.request(apiAdminProductImagesPath(product.id), {
+          method: 'POST',
+          body: form,
+        }),
+      );
+      if (uploaded.body.status !== 'success') throw new Error('upload failed');
+      const key = uploaded.body.data.objectKey;
+      expect(await readLocalUpload(key.split('/')[1])).not.toBeNull();
+
+      await json(apiAdminProductPath(product.id), 'DELETE');
+
+      expect(await readLocalUpload(key.split('/')[1])).toBeNull();
     });
 
     it('404s an unknown id', async () => {
@@ -1199,7 +1260,9 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
     it('refuses an inactive head, on the select the admin picked it in', async () => {
       const category = await makeCategory();
       const head = await create(category, { variantLabel: 'لاوندر' });
-      await parse(await json(apiAdminProductPath(head.id), 'DELETE'));
+      // Deactivated directly: through the DELETE route a head nothing points
+      // at is deleted outright, and the refusal would be «unknown head».
+      await ProductDao.softDelete(head.id);
 
       const { status, body: envelope } = await parse(
         await json(
@@ -1283,7 +1346,7 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       expect(envelope.errors).toContain(hasMembersMessage(1));
     });
 
-    it('still deactivates an ordinary member, and only it', async () => {
+    it('deletes an ordinary member, and only it', async () => {
       const category = await makeCategory();
       const head = await create(category, { variantLabel: 'لاوندر' });
       const member = await create(category, {
@@ -1291,20 +1354,20 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
         variantLabel: 'اقیانوس',
       });
 
-      const { status, body: envelope } = await parse<{ isActive: boolean }>(
+      const { status, body: envelope } = await parse<{ outcome: string }>(
         await json(apiAdminProductPath(member.id), 'DELETE'),
       );
 
       expect(status).toBe(200);
       if (envelope.status !== 'success') throw new Error('expected success');
-      // A 200 alone would pass on a handler that deactivated nothing — or the
+      // A 200 alone would pass on a handler that removed nothing — or the
       // wrong row.
-      expect(envelope.data.isActive).toBe(false);
-      const [headRow] = await testDb
-        .select({ isActive: products.isActive })
+      expect(envelope.data.outcome).toBe(DELETE_OUTCOMES.DELETED);
+      const rows = await testDb
+        .select({ id: products.id, isActive: products.isActive })
         .from(products)
-        .where(eq(products.id, head.id));
-      expect(headRow.isActive).toBe(true);
+        .where(inArray(products.id, [head.id, member.id]));
+      expect(rows).toEqual([{ id: head.id, isActive: true }]);
     });
 
     it('lets an update re-point a member at another head', async () => {

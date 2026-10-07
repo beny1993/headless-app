@@ -10,13 +10,17 @@
 //     that is already there. It runs under a row lock and re-checks the ceiling
 //     inside the transaction, so two uploads racing cannot both win and strand
 //     the loser's file with no row to find it by;
-//   · a gallery-order write REPLACES the list, and is the only place a file is
-//     ever deleted — and then only the keys the write itself removed, which it
-//     reports, never the whole previous list and never a set worked out from
-//     the caller's own snapshot. An upload that lands between the route's read
-//     and this write has its row replaced like any other; taking the delete
-//     set from the snapshot would have kept its file with nothing referencing
-//     it, and this loop is the only thing that would ever have collected it.
+//   · a gallery-order write REPLACES the list, and deletes only the keys the
+//     write itself removed, which it reports, never the whole previous list
+//     and never a set worked out from the caller's own snapshot. An upload that
+//     lands between the route's read and this write has its row replaced like
+//     any other; taking the delete set from the snapshot would have kept its
+//     file with nothing referencing it, and nothing else would ever have
+//     collected it.
+//
+// The one other place a product file is deleted is the admin's hard delete
+// (`./product-removal.ts`), which removes every file of a product it deletes,
+// through the same `isOurUpload` + `deleteQuietly` below.
 //
 // `ProductDao.setImages` is «replace with this ordered list» and belongs to the
 // second of those; the append has its own atomic write. The cleanup, not the
@@ -44,7 +48,11 @@ export type StoredImage = {
   sortOrder: number;
 };
 
-const isOurUpload = (objectKey: string): boolean =>
+/**
+ * Whether a key is a file this app uploaded, and so its to delete. Exported for
+ * `./product-removal.ts`, the other deleter.
+ */
+export const isOurUpload = (objectKey: string): boolean =>
   objectKey.startsWith(`${UPLOAD_KEY_PREFIX}/`);
 
 const toStoredImage = (
@@ -63,7 +71,10 @@ const toStoredImage = (
  * already taken — which is exactly why it is reported: an EACCES, an expired S3
  * credential or a driver refusal otherwise piles up orphans in total silence.
  */
-const deleteQuietly = (driver: StorageDriver, key: string): Promise<void> =>
+export const deleteQuietly = (
+  driver: StorageDriver,
+  key: string,
+): Promise<void> =>
   driver.delete(key).catch((error: unknown) => {
     console.warn('[admin] deleting a product image failed', error);
     Sentry.captureException(error);

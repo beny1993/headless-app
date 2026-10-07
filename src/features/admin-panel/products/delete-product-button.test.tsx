@@ -1,19 +1,25 @@
-// Pins the deactivate control's wiring: a confirmed click DELETEs the product and
-// refreshes the list, a cancelled confirm sends nothing, and a failed request is
-// reported as an error toast (not a blocking window.alert) with the button usable
-// again. Mocked at the module edge: `next/navigation`, `@/lib/api-client` and
-// `sonner` are recorders.
+// Pins the 🗑 control's wiring: the modal promises what the list knows (delete,
+// or deactivate and why), cancelling or Escape sends nothing, a confirmed click
+// DELETEs and refreshes, and the toast says so when the server did something
+// other than what the modal promised. Mocked at the module edge:
+// `next/navigation`, `@/lib/api-client` and `sonner` are recorders. Nothing
+// here asserts on `showModal()` — happy-dom implements `<dialog>` only partly.
 import { act } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError } from '@/lib/api-client';
+import {
+  DELETE_OUTCOMES,
+  HARD_DELETE_BLOCKERS,
+  type HardDeleteBlocker,
+} from '@/lib/catalog/product-delete';
 import { apiAdminProductPath } from '@/lib/constant/paths';
 import { DeleteProductButton } from './delete-product-button';
 
 const { refresh, delData, toast } = vi.hoisted(() => ({
   refresh: vi.fn(),
   delData: vi.fn(),
-  toast: { error: vi.fn() },
+  toast: { error: vi.fn(), warning: vi.fn() },
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }));
 vi.mock('@/lib/api-client', async (importOriginal) => ({
@@ -32,83 +38,197 @@ const TITLE = 'غذای گربه';
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
-  vi.unstubAllGlobals();
 });
 
-const button = () =>
-  screen.getByRole('button', {
-    name: `غیرفعال کردن ${TITLE}`,
-  }) as HTMLButtonElement;
+const renderButton = (blocker: HardDeleteBlocker | null = null) =>
+  render(<DeleteProductButton id={ID} title={TITLE} blocker={blocker} />);
 
-const click = () =>
+const event = (name: string) =>
+  document.querySelector<HTMLButtonElement>(`[data-umami-event="${name}"]`)!;
+
+const open = () =>
   act(async () => {
-    fireEvent.click(button());
+    fireEvent.click(screen.getByRole('button', { name: `حذف ${TITLE}` }));
+  });
+
+const confirm = (name = 'admin-panel-products-delete-confirm') =>
+  act(async () => {
+    fireEvent.click(event(name));
   });
 
 describe('DeleteProductButton', () => {
-  it('deactivates the product and refreshes the list once confirmed', async () => {
-    vi.stubGlobal(
-      'confirm',
-      vi.fn(() => true),
-    );
-    delData.mockResolvedValue({});
-    render(<DeleteProductButton id={ID} title={TITLE} />);
+  describe('the modal’s promise', () => {
+    it('promises a permanent delete when nothing references the product', async () => {
+      renderButton(null);
+      await open();
 
-    await click();
+      // Named and described by its own heading and sentence, so a screen
+      // reader announces the question and the warning together.
+      expect(
+        screen.getByRole('alertdialog', {
+          name: `حذف «${TITLE}»؟`,
+          description: 'این کار برگشت‌پذیر نیست.',
+        }),
+      ).toBeTruthy();
+      expect(event('admin-panel-products-delete-confirm').textContent).toBe(
+        'حذف',
+      );
+      expect(event('admin-panel-products-deactivate-confirm')).toBeNull();
+    });
 
-    expect(delData).toHaveBeenCalledWith(apiAdminProductPath(ID));
-    expect(refresh).toHaveBeenCalledTimes(1);
-    expect(toast.error).not.toHaveBeenCalled();
+    it('offers only a deactivation for an ordered product, and says it is the orders', async () => {
+      renderButton(HARD_DELETE_BLOCKERS.ORDERS);
+      await open();
+
+      const text = document.querySelector('dialog')!.textContent;
+      expect(text).toContain('حذف‌شدنی نیست');
+      expect(text).toContain('سفارش');
+      expect(text).not.toContain('زیرمجموعه');
+      expect(event('admin-panel-products-deactivate-confirm').textContent).toBe(
+        'غیرفعال',
+      );
+      expect(event('admin-panel-products-delete-confirm')).toBeNull();
+    });
+
+    it('offers only a deactivation for a family head, and says it is the members', async () => {
+      renderButton(HARD_DELETE_BLOCKERS.MEMBERS);
+      await open();
+
+      const text = document.querySelector('dialog')!.textContent;
+      expect(text).toContain('حذف‌شدنی نیست');
+      expect(text).toContain('زیرمجموعه');
+      expect(text).not.toContain('سفارش');
+      expect(event('admin-panel-products-deactivate-confirm').textContent).toBe(
+        'غیرفعال',
+      );
+    });
   });
 
-  it('sends nothing when the confirm is cancelled', async () => {
-    vi.stubGlobal(
-      'confirm',
-      vi.fn(() => false),
-    );
-    render(<DeleteProductButton id={ID} title={TITLE} />);
+  describe('backing out', () => {
+    it('sends nothing when the admin cancels', async () => {
+      renderButton(null);
+      await open();
 
-    await click();
+      await act(async () => {
+        fireEvent.click(event('admin-panel-products-delete-cancel'));
+      });
 
-    expect(delData).not.toHaveBeenCalled();
+      expect(delData).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing on Escape', async () => {
+      renderButton(null);
+      await open();
+
+      await act(async () => {
+        fireEvent.keyDown(document.querySelector('dialog')!, {
+          key: 'Escape',
+        });
+      });
+
+      expect(delData).not.toHaveBeenCalled();
+    });
   });
 
-  it('reports a failed deactivation as an error toast, not a blocking alert', async () => {
-    vi.stubGlobal(
-      'confirm',
-      vi.fn(() => true),
-    );
-    const alert = vi.fn();
-    vi.stubGlobal('alert', alert);
-    delData.mockRejectedValue(new Error('network down'));
-    render(<DeleteProductButton id={ID} title={TITLE} />);
+  describe('confirming', () => {
+    it('deletes and refreshes the list, with no toast when the server did what was promised', async () => {
+      delData.mockResolvedValue({ outcome: DELETE_OUTCOMES.DELETED });
+      renderButton(null);
+      await open();
 
-    await click();
+      await confirm();
 
-    expect(toast.error).toHaveBeenCalledWith(
-      'غیرفعال کردن محصول ناموفق بود. دوباره تلاش کن.',
-    );
-    expect(alert).not.toHaveBeenCalled();
-    expect(refresh).not.toHaveBeenCalled();
-    expect(button().disabled).toBe(false);
-  });
+      expect(delData).toHaveBeenCalledWith(apiAdminProductPath(ID));
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(toast.warning).not.toHaveBeenCalled();
+      expect(toast.error).not.toHaveBeenCalled();
+    });
 
-  it('shows the server’s own refusal instead of the retry advice', async () => {
-    vi.stubGlobal(
-      'confirm',
-      vi.fn(() => true),
-    );
-    const refusal =
-      'این محصول ۲ زیرمجموعه فعال دارد؛ اول آن‌ها را جابه‌جا یا غیرفعال کن.';
-    delData.mockRejectedValue(new ApiRequestError(409, refusal));
-    render(<DeleteProductButton id={ID} title={TITLE} />);
+    it('shows the busy state on the confirm button while the request runs', async () => {
+      let answer: (value: unknown) => void = () => undefined;
+      delData.mockReturnValue(
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+      );
+      renderButton(null);
+      await open();
 
-    await click();
+      await confirm();
 
-    // A family head names how many members block it, and retrying can never
-    // clear that — «دوباره تلاش کن» would send the admin round a loop that
-    // cannot end. The generic sentence stays for transport failures, where
-    // retrying is the right advice (the test above).
-    expect(toast.error).toHaveBeenCalledWith(refusal);
+      const button = event('admin-panel-products-delete-confirm');
+      expect(button.disabled).toBe(true);
+      expect(button.getAttribute('aria-busy')).toBe('true');
+      // A second click while the first is in flight sends nothing more.
+      await confirm();
+      expect(delData).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        answer({ outcome: DELETE_OUTCOMES.DELETED });
+      });
+      expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('says so when a promised delete came back as a deactivation', async () => {
+      // An order landed between the list's read and the click: the server,
+      // which decides under the row lock, kept the row.
+      delData.mockResolvedValue({ outcome: DELETE_OUTCOMES.DEACTIVATED });
+      renderButton(null);
+      await open();
+
+      await confirm();
+
+      expect(toast.warning).toHaveBeenCalledTimes(1);
+      const [message] = toast.warning.mock.calls[0] as [string];
+      expect(message).toContain(TITLE);
+      expect(message).toContain('غیرفعال شد');
+      expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('says so when a promised deactivation came back as a delete', async () => {
+      delData.mockResolvedValue({ outcome: DELETE_OUTCOMES.DELETED });
+      renderButton(HARD_DELETE_BLOCKERS.MEMBERS);
+      await open();
+
+      await confirm('admin-panel-products-deactivate-confirm');
+
+      expect(toast.warning).toHaveBeenCalledTimes(1);
+      const [message] = toast.warning.mock.calls[0] as [string];
+      expect(message).toContain(TITLE);
+      expect(message).toContain('حذف شد');
+    });
+
+    it('reports a transport failure as the retry advice, with the button usable again', async () => {
+      delData.mockRejectedValue(new Error('network down'));
+      renderButton(null);
+      await open();
+
+      await confirm();
+
+      expect(toast.error).toHaveBeenCalledWith(
+        'حذف محصول ناموفق بود. دوباره تلاش کن.',
+      );
+      expect(refresh).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole<HTMLButtonElement>('button', { name: `حذف ${TITLE}` })
+          .disabled,
+      ).toBe(false);
+    });
+
+    it('shows the server’s own refusal instead of the retry advice', async () => {
+      const refusal =
+        'این محصول ۲ زیرمجموعه فعال دارد؛ اول آن‌ها را جابه‌جا یا غیرفعال کن.';
+      delData.mockRejectedValue(new ApiRequestError(409, refusal));
+      renderButton(HARD_DELETE_BLOCKERS.MEMBERS);
+      await open();
+
+      await confirm('admin-panel-products-deactivate-confirm');
+
+      // A family head names how many members block it, and retrying can never
+      // clear that — «دوباره تلاش کن» would send the admin round a loop that
+      // cannot end. The generic sentence stays for transport failures, where
+      // retrying is the right advice (the test above).
+      expect(toast.error).toHaveBeenCalledWith(refusal);
+    });
   });
 });
