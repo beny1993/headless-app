@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useModalDialog } from '@/hooks/use-modal-dialog';
@@ -54,6 +54,20 @@ export function DeleteProductButton({
   const descriptionId = useId();
   const intent =
     blocker === null ? DELETE_INTENTS.DELETE : DELETE_INTENTS.DEACTIVATE;
+
+  // While the request runs, an Escape keydown is prevented on `window`: a
+  // prevented keydown stops the browser's close request on every press,
+  // whereas a `cancel` can be refused only once per user activation. On
+  // `window` because both buttons are disabled meanwhile, so focus may have
+  // left the dialog for <body>, where its own keydown handler never runs.
+  useEffect(() => {
+    if (!busy) return;
+    const holdEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') event.preventDefault();
+    };
+    window.addEventListener('keydown', holdEscape);
+    return () => window.removeEventListener('keydown', holdEscape);
+  }, [busy]);
 
   const confirm = async () => {
     if (busy) return;
@@ -123,8 +137,9 @@ export function DeleteProductButton({
       <dialog
         {...dialogProps}
         // Not dismissible while the request runs: closing then hid a delete
-        // that still landed. Escape reaches the hook's handler as a keydown
-        // and the browser as a `cancel`, so both are held back.
+        // that still landed. The hook's Escape and backdrop handlers are
+        // skipped; the browser's own Escape is stopped by the `window`
+        // listener above, with `onCancel` as a backstop.
         onKeyDown={(event) => {
           if (!busy) dialogProps.onKeyDown(event);
         }}

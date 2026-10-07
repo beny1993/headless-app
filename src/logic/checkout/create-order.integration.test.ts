@@ -279,11 +279,13 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       expect(await ordersForUser(user.id)).toHaveLength(0);
     });
 
-    // The admin's 🗑 can land between the pre-load and the reservation, with
-    // the stock too low for the line as well: the decrement then matches no
-    // row, exactly as it does for too little stock alone. The line must still
-    // read «no longer available» — telling a shopper a removed product is
-    // sold out sends them back to wait for a restock that will never come.
+    // The admin's 🗑 can land between the pre-load and the reservation. A
+    // deleted row leaves the decrement nothing to match; a deactivated one
+    // whose stock also ran out fails its `stock >= qty` guard. Either way it
+    // matches no row, exactly as too little stock alone does, and the line
+    // must still read «no longer available» — telling a shopper a removed
+    // product is sold out sends them back to wait for a restock that will
+    // never come.
     it.each([
       [
         'deleted',

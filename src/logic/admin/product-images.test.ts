@@ -87,8 +87,8 @@ beforeEach(() => {
     images: keys.map(image),
     removedKeys: previousKeys.filter((key) => !keys.includes(key)),
   }));
-  // The append is its own atomic write now: one row at the end, or `null` when
-  // the gallery is full. The fake answers the way the DAO does.
+  // The append is its own atomic write now: one row at the end, or `'full'` /
+  // `'gone'` when it stored nothing. The fake answers the way the DAO does.
   appendImage.mockImplementation(async (_id: string, key: string) =>
     image(key, 0),
   );

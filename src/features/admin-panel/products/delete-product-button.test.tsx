@@ -203,12 +203,49 @@ describe('DeleteProductButton', () => {
         fireEvent.click(dialog);
       });
       expect(trigger().getAttribute('aria-expanded')).toBe('true');
-      // The browser's own Escape arrives as a `cancel` event; it is refused.
+      // A `cancel` that still gets through is prevented as well — a backstop
+      // only: a browser honours that once per user activation.
       const cancel = new Event('cancel', { cancelable: true });
       await act(async () => {
         dialog.dispatchEvent(cancel);
       });
       expect(cancel.defaultPrevented).toBe(true);
+    });
+
+    it('prevents the Escape keydown itself while busy, wherever focus is, and only then', async () => {
+      // Preventing the keydown is what stops the browser's close request on
+      // every press. `cancel` can be refused once per user activation, so a
+      // second Escape used to close the dialog; and with both buttons
+      // disabled, focus can sit on <body>, where the dialog's own keydown
+      // handler never runs — hence `window`.
+      const escape = () => {
+        const press = new KeyboardEvent('keydown', {
+          key: 'Escape',
+          cancelable: true,
+        });
+        window.dispatchEvent(press);
+        return press;
+      };
+      let answer: (value: unknown) => void = () => undefined;
+      delData.mockReturnValue(
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+      );
+      renderButton(null);
+      await open();
+      expect(escape().defaultPrevented).toBe(false);
+
+      await confirm();
+      for (let press = 0; press < 3; press += 1) {
+        expect(escape().defaultPrevented).toBe(true);
+      }
+      expect(trigger().getAttribute('aria-expanded')).toBe('true');
+
+      await act(async () => {
+        answer({ outcome: DELETE_OUTCOMES.DELETED });
+      });
+      expect(escape().defaultPrevented).toBe(false);
     });
 
     it('can be dismissed by the backdrop when nothing is running', async () => {

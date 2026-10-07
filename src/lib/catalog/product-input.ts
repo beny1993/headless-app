@@ -270,8 +270,8 @@ export const productInputSchema = z
       VARIANT_MESSAGES.labelLength,
     ),
     // A real editable field — the design's «نمایش در فروشگاه» toggle. The list's
-    // DELETE route deactivates; with `confirm=delete` it deletes outright when
-    // nothing references the product, and `confirm=deactivate` never deletes.
+    // DELETE route requires `confirm`: `delete` deletes outright when nothing
+    // references the product (else deactivates), `deactivate` never deletes.
     // An admin may also deactivate by unchecking this.
     isActive: z.boolean(),
   })
