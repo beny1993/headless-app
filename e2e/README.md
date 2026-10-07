@@ -62,7 +62,11 @@ keyboard — whose `uploads/…` files stop
 serving while the kept one goes on serving (all probed with `request.get`,
 never an `<img>`: `next/image` caches what it optimized, so a deleted file
 renders on from `.next/cache`) — repriced, found
-under both category filters and taken off the shop; a sub-category nested under
+under both category filters, then deleted from the list through its
+confirmation modal (cancelled once first, sending nothing): gone from the list,
+its page 404 and its last photo's file no longer served; a product a shopper
+orders, whose modal then names the orders and offers only «غیرفعال», the row
+staying inactive with no 🗑 left; a sub-category nested under
 a category the panel then refuses to delete until it is emptied; a category
 given a photo that its home-page tile then shows (the file probed with
 `request.get`), a new one picked in its edit row that the tile then follows,
@@ -125,8 +129,8 @@ drives the browser only for a story's new behaviour.
   already running" — stop that server, or run the suite from a worktree.
 - **Checkout is rate-capped per account** (`MAX_ORDERS_PER_WINDOW` in
   `src/logic/checkout/create-order.ts`, 30 orders an hour, any status). One
-  run's throwaway customer places 25 across both viewports (`checkout` 12,
-  `admin` 8, `admin-users` 2, `admin-settings` 2, `admin-catalog` 1 at 1280px
+  run's throwaway customer places 26 across both viewports (`checkout` 12,
+  `admin` 8, `admin-users` 2, `admin-settings` 2, `admin-catalog` 2 at 1280px
   only), so a spec that adds checkouts eats into that headroom — raise the
   constant before the suite trips it with a 422 mid-run.
 - **A card-to-card order is open until its receipt arrives.** The open-order
@@ -148,20 +152,20 @@ drives the browser only for a story's new behaviour.
   for the whole machine, so a run started within a minute of the last one
   waits about a minute.
 - **What a run leaves in the dev database:** two throwaway `0999…` accounts,
-  the 25 orders counted under «Checkout is rate-capped per account» (none left
+  the 26 orders counted under «Checkout is rate-capped per account» (none left
   open: the admin spec's waiting one is cancelled by the admin, the checkout
   spec's cut one by the shopper, and the users spec's, the pager's, the
-  discount's and the saved card's — accepted at checkout — by `closeOrder`),
-  17 receipt files a run under `uploads/receipts/`, one per card-to-card
+  discount's, the ordered product's and the saved card's — accepted at
+  checkout — by `closeOrder`),
+  18 receipt files a run under `uploads/receipts/`, one per card-to-card
   checkout whose screenshot stored (eight per width — `checkout` 3: the
   accepted one, the retried one and the resumed one, `admin` 3: the shipped,
   the turned-down and the pager's, the cut ones storing nothing, `admin-users` 1,
-  `admin-settings` 1 — and `admin-catalog`'s one at 1280px; receipts are
-  append-only, so nothing deletes them), one inactive `e2e-…` product (it is given three photos and has two of
-  them removed again, so one file stays under `uploads/`)
-  filed under a seeded sub-category and a seeded second category — seeded, and
-  never one the spec made, because the junction's restricting foreign key would
-  pin that category for good — one switched-off `E2E…` discount code and one
+  `admin-settings` 1 — and `admin-catalog`'s two at 1280px; receipts are
+  append-only, so nothing deletes them), one inactive `e2e-…` product with no
+  photo, kept for the order a shopper placed on it (the catalog spec's other
+  product, given three photos, is deleted with its files at the end), one
+  switched-off `E2E…` discount code and one
   inactive «استان آزمایشی …»
   province with the customer's address on it — those three specs run at 1280px
   only, since none of those rows can be deleted. The sub-category spec deletes
@@ -175,7 +179,8 @@ drives the browser only for a story's new behaviour.
   picks' order too — on a fresh database it leaves a `home.categories` row
   equal to the default), the one-fee-for-all spec puts every province's
   own fee back (through the API, all attempted before any failure is reported), the province spec switches its province
-  off, and the catalog spec switches its product off (through the API), even when they fail.
+  off, and the catalog spec deletes its photo product and switches its ordered
+  one off (through the API), even when they fail.
 - **Leaked active test products break shelf pagination.** Shelves list
   in-stock products first, then newest-first, 12 a page, so a stray active `test-…`/`e2e-…` product pushes a
   seeded one to a later page and a spec that looks for it on page one fails.

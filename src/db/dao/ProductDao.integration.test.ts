@@ -57,8 +57,9 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
 
   afterEach(async () => {
     if (createdCategoryIds.length === 0) return;
-    // Raw deletes: this is test teardown, not an application path. The DAO
-    // deliberately has no hard delete (see the suite above).
+    // Raw deletes: this is test teardown, not an application path. The DAO's
+    // `hardDelete` takes one row inside a caller's transaction and returns
+    // null for one a member still points at, so it is no teardown tool.
     const mine = await testDb
       .select({ id: products.id })
       .from(products)
@@ -1983,11 +1984,11 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       await ProductDao.appendImage(product.id, 'uploads/raced-in.jpg', 5);
 
       // The caller still believes the gallery is just the one photo.
-      const { removedKeys } = await ProductDao.setImages(product.id, [
+      const written = await ProductDao.setImages(product.id, [
         'uploads/known.jpg',
       ]);
 
-      expect(removedKeys).toEqual(['uploads/raced-in.jpg']);
+      expect(written?.removedKeys).toEqual(['uploads/raced-in.jpg']);
     });
 
     it('reports nothing removed when the list is unchanged', async () => {
@@ -2000,7 +2001,22 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       ]);
 
       // A reorder deletes nothing, however many rows it rewrites.
-      expect(reordered.removedKeys).toEqual([]);
+      expect(reordered?.removedKeys).toEqual([]);
+    });
+
+    it('answers null for a product that is gone, and writes nothing', async () => {
+      // The product row is locked first, as `appendImage` does, so a write
+      // against a product that is gone answers null instead of failing on the
+      // INSERT's foreign key.
+      const id = crypto.randomUUID();
+
+      expect(await ProductDao.setImages(id, ['uploads/orphan.jpg'])).toBeNull();
+      expect(
+        await testDb
+          .select()
+          .from(productImages)
+          .where(eq(productImages.productId, id)),
+      ).toEqual([]);
     });
   });
 
@@ -2019,7 +2035,8 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
         5,
       );
 
-      expect(added?.sortOrder).toBe(2);
+      if (typeof added === 'string') throw new Error(`refused: ${added}`);
+      expect(added.sortOrder).toBe(2);
       expect(
         (await ProductDao.getBySlug(product.slug))?.images.map(
           (image) => image.objectKey,
@@ -2038,7 +2055,7 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
         1,
       );
 
-      expect(refused).toBeNull();
+      expect(refused).toBe('full');
       expect(
         (await ProductDao.getBySlug(product.slug))?.images.map(
           (image) => image.objectKey,
@@ -2046,14 +2063,16 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       ).toEqual(['products/a.jpg']);
     });
 
-    it('refuses for a product that does not exist', async () => {
+    it('tells a product that does not exist apart from a full gallery', async () => {
+      // A delete can land between the upload route's read and this write; the
+      // caller answers 404 for this and «gallery full» only for the other.
       expect(
         await ProductDao.appendImage(
           '11111111-1111-4111-8111-111111111111',
           'uploads/a.jpg',
           5,
         ),
-      ).toBeNull();
+      ).toBe('gone');
     });
 
     // The reason this method exists. An append built on `setImages` reads the
@@ -2073,7 +2092,7 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
         ),
       );
 
-      const accepted = results.filter((image) => image !== null);
+      const accepted = results.filter((image) => typeof image !== 'string');
       expect(accepted).toHaveLength(max);
 
       const stored = (await ProductDao.getBySlug(product.slug))?.images ?? [];

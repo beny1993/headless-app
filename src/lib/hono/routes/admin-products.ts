@@ -1,5 +1,6 @@
-// Admin product CRUD — create, update (full body), soft delete, and the two
-// gallery writes (append one photo, store the whole order).
+// Admin product CRUD — create, update (full body), delete (or deactivate, when
+// something references the product), and the two gallery writes (append one
+// photo, store the whole order).
 // Mounted under `/admin/*` behind `requireAdmin` in ../index.ts; the guard runs
 // before every handler here (401 without a session, 403 without the admin role),
 // so nothing below re-checks authorization.
@@ -34,9 +35,15 @@ import {
 } from '@/lib/catalog/product-input';
 import { generateSku } from '@/lib/catalog/sku';
 import {
+  productDeleteQuerySchema,
+  productDeleteResultSchema,
+} from '@/lib/catalog/product-delete';
+import {
   appendProductImage,
+  ProductGoneError,
   setProductImageOrder,
 } from '@/logic/admin/product-images';
+import { removeProduct } from '@/logic/admin/product-removal';
 import { readImageUpload } from '../image-upload';
 import { apiError, apiSuccess, apiSuccessSchema } from '../envelope';
 import { errorResponse, IdParamSchema } from '../route-responses';
@@ -72,7 +79,7 @@ const AdminProductSchema = ProductSchema.omit({ images: true })
   })
   .openapi('AdminProduct');
 
-/** The admin product payload — what create/update/delete return. */
+/** The admin product payload — what create and update return. */
 export type AdminProductResponse = z.infer<typeof AdminProductSchema>;
 
 /** Project a DAO row to the admin response — drops `searchText`, ISO the dates. */
@@ -286,23 +293,29 @@ export const productUpdateHandler: RouteHandler<
   }
 };
 
-// ── Soft delete ────────────────────────────────────────────────────────────────
+// ── Delete (or deactivate) ─────────────────────────────────────────────────────
 
 export const productDeleteRoute = createRoute({
   method: 'delete',
   path: '/admin/products/{id}',
   tags: ['admin'],
-  summary: 'Soft-delete a product — sets is_active=false (admin only)',
-  request: { params: IdParamSchema },
+  summary:
+    'Delete a product nothing references, else deactivate it — never more than `confirm` says (admin only)',
+  request: { params: IdParamSchema, query: productDeleteQuerySchema },
   responses: {
     200: {
       content: {
         'application/json': {
-          schema: apiSuccessSchema(AdminProductSchema, 'AdminProductDeleted'),
+          schema: apiSuccessSchema(
+            productDeleteResultSchema,
+            'AdminProductDeleted',
+          ),
         },
       },
-      description: 'The deactivated product (the row is kept, never removed)',
+      description:
+        'What was done: `deleted` (the row, its images and their uploaded files are gone) or `deactivated` (the admin confirmed only that, or an order line or a family member references it, so the row stays with is_active=false)',
     },
+    400: errorResponse('`confirm` missing, or not `delete`/`deactivate`'),
     409: errorResponse(
       'A family head whose active members would be left with nothing to hang off',
     ),
@@ -317,11 +330,14 @@ export const productDeleteHandler: RouteHandler<
   Env & AuthedEnv
 > = async (c) => {
   const { id } = c.req.valid('param');
+  const { confirm } = c.req.valid('query');
   try {
-    // Soft delete only — the row stays so past order snapshots keep resolving.
-    const removed = await ProductDao.softDelete(id);
-    if (!removed) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
-    return c.json(apiSuccess(toAdminProduct(removed)), 200);
+    // The logic decides under the row lock, never past what the admin
+    // confirmed: an ordered product or a family head keeps its row so past
+    // order snapshots keep resolving.
+    const outcome = await removeProduct(id, confirm);
+    if (!outcome) return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
+    return c.json(apiSuccess({ outcome }), 200);
   } catch (error) {
     // Deactivating could not fail before families existed, so this handler had
     // no catch at all: a head with members escaped as a 500.
@@ -376,12 +392,20 @@ export const productImageUploadHandler = async (
   // upload — the only difference is what happens with the bytes afterwards.
   const { bytes, type } = await readImageUpload(c);
 
-  const stored = await appendProductImage(product, bytes, type);
-  // The check above is the fast path, which keeps a refused photo from being
-  // buffered at all; this is the one that still holds when two uploads race.
-  // Same refusal either way, so an admin cannot tell which caught it.
-  if (!stored) return c.json(apiError(PRODUCT_MESSAGES.imagesMax), 400);
-  return c.json(apiSuccess(stored), 201);
+  try {
+    const stored = await appendProductImage(product, bytes, type);
+    // The check above is the fast path, which keeps a refused photo from being
+    // buffered at all; this is the one that still holds when two uploads race.
+    // Same refusal either way, so an admin cannot tell which caught it.
+    if (!stored) return c.json(apiError(PRODUCT_MESSAGES.imagesMax), 400);
+    return c.json(apiSuccess(stored), 201);
+  } catch (error) {
+    // Deleted between the read above and the write: as gone as never found.
+    if (error instanceof ProductGoneError) {
+      return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
+    }
+    throw error;
+  }
 };
 
 // ── Gallery: store the order (JSON) ───────────────────────────────────────────
@@ -454,8 +478,15 @@ export const productImagesOrderHandler: RouteHandler<
   // can only check shape, so this is the whole gate — a key from another
   // product, a bundled `products/…` asset that is not this one's, or any other
   // string writes nothing and deletes nothing.
-  const stored = await setProductImageOrder(product, objectKeys);
-  if (!stored) return c.json(apiError(PRODUCT_MESSAGES.images), 400);
-
-  return c.json(apiSuccess(stored), 200);
+  try {
+    const stored = await setProductImageOrder(product, objectKeys);
+    if (!stored) return c.json(apiError(PRODUCT_MESSAGES.images), 400);
+    return c.json(apiSuccess(stored), 200);
+  } catch (error) {
+    // Deleted between the read above and the write: as gone as never found.
+    if (error instanceof ProductGoneError) {
+      return c.json(apiError(PRODUCT_NOT_FOUND_MESSAGE), 404);
+    }
+    throw error;
+  }
 };

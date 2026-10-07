@@ -157,7 +157,7 @@ export const orderItems = pgTable(
       .references(() => orders.id, { onDelete: 'cascade' }),
     /**
      * The product this line was created from. `restrict` — a product that has
-     * ever been ordered cannot be hard-deleted; the storefront soft-deletes it
+     * ever been ordered cannot be hard-deleted; the admin's 🗑 deactivates it
      * instead, and the snapshot columns below are what order display reads, so
      * the row is kept only for support traceability.
      */

@@ -49,8 +49,8 @@ export const VARIANT_MESSAGES = {
  * admin hunting. Counts **active** members only: an already-deactivated one is
  * listed nowhere, so it must not lock its head out of being deactivated too.
  *
- * «غیرفعال کن», not «حذف کن»: products are soft-deleted, so deleting is not a
- * thing the admin can be told to go and do.
+ * «غیرفعال کن», not «حذف کن»: a member is deleted outright only when nothing
+ * references it, so deactivating is the one step that always clears the way.
  */
 export const hasMembersMessage = (count: number): string =>
   `این محصول ${toPersianDigits(count)} زیرمجموعه فعال دارد؛ اول آن‌ها را جابه‌جا یا غیرفعال کن.`;

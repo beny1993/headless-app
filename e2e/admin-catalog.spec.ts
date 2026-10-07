@@ -4,6 +4,10 @@ import { z } from 'zod';
 import { PET_TYPES } from '@/db/schema/catalog';
 import { SEED_CATEGORIES, SEED_SUBCATEGORIES } from '@/db/seed/catalog-data';
 import { SUBCATEGORY_PREFIX } from '@/lib/catalog/category-tree';
+import {
+  DELETE_INTENTS,
+  productDeleteSearch,
+} from '@/lib/catalog/product-delete';
 import { SKU_SUFFIX_LENGTH, skuPreview } from '@/lib/catalog/sku';
 import {
   API_PATHS,
@@ -16,6 +20,7 @@ import {
 } from '@/lib/constant/paths';
 import { DISCOUNT_TYPES } from '@/lib/discount/discount-code';
 import { formatNumber, formatToman } from '@/lib/format';
+import { PAYMENT_METHODS } from '@/lib/orders/order-status';
 import {
   ADMIN_STATE,
   PRODUCT_PHOTO,
@@ -28,6 +33,7 @@ import {
   expectFailedRequest,
   expectRendered,
   openCheckout,
+  placeOrder,
   renderedKey,
   resultOrderId,
   runId,
@@ -36,9 +42,13 @@ import {
 
 test.use({ storageState: ADMIN_STATE });
 
-// Both leave a row behind by design (products only soft-delete, codes only
-// switch off), so they run at one width: one of each per run, not two.
-test.skip(({ isMobile }) => isMobile, 'creates rows that are never deleted');
+// The discount code only switches off, and the ordered product can only be
+// deactivated, so both leave a row behind by design: one width, one of each
+// per run, not two. (The first product is deleted for real at its end.)
+test.skip(
+  ({ isMobile }) => isMobile,
+  'leaves a discount code and an ordered product behind',
+);
 
 /** A seeded sub-category, and a seeded top-level one that is not its parent. */
 const SUB_CATEGORY = SEED_SUBCATEGORIES[0];
@@ -64,7 +74,7 @@ function tileImage(page: Page, index: number): Locator {
     .locator('img');
 }
 
-test('an admin adds a product with photos, reorders them, reprices it and takes it off the shop', async ({
+test('an admin adds a product with photos, reorders them, reprices it and deletes it', async ({
   page,
 }) => {
   const id = runId();
@@ -93,8 +103,8 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
     .locator('[data-umami-event="admin-panel-product-pet-dog"]')
     .click();
   // One more category, alongside the main one. A seeded top-level one on
-  // purpose: this product is never deleted, and the junction's restricting
-  // foreign key would make a category the spec created undeletable for good.
+  // purpose: should the spec fail before its delete at the end, the
+  // junction's restricting foreign key would pin a category it created.
   const extraSelect = page.locator(
     '[data-umami-event="admin-panel-product-category-extra-add"]',
   );
@@ -155,7 +165,7 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
   const productId = z
     .object({ data: z.object({ id: z.string().min(1) }) })
     .parse(await created.json()).data.id;
-  // Switched off below from the list, which is what this test checks; the
+  // Deleted below from the list, which is what this test checks; the
   // `finally` is the safety net for a failure before that, which would leave
   // an active product crowding the seeded ones off the shelves' first page.
   try {
@@ -387,23 +397,122 @@ test('an admin adds a product with photos, reorders them, reprices it and takes 
       ).toHaveCount(1);
     }
 
-    // Deactivated from the list, behind its confirm dialog.
+    // Never ordered, so the list's 🗑 deletes it for real, behind a modal
+    // that says so. Cancelling first sends nothing.
     await page.goto(`${PROTECTED_PATHS.PRODUCTS}?q=${encodeURIComponent(id)}`);
-    page.once('dialog', (dialog) => dialog.accept());
-    await Promise.all([
-      page.waitForResponse(apiCall('DELETE', API_PATHS.ADMIN_PRODUCTS)),
-      page.getByRole('button', { name: `غیرفعال کردن ${title}` }).click(),
-    ]);
-    // A soft delete: the row stays, marked inactive, and stops offering it.
     const row = page.locator('tr', { hasText: title });
-    await expect(row.getByText('غیرفعال', { exact: true })).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: `غیرفعال کردن ${title}` }),
-    ).toHaveCount(0);
+    const trash = row.locator(
+      '[data-umami-event="admin-panel-products-delete"]',
+    );
+    const modal = page.getByRole('alertdialog', { name: `حذف «${title}»؟` });
+    await trash.click();
+    await expect(modal).toContainText('این کار برگشت‌پذیر نیست.');
+    await modal
+      .locator('[data-umami-event="admin-panel-products-delete-cancel"]')
+      .click();
+    await expect(modal).toBeHidden();
+    await expect(row).toHaveCount(1);
+
+    await trash.click();
+    const [deleted] = await Promise.all([
+      page.waitForResponse(apiCall('DELETE', API_PATHS.ADMIN_PRODUCTS)),
+      modal
+        .locator('[data-umami-event="admin-panel-products-delete-confirm"]')
+        .click(),
+    ]);
+    expect(await deleted.json()).toEqual({
+      status: 'success',
+      data: { outcome: 'deleted' },
+    });
+    // Gone from the list — not marked inactive, gone — and from the shop.
+    await expect(row).toHaveCount(0);
     // Fetched rather than visited: the watch would count a 404 document.
     expect((await page.request.get(productPath(slug))).status()).toBe(404);
+    // Its last photo's file went with it.
+    expect((await page.request.get(`/${uploadedKeys[1]}`)).status()).toBe(404);
   } finally {
-    await page.request.delete(apiAdminProductPath(productId));
+    // A safety net only: after the delete above this answers 404. Never
+    // ordered, so a `delete` really removes it if the test failed first.
+    await page.request.delete(
+      `${apiAdminProductPath(productId)}${productDeleteSearch({ confirm: DELETE_INTENTS.DELETE })}`,
+    );
+  }
+});
+
+test('an admin can only deactivate a product a shopper has ordered', async ({
+  page,
+  shopper,
+}) => {
+  const id = runId();
+  const title = `محصول سفارش‌داده ${id}`;
+  const slug = `e2e-${id}`;
+
+  // Made through the API: the form is the first test's subject, not this one's.
+  const categories = z
+    .object({
+      data: z.array(z.object({ id: z.uuid(), slug: z.string() })),
+    })
+    .parse(await (await page.request.get(API_PATHS.CATEGORIES)).json()).data;
+  const category = categories.find(
+    (candidate) => candidate.slug === EXTRA_CATEGORY.slug,
+  );
+  if (!category) throw new Error('The seeded category is missing.');
+  const created = await page.request.post(API_PATHS.ADMIN_PRODUCTS, {
+    data: {
+      title,
+      slug,
+      price: 120_000,
+      stock: 5,
+      categoryId: category.id,
+      petTypes: [PET_TYPES.CAT],
+      isActive: true,
+    },
+  });
+  expect(created.status(), 'creating the product').toBe(201);
+  const productId = z
+    .object({ data: z.object({ id: z.uuid() }) })
+    .parse(await created.json()).data.id;
+
+  let orderId: string | undefined;
+  try {
+    await placeOrder(shopper, PAYMENT_METHODS.COD, productPath(slug));
+    orderId = await resultOrderId(shopper);
+
+    await page.goto(`${PROTECTED_PATHS.PRODUCTS}?q=${encodeURIComponent(id)}`);
+    const row = page.locator('tr', { hasText: title });
+    const trash = row.locator(
+      '[data-umami-event="admin-panel-products-delete"]',
+    );
+    await trash.click();
+    // The modal says it cannot be deleted, and why, and offers only to hide it.
+    const modal = page.getByRole('alertdialog', {
+      name: `«${title}» حذف‌شدنی نیست`,
+    });
+    await expect(modal).toContainText('سفارش');
+    await expect(
+      modal.locator('[data-umami-event="admin-panel-products-delete-confirm"]'),
+    ).toHaveCount(0);
+    const [answer] = await Promise.all([
+      page.waitForResponse(apiCall('DELETE', API_PATHS.ADMIN_PRODUCTS)),
+      modal
+        .locator('[data-umami-event="admin-panel-products-deactivate-confirm"]')
+        .click(),
+    ]);
+    expect(await answer.json()).toEqual({
+      status: 'success',
+      data: { outcome: 'deactivated' },
+    });
+    // The row stays for its order, marked inactive, and offers no 🗑 now:
+    // there is nothing left to deactivate and it can never be deleted.
+    await expect(row.getByText('غیرفعال', { exact: true })).toBeVisible();
+    await expect(trash).toHaveCount(0);
+    expect((await page.request.get(productPath(slug))).status()).toBe(404);
+  } finally {
+    if (orderId) await closeOrder(page, orderId);
+    // A safety net: deactivates it if the test failed before the list did.
+    await page.request.delete(
+      `${apiAdminProductPath(productId)}${productDeleteSearch({ confirm: DELETE_INTENTS.DEACTIVATE })}`,
+    );
   }
 });
 

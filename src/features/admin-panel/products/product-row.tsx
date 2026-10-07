@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Edit, Eye } from 'lucide-react';
 import type { ProductWithImages } from '@/db/schema/catalog';
+import type { HardDeleteBlocker } from '@/lib/catalog/product-delete';
 import { displayTitle } from '@/lib/catalog/variant';
 import { adminEditProductPath, productPath } from '@/lib/constant/paths';
 import { formatNumber, formatToman } from '@/lib/format';
@@ -15,11 +16,14 @@ export function ProductRow({
   product,
   categoryTitle,
   rowNumber,
+  deleteBlocker,
 }: {
   product: ProductWithImages;
   categoryTitle: string;
   /** The row's place in the whole filtered list, counting from one. */
   rowNumber: number;
+  /** What keeps this product from a real delete; `null` when nothing does. */
+  deleteBlocker: HardDeleteBlocker | null;
 }) {
   const imageKey = product.images[0]?.objectKey;
   return (
@@ -81,12 +85,15 @@ export function ProductRow({
           >
             <Edit size={14} aria-hidden="true" />
           </Link>
-          {/* Deactivating is a soft delete: an inactive product has nothing left
-              to deactivate, and reactivating is the edit form's checkbox. */}
-          {product.isActive && (
+          {/* An active product can always go: deleted if nothing references
+              it, else deactivated. An inactive one only when it can really be
+              deleted — one with orders or members has nothing left to
+              deactivate, and reactivating is the edit form's checkbox. */}
+          {(product.isActive || deleteBlocker === null) && (
             <DeleteProductButton
               id={product.id}
               title={displayTitle(product)}
+              blocker={deleteBlocker}
             />
           )}
         </div>

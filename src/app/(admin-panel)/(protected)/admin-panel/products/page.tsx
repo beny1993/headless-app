@@ -6,6 +6,7 @@ import { Pagination } from '@/components/ui/pagination';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { categoryOptions } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
+import { hardDeleteBlockers } from '@/logic/admin/product-removal';
 import {
   MAX_SEARCH_TERM_LENGTH,
   PET_EMOJI,
@@ -48,6 +49,8 @@ export default async function AdminProductsPage({
     CategoryDao.list(),
   ]);
   const totalPages = Math.ceil(total / ADMIN_PAGE_SIZE);
+  // What keeps each row from a real delete — two queries for the page.
+  const blockers = await hardDeleteBlockers(items.map((product) => product.id));
 
   const categoryTitle = new Map(categories.map((c) => [c.id, c.title]));
 
@@ -186,6 +189,7 @@ export default async function AdminProductsPage({
               key={product.id}
               product={product}
               categoryTitle={categoryTitle.get(product.categoryId) ?? '—'}
+              deleteBlocker={blockers.get(product.id) ?? null}
               // The DAO's own offset, so numbering carries on across pages.
               rowNumber={(filters.page - 1) * ADMIN_PAGE_SIZE + index + 1}
             />
