@@ -1,25 +1,30 @@
 // Pins the admin product list: which row actions it offers, how it pages, and
-// how it counts. Deactivating is a soft delete, so an inactive product must not
-// offer it again: clicking it there changed nothing, which read as a broken
-// button. The page number lives in the URL next to the filters, and every page
-// link keeps them. The page renders for real with its DAOs and the admin guard
-// mocked at the module edge.
+// how it counts. The 🗑 shows on every active product, and on an inactive one
+// only when it can really be deleted: one with orders or members has nothing
+// left to deactivate, so offering it there changed nothing and read as a
+// broken button. The page number lives in the URL next to the filters, and
+// every page link keeps them. The page renders for real with its DAOs, the
+// hard-delete blocker read and the admin guard mocked at the module edge, so
+// it touches no database.
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductWithImages } from '@/db/schema/catalog';
 import { SUBCATEGORY_PREFIX } from '@/lib/catalog/category-tree';
+import { HARD_DELETE_BLOCKERS } from '@/lib/catalog/product-delete';
 import { PROTECTED_PATHS } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import { ADMIN_PAGE_SIZE } from '@/lib/pagination';
 import AdminProductsPage from './page';
 
-const { pageForAdmin, categories } = vi.hoisted(() => ({
+const { pageForAdmin, categories, hardDeleteBlockers } = vi.hoisted(() => ({
   pageForAdmin: vi.fn(),
   categories: vi.fn(),
+  hardDeleteBlockers: vi.fn(),
 }));
 vi.mock('@/lib/auth/session', () => ({ requireAdmin: vi.fn() }));
 vi.mock('@/db/dao/ProductDao', () => ({ ProductDao: { pageForAdmin } }));
 vi.mock('@/db/dao/CategoryDao', () => ({ CategoryDao: { list: categories } }));
+vi.mock('@/logic/admin/product-removal', () => ({ hardDeleteBlockers }));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
@@ -29,7 +34,10 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-beforeEach(() => categories.mockResolvedValue([]));
+beforeEach(() => {
+  categories.mockResolvedValue([]);
+  hardDeleteBlockers.mockResolvedValue(new Map());
+});
 
 /** A category row as the page reads it; `parent` names its parent's slug. */
 const category = (slug: string, title: string, parent?: string) => ({
@@ -84,33 +92,89 @@ const target = (name: string) =>
     'http://localhost',
   );
 
-it('offers deactivation only on active products', async () => {
-  pageForAdmin.mockResolvedValue({
-    items: [
-      ACTIVE,
-      product({
-        id: '33333333-3333-4333-8333-333333333333',
-        title: 'محصول غیرفعال',
-        slug: 'inactive-product',
-        sku: 'INACTIVE-1',
-        isActive: false,
-      }),
-    ],
-    total: 2,
+describe('the 🗑 (AC-6)', () => {
+  const row = (id: string, title: string, isActive: boolean) =>
+    product({ id, title, slug: `slug-${id}`, sku: `SKU-${id}`, isActive });
+  const activeOrdered = row(
+    '55555555-5555-4555-8555-555555555555',
+    'فعال سفارش‌داده',
+    true,
+  );
+  const inactiveFree = row(
+    '66666666-6666-4666-8666-666666666666',
+    'غیرفعال بی‌سفارش',
+    false,
+  );
+  const inactiveOrdered = row(
+    '77777777-7777-4777-8777-777777777777',
+    'غیرفعال سفارش‌داده',
+    false,
+  );
+  const inactiveHead = row(
+    '88888888-8888-4888-8888-888888888888',
+    'غیرفعال سرگروه',
+    false,
+  );
+
+  beforeEach(() => {
+    pageForAdmin.mockResolvedValue({
+      items: [
+        ACTIVE,
+        activeOrdered,
+        inactiveFree,
+        inactiveOrdered,
+        inactiveHead,
+      ],
+      total: 5,
+    });
+    hardDeleteBlockers.mockResolvedValue(
+      new Map([
+        [activeOrdered.id, HARD_DELETE_BLOCKERS.ORDERS],
+        [inactiveOrdered.id, HARD_DELETE_BLOCKERS.ORDERS],
+        [inactiveHead.id, HARD_DELETE_BLOCKERS.MEMBERS],
+      ]),
+    );
   });
 
-  await renderPage({});
+  const trash = (title: string) =>
+    screen.queryByRole('button', { name: `حذف ${title}` });
 
-  expect(
-    screen.getByRole('button', { name: 'غیرفعال کردن محصول فعال' }),
-  ).toBeTruthy();
-  expect(
-    screen.queryByRole('button', { name: 'غیرفعال کردن محصول غیرفعال' }),
-  ).toBeNull();
-  // Still listed and still editable: reactivating is the edit form's checkbox.
-  expect(
-    screen.getByRole('link', { name: 'ویرایش محصول غیرفعال' }),
-  ).toBeTruthy();
+  it('reads the blockers once, for the whole page', async () => {
+    await renderPage({});
+
+    expect(hardDeleteBlockers).toHaveBeenCalledTimes(1);
+    expect(hardDeleteBlockers).toHaveBeenCalledWith([
+      ACTIVE.id,
+      activeOrdered.id,
+      inactiveFree.id,
+      inactiveOrdered.id,
+      inactiveHead.id,
+    ]);
+  });
+
+  it('is always on an active product, ordered or not', async () => {
+    await renderPage({});
+
+    expect(trash(ACTIVE.title)).not.toBeNull();
+    expect(trash(activeOrdered.title)).not.toBeNull();
+  });
+
+  it('is on an inactive product nothing references, so an old mistake can go', async () => {
+    await renderPage({});
+
+    expect(trash(inactiveFree.title)).not.toBeNull();
+  });
+
+  it('is not on an inactive product with orders or members', async () => {
+    await renderPage({});
+
+    expect(trash(inactiveOrdered.title)).toBeNull();
+    expect(trash(inactiveHead.title)).toBeNull();
+    // Still listed and still editable: reactivating is the edit form's checkbox.
+    expect(
+      screen.getByRole('link', { name: `ویرایش ${inactiveOrdered.title}` }),
+    ).toBeTruthy();
+  });
 });
 
 it('offers sub-categories under their parent, prefixed, in the filter', async () => {

@@ -40,6 +40,9 @@ vi.mock('@/db/dao/ShippingRateDao', () => ({
 vi.mock('@/db/dao/SiteContentDao', () => ({
   SiteContentDao: { getMany: mocks.read },
 }));
+vi.mock('@/logic/admin/product-removal', () => ({
+  hardDeleteBlockers: mocks.read,
+}));
 vi.mock('@/logic/orders/dashboard-report', () => ({
   buildDashboardReport: mocks.read,
 }));

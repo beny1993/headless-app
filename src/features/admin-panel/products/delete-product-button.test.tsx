@@ -214,8 +214,9 @@ describe('DeleteProductButton', () => {
 
     it('prevents the Escape keydown itself while busy, wherever focus is, and only then', async () => {
       // Preventing the keydown is what stops the browser's close request on
-      // every press. `cancel` can be refused once per user activation, so a
-      // second Escape used to close the dialog; and with both buttons
+      // every press. A second Escape can close the dialog: per the
+      // close-watcher spec, `cancel` is cancelable only while user activation
+      // remains. With both buttons
       // disabled, focus can sit on <body>, where the dialog's own keydown
       // handler never runs — hence `window`.
       const escape = () => {
