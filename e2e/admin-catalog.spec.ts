@@ -45,7 +45,10 @@ test.use({ storageState: ADMIN_STATE });
 // The discount code only switches off, and the ordered product can only be
 // deactivated, so both leave a row behind by design: one width, one of each
 // per run, not two. (The first product is deleted for real at its end.)
-test.skip(({ isMobile }) => isMobile, 'creates rows that are never deleted');
+test.skip(
+  ({ isMobile }) => isMobile,
+  'leaves a discount code and an ordered product behind',
+);
 
 /** A seeded sub-category, and a seeded top-level one that is not its parent. */
 const SUB_CATEGORY = SEED_SUBCATEGORIES[0];

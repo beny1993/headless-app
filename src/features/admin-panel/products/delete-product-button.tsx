@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useModalDialog } from '@/hooks/use-modal-dialog';
@@ -49,6 +49,7 @@ export function DeleteProductButton({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const { open, show, close, dialogProps } = useModalDialog();
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const headingId = useId();
   const descriptionId = useId();
   const intent =
@@ -74,9 +75,14 @@ export function DeleteProductButton({
         toast.warning(deactivatedInstead(title));
       }
       router.refresh();
+      // Ready again: a row that stays listed may keep this button.
+      setBusy(false);
     } catch (error) {
       setBusy(false);
       close();
+      // Back to the button that opened the dialog, not <body>. It is never
+      // `disabled` (see below), so it can always take the focus.
+      triggerRef.current?.focus();
       // Only the server's own sentence — `ApiRequestError` carries the envelope
       // `message`, which for a family head names how many members are in the
       // way and is already Persian. Every other rejection is a transport
@@ -92,15 +98,20 @@ export function DeleteProductButton({
 
   return (
     <>
+      {/* Guarded by `busy` rather than `disabled`: a disabled button cannot
+          take focus, and focus has to come back here when a request fails. */}
       <button
+        ref={triggerRef}
         type="button"
-        onClick={show}
-        disabled={busy}
+        onClick={() => {
+          if (!busy) show();
+        }}
+        aria-disabled={busy}
         aria-label={`حذف ${title}`}
         aria-haspopup="dialog"
         aria-expanded={open}
         data-umami-event="admin-panel-products-delete"
-        className="text-destructive hover:bg-destructive-soft flex h-10 w-10 items-center justify-center rounded-lg transition-colors disabled:opacity-50"
+        className="text-destructive hover:bg-destructive-soft flex h-10 w-10 items-center justify-center rounded-lg transition-colors aria-disabled:opacity-50"
       >
         {busy ? (
           <Loader2 size={14} className="animate-spin" aria-hidden="true" />

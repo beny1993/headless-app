@@ -7,10 +7,11 @@
 // deleted. A `delete` still has to be decided again, because both references
 // restrict — `order_items.product_id` and `products.variant_of` — and the
 // decision has to be made where it cannot go stale: in one
-// transaction, under the product's own `FOR UPDATE` lock. A checkout inserting
-// an order line takes `FOR KEY SHARE` on the product through that foreign key,
-// which waits on this lock, and a member being written locks its head the same
-// way. Should the delete still hit a 23503, `ProductDao.hardDelete` rolls back
+// transaction, under the product's own `FOR UPDATE` lock. An order-line or
+// member insert's foreign-key check takes `FOR KEY SHARE` on the product, which
+// waits on this lock, and a member write through `ProductDao` also takes
+// `FOR UPDATE` on its head first (`assertFamilyRules`). Should the delete still
+// hit a 23503, `ProductDao.hardDelete` rolls back
 // to its savepoint and this deactivates instead; it never surfaces as a 500.
 //
 // Files go only after the commit, and only the keys the delete itself took.

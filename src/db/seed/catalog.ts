@@ -2,8 +2,9 @@
 // `pnpm seed-catalog`.
 //
 // Re-running is safe: categories upsert by slug, products by sku, and a
-// product's images are replaced rather than appended. A product an admin
-// soft-deleted stays deleted (see `ProductDao.upsertBySku`).
+// product's images are replaced rather than appended. A seeded product an
+// admin deactivated stays inactive (see `ProductDao.upsertBySku`); one an
+// admin deleted outright comes back, since the upsert finds no row to keep.
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
 import {

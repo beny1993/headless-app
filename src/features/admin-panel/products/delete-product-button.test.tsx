@@ -53,9 +53,12 @@ const renderButton = (blocker: HardDeleteBlocker | null = null) =>
 const event = (name: string) =>
   document.querySelector<HTMLButtonElement>(`[data-umami-event="${name}"]`)!;
 
+const trigger = () =>
+  screen.getByRole<HTMLButtonElement>('button', { name: `حذف ${TITLE}` });
+
 const open = () =>
   act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: `حذف ${TITLE}` }));
+    fireEvent.click(trigger());
   });
 
 const confirm = (name = 'admin-panel-products-delete-confirm') =>
@@ -116,17 +119,20 @@ describe('DeleteProductButton', () => {
       renderButton(null);
       await open();
 
+      expect(trigger().getAttribute('aria-expanded')).toBe('true');
       await act(async () => {
         fireEvent.click(event('admin-panel-products-delete-cancel'));
       });
 
       expect(delData).not.toHaveBeenCalled();
+      expect(trigger().getAttribute('aria-expanded')).toBe('false');
     });
 
     it('sends nothing on Escape', async () => {
       renderButton(null);
       await open();
 
+      expect(trigger().getAttribute('aria-expanded')).toBe('true');
       await act(async () => {
         fireEvent.keyDown(document.querySelector('dialog')!, {
           key: 'Escape',
@@ -134,6 +140,7 @@ describe('DeleteProductButton', () => {
       });
 
       expect(delData).not.toHaveBeenCalled();
+      expect(trigger().getAttribute('aria-expanded')).toBe('false');
     });
   });
 
@@ -222,10 +229,41 @@ describe('DeleteProductButton', () => {
         'حذف محصول ناموفق بود. دوباره تلاش کن.',
       );
       expect(refresh).not.toHaveBeenCalled();
+      expect(trigger().getAttribute('aria-disabled')).toBe('false');
       expect(
-        screen.getByRole<HTMLButtonElement>('button', { name: `حذف ${TITLE}` })
-          .disabled,
-      ).toBe(false);
+        event('admin-panel-products-delete-confirm').getAttribute('aria-busy'),
+      ).toBe('false');
+    });
+
+    it('hands focus back to the trigger after a failed request', async () => {
+      // The dialog closes on the failure; with the trigger disabled at that
+      // moment the browser had nowhere to return focus but <body>, and a
+      // keyboard user was dropped at the top of the page.
+      delData.mockRejectedValue(new Error('network down'));
+      renderButton(null);
+      await open();
+
+      await confirm();
+
+      expect(document.activeElement).toBe(trigger());
+    });
+
+    it('is ready again after a success, for a row that re-renders with it', async () => {
+      // A deactivated product whose row stays (it is still listed) keeps its
+      // button only when it can still be deleted — and then it must work.
+      delData.mockResolvedValue({ outcome: DELETE_OUTCOMES.DELETED });
+      renderButton(null);
+      await open();
+
+      await confirm();
+
+      expect(trigger().getAttribute('aria-disabled')).toBe('false');
+      expect(
+        event('admin-panel-products-delete-confirm').getAttribute('aria-busy'),
+      ).toBe('false');
+      await open();
+      await confirm();
+      expect(delData).toHaveBeenCalledTimes(2);
     });
 
     it('shows the server’s own refusal instead of the retry advice', async () => {

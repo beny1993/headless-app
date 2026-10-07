@@ -269,9 +269,9 @@ export const productInputSchema = z
       VARIANT_LABEL_LIMIT,
       VARIANT_MESSAGES.labelLength,
     ),
-    // A real editable field — the design's «نمایش در فروشگاه» toggle. Soft delete
-    // is the DELETE route, not this flag; but an admin may deactivate a product
-    // by unchecking it here too.
+    // A real editable field — the design's «نمایش در فروشگاه» toggle. The list's
+    // DELETE route deactivates (or, when nothing references the product,
+    // deletes it outright); an admin may also deactivate by unchecking this.
     isActive: z.boolean(),
   })
   // A full-body contract, not a patch: `oldPrice > price` is a cross-field rule,
