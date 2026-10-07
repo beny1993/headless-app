@@ -107,7 +107,11 @@ export const products = pgTable(
     /** Integer Toman; set only to show a struck-through "was" price. */
     oldPrice: bigint('old_price', { mode: 'number' }),
     stock: integer('stock').default(0).notNull(),
-    /** Soft delete. There is no hard-delete path anywhere in the DAO. */
+    /**
+     * Soft delete. A product that is ordered or has members only ever goes
+     * this way; one nothing references is deleted outright instead
+     * (`ProductDao.hardDelete`, decided by `src/logic/admin/product-removal.ts`).
+     */
     isActive: boolean('is_active').default(true).notNull(),
     categoryId: uuid('category_id')
       .notNull()
@@ -207,8 +211,8 @@ export const products = pgTable(
  * is never the primary» cannot be a CHECK — it spans two tables — so `ProductDao`
  * strips it on every write; a stray one is harmless to the filter and the count.
  *
- * The product foreign key cascades like `product_images`: the app never
- * hard-deletes a product, so only test teardown ever triggers it. The category
+ * The product foreign key cascades like `product_images`: the admin's hard
+ * delete of a product nothing references takes these rows with it. The category
  * one restricts, which is what keeps a category in use undeletable.
  */
 export const productCategories = pgTable(

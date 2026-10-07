@@ -29,7 +29,11 @@ vi.mock('@/lib/storage', () => ({
   getStorageDriver: () => ({ put, delete: remove, url }),
 }));
 
-import { appendProductImage, setProductImageOrder } from './product-images';
+import {
+  ProductGoneError,
+  appendProductImage,
+  setProductImageOrder,
+} from './product-images';
 
 const PRODUCT_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -83,8 +87,8 @@ beforeEach(() => {
     images: keys.map(image),
     removedKeys: previousKeys.filter((key) => !keys.includes(key)),
   }));
-  // The append is its own atomic write now: one row at the end, or `null` when
-  // the gallery is full. The fake answers the way the DAO does.
+  // The append is its own atomic write now: one row at the end, or `'full'` /
+  // `'gone'` when it stored nothing. The fake answers the way the DAO does.
   appendImage.mockImplementation(async (_id: string, key: string) =>
     image(key, 0),
   );
@@ -119,7 +123,7 @@ describe('appendProductImage', () => {
     // so deleting it left the suite green while a driver failure turned an
     // ordinary 400 into an unhandled rejection — on the one path that is
     // already recovering from a race, with the orphan still on disk.
-    appendImage.mockResolvedValue(null);
+    appendImage.mockResolvedValue('full');
     remove.mockRejectedValue(new Error('disk gone'));
 
     const stored = await appendProductImage(
@@ -136,7 +140,7 @@ describe('appendProductImage', () => {
     // The refusal lands after the bytes are written, and the only other
     // deleter works from `product_images` — so a file left here is one nothing
     // would ever collect.
-    appendImage.mockResolvedValue(null);
+    appendImage.mockResolvedValue('full');
 
     const stored = await appendProductImage(
       productWith('uploads/a.jpg'),
@@ -149,6 +153,21 @@ describe('appendProductImage', () => {
     expect(deletedKeys()).toEqual([written]);
     // And nothing that was already on the product.
     expect(deletedKeys()).not.toContain('uploads/a.jpg');
+  });
+
+  it('throws ProductGoneError, and takes its file back out, when the product went in flight', async () => {
+    // Not «the gallery is full»: the route answers 404 for this one. The file
+    // is already written either way, and nothing else would ever collect it.
+    appendImage.mockResolvedValue('gone');
+
+    await expect(
+      appendProductImage(
+        productWith('uploads/a.jpg'),
+        new Uint8Array([0xff, 0xd8, 0xff]),
+        'image/jpeg',
+      ),
+    ).rejects.toBeInstanceOf(ProductGoneError);
+    expect(deletedKeys()).toEqual([put.mock.calls[0][0]]);
   });
 
   it('stores the bytes under the server-generated key before recording it', async () => {
@@ -195,6 +214,18 @@ describe('setProductImageOrder', () => {
       'uploads/b.jpg',
       'uploads/a.jpg',
     ]);
+  });
+
+  it('throws ProductGoneError and deletes nothing when the product went before the write', async () => {
+    // The DAO locks the product row first and answers null when it is gone —
+    // deleted between the route's read and this write. The route makes it 404.
+    const product = productWith('uploads/a.jpg', 'uploads/b.jpg');
+    setImages.mockResolvedValueOnce(null);
+
+    await expect(
+      setProductImageOrder(product, ['uploads/a.jpg']),
+    ).rejects.toBeInstanceOf(ProductGoneError);
+    expect(deletedKeys()).toEqual([]);
   });
 
   it('deletes the removed photo and no other', async () => {

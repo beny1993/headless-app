@@ -74,9 +74,9 @@ export type AdminOrderRow = {
  * The order statuses that represent a booked sale — the first half of the
  * revenue definition. The second half (an actually-settled payment) is
  * `hasPaidPayment` below; an order counts as revenue only when BOTH hold, so a
- * COD order still pending at `processing`/`shipped` is excluded (its cash is
- * collected at delivery) and a paid order later `cancelled` is excluded (the
- * money is being refunded). See `revenueSummary`.
+ * card-to-card order is excluded until the admin, its receipt checked, ships
+ * it (its payment flips then) and a paid order later `cancelled` is excluded
+ * (the money is being refunded). See `revenueSummary`.
  */
 const REVENUE_ORDER_STATUSES: readonly OrderStatus[] = [
   ORDER_STATUSES.PAID,
@@ -395,6 +395,23 @@ export class OrderDao {
       .from(orderItems)
       .where(eq(orderItems.orderId, orderId))
       .orderBy(asc(orderItems.createdAt), asc(orderItems.id));
+  }
+
+  /**
+   * Which of `ids` any order line names — in any order, of any status, since
+   * `order_items.product_id` restricts either way. What keeps a product from
+   * the admin's hard delete; one query for a whole page of the admin list.
+   */
+  static async orderedProductIds(
+    executor: Executor,
+    ids: readonly string[],
+  ): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await executor
+      .selectDistinct({ productId: orderItems.productId })
+      .from(orderItems)
+      .where(inArray(orderItems.productId, [...ids]));
+    return new Set(rows.map((row) => row.productId));
   }
 
   /**

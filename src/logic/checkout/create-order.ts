@@ -39,7 +39,7 @@ import {
 
 // Persian, customer-facing. The `errors[]` detail the route builds is
 // `${field}: ${message}`, per the design note.
-const PRODUCT_UNAVAILABLE = 'محصول انتخابی دیگر در دسترس نیست.';
+export const PRODUCT_UNAVAILABLE = 'محصول انتخابی دیگر در دسترس نیست.';
 const INVALID_PROVINCE = 'استان انتخاب‌شده نامعتبر است.';
 const ONLINE_PAYMENT_UNAVAILABLE =
   'پرداخت آنلاین در حال حاضر در دسترس نیست. پرداخت کارت به کارت را انتخاب کن.';
@@ -271,11 +271,17 @@ export const createOrder = async (
           line.productId,
           line.qty,
         );
-        // 0 rows: the atomic `stock >= qty` guard did not match — out of stock.
+        // 0 rows: the atomic `stock >= qty` guard did not match — or the row
+        // is gone, hard-deleted by the admin after the load above. Read it
+        // again in this transaction to tell them apart: a product that is
+        // gone or no longer active is unavailable, not out of stock.
         if (!reserved) {
+          const [current] = await ProductDao.getByIds(tx, [line.productId]);
           throw new CheckoutError(
             field,
-            insufficientStock(displayTitle(product)),
+            current?.isActive
+              ? insufficientStock(displayTitle(product))
+              : PRODUCT_UNAVAILABLE,
           );
         }
         // A soft-delete that landed between the load and the decrement: the

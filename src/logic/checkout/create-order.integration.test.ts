@@ -31,9 +31,8 @@ import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 
-const { createOrder, MAX_OPEN_ORDERS } = await importWithDb(
-  () => import('@/logic/checkout/create-order'),
-);
+const { createOrder, MAX_OPEN_ORDERS, PRODUCT_UNAVAILABLE } =
+  await importWithDb(() => import('@/logic/checkout/create-order'));
 const { OrderDao } = await importWithDb(() => import('@/db/dao/OrderDao'));
 const { transitionOrder } = await importWithDb(
   () => import('@/logic/orders/state-machine'),
@@ -279,6 +278,59 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       expect(await stockOf(product.id)).toBe(5); // reservation rolled back
       expect(await ordersForUser(user.id)).toHaveLength(0);
     });
+
+    // The admin's 🗑 can land between the pre-load and the reservation. A
+    // deleted row leaves the decrement nothing to match; a deactivated one
+    // whose stock also ran out fails its `stock >= qty` guard. Either way it
+    // matches no row, exactly as too little stock alone does, and the line
+    // must still read «no longer available» — telling a shopper a removed
+    // product is sold out sends them back to wait for a restock that will
+    // never come.
+    it.each([
+      [
+        'deleted',
+        (id: string) =>
+          testDb.delete(productsTable).where(eq(productsTable.id, id)),
+      ],
+      [
+        'deactivated',
+        (id: string) =>
+          testDb
+            .update(productsTable)
+            .set({ isActive: false, stock: 0 })
+            .where(eq(productsTable.id, id)),
+      ],
+    ])(
+      'calls a product %s mid-transaction unavailable, not out of stock',
+      async (_, remove) => {
+        const user = await fx.user();
+        const category = await fx.category();
+        const product = await fx.product(category, { stock: 5 });
+        const prov = await province();
+
+        const realGetByIds = ProductDao.getByIds;
+        vi.spyOn(ProductDao, 'getByIds').mockImplementationOnce(
+          async (executor, ids) => {
+            const rows = await realGetByIds(executor, ids);
+            // Active at load, removed before reserve (pool autocommit; the
+            // tx holds no lock on the product yet).
+            await remove(product.id);
+            return rows;
+          },
+        );
+
+        await expect(
+          createOrder(
+            user.id,
+            buildInput(prov, [{ productId: product.id, qty: 1 }]),
+          ),
+        ).rejects.toMatchObject({
+          field: 'items.0',
+          message: PRODUCT_UNAVAILABLE,
+        });
+        expect(await ordersForUser(user.id)).toHaveLength(0);
+      },
+    );
 
     it('rejects a product id that does not exist', async () => {
       const user = await fx.user();

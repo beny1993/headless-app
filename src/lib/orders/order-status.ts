@@ -85,9 +85,9 @@ export type PaymentStatus =
  * the exhaustiveness of the `Record<OrderStatus, …>` type forces every status —
  * including a newly added one — to declare its outgoing edges (or none).
  *
- * Restock fires on any edge *into* `cancelled` or `failed`; the COD payment flips
- * to `paid` on the edge into `delivered`. Those side effects live with the CAS in
- * `state-machine.ts`; this map only says which edges exist.
+ * Restock fires on any edge *into* `cancelled` or `failed`; the card-to-card
+ * (`cod`) payment flips to `paid` on the edge into `shipped`. Those side effects
+ * live with the CAS in `state-machine.ts`; this map only says which edges exist.
  */
 export const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> =
   {
@@ -97,7 +97,7 @@ export const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> =
       ORDER_STATUSES.FAILED,
     ],
     // Never `paid`: a receipt is checked by a person after acceptance, and the
-    // card-to-card payment row still flips only at delivery.
+    // card-to-card payment row flips only once that person ships the order.
     [ORDER_STATUSES.AWAITING_RECEIPT]: [
       ORDER_STATUSES.PROCESSING,
       ORDER_STATUSES.CANCELLED,

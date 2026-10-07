@@ -95,8 +95,8 @@ describe.skipIf(!databaseReachable)('PaymentDao', () => {
   it('rejects a second COD row on the same order — the at-most-one-COD anchor', async () => {
     // The COD twin of the authority idempotency: without the partial unique
     // index a checkout bug or double-submit could plant a second COD row, and
-    // markCodPaid would then match two rows at delivery, throw, and strand the
-    // order undeliverable. The DB refuses the second write instead. (COD has no
+    // the order would hold two payments for its one transfer, both flipped paid
+    // by markCodPaid when it ships. The DB refuses the second write instead. (COD has no
     // authority, so the null-authority column cannot carry this — the many-NULLs
     // test above is on *different* orders and stays green.)
     const order = await orderFor();

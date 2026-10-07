@@ -246,7 +246,7 @@ describe.skipIf(!databaseReachable)('transitionOrder', () => {
 
   it('accepts a waiting order into processing with no side effect', async () => {
     // No restock, and the card-to-card payment stays pending: acceptance books
-    // nothing — the row flips only at delivery, exactly as before.
+    // nothing — the row flips once the admin, the receipt checked, ships it.
     const { order, product } = await waitingOrder(2, 10);
 
     await move(
@@ -285,15 +285,15 @@ describe.skipIf(!databaseReachable)('transitionOrder', () => {
     expect(await statusOf(order.id)).toBe(ORDER_STATUSES.AWAITING_RECEIPT);
   });
 
-  it('flips the pending COD payment to paid on delivery', async () => {
+  /** A card-to-card order at `status`, its single payment row still pending. */
+  const cardToCardOrder = async (status: OrderStatus) => {
     const user = await fx.user();
     const category = await fx.category();
     const product = await fx.product(category, { stock: 10 });
     await ProductDao.decrementStock(testDb, product.id, 1);
-    // An accepted COD order: processing, its payment row still pending.
     const order = await OrderDao.create(
       fx.buildOrder(user, [{ product, qty: 1 }], {
-        status: ORDER_STATUSES.PROCESSING,
+        status,
         paymentMethod: PAYMENT_METHODS.COD,
       }),
     );
@@ -303,14 +303,37 @@ describe.skipIf(!databaseReachable)('transitionOrder', () => {
       method: PAYMENT_METHODS.COD,
       amount: order.total,
     });
+    return order;
+  };
+
+  it('pays the card-to-card payment when the order ships, and leaves it paid at delivery', async () => {
+    // Shipping is the admin's word that the receipt checked out — the moment
+    // the receipt reads «تأیید شد» — so the transfer is paid from then on.
+    const order = await cardToCardOrder(ORDER_STATUSES.PROCESSING);
 
     await move(order.id, ORDER_STATUSES.PROCESSING, ORDER_STATUSES.SHIPPED);
+
+    const [shipped] = await PaymentDao.listByOrder(order.id);
+    expect(shipped.status).toBe(PAYMENT_STATUSES.PAID);
+    expect(shipped.paidAt).toBeInstanceOf(Date);
+
+    await move(order.id, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED);
+
+    const [delivered] = await PaymentDao.listByOrder(order.id);
+    expect(delivered.status).toBe(PAYMENT_STATUSES.PAID);
+    expect(delivered.paidAt).toEqual(shipped.paidAt);
+    expect(await statusOf(order.id)).toBe(ORDER_STATUSES.DELIVERED);
+  });
+
+  it('still pays at delivery a card-to-card order shipped while its payment stayed pending', async () => {
+    // Shipped before payments flipped at shipping: delivery settles it.
+    const order = await cardToCardOrder(ORDER_STATUSES.SHIPPED);
+
     await move(order.id, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED);
 
     const [payment] = await PaymentDao.listByOrder(order.id);
     expect(payment.status).toBe(PAYMENT_STATUSES.PAID);
     expect(payment.paidAt).toBeInstanceOf(Date);
-    expect(await statusOf(order.id)).toBe(ORDER_STATUSES.DELIVERED);
   });
 
   it('leaves a Zarinpal order paid on delivery — the COD flip must not fire', async () => {
@@ -350,26 +373,30 @@ describe.skipIf(!databaseReachable)('transitionOrder', () => {
     expect(payment.method).toBe(PAYMENT_METHODS.ZARINPAL);
   });
 
-  it('rolls the whole delivery back when the COD payment row is missing', async () => {
-    // A COD order reaching delivered with no pending COD payment is corruption;
-    // markCodPaid throws, and the status change must roll back with it.
-    const user = await fx.user();
-    const category = await fx.category();
-    const product = await fx.product(category, { stock: 10 });
-    const order = await OrderDao.create(
-      fx.buildOrder(user, [{ product, qty: 1 }], {
-        status: ORDER_STATUSES.SHIPPED,
-        paymentMethod: PAYMENT_METHODS.COD,
-      }),
-    );
-    fx.remember(order.id);
-    // No payment row created.
+  it.each([
+    [ORDER_STATUSES.PROCESSING, ORDER_STATUSES.SHIPPED],
+    [ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED],
+  ] as const)(
+    'rolls the whole %s → %s move back when the COD payment row is missing',
+    async (from, to) => {
+      // A card-to-card order with no COD payment row is corruption;
+      // markCodPaid throws, and the status change must roll back with it.
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { stock: 10 });
+      const order = await OrderDao.create(
+        fx.buildOrder(user, [{ product, qty: 1 }], {
+          status: from,
+          paymentMethod: PAYMENT_METHODS.COD,
+        }),
+      );
+      fx.remember(order.id);
+      // No payment row created.
 
-    await expect(
-      move(order.id, ORDER_STATUSES.SHIPPED, ORDER_STATUSES.DELIVERED),
-    ).rejects.toThrow(/exactly one pending COD payment/);
-    expect(await statusOf(order.id)).toBe(ORDER_STATUSES.SHIPPED); // rolled back
-  });
+      await expect(move(order.id, from, to)).rejects.toThrow(/COD payment/);
+      expect(await statusOf(order.id)).toBe(from); // rolled back
+    },
+  );
 
   it('lets exactly one of two concurrent transitions win (CAS race)', async () => {
     const { order, product } = await pendingOrder(3, 10);

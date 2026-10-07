@@ -55,7 +55,11 @@ export class InvalidTransitionError extends Error {
  *   · into `cancelled` — store `cancellationReason`, in the CAS itself. A reason
  *     passed with any other move is ignored: the column says why an order was
  *     cancelled, and nothing else.
- *   · into `delivered` for a COD order — flip the pending COD payment to `paid`.
+ *   · into `shipped` for a card-to-card (`cod`) order — flip its payment to
+ *     `paid`: shipping is the admin's word that the receipt checked out, the
+ *     moment the receipt reads «تأیید شد». Into `delivered` the same call
+ *     settles an order shipped while the payment still waited for delivery,
+ *     and leaves a paid one as it is.
  *
  * `awaiting_receipt → processing` (a card-to-card order accepted) has none.
  */
@@ -97,7 +101,7 @@ export const transitionOrder = async (
   }
 
   if (
-    to === ORDER_STATUSES.DELIVERED &&
+    (to === ORDER_STATUSES.SHIPPED || to === ORDER_STATUSES.DELIVERED) &&
     updated.paymentMethod === PAYMENT_METHODS.COD
   ) {
     await PaymentDao.markCodPaid(tx, orderId);

@@ -101,7 +101,11 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   `src/lib/seo.ts`, display-only and never a gateway amount.
 - **Timestamps are UTC `timestamptz`**; render Jalali with
   `Intl.DateTimeFormat('fa-IR', { calendar: 'persian' })` — no date dependency.
-- **Products soft-delete** (`is_active`), never hard-delete.
+- **An ordered product soft-deletes** (`is_active`), never hard-deletes. The
+  admin's 🗑 deletes a product for real only when no `order_items` row and no
+  family member (`variant_of`) points at it — both foreign keys restrict — and
+  deactivates it otherwise; the server decides under the product's row lock
+  (`src/logic/admin/product-removal.ts`) and answers which it did.
 - **Order items snapshot** title/SKU/unit price; shipping fee is snapshotted on
   the order. Orders move through an explicit state machine. Oversell prevention
   is one atomic `UPDATE … WHERE stock >= qty RETURNING`.
@@ -131,7 +135,10 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   started in `src/instrumentation.ts`; nothing to configure; the wait is
   `RECEIPT_WAIT_MS` in `src/lib/orders/receipt.ts`). The admin checks
   the receipt and ships, or cancels — every admin cancel carries a reason the
-  shopper reads. The payment row still flips to `paid` only at delivery.
+  shopper reads. Shipping is the admin's word that the receipt checked out:
+  the receipt reads «تأیید شد» and the payment row flips to `paid` in the same
+  move (`transitionOrder`), so revenue counts the order from then; delivery
+  settles one shipped before that rule.
 - **A receipt is unlisted, not private.** Receipts live under `receipts/` in
   the same public bucket as the photos (Benyamin's decision, 2026-10-06), so
   what keeps one out of sight is that its URL never exists in the app:

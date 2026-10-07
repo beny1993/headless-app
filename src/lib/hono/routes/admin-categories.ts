@@ -10,8 +10,8 @@
 // GET: the page reads `CategoryDao.list()` server-side, and the storefront's
 // public `GET /categories` is untouched.
 //
-// Unlike products and discount codes, a category is hard-deleted — nothing
-// snapshots one. What refuses a category still in use is a restricting foreign
+// Unlike discount codes and ordered products, a category is hard-deleted —
+// nothing snapshots one. What refuses a category still in use is a restricting foreign
 // key: the products one (soft-deleted products included) and, since
 // sub-categories, the self-referencing parent one. Delete turns either refusal
 // into a 409 naming how many products and sub-categories are attached.

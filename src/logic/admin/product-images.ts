@@ -10,13 +10,17 @@
 //     that is already there. It runs under a row lock and re-checks the ceiling
 //     inside the transaction, so two uploads racing cannot both win and strand
 //     the loser's file with no row to find it by;
-//   · a gallery-order write REPLACES the list, and is the only place a file is
-//     ever deleted — and then only the keys the write itself removed, which it
-//     reports, never the whole previous list and never a set worked out from
-//     the caller's own snapshot. An upload that lands between the route's read
-//     and this write has its row replaced like any other; taking the delete
-//     set from the snapshot would have kept its file with nothing referencing
-//     it, and this loop is the only thing that would ever have collected it.
+//   · a gallery-order write REPLACES the list, and deletes only the keys the
+//     write itself removed, which it reports, never the whole previous list
+//     and never a set worked out from the caller's own snapshot. An upload that
+//     lands between the route's read and this write has its row replaced like
+//     any other; taking the delete set from the snapshot would have kept its
+//     file with nothing referencing it, and nothing else would ever have
+//     collected it.
+//
+// The one other place a product file is deleted is the admin's hard delete
+// (`./product-removal.ts`), which removes every file of a product it deletes,
+// through the same `isOurUpload` + `deleteQuietly` below.
 //
 // `ProductDao.setImages` is «replace with this ordered list» and belongs to the
 // second of those; the append has its own atomic write. The cleanup, not the
@@ -36,6 +40,17 @@ import {
 } from '@/lib/storage/image-upload';
 import { getStorageDriver, type StorageDriver } from '@/lib/storage';
 
+/**
+ * The product went between the route's read and a gallery write — the
+ * admin's hard delete got there first. The routes answer 404.
+ */
+export class ProductGoneError extends Error {
+  constructor() {
+    super('The product was deleted before its gallery was written.');
+    this.name = 'ProductGoneError';
+  }
+}
+
 /** What the upload route hands back — the stored key and a URL to render it. */
 export type StoredImage = {
   id: string;
@@ -44,7 +59,11 @@ export type StoredImage = {
   sortOrder: number;
 };
 
-const isOurUpload = (objectKey: string): boolean =>
+/**
+ * Whether a key is a file this app uploaded, and so its to delete. Exported for
+ * `./product-removal.ts`, the other deleter.
+ */
+export const isOurUpload = (objectKey: string): boolean =>
   objectKey.startsWith(`${UPLOAD_KEY_PREFIX}/`);
 
 const toStoredImage = (
@@ -63,7 +82,10 @@ const toStoredImage = (
  * already taken — which is exactly why it is reported: an EACCES, an expired S3
  * credential or a driver refusal otherwise piles up orphans in total silence.
  */
-const deleteQuietly = (driver: StorageDriver, key: string): Promise<void> =>
+export const deleteQuietly = (
+  driver: StorageDriver,
+  key: string,
+): Promise<void> =>
   driver.delete(key).catch((error: unknown) => {
     console.warn('[admin] deleting a product image failed', error);
     Sentry.captureException(error);
@@ -80,6 +102,10 @@ const deleteQuietly = (driver: StorageDriver, key: string): Promise<void> =>
  *
  * The caller enforces the count ceiling *before* reading the body, so a refused
  * photo is never buffered and can never leave an orphaned file behind.
+ *
+ * Returns `null` when the gallery filled while the bytes were in flight, and
+ * throws {@link ProductGoneError} when the product was deleted meanwhile; the
+ * file just written is taken back out on both.
  */
 export async function appendProductImage(
   product: ProductWithImages,
@@ -101,12 +127,13 @@ export async function appendProductImage(
     MAX_PRODUCT_IMAGES,
   );
 
-  if (!image) {
+  if (image === 'full' || image === 'gone') {
     // The gallery filled while these bytes were in flight, or the product went.
     // The file has no row and never will, so take it back out — the only other
     // deleter works out what to delete from `product_images` and would never
     // see it.
     await deleteQuietly(driver, key);
+    if (image === 'gone') throw new ProductGoneError();
     return null;
   }
 
@@ -121,7 +148,8 @@ export async function appendProductImage(
  * images, which is the ownership check the API leans on, since a body reaches
  * here having been checked for shape and nothing else. Returns `null` when a
  * key belongs to no image of this product, having written nothing at all; the
- * route turns that into a 400.
+ * route turns that into a 400. Throws {@link ProductGoneError} when the
+ * product was deleted before the write, which also writes nothing.
  *
  * The deleted set is whatever the write actually removed, restricted to
  * `uploads/`. It is *not* «everything previous», and not a diff of the
@@ -146,9 +174,9 @@ export async function setProductImageOrder(
   // row deleted here too, and deriving the set from the snapshot would leave
   // its file behind with nothing referencing it — invisible to this loop
   // forever, since the loop works from the rows.
-  const { images, removedKeys } = await ProductDao.setImages(product.id, [
-    ...objectKeys,
-  ]);
+  const written = await ProductDao.setImages(product.id, [...objectKeys]);
+  if (!written) throw new ProductGoneError();
+  const { images, removedKeys } = written;
 
   for (const objectKey of removedKeys) {
     if (!isOurUpload(objectKey)) continue;

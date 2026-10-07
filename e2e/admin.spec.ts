@@ -183,6 +183,14 @@ test.describe('an admin', () => {
       ),
     ).toBeVisible();
     await expect(ship).toBeHidden();
+
+    // Shipped, its receipt checked: the shopper reads the transfer as paid,
+    // beside the receipt it approved.
+    await shopper.goto(accountOrderPath(orderId));
+    await expect(shopper.getByText('تأیید شد', { exact: true })).toBeVisible();
+    await expect(
+      shopper.getByText('پرداخت شده', { exact: true }),
+    ).toBeVisible();
   });
 
   test('cancels an order still waiting for its receipt, and its stock comes back', async ({
@@ -417,11 +425,15 @@ test.describe('a product family in the admin panel', () => {
     await page.goto(
       `${PROTECTED_PATHS.PRODUCTS}?${new URLSearchParams({ q: head.title })}`,
     );
+    // `exact`: each row also holds its closed delete dialog, whose heading
+    // quotes the same name inside a longer sentence.
     await expect(
-      page.getByText(`${head.title} — ${head.variantLabel}`),
+      page.getByText(`${head.title} — ${head.variantLabel}`, { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText(`${member.title} — ${member.variantLabel}`),
+      page.getByText(`${member.title} — ${member.variantLabel}`, {
+        exact: true,
+      }),
     ).toBeVisible();
 
     // Counted and numbered from the filtered result, not the whole catalog:
