@@ -75,7 +75,11 @@ describe('FeaturedStorySection button', () => {
 
   it('opens wet food until a destination is saved, then the saved product', () => {
     const { container, rerender } = render(
-      <FeaturedStorySection content={content} targets={targets} />,
+      <FeaturedStorySection
+        content={content}
+        targets={targets}
+        categorySlugs={['wet-food']}
+      />,
     );
     expect(hrefOf(container, content.cta)).toBe(
       shopPath({ category: 'wet-food' }),
@@ -88,9 +92,21 @@ describe('FeaturedStorySection button', () => {
           ctaLink: { type: 'product', productId: PRODUCT_ID },
         }}
         targets={targets}
+        categorySlugs={['wet-food']}
       />,
     );
     expect(hrefOf(container, content.cta)).toBe(productPath('cat-toy'));
+  });
+
+  it('opens the bare shop instead when the catalogue has no wet-food category', () => {
+    const { container } = render(
+      <FeaturedStorySection
+        content={content}
+        targets={targets}
+        categorySlugs={['cat-wet-food']}
+      />,
+    );
+    expect(hrefOf(container, content.cta)).toBe(shopPath());
   });
 });
 

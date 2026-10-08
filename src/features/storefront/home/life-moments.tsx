@@ -3,7 +3,7 @@
 import { useRef } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { LIFE_MOMENT_TARGETS, momentEmoji } from './content';
+import { knownShelfPath, LIFE_MOMENT_TARGETS, momentEmoji } from './content';
 import type { ContentValue } from '@/lib/content/site-content';
 import { imageSrc } from '@/lib/storage/image-url';
 import { shopPath } from '@/lib/constant/paths';
@@ -27,9 +27,12 @@ import { resolveLink, type LinkTargets } from '@/lib/content/link';
 export function LifeMomentsSection({
   content,
   targets,
+  categorySlugs,
 }: {
   content: ContentValue<'home.moments'>;
   targets: LinkTargets;
+  /** Every category the catalogue has, so a card's code fallback names one. */
+  categorySlugs: readonly string[];
 }) {
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -109,7 +112,10 @@ export function LifeMomentsSection({
           className="flex snap-x snap-mandatory [scrollbar-width:none] gap-5 overflow-x-auto scroll-smooth pb-4 [&::-webkit-scrollbar]:hidden"
         >
           {content.cards.map((card, index) => {
-            const fallback = shopPath(LIFE_MOMENT_TARGETS[index].filters);
+            const fallback = knownShelfPath(
+              LIFE_MOMENT_TARGETS[index].filters,
+              categorySlugs,
+            );
             return (
               <ContentLink
                 // Index key: titles are editable content and may repeat.

@@ -6,8 +6,10 @@
 //   lists other products than the shelf's own page, so a canonical to the
 //   shelf would name a page that is not its duplicate (Google's advice for
 //   sort and filter variants is `noindex`);
-// - a URL that lists nothing (an emptied or unknown category, a page past the
-//   end), which Google would otherwise report as a soft 404.
+// - a URL that lists nothing (an emptied category, a page past the end), which
+//   Google would otherwise report as a soft 404.
+// An unknown category is not one of these: the shop page answers it with a
+// real 404 (`isUnknownCategory`) and asks for no shop metadata at all.
 import type { Metadata } from 'next';
 import type { Category } from '@/db/schema/catalog';
 import { PET_LABELS } from '@/lib/catalog/product-query';
@@ -40,6 +42,22 @@ export function shelfTitle(
     return pet ? `${category.title} ${pet}` : category.title;
   }
   return pet ? `محصولات ${pet}` : undefined;
+}
+
+/**
+ * Whether the URL names a category slug no category has, such as an old link
+ * to a renamed or removed one. The shop page answers that with a 404.
+ */
+export function isUnknownCategory(
+  query: ShopQuery,
+  categories: Pick<Category, 'slug'>[],
+): boolean {
+  // Truthy, not defined: the parser can hand over `''`, which every reader of
+  // the query treats as no filter at all.
+  return (
+    Boolean(query.category) &&
+    !categories.some(({ slug }) => slug === query.category)
+  );
 }
 
 /**

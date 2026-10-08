@@ -1,6 +1,7 @@
 import { cache } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { CategoryDao } from '@/db/dao/CategoryDao';
 import { orderAsTree } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
@@ -14,6 +15,7 @@ import { ShopResults } from '@/features/storefront/shop/shop-results';
 import { ShopSearch } from '@/features/storefront/shop/shop-search';
 import { ShopEmptyState } from '@/features/storefront/shop/shop-empty-state';
 import {
+  isUnknownCategory,
   SHOP_TITLE,
   shelfTitle,
   shopMetadata,
@@ -71,6 +73,9 @@ export async function generateMetadata({
     shelfListing(query),
     listCategories(),
   ]);
+  // The page answers an unknown category with a 404, so, like the product page
+  // for a missing product, there is no shop metadata to give it.
+  if (isUnknownCategory(query, categories)) return {};
   return shopMetadata(query, categories, items.length > 0);
 }
 
@@ -115,6 +120,12 @@ export default async function ShopPage({
     // every time they picked a shelf.
     ProductDao.priceBounds(),
   ]);
+
+  // A category that does not exist is a page that does not exist, like a
+  // removed product: a real 404, so Google drops an old link to it. A known
+  // category that lists nothing right now stays a page (noindexed by its
+  // metadata), since it fills again when stock returns.
+  if (isUnknownCategory(query, categories)) notFound();
 
   // Narrowed to what the filter panel renders: `Category` also carries
   // timestamps, and the panel is a client component. Tree order, so each

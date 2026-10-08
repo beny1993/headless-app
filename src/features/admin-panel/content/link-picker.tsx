@@ -91,8 +91,9 @@ const shopLink = (categoryId: string | undefined, pet: string): Link => ({
 
 /**
  * One link's destination: a type, then the one or two choices that type needs,
- * and a live «مقصد» preview of where the storefront will send it — the code
- * `fallback` while nothing is saved. Fully controlled (`value` / `onChange`): the
+ * and a live «مقصد» preview of where the storefront will send it. While nothing
+ * is saved it shows the built-in `fallback`, which the storefront narrows to the
+ * pet's shelf when the catalogue has no such category. Fully controlled (`value` / `onChange`): the
  * block form owns the state and saves it with the rest of the block. Unset is
  * `undefined`, never an empty link, so a cleared picker stores nothing.
  *
