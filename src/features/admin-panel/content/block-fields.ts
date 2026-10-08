@@ -4,7 +4,9 @@
 // (`link`), a routine tab's categories (`categories`) or the featured boxes'
 // products (`products`). A picker sits right after the label it sends somewhere
 // and carries the code destination it previews while nothing is saved
-// (`fallback`), so an editable label never hides where it goes. This is the ONE
+// (`fallback`). That preview is the built-in default: the storefront narrows a
+// default shelf to its pet when the catalogue has no such category
+// (`knownShelfPath`), and the preview does not show that. This is the ONE
 // place the schemas' fields are spelled out for the UI —
 // `block-fields.test.ts` checks the text and image fields against each key's
 // default and the pickers against the schema itself, so neither can drift.

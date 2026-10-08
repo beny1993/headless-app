@@ -4,10 +4,12 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  knownShelfPath,
   LIFE_MOMENT_TARGETS,
   momentEmoji,
   ROUTINE_TARGETS,
 } from '@/features/storefront/home/content';
+import { shopPath } from '@/lib/constant/paths';
 import {
   FOOTER_TARGETS,
   NAV_TARGETS,
@@ -57,6 +59,33 @@ describe('life-moment targets', () => {
       expect(SEED_SLUGS).toContain(target.filters.category);
       expect(pets).toContain(target.filters.pet);
     }
+  });
+});
+
+describe('knownShelfPath', () => {
+  const slugs = ['dry-food', 'cat-toys'];
+
+  it('keeps a category the catalogue has, with its pet', () => {
+    expect(knownShelfPath({ category: 'dry-food', pet: 'cat' }, slugs)).toBe(
+      shopPath({ category: 'dry-food', pet: 'cat' }),
+    );
+  });
+
+  it('drops a category the catalogue lacks and keeps the pet, as a deleted saved category does', () => {
+    expect(knownShelfPath({ category: 'toys', pet: 'cat' }, slugs)).toBe(
+      shopPath({ pet: 'cat' }),
+    );
+    expect(knownShelfPath({ category: 'wet-food' }, slugs)).toBe(shopPath());
+    expect(knownShelfPath({ category: 'dry-food', pet: 'dog' }, [])).toBe(
+      shopPath({ pet: 'dog' }),
+    );
+  });
+
+  it('leaves a link that names no category as it is', () => {
+    expect(knownShelfPath({ pet: 'dog' }, slugs)).toBe(
+      shopPath({ pet: 'dog' }),
+    );
+    expect(knownShelfPath({}, [])).toBe(shopPath());
   });
 });
 

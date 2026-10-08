@@ -265,6 +265,22 @@ test('a search, and a page past the end, stay out of the index with no canonical
   }
 });
 
+test('an unknown category is not found, alone or with a pet', async ({
+  page,
+}) => {
+  const unknown: Record<string, string>[] = [
+    { category: 'no-such-category' },
+    { category: 'no-such-category', pet: 'cat' },
+  ];
+  // Fetched rather than visited: the watch would count a 404 document.
+  for (const params of unknown) {
+    const response = await page.request.get(
+      `${PATHS.SHOP}?${new URLSearchParams(params)}`,
+    );
+    expect(response.status()).toBe(404);
+  }
+});
+
 test('the about page names itself, to Google and in its share card', async ({
   page,
 }) => {
