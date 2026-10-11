@@ -49,7 +49,7 @@ export const POST_NOTE = 'هزینهٔ ارسال بر اساس استان به 
 
 /** Under the courier option on the checkout, and beside a courier order. */
 export const COURIER_NOTE =
-  'ارسال سریع‌تر از محدودهٔ هروی؛ هزینهٔ پیک هنگام تحویل با شماست.';
+  'ارسال سریع‌تر از محدودهٔ پاسداران؛ هزینهٔ پیک هنگام تحویل با شماست.';
 
 /** In place of an amount on a courier order's shipping row. */
 export const COURIER_FEE_TEXT = 'هنگام تحویل، با پیک';
