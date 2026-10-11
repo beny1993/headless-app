@@ -130,11 +130,7 @@ export default async function AdminOrderDetailPage({
                 value={formatToman(order.subtotal)}
               />
               <TotalsRow
-                label={
-                  order.deliveryMethod === DELIVERY_METHODS.COURIER
-                    ? `${DELIVERY_METHOD_LABELS[order.deliveryMethod]} (${order.provinceName})`
-                    : `هزینه ارسال (${order.provinceName})`
-                }
+                label={`هزینه ارسال (${order.provinceName})`}
                 value={
                   order.deliveryMethod === DELIVERY_METHODS.COURIER
                     ? COURIER_FEE_TEXT

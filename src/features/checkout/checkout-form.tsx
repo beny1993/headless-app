@@ -70,6 +70,7 @@ import {
   DELIVERY_METHODS,
   DELIVERY_METHOD_LABELS,
   effectiveDeliveryMethod,
+  POST_NOTE,
   type DeliveryMethod,
 } from '@/lib/orders/delivery-method';
 import { RECEIPT_UPLOAD_FAILED, receiptSchema } from '@/lib/orders/receipt';
@@ -994,7 +995,7 @@ export function CheckoutForm({
                     [
                       {
                         id: DELIVERY_METHODS.POST,
-                        sub: 'هزینهٔ ارسال بر اساس استان به سفارش اضافه می‌شود',
+                        sub: POST_NOTE,
                         icon: <Package size={18} aria-hidden="true" />,
                         disabled: false,
                       },

@@ -108,8 +108,9 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   (`src/logic/admin/product-removal.ts`) and answers which it did.
 - **Order items snapshot** title/SKU/unit price; shipping fee is snapshotted on
   the order — 0 for a courier order («ارسال با پیک», Tehran only, paid to the
-  courier on delivery; `src/lib/orders/delivery-method.ts`). Orders move through an explicit state machine. Oversell prevention
-  is one atomic `UPDATE … WHERE stock >= qty RETURNING`.
+  courier on delivery; `src/lib/orders/delivery-method.ts`). Orders move
+  through an explicit state machine. Oversell prevention is one atomic
+  `UPDATE … WHERE stock >= qty RETURNING`.
 - **Payments** are keyed by gateway authority id; verification is server-side and
   idempotent (Zarinpal redirect → callback → verify; no webhooks).
 - **Card to card waits for its receipt.** A card-to-card order is born

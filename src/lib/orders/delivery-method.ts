@@ -44,6 +44,9 @@ export const DELIVERY_METHOD_LABELS: Record<DeliveryMethod, string> = {
   [DELIVERY_METHODS.COURIER]: 'ارسال با پیک',
 };
 
+/** Under the post option on the checkout. */
+export const POST_NOTE = 'هزینهٔ ارسال بر اساس استان به سفارش اضافه می‌شود';
+
 /** Under the courier option on the checkout, and beside a courier order. */
 export const COURIER_NOTE =
   'ارسال سریع‌تر از محدودهٔ هروی؛ هزینهٔ پیک هنگام تحویل با شماست.';
