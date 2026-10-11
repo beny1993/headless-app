@@ -5,6 +5,7 @@ import {
   formatJalaliMonth,
   formatJalaliYear,
   formatNumber,
+  formatPercent,
   formatToman,
   jalaliMonthStart,
   jalaliYearMonth,
@@ -80,6 +81,32 @@ describe('formatNumber', () => {
   it('rejects NaN and Infinity', () => {
     expect(() => formatNumber(Number.NaN)).toThrow(RangeError);
     expect(() => formatNumber(Number.POSITIVE_INFINITY)).toThrow(RangeError);
+  });
+});
+
+describe('formatPercent', () => {
+  it('renders a ratio as a Persian percent', () => {
+    expect(formatPercent(0.5)).toBe('۵۰٪');
+    expect(formatPercent(1)).toBe('۱۰۰٪');
+  });
+
+  it('keeps one decimal at most, with the Persian decimal separator', () => {
+    expect(formatPercent(0.025)).toBe('۲٫۵٪');
+    expect(formatPercent(0.12345)).toBe('۱۲٫۳٪');
+  });
+
+  it('renders zero, and a negative zero, as ۰٪', () => {
+    expect(formatPercent(0)).toBe('۰٪');
+    expect(formatPercent(-0)).toBe('۰٪');
+  });
+
+  it('allows more than a hundred percent (orders can outnumber views)', () => {
+    expect(formatPercent(1.5)).toBe('۱۵۰٪');
+  });
+
+  it('throws on a ratio that is not finite', () => {
+    expect(() => formatPercent(Number.NaN)).toThrow(RangeError);
+    expect(() => formatPercent(Infinity)).toThrow(RangeError);
   });
 });
 

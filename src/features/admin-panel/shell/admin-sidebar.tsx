@@ -18,6 +18,7 @@ import {
   Settings,
   ShoppingCart,
   Tag,
+  TrendingUp,
   Users,
   X,
 } from 'lucide-react';
@@ -79,6 +80,12 @@ const NAV_ITEMS: NavItem[] = [
     href: PROTECTED_PATHS.USERS,
     label: 'کاربران',
     icon: Users,
+    match: 'prefix',
+  },
+  {
+    href: PROTECTED_PATHS.INSIGHTS,
+    label: 'پرطرفدارها',
+    icon: TrendingUp,
     match: 'prefix',
   },
   {

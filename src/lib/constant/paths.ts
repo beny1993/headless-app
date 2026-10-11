@@ -89,6 +89,8 @@ export const PROTECTED_PATHS = {
   ORDERS: '/admin-panel/orders',
   /** Every account, admins and customers alike — «کاربران» in the sidebar. */
   USERS: '/admin-panel/users',
+  /** What shoppers buy and look at — «پرطرفدارها» in the sidebar. */
+  INSIGHTS: '/admin-panel/insights',
   /** The discount-code manager — «کدهای تخفیف» in the sidebar. */
   DISCOUNTS: '/admin-panel/discounts',
   /** The shipping-rate editor — «نرخ ارسال» in the sidebar. */

@@ -55,6 +55,9 @@ vi.mock('@/db/dao/UserDao', () => ({
 vi.mock('@/logic/users/get-admin-user', () => ({
   getAdminUser: mocks.read,
 }));
+vi.mock('@/logic/admin/product-insights', () => ({
+  loadProductInsights: mocks.read,
+}));
 
 const id = '00000000-0000-4000-8000-000000000001';
 const pageModules = import.meta.glob('./admin-panel/**/page.tsx');
@@ -95,6 +98,14 @@ const pages = [
       (await import('./admin-panel/users/[id]/page')).default({
         // User ids are text, not uuids: a Better Auth-shaped one.
         params: Promise.resolve({ id: 'aB3dE5gH7jK9mN1pQ3sT5vX7zA9cD1f' }),
+      }),
+  ],
+  [
+    './admin-panel/insights/page.tsx',
+    'insights',
+    async () =>
+      (await import('./admin-panel/insights/page')).default({
+        searchParams: Promise.resolve({}),
       }),
   ],
   [
