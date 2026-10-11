@@ -358,6 +358,14 @@ describe('buildProductInsights', () => {
       ]);
     });
 
+    it('leaves out a deactivated product: there is nothing to fix on it', () => {
+      const report = build({
+        products: [product('retired', { isActive: false }), product('live')],
+        pageViews: views({ '/product/retired': 90, '/product/live': 3 }),
+      });
+      expect(report.seenNotSold.map(({ slug }) => slug)).toEqual(['live']);
+    });
+
     it(`keeps ${ACTION_LIST_SIZE}`, () => {
       const slugs = Array.from(
         { length: ACTION_LIST_SIZE + 2 },

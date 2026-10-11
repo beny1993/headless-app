@@ -22,7 +22,7 @@ const CELL = 'px-4 py-3.5';
 const NUM_CELL = `${CELL} nums whitespace-nowrap`;
 const ROW = 'border-border hover:bg-secondary/20 border-t transition-colors';
 
-/** The insights page for one window: page one, so `?days` only off default. */
+/** The insights page for one window. */
 export const insightsHref = (days: InsightWindowDays) =>
   `${PROTECTED_PATHS.INSIGHTS}?days=${days}`;
 

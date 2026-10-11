@@ -7,7 +7,9 @@
 //   · Anything going wrong (a timeout, an HTTP error, a body that is not the
 //     shape below) ⇒ `unavailable`, logged without the credentials. Never a throw.
 //   · A result is cached for `CACHE_TTL_MS` per window, so an admin flipping
-//     between windows or reloading does not cost a round trip each time.
+//     between windows or reloading does not cost a round trip each time; a
+//     failure for `FAILURE_TTL_MS`, so a down Umami costs one timeout a
+//     minute, not one per reload. One deadline covers a whole read.
 //
 // Self-hosted Umami has no API keys, so the client signs in
 // (`POST /api/auth/login`) and keeps the token in memory; a 401 later means it
@@ -18,12 +20,20 @@
 // file's business: it asks for `url`, falls back to `path` on a 400, and
 // remembers whichever worked.
 import { z } from 'zod';
-import { getEnvVariable, VARS } from '@/lib/utils/env';
+import { getEnvVariable, isProductionServer, VARS } from '@/lib/utils/env';
 
-/** Per request: a slow Umami must not hold the admin page hostage. */
+/**
+ * For a whole read, every request in it together (sign-in, retry, the v3
+ * fallback): a slow Umami must not hold the admin page hostage.
+ */
 export const UMAMI_TIMEOUT_MS = 4_000;
 /** How long one window's numbers are served from memory. */
 export const CACHE_TTL_MS = 5 * 60_000;
+/**
+ * How long a failed read is remembered: while Umami is down, a reload shows
+ * «unavailable» at once instead of waiting out the timeout again.
+ */
+export const FAILURE_TTL_MS = 60_000;
 /** Rows per metric. Umami sorts by count, so this keeps the head of the list. */
 const METRIC_LIMIT = 500;
 
@@ -45,8 +55,10 @@ type UmamiConfig = {
   password: string;
 };
 
+// https only in a deployed build: the password and the bearer token travel to
+// this host. Plain http is for a local stand-in.
 const configSchema = z.object({
-  scriptUrl: z.url({ protocol: /^https?$/ }),
+  scriptUrl: z.url({ protocol: isProductionServer() ? /^https$/ : /^https?$/ }),
   websiteId: z.string().trim().min(1),
   username: z.string().trim().min(1),
   password: z.string().min(1),
@@ -84,8 +96,17 @@ let token: string | null = null;
 /** `url` (v2) until a 400 says the server wants `path` (v3). */
 let pageMetricType: 'url' | 'path' = 'url';
 const cache = new Map<string, { at: number; rows: UmamiMetricRow[] }>();
+const failures = new Map<string, number>();
 
-const signIn = async (config: UmamiConfig): Promise<string> => {
+// Every request: one shared deadline, no cache, and no redirects — a redirect
+// would resend the sign-in body, password included, to wherever it points.
+const requestInit = (signal: AbortSignal) =>
+  ({ signal, cache: 'no-store', redirect: 'error' }) as const;
+
+const signIn = async (
+  config: UmamiConfig,
+  signal: AbortSignal,
+): Promise<string> => {
   const response = await fetch(`${config.origin}/api/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -93,8 +114,7 @@ const signIn = async (config: UmamiConfig): Promise<string> => {
       username: config.username,
       password: config.password,
     }),
-    signal: AbortSignal.timeout(UMAMI_TIMEOUT_MS),
-    cache: 'no-store',
+    ...requestInit(signal),
   });
   if (!response.ok) throw new UmamiError(`login answered ${response.status}`);
   const parsed = loginSchema.safeParse(await response.json());
@@ -108,6 +128,7 @@ const requestMetric = (
   type: string,
   startAt: number,
   endAt: number,
+  signal: AbortSignal,
 ) => {
   const params = new URLSearchParams({
     type,
@@ -119,8 +140,7 @@ const requestMetric = (
     `${config.origin}/api/websites/${encodeURIComponent(config.websiteId)}/metrics?${params}`,
     {
       headers: { authorization: `Bearer ${bearer}` },
-      signal: AbortSignal.timeout(UMAMI_TIMEOUT_MS),
-      cache: 'no-store',
+      ...requestInit(signal),
     },
   );
 };
@@ -131,23 +151,26 @@ const fetchMetric = async (
   startAt: number,
   endAt: number,
 ): Promise<UmamiMetricRow[]> => {
+  const signal = AbortSignal.timeout(UMAMI_TIMEOUT_MS);
+  const metric = (bearer: string, type: string) =>
+    requestMetric(config, bearer, type, startAt, endAt, signal);
   let signedInNow = false;
   if (!token) {
-    token = await signIn(config);
+    token = await signIn(config, signal);
     signedInNow = true;
   }
   let type = kind === 'pages' ? pageMetricType : 'referrer';
-  let response = await requestMetric(config, token, type, startAt, endAt);
+  let response = await metric(token, type);
 
   // An expired token: one fresh sign-in, unless this one is already fresh.
   if (response.status === 401 && !signedInNow) {
-    token = await signIn(config);
-    response = await requestMetric(config, token, type, startAt, endAt);
+    token = await signIn(config, signal);
+    response = await metric(token, type);
   }
   // v3 refuses v2's metric name: switch once, and remember.
   if (response.status === 400 && kind === 'pages' && type === 'url') {
     type = 'path';
-    response = await requestMetric(config, token, type, startAt, endAt);
+    response = await metric(token, type);
     if (response.ok) pageMetricType = 'path';
   }
   if (response.status === 401) token = null;
@@ -182,12 +205,17 @@ export const readUmamiMetric = async (
   if (cached && now.getTime() - cached.at < CACHE_TTL_MS) {
     return { status: 'ok', rows: cached.rows };
   }
+  const failedAt = failures.get(cacheKey);
+  if (failedAt !== undefined && now.getTime() - failedAt < FAILURE_TTL_MS) {
+    return { status: 'unavailable' };
+  }
 
   const endAt = now.getTime();
   const startAt = endAt - days * 24 * 60 * 60_000;
   try {
     const rows = await fetchMetric(config, kind, startAt, endAt);
     cache.set(cacheKey, { at: now.getTime(), rows });
+    failures.delete(cacheKey);
     return { status: 'ok', rows };
   } catch (error) {
     // The reason only: never the config, which carries the password.
@@ -198,6 +226,7 @@ export const readUmamiMetric = async (
           ? error.name
           : 'unknown';
     console.warn(`[umami] ${kind} unavailable: ${reason}`);
+    failures.set(cacheKey, now.getTime());
     return { status: 'unavailable' };
   }
 };

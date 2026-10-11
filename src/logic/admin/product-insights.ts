@@ -64,7 +64,7 @@ export type ProductInsights = {
   products: ProductInsight[];
   categories: GroupInsight[];
   pets: GroupInsight[];
-  /** Viewed, nothing sold — most viewed first. Empty without views. */
+  /** Active, viewed, nothing sold — most viewed first. Empty without views. */
   seenNotSold: ProductInsight[];
   /** Active, stock 0, viewed — most viewed first. Empty without views. */
   soldOutWanted: ProductInsight[];
@@ -236,7 +236,9 @@ export const buildProductInsights = ({
     ),
     pets: PET_TYPE_VALUES.flatMap((pet) => pets.get(pet) ?? []),
     seenNotSold: productInsights
-      .filter((product) => viewed(product) && product.units === 0)
+      .filter(
+        (product) => viewed(product) && product.isActive && product.units === 0,
+      )
       .sort(byViews)
       .slice(0, ACTION_LIST_SIZE),
     soldOutWanted: productInsights

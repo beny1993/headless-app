@@ -81,6 +81,61 @@ describe('readUmamiMetric', () => {
     });
   });
 
+  describe('the transport', () => {
+    beforeEach(() => configure());
+
+    it('shares one deadline across every request of a read', async () => {
+      answer(
+        login('old'),
+        metrics([]),
+        json({}, 401),
+        login('new'),
+        json({}, 400),
+        metrics([]),
+      );
+      const { readUmamiMetric } = await load();
+      await readUmamiMetric('pages', 30, NOW);
+      expect(calls[0]!.init.signal).toBeInstanceOf(AbortSignal);
+      // The second read: stale token, sign-in, v3 fallback — four requests.
+      await readUmamiMetric('pages', 7, NOW);
+      const second = calls.slice(2).map(({ init }) => init.signal);
+      expect(second).toHaveLength(4);
+      expect(new Set(second).size).toBe(1);
+      expect(second[0]).not.toBe(calls[0]!.init.signal);
+    });
+
+    it('never follows a redirect, so the password cannot be resent elsewhere', async () => {
+      answer(login(), metrics([]));
+      const { readUmamiMetric } = await load();
+      await readUmamiMetric('pages', 30, NOW);
+      expect(calls.map(({ init }) => init.redirect)).toEqual([
+        'error',
+        'error',
+      ]);
+    });
+
+    it('refuses a plain-http Umami in a deployed build', async () => {
+      configure({ scriptUrl: 'http://analytics.example.test/script.js' });
+      vi.stubEnv('NODE_ENV', 'production');
+      const { readUmamiMetric } = await load();
+      expect(await readUmamiMetric('pages', 30, NOW)).toEqual({
+        status: 'off',
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('allows a plain-http stand-in outside a deployed build', async () => {
+      configure({ scriptUrl: 'http://localhost:4545/script.js' });
+      answer(login(), metrics([]));
+      const { readUmamiMetric } = await load();
+      expect(await readUmamiMetric('pages', 30, NOW)).toEqual({
+        status: 'ok',
+        rows: [],
+      });
+      expect(calls[0]!.url.origin).toBe('http://localhost:4545');
+    });
+  });
+
   describe('a working Umami', () => {
     beforeEach(() => configure());
 
@@ -318,11 +373,29 @@ describe('readUmamiMetric', () => {
       expect(calls).toHaveLength(4);
     });
 
-    it('does not cache a failure', async () => {
+    it('remembers a failure for a minute, then tries again', async () => {
+      answer(login(), json({}, 500), metrics([]));
+      const { readUmamiMetric, FAILURE_TTL_MS } = await load();
+      await readUmamiMetric('pages', 30, NOW);
+
+      const soon = new Date(NOW.getTime() + FAILURE_TTL_MS - 1);
+      expect(await readUmamiMetric('pages', 30, soon)).toEqual({
+        status: 'unavailable',
+      });
+      expect(calls).toHaveLength(2);
+
+      const later = new Date(NOW.getTime() + FAILURE_TTL_MS);
+      expect(await readUmamiMetric('pages', 30, later)).toEqual({
+        status: 'ok',
+        rows: [],
+      });
+    });
+
+    it('keeps a failure to its own window', async () => {
       answer(login(), json({}, 500), metrics([]));
       const { readUmamiMetric } = await load();
       await readUmamiMetric('pages', 30, NOW);
-      expect(await readUmamiMetric('pages', 30, NOW)).toEqual({
+      expect(await readUmamiMetric('pages', 7, NOW)).toEqual({
         status: 'ok',
         rows: [],
       });
