@@ -26,6 +26,7 @@ const checkoutQuerySchema = z.object({
 /** The waiting order as the form resumes it: its own lines and totals. */
 const toResumableOrder = (order: OwnedOrder): ResumableOrder => ({
   orderId: order.id,
+  deliveryMethod: order.deliveryMethod,
   lines: toSummaryLines(order.items),
   subtotal: order.subtotal,
   discount: order.discount,

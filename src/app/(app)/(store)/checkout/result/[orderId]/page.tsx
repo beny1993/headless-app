@@ -21,6 +21,7 @@ import {
   formatJalaliDateTime,
   toPersianDigits,
 } from '@/lib/format';
+import { DELIVERY_METHOD_LABELS } from '@/lib/orders/delivery-method';
 import {
   ORDER_STATUSES,
   PAYMENT_METHOD_LABELS,
@@ -82,6 +83,10 @@ export default async function Page({
         <span className="text-muted-foreground">روش پرداخت</span>
       </div>
       <div className="border-border flex items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+        <span>{DELIVERY_METHOD_LABELS[order.deliveryMethod]}</span>
+        <span className="text-muted-foreground">روش ارسال</span>
+      </div>
+      <div className="border-border flex items-center justify-between gap-3 border-t px-4 py-3 text-sm">
         <span
           className={`rounded-full px-2.5 py-1 text-xs font-medium ${status.badge}`}
         >
@@ -96,6 +101,7 @@ export default async function Page({
           discount={order.discount}
           shippingFee={order.shippingFee}
           total={order.total}
+          deliveryMethod={order.deliveryMethod}
         />
       </div>
     </div>

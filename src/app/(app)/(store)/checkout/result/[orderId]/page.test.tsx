@@ -7,6 +7,11 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import { checkoutResumePath } from '@/lib/constant/paths';
+import { formatToman } from '@/lib/format';
+import {
+  COURIER_FEE_TEXT,
+  DELIVERY_METHODS,
+} from '@/lib/orders/delivery-method';
 import type { OwnedOrder } from '@/logic/checkout/get-order';
 import {
   acceptedCardToCardOrder,
@@ -71,5 +76,32 @@ describe('the result page of a card-to-card order', () => {
     expect(precedes(details(), box())).toBe(true);
     expect(box()?.querySelectorAll('img')).toHaveLength(1);
     expectNothingToUpload();
+  });
+});
+
+describe('the result page and the delivery method', () => {
+  it('names post, with the fee, for a post order', async () => {
+    render(await page(acceptedCardToCardOrder));
+
+    expect(screen.getByText('روش ارسال')).toBeTruthy();
+    expect(screen.getByText('پست')).toBeTruthy();
+    expect(screen.getByText(formatToman(25_000))).toBeTruthy();
+    expect(screen.queryByText(COURIER_FEE_TEXT)).toBeNull();
+  });
+
+  it('names the courier, and the fee as paid on delivery, for a courier order', async () => {
+    render(
+      await page({
+        ...acceptedCardToCardOrder,
+        deliveryMethod: DELIVERY_METHODS.COURIER,
+        shippingFee: 0,
+        total: acceptedCardToCardOrder.subtotal,
+      }),
+    );
+
+    // Once as the method, once on the summary's shipping row.
+    expect(screen.getAllByText('ارسال با پیک')).toHaveLength(2);
+    expect(screen.getByText(COURIER_FEE_TEXT)).toBeTruthy();
+    expect(screen.queryByText(formatToman(0))).toBeNull();
   });
 });

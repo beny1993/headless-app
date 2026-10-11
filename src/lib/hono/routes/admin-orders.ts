@@ -12,6 +12,7 @@
 // directly server-side (the products-page precedent), so there is no list API to
 // keep in step. What must be an API is the transition (a client mutation) and the
 // by-id read (the projection the security pass probes).
+import { deliveryMethodSchema } from '@/lib/orders/delivery-method';
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
@@ -87,6 +88,7 @@ const AdminOrderDetailSchema = z
     orderNo: z.number().int().positive(),
     status: orderStatusSchema,
     paymentMethod: paymentMethodSchema,
+    deliveryMethod: deliveryMethodSchema,
     subtotal: z.number().int().positive(),
     shippingFee: z.number().int().nonnegative(),
     discount: z.number().int().nonnegative(),
@@ -117,6 +119,7 @@ const toAdminOrderResponse = (order: AdminOrder): AdminOrderDetailResponse => ({
   orderNo: order.orderNo,
   status: order.status,
   paymentMethod: order.paymentMethod,
+  deliveryMethod: order.deliveryMethod,
   subtotal: order.subtotal,
   shippingFee: order.shippingFee,
   discount: order.discount,

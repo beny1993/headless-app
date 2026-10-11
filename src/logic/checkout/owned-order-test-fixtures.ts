@@ -1,6 +1,7 @@
 // A card-to-card order as `getOwnedOrder` hands it to the shopper's pages, for
 // the page tests: every column the row carries, waiting for its receipt — and
 // the same order once its first receipt has accepted it.
+import { DELIVERY_METHODS } from '@/lib/orders/delivery-method';
 import {
   ORDER_STATUSES,
   PAYMENT_METHODS,
@@ -17,6 +18,7 @@ export const waitingCardToCardOrder: OwnedOrder = {
   userId: 'user-1',
   status: ORDER_STATUSES.AWAITING_RECEIPT,
   paymentMethod: PAYMENT_METHODS.COD,
+  deliveryMethod: DELIVERY_METHODS.POST,
   subtotal: 125_000,
   shippingFee: 25_000,
   discount: 0,

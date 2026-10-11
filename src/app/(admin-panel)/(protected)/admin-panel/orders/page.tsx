@@ -13,6 +13,10 @@ import {
   toPersianDigits,
 } from '@/lib/format';
 import {
+  DELIVERY_METHODS,
+  DELIVERY_METHOD_LABELS,
+} from '@/lib/orders/delivery-method';
+import {
   ORDER_STATUS_VALUES,
   orderStatusSchema,
   PAYMENT_METHOD_LABELS,
@@ -147,6 +151,15 @@ export default async function AdminOrdersPage({
                 </td>
                 <td className="px-4 py-3.5 font-medium">
                   {order.recipientName}
+                  {/* Courier orders leave from Heravi by hand, not by post:
+                      marked here so they are not packed for the post office. */}
+                  {order.deliveryMethod === DELIVERY_METHODS.COURIER && (
+                    <span className="ms-2 align-middle">
+                      <Pill tone="accent">
+                        {DELIVERY_METHOD_LABELS[order.deliveryMethod]}
+                      </Pill>
+                    </span>
+                  )}
                 </td>
                 <td className="text-muted-foreground px-4 py-3.5 text-xs">
                   {formatJalali(order.createdAt)}

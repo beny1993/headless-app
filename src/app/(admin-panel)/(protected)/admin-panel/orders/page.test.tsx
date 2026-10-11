@@ -26,6 +26,7 @@ const ORDER: AdminOrderRow = {
   recipientName: 'گیرنده آزمایشی',
   status: ORDER_STATUSES.PAID,
   paymentMethod: PAYMENT_METHODS.ZARINPAL,
+  deliveryMethod: 'post',
   total: 250_000,
   createdAt: new Date('2026-09-01T10:00:00Z'),
   itemCount: 1,
@@ -118,5 +119,35 @@ describe('admin orders paging', () => {
     expect(
       screen.getByRole('link', { name: `صفحه ${formatNumber(1)}` }),
     ).toBeTruthy();
+  });
+});
+
+describe('admin orders delivery method', () => {
+  it('marks a courier order, and only a courier order', async () => {
+    pageForAdmin.mockResolvedValue({
+      items: [
+        ORDER,
+        {
+          ...ORDER,
+          id: '00000000-0000-4000-8000-000000000102',
+          orderNo: 102,
+          recipientName: 'گیرنده پیک',
+          deliveryMethod: 'courier',
+        },
+      ],
+      total: 2,
+    });
+
+    await renderPage({});
+
+    const rows = screen.getAllByRole('row');
+    const courierRow = rows.find((row) =>
+      row.textContent?.includes('گیرنده پیک'),
+    )!;
+    const postRow = rows.find((row) =>
+      row.textContent?.includes('گیرنده آزمایشی'),
+    )!;
+    expect(courierRow.textContent).toContain('ارسال با پیک');
+    expect(postRow.textContent).not.toContain('ارسال با پیک');
   });
 });
