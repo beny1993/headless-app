@@ -5,6 +5,7 @@
 //
 // The DAOs and the SMS seam are mocked at the module edge; the database-backed
 // proof that the hooks fire lives in the two integration suites next door.
+import type { DeliveryMethod } from '@/lib/orders/delivery-method';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PAYMENT_METHODS, type PaymentMethod } from '@/lib/orders/order-status';
 import { SMS_TEMPLATES } from '@/lib/sms';
@@ -37,6 +38,7 @@ const ORDER = {
   orderNo: 1024,
   total: 2_450_000,
   paymentMethod: PAYMENT_METHODS.COD as PaymentMethod,
+  deliveryMethod: 'post' as DeliveryMethod,
 };
 
 describe('newOrderAlert', () => {
@@ -53,6 +55,13 @@ describe('newOrderAlert', () => {
 
   it('formats the total through formatToman', () => {
     expect(parametersOf(ORDER)).toMatchObject({ AMOUNT: '۲٬۴۵۰٬۰۰۰ تومان' });
+  });
+
+  it('adds the courier to the method for a courier order, and nothing for post', () => {
+    expect(parametersOf({ ...ORDER, deliveryMethod: 'courier' }).METHOD).toBe(
+      'کارت به کارت، ارسال با پیک',
+    );
+    expect(parametersOf(ORDER).METHOD).toBe('کارت به کارت');
   });
 
   it('names the card-to-card method in Persian', () => {

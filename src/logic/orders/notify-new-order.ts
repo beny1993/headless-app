@@ -23,6 +23,11 @@ import { OrderDao } from '@/db/dao/OrderDao';
 import { UserDao } from '@/db/dao/UserDao';
 import { formatToman, toPersianDigits } from '@/lib/format';
 import {
+  DELIVERY_METHODS,
+  DELIVERY_METHOD_LABELS,
+  type DeliveryMethod,
+} from '@/lib/orders/delivery-method';
+import {
   PAYMENT_METHOD_LABELS,
   type PaymentMethod,
 } from '@/lib/orders/order-status';
@@ -40,13 +45,20 @@ export const newOrderAlert = (order: {
   orderNo: number;
   total: number;
   paymentMethod: PaymentMethod;
+  deliveryMethod: DeliveryMethod;
 }) =>
   newOrderSms({
     ORDER: toPersianDigits(order.orderNo),
     AMOUNT: formatToman(order.total),
     // The admin panel's own name for the method, so the SMS and the orders
     // page read the same.
-    METHOD: PAYMENT_METHOD_LABELS[order.paymentMethod],
+    // A courier order is the one that is waiting on a ride from Heravi: said
+    // here, after the payment method, so the admin knows from the SMS alone.
+    // Inside METHOD, so the SMS.ir panel template needs no new variable.
+    METHOD:
+      order.deliveryMethod === DELIVERY_METHODS.COURIER
+        ? `${PAYMENT_METHOD_LABELS[order.paymentMethod]}، ${DELIVERY_METHOD_LABELS[order.deliveryMethod]}`
+        : PAYMENT_METHOD_LABELS[order.paymentMethod],
   });
 
 /**

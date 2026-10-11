@@ -25,7 +25,11 @@ import {
   formatJalaliDateTime,
   toPersianDigits,
 } from '@/lib/format';
-import { DELIVERY_METHOD_LABELS } from '@/lib/orders/delivery-method';
+import {
+  COURIER_NOTE,
+  DELIVERY_METHODS,
+  DELIVERY_METHOD_LABELS,
+} from '@/lib/orders/delivery-method';
 import {
   OPEN_ORDER_STATUSES,
   ORDER_STATUSES,
@@ -211,6 +215,11 @@ export default async function Page({
             <p className="text-muted-foreground text-sm leading-relaxed">
               روش ارسال: {DELIVERY_METHOD_LABELS[order.deliveryMethod]}
             </p>
+            {order.deliveryMethod === DELIVERY_METHODS.COURIER && (
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                {COURIER_NOTE}
+              </p>
+            )}
             <p className="text-muted-foreground text-sm leading-relaxed">
               {order.recipientName} · {order.city}
             </p>
