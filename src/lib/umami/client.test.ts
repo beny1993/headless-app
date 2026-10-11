@@ -219,6 +219,35 @@ describe('readUmamiMetric', () => {
     });
   });
 
+  describe('concurrent reads', () => {
+    beforeEach(() => configure());
+
+    it('share one sign-in when both metrics are read at once', async () => {
+      answer(login(), metrics([{ x: '/product/a', y: 1 }]), metrics([]));
+      const { readUmamiMetric } = await load();
+      const [pages, referrers] = await Promise.all([
+        readUmamiMetric('pages', 30, NOW),
+        readUmamiMetric('referrers', 30, NOW),
+      ]);
+      expect(pages.status).toBe('ok');
+      expect(referrers.status).toBe('ok');
+      expect(
+        calls.filter(({ url }) => url.pathname === '/api/auth/login'),
+      ).toHaveLength(1);
+    });
+
+    it('share one read of the same window', async () => {
+      answer(login(), metrics([{ x: '/product/a', y: 1 }]));
+      const { readUmamiMetric } = await load();
+      const [first, second] = await Promise.all([
+        readUmamiMetric('pages', 30, NOW),
+        readUmamiMetric('pages', 30, NOW),
+      ]);
+      expect(second).toEqual(first);
+      expect(calls).toHaveLength(2);
+    });
+  });
+
   describe('Umami v3', () => {
     beforeEach(() => configure());
 

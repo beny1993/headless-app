@@ -516,7 +516,9 @@ export class OrderDao {
    * is `sum(qty × unit_price)` from the line snapshots, integer Toman, so a
    * later re-price never rewrites a past window; the order's shipping fee and
    * discount are not a product's and stay out. `orders` counts distinct
-   * orders, the numerator of the page's conversion rate.
+   * orders, the numerator of the page's conversion rate. The window is the
+   * order's creation, as on the dashboard: an order placed before `cutoff`
+   * and paid after it stays out.
    */
   static async salesByProductSince(cutoff: Date): Promise<ProductSalesRow[]> {
     const rows = await db

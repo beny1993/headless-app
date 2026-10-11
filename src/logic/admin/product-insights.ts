@@ -37,7 +37,12 @@ export type InsightNumbers = {
   units: number;
   /** Integer Toman. */
   revenue: number;
-  /** Distinct revenue orders — the conversion rate's numerator. */
+  /**
+   * Revenue orders holding the product — the conversion rate's numerator.
+   * A group sums its products', so one order with two cat products counts
+   * twice under «گربه»: a purchase per product viewed, matching the views it
+   * is divided by (also summed per product).
+   */
   orders: number;
   views: number | null;
 };
@@ -64,7 +69,10 @@ export type ProductInsights = {
   products: ProductInsight[];
   categories: GroupInsight[];
   pets: GroupInsight[];
-  /** Active, viewed, nothing sold — most viewed first. Empty without views. */
+  /**
+   * Active, in stock, viewed, nothing sold — most viewed first. Sold-out
+   * products belong to `soldOutWanted` instead. Empty without views.
+   */
   seenNotSold: ProductInsight[];
   /** Active, stock 0, viewed — most viewed first. Empty without views. */
   soldOutWanted: ProductInsight[];
@@ -237,7 +245,11 @@ export const buildProductInsights = ({
     pets: PET_TYPE_VALUES.flatMap((pet) => pets.get(pet) ?? []),
     seenNotSold: productInsights
       .filter(
-        (product) => viewed(product) && product.isActive && product.units === 0,
+        (product) =>
+          viewed(product) &&
+          product.isActive &&
+          product.stock > 0 &&
+          product.units === 0,
       )
       .sort(byViews)
       .slice(0, ACTION_LIST_SIZE),

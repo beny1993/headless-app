@@ -4,15 +4,24 @@ import type { ProductInsightRow } from '@/db/dao/ProductDao';
 import type { UmamiResult } from '@/lib/umami/client';
 
 // The builder is pure; the DAOs and the Umami client are only `loadProductInsights`'s.
-vi.mock('@/db/dao/OrderDao', () => ({ OrderDao: {} }));
-vi.mock('@/db/dao/ProductDao', () => ({ ProductDao: {} }));
+vi.mock('@/db/dao/OrderDao', () => ({
+  OrderDao: { salesByProductSince: vi.fn() },
+}));
+vi.mock('@/db/dao/ProductDao', () => ({
+  ProductDao: { insightRows: vi.fn() },
+}));
 vi.mock('@/lib/umami/client', () => ({ readUmamiMetric: vi.fn() }));
+
+const { OrderDao } = await import('@/db/dao/OrderDao');
+const { ProductDao } = await import('@/db/dao/ProductDao');
+const { readUmamiMetric } = await import('@/lib/umami/client');
 
 const {
   ACTION_LIST_SIZE,
   PRODUCT_TABLE_SIZE,
   SOURCE_LIST_SIZE,
   buildProductInsights,
+  loadProductInsights,
   productSlugOfPath,
   sourceLabel,
 } = await import('./product-insights');
@@ -366,6 +375,15 @@ describe('buildProductInsights', () => {
       expect(report.seenNotSold.map(({ slug }) => slug)).toEqual(['live']);
     });
 
+    it('leaves out a sold-out product: it cannot sell, and has its own list', () => {
+      const report = build({
+        products: [product('empty', { stock: 0 }), product('live')],
+        pageViews: views({ '/product/empty': 90, '/product/live': 3 }),
+      });
+      expect(report.seenNotSold.map(({ slug }) => slug)).toEqual(['live']);
+      expect(report.soldOutWanted.map(({ slug }) => slug)).toEqual(['empty']);
+    });
+
     it(`keeps ${ACTION_LIST_SIZE}`, () => {
       const slugs = Array.from(
         { length: ACTION_LIST_SIZE + 2 },
@@ -452,6 +470,61 @@ describe('buildProductInsights', () => {
         referrers: views({ 't.me': 4 }),
       });
       expect(report.sources).toEqual([{ label: 'تلگرام', visits: 4 }]);
+    });
+  });
+
+  describe('loadProductInsights', () => {
+    const NOW = new Date('2026-10-11T10:00:00.000Z');
+
+    it('reads the window, then the products that sold or were viewed', async () => {
+      vi.mocked(OrderDao.salesByProductSince).mockResolvedValue([
+        sale('sold', 2, 200, 1),
+      ]);
+      vi.mocked(readUmamiMetric).mockImplementation(async (kind) =>
+        kind === 'pages'
+          ? views({
+              '/product/seen': 4,
+              '/product/seen?ref=ig': 1,
+              '/product/sold/': 2,
+              '/shop': 50,
+            })
+          : NO_SOURCES,
+      );
+      vi.mocked(ProductDao.insightRows).mockResolvedValue([
+        product('sold'),
+        product('seen'),
+      ]);
+
+      const report = await loadProductInsights(7, NOW);
+
+      expect(OrderDao.salesByProductSince).toHaveBeenCalledWith(
+        new Date(NOW.getTime() - 7 * 24 * 60 * 60_000),
+      );
+      expect(readUmamiMetric).toHaveBeenCalledWith('pages', 7, NOW);
+      expect(readUmamiMetric).toHaveBeenCalledWith('referrers', 7, NOW);
+      expect(ProductDao.insightRows).toHaveBeenCalledWith({
+        ids: ['id-sold'],
+        slugs: ['seen', 'sold'],
+      });
+      expect(report.products.map(({ slug, views: v }) => [slug, v])).toEqual([
+        ['sold', 2],
+        ['seen', 5],
+      ]);
+    });
+
+    it('asks for no slugs when Umami gave no views', async () => {
+      vi.mocked(OrderDao.salesByProductSince).mockResolvedValue([]);
+      vi.mocked(readUmamiMetric).mockResolvedValue({ status: 'unavailable' });
+      vi.mocked(ProductDao.insightRows).mockResolvedValue([]);
+
+      const report = await loadProductInsights(30, NOW);
+
+      expect(ProductDao.insightRows).toHaveBeenCalledWith({
+        ids: [],
+        slugs: [],
+      });
+      expect(report.viewsStatus).toBe('unavailable');
+      expect(report.sources).toBeNull();
     });
   });
 });

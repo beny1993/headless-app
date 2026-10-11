@@ -34,7 +34,11 @@ export const CACHE_TTL_MS = 5 * 60_000;
  * «unavailable» at once instead of waiting out the timeout again.
  */
 export const FAILURE_TTL_MS = 60_000;
-/** Rows per metric. Umami sorts by count, so this keeps the head of the list. */
+/**
+ * Rows per metric. Umami sorts by count, so this keeps the head of the list;
+ * a path past it (every page competes, not only products) reads as unviewed.
+ * Far beyond this shop's catalogue today — page with `offset` if it ever is not.
+ */
 const METRIC_LIMIT = 500;
 
 /** What the insights page asks for: pageviews per path, or visits per source. */
@@ -97,13 +101,26 @@ let token: string | null = null;
 let pageMetricType: 'url' | 'path' = 'url';
 const cache = new Map<string, { at: number; rows: UmamiMetricRow[] }>();
 const failures = new Map<string, number>();
+// Single flight: the page reads both metrics at once, and several admins may
+// open it together. Concurrent callers share one sign-in and one read per
+// window instead of each paying their own.
+let signingIn: Promise<string> | null = null;
+const inFlight = new Map<string, Promise<UmamiResult>>();
 
 // Every request: one shared deadline, no cache, and no redirects — a redirect
 // would resend the sign-in body, password included, to wherever it points.
 const requestInit = (signal: AbortSignal) =>
   ({ signal, cache: 'no-store', redirect: 'error' }) as const;
 
-const signIn = async (
+/** One sign-in at a time; a caller arriving meanwhile awaits the same one. */
+const signIn = (config: UmamiConfig, signal: AbortSignal): Promise<string> => {
+  signingIn ??= requestToken(config, signal).finally(() => {
+    signingIn = null;
+  });
+  return signingIn;
+};
+
+const requestToken = async (
   config: UmamiConfig,
   signal: AbortSignal,
 ): Promise<string> => {
@@ -210,6 +227,22 @@ export const readUmamiMetric = async (
     return { status: 'unavailable' };
   }
 
+  const pending = inFlight.get(cacheKey);
+  if (pending) return pending;
+  const read = readFresh(config, kind, days, now, cacheKey).finally(() => {
+    inFlight.delete(cacheKey);
+  });
+  inFlight.set(cacheKey, read);
+  return read;
+};
+
+const readFresh = async (
+  config: UmamiConfig,
+  kind: UmamiMetricKind,
+  days: number,
+  now: Date,
+  cacheKey: string,
+): Promise<UmamiResult> => {
   const endAt = now.getTime();
   const startAt = endAt - days * 24 * 60 * 60_000;
   try {
