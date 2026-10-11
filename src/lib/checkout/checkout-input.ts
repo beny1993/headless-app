@@ -27,6 +27,10 @@
 //     cannot be bounded here — price is unknown at this layer — so `createOrder`
 //     carries a `Number.isSafeInteger` backstop over the computed totals.
 import { z } from 'zod';
+import {
+  DELIVERY_METHODS,
+  deliveryMethodSchema,
+} from '@/lib/orders/delivery-method';
 import { paymentMethodSchema } from '@/lib/orders/order-status';
 import { provinceIdParamSchema } from '@/lib/shipping/shipping-query';
 import { boundedText } from '@/lib/validation/text';
@@ -116,6 +120,11 @@ export const checkoutInputSchema = z.object({
     }),
   address: addressSchema,
   paymentMethod: paymentMethodSchema,
+  // Post or courier ([[Story - Courier Delivery at Checkout]]). Defaults to
+  // post: a client built before courier existed — a tab left open across a
+  // deploy — sends none, and gets exactly the order it would have had. Where a
+  // courier may go is `createOrder`'s call, against the province it looked up.
+  deliveryMethod: deliveryMethodSchema.default(DELIVERY_METHODS.POST),
   // An optional discount code ([[Story - Discount Codes]]). Validated and applied
   // entirely server-side: `createOrder` normalizes it, computes the discount off
   // the re-priced subtotal, and claims one use atomically. Any text is accepted
@@ -126,4 +135,9 @@ export const checkoutInputSchema = z.object({
 
 export type CartLineInput = z.infer<typeof cartLineSchema>;
 export type CheckoutAddressInput = z.infer<typeof addressSchema>;
-export type CheckoutInput = z.infer<typeof checkoutInputSchema>;
+/**
+ * The checkout body — as a client writes it, so `deliveryMethod` may be
+ * absent (an older client, a fixture); `createOrder` reads absent as post,
+ * exactly what the schema's default does to a parsed body.
+ */
+export type CheckoutInput = z.input<typeof checkoutInputSchema>;

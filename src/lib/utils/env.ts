@@ -120,6 +120,16 @@ export enum VARS {
   // these two empty ⇒ no script tag at all, which is what a fresh clone, every
   // `pnpm test` run and local dev get. Both are inlined at BUILD time.
   NEXT_PUBLIC_UMAMI_WEBSITE_ID = 'NEXT_PUBLIC_UMAMI_WEBSITE_ID',
+  // A view-only Umami user the admin insights page signs in as, server-side,
+  // to read pageviews and traffic sources (`src/lib/umami/client.ts`).
+  // Self-hosted Umami has no API keys, so it is a username and password: make
+  // it a **view-only** user with access to this website and nothing else.
+  // Runtime and never NEXT_PUBLIC_: the password must not reach a bundle. The
+  // API host is the origin of NEXT_PUBLIC_UMAMI_SCRIPT_URL and the website is
+  // NEXT_PUBLIC_UMAMI_WEBSITE_ID. Any of the four empty ⇒ the page shows sales
+  // only, which is what local dev, tests and staging get.
+  APP_CONFIG_UMAMI_USERNAME = 'APP_CONFIG_UMAMI_USERNAME',
+  APP_CONFIG_UMAMI_PASSWORD = 'APP_CONFIG_UMAMI_PASSWORD',
 
   NODE_ENV = 'NODE_ENV',
   NEXT_PUBLIC_APP_URL = 'NEXT_PUBLIC_APP_URL',

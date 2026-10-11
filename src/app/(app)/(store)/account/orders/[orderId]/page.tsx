@@ -26,6 +26,11 @@ import {
   toPersianDigits,
 } from '@/lib/format';
 import {
+  COURIER_NOTE,
+  DELIVERY_METHODS,
+  DELIVERY_METHOD_LABELS,
+} from '@/lib/orders/delivery-method';
+import {
   OPEN_ORDER_STATUSES,
   ORDER_STATUSES,
   PAYMENT_METHOD_LABELS,
@@ -199,6 +204,7 @@ export default async function Page({
             discount={order.discount}
             shippingFee={order.shippingFee}
             total={order.total}
+            deliveryMethod={order.deliveryMethod}
           />
         </div>
 
@@ -206,6 +212,14 @@ export default async function Page({
           <div className="bg-card border-border rounded-2xl border p-5">
             <h2 className="mb-3 font-bold">آدرس تحویل</h2>
             <p className="mb-1 text-sm font-medium">{order.provinceName}</p>
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              روش ارسال: {DELIVERY_METHOD_LABELS[order.deliveryMethod]}
+            </p>
+            {order.deliveryMethod === DELIVERY_METHODS.COURIER && (
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                {COURIER_NOTE}
+              </p>
+            )}
             <p className="text-muted-foreground text-sm leading-relaxed">
               {order.recipientName} · {order.city}
             </p>

@@ -32,6 +32,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/lib/auth/`, `src/lib/utils/env.ts` | Better Auth, env accessor |
 | `src/lib/seo.ts` | What search engines read: root metadata, `absoluteUrl` (every canonical, sitemap `<loc>` and JSON-LD link), site JSON-LD, breadcrumbs, sitemap entries. Canonicals belong on pages: a layout's `alternates.canonical` makes every page without its own claim to be that one. The rest of SEO, each file headed by its own rules: `src/app/sitemap.ts` + `src/logic/seo/stocked-shelves.ts`, `src/features/storefront/product/product-seo.ts` + `shop-policy.ts`, `src/features/storefront/shop/shop-metadata.ts`, `src/components/json-ld.tsx` |
 | `src/lib/sentry.ts` | The one `Sentry.init` options object, shared by all three runtimes (`register()` in `src/instrumentation.ts` for Node and edge, `src/instrumentation-client.ts` for the browser). Owns the privacy contract: explicit `dataCollection` opt-outs and the removal of the console-breadcrumb integration, without which every OTP in the server log rides along on the next event |
+| `src/lib/umami/client.ts` | Server-only reader of our self-hosted Umami's API for the admin «پرطرفدارها» page (`src/logic/admin/product-insights.ts`): signs in as a view-only user (`APP_CONFIG_UMAMI_USERNAME`/`_PASSWORD`), caches five minutes, and answers `off`/`unavailable` instead of throwing, so the page always renders its sales |
 | `src/lib/content/` | Storefront editorial content: the client-safe zod schemas + key enum + area map + `isVisible` (`site-content.ts`), the saved-link contract + `resolveLink` (`link.ts`; its id → slug targets load in `src/logic/content/link-targets.ts`), the typed defaults + `resolveContent` fallback (`defaults.ts`), and the header/footer request-time read `readSiteChrome` (`chrome.ts`, `await connection()`). Values live in the `site_content` table; the page-organized admin editor is `/admin-panel/content/[area]` |
 | `src/features/<area>/<feature>/` | Feature components; route files stay thin |
 | `src/hooks/` | Shared client hooks (`@/hooks`). `use-modal-dialog.ts` is the one wiring for every native modal `<dialog>` — mobile menu, cart drawer, shop filter sheet. `use-drag-reorder.ts` is the one drag-to-reorder — the product gallery's photos and the content editor's category picks: the pointer gesture carried by `window` listeners, the RTL arrow keys, focus following the moved handle and one polite live region, each trap documented beside its code |
@@ -107,8 +108,10 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   deactivates it otherwise; the server decides under the product's row lock
   (`src/logic/admin/product-removal.ts`) and answers which it did.
 - **Order items snapshot** title/SKU/unit price; shipping fee is snapshotted on
-  the order. Orders move through an explicit state machine. Oversell prevention
-  is one atomic `UPDATE … WHERE stock >= qty RETURNING`.
+  the order — 0 for a courier order («ارسال با پیک», Tehran only, paid to the
+  courier on delivery; `src/lib/orders/delivery-method.ts`). Orders move
+  through an explicit state machine. Oversell prevention is one atomic
+  `UPDATE … WHERE stock >= qty RETURNING`.
 - **Payments** are keyed by gateway authority id; verification is server-side and
   idempotent (Zarinpal redirect → callback → verify; no webhooks).
 - **Card to card waits for its receipt.** A card-to-card order is born

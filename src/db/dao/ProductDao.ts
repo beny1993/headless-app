@@ -26,6 +26,7 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { db, type Executor, type Tx } from '@/db';
 import { escapeLike } from '@/db/dao/like-pattern';
 import { pgErrorOf } from '@/db/pg-error';
@@ -53,6 +54,7 @@ import {
   SEARCHABLE_FIELDS,
 } from './product-sql';
 import {
+  categories,
   productCategories,
   productImages,
   products,
@@ -65,6 +67,22 @@ import {
   type VariantChip,
   type ProductWithImages,
 } from '@/db/schema/catalog';
+
+/** One product as the admin insights page reads it — see `insightRows`. */
+export type ProductInsightRow = {
+  id: string;
+  slug: string;
+  title: string;
+  variantOf: string | null;
+  variantLabel: string | null;
+  stock: number;
+  isActive: boolean;
+  petTypes: PetType[];
+  categoryId: string;
+  categoryTitle: string;
+  /** The primary category's parent, or `null` for a top-level category. */
+  parentCategoryTitle: string | null;
+};
 
 /**
  * What a caller supplies; the database owns the id and both timestamps, and
@@ -1076,6 +1094,46 @@ export class ProductDao {
   static async getByIds(executor: Executor, ids: string[]): Promise<Product[]> {
     if (ids.length === 0) return [];
     return executor.select().from(products).where(inArray(products.id, ids));
+  }
+
+  /**
+   * The product facts the admin insights page (`src/logic/admin/product-insights.ts`)
+   * puts beside its sales and views: the display fields, stock, pets, and the
+   * primary category with its parent's title. Looks up by id (what sold) **or**
+   * slug (what Umami saw), **including soft-deleted rows**: a product sold in
+   * the window and deactivated since still belongs in that window's report.
+   * Both lists empty short-circuits.
+   */
+  static async insightRows({
+    ids,
+    slugs,
+  }: {
+    ids: readonly string[];
+    slugs: readonly string[];
+  }): Promise<ProductInsightRow[]> {
+    if (ids.length === 0 && slugs.length === 0) return [];
+    const parent = alias(categories, 'parent');
+    const matches: SQL[] = [];
+    if (ids.length > 0) matches.push(inArray(products.id, [...ids]));
+    if (slugs.length > 0) matches.push(inArray(products.slug, [...slugs]));
+    return db
+      .select({
+        id: products.id,
+        slug: products.slug,
+        title: products.title,
+        variantOf: products.variantOf,
+        variantLabel: products.variantLabel,
+        stock: products.stock,
+        isActive: products.isActive,
+        petTypes: products.petTypes,
+        categoryId: products.categoryId,
+        categoryTitle: categories.title,
+        parentCategoryTitle: parent.title,
+      })
+      .from(products)
+      .innerJoin(categories, eq(categories.id, products.categoryId))
+      .leftJoin(parent, eq(parent.id, categories.parentId))
+      .where(or(...matches));
   }
 
   /**

@@ -35,6 +35,10 @@ import {
   PAYMENT_METHOD_VALUES,
   PAYMENT_STATUS_VALUES,
 } from '@/lib/orders/order-status';
+import {
+  DELIVERY_METHODS,
+  DELIVERY_METHOD_VALUES,
+} from '@/lib/orders/delivery-method';
 import { MAX_RECEIPT_BYTES } from '@/lib/orders/receipt';
 import { products } from '@/db/schema/catalog';
 import { provinces } from '@/db/schema/shipping';
@@ -44,6 +48,10 @@ export const orderStatusEnum = pgEnum('order_status', ORDER_STATUS_VALUES);
 export const paymentMethodEnum = pgEnum(
   'payment_method',
   PAYMENT_METHOD_VALUES,
+);
+export const deliveryMethodEnum = pgEnum(
+  'delivery_method',
+  DELIVERY_METHOD_VALUES,
 );
 export const paymentStatusEnum = pgEnum(
   'payment_status',
@@ -70,6 +78,15 @@ export const orders = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     status: orderStatusEnum('status').notNull(),
     paymentMethod: paymentMethodEnum('payment_method').notNull(),
+    /**
+     * Post or courier («ارسال با پیک», Tehran only — `@/lib/orders/delivery-method`).
+     * A courier order snapshots `shipping_fee = 0`: the shopper pays the
+     * courier on delivery, never the shop. Defaults to post, which every order
+     * placed before courier existed was.
+     */
+    deliveryMethod: deliveryMethodEnum('delivery_method')
+      .default(DELIVERY_METHODS.POST)
+      .notNull(),
     // Money snapshots, integer Toman. `total = subtotal + shipping_fee -
     // discount`, all captured at order time so a later price, rate or code
     // change never rewrites a placed order.
@@ -125,8 +142,9 @@ export const orders = pgTable(
     // Money integrity at the last trust boundary — the checkout API validates
     // too, but psql and migrations bypass that. `subtotal > 0` (an order always
     // has priced items); `shipping_fee >= 0` (free shipping is a real rate);
-    // `discount >= 0`; `total >= 0` (a 100% discount code yields a zero total,
-    // which must still be a valid order — kept in step with `payments.amount`).
+    // `discount >= 0`; `total >= 0` (orders placed before checkout began
+    // refusing a zero total — `ZERO_TOTAL_REFUSED` in `createOrder` — may hold
+    // one; kept in step with `payments.amount`).
     check('orders_subtotal_positive', sql`${table.subtotal} > 0`),
     check('orders_shipping_fee_non_negative', sql`${table.shippingFee} >= 0`),
     check('orders_discount_non_negative', sql`${table.discount} >= 0`),
@@ -214,8 +232,8 @@ export const payments = pgTable(
     updatedAt,
   },
   (table) => [
-    // `>= 0`, kept in step with `orders.total`: a fully-discounted order has a
-    // zero total, and its COD payment row therefore carries a zero amount.
+    // `>= 0`, kept in step with `orders.total`: a fully-discounted order placed
+    // before checkout refused zero totals carries a zero-amount COD row.
     check('payments_amount_non_negative', sql`${table.amount} >= 0`),
     index('payments_order_id_idx').on(table.orderId),
     // At most one COD payment row per order — the DB-enforced twin of the

@@ -16,6 +16,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CheckoutForm, type ResumableOrder } from './checkout-form';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
+import { COURIER_FEE_TEXT } from '@/lib/orders/delivery-method';
 import { addToCart, clearCart } from '@/features/storefront/cart/cart';
 import {
   API_PATHS,
@@ -47,6 +48,7 @@ const RATES = [{ provinceId: 1, name: 'تهران', fee: 40_000 }];
 
 const WAITING: ResumableOrder = {
   orderId: '77777777-7777-4777-8777-777777777777',
+  deliveryMethod: 'post',
   lines: [
     {
       id: 'line-1',
@@ -100,6 +102,31 @@ afterEach(() => {
 });
 
 describe('the checkout resuming a waiting card-to-card order', () => {
+  it('keeps a resumed courier order on courier, locked, with no fee in its total', () => {
+    // The resumed form has no province picked, so the method derived from the
+    // fields would read post: the order's own method has to win.
+    form({
+      resume: {
+        ...WAITING,
+        deliveryMethod: 'courier',
+        shippingFee: 0,
+        total: 185_000,
+      },
+      resumed: true,
+    });
+
+    const courier = screen.getByRole('radio', {
+      name: /ارسال با پیک/,
+    }) as HTMLInputElement;
+    expect(courier.checked).toBe(true);
+    expect(courier.disabled).toBe(true);
+    expect(
+      (screen.getByRole('radio', { name: /^پست/ }) as HTMLInputElement).checked,
+    ).toBe(false);
+    expect(screen.getByText(COURIER_FEE_TEXT)).toBeTruthy();
+    expect(document.body.textContent).not.toContain('۲۲۵٬۰۰۰');
+  });
+
   it('opens on that order’s retry screen and resends to it — no create, no address book', async () => {
     postForm.mockResolvedValue({
       id: '22222222-2222-2222-2222-222222222222',

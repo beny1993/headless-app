@@ -9,6 +9,7 @@
 // The response is a PROJECTION built field by field — `getOwnedOrder` has already
 // dropped the payment rows' gateway secrets; this excludes internal columns and
 // converts Dates to ISO strings, exactly as ./catalog.ts does for products.
+import { deliveryMethodSchema } from '@/lib/orders/delivery-method';
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
@@ -62,6 +63,7 @@ const OrderDetailSchema = z
     orderNo: z.number().int().positive(),
     status: orderStatusSchema,
     paymentMethod: paymentMethodSchema,
+    deliveryMethod: deliveryMethodSchema,
     subtotal: z.number().int().positive(),
     shippingFee: z.number().int().nonnegative(),
     discount: z.number().int().nonnegative(),
@@ -93,6 +95,7 @@ const toOrderDetail = (order: OwnedOrder): OrderDetailResponse => ({
   orderNo: order.orderNo,
   status: order.status,
   paymentMethod: order.paymentMethod,
+  deliveryMethod: order.deliveryMethod,
   subtotal: order.subtotal,
   shippingFee: order.shippingFee,
   discount: order.discount,
