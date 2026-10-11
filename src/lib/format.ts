@@ -74,6 +74,21 @@ export function formatNumber(value: number | bigint): string {
 }
 
 /**
+ * A ratio as a Persian percent, one decimal at most: `0.025` → `۲٫۵٪`. The
+ * admin insights page's conversion rate. Not finite (a ratio over zero views)
+ * is a bug upstream, so it throws like {@link formatNumber}.
+ */
+export function formatPercent(ratio: number): string {
+  if (!Number.isFinite(ratio)) {
+    throw new RangeError(`formatPercent: not a finite number: ${ratio}`);
+  }
+  return new Intl.NumberFormat(LOCALE, {
+    style: 'percent',
+    maximumFractionDigits: 1,
+  }).format(Object.is(ratio, -0) ? 0 : ratio);
+}
+
+/**
  * Money for display: `۲٬۴۵۰٬۰۰۰ تومان`.
  *
  * Toman is integer-only and stored as `bigint`, so a non-integer or unsafe

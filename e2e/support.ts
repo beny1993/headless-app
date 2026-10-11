@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { SEED_PRODUCTS } from '@/db/seed/catalog-data';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
 import { LOW_STOCK_THRESHOLD } from '@/features/storefront/product/availability';
+import { displayTitle } from '@/lib/catalog/variant';
 import {
   API_PATHS,
   apiAdminOrderTransitionsPath,
@@ -195,6 +196,8 @@ if (!soldOut || !runningOut) {
 
 /** The best-stocked seeded product: the orders one run places never empty it. */
 export const IN_STOCK_PRODUCT = productPath(mostStocked.slug);
+/** How the admin names it: `displayTitle`, the one wording every admin list uses. */
+export const IN_STOCK_TITLE = displayTitle(mostStocked);
 /** The seeded product with nothing in stock. */
 export const SOLD_OUT_PRODUCT = productPath(soldOut.slug);
 /** A seeded product the page says is running out, and how many are left. */

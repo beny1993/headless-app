@@ -70,6 +70,16 @@ export type AdminOrderRow = {
   isPaid: boolean;
 };
 
+/** One product's sales over a window — see `OrderDao.salesByProductSince`. */
+export type ProductSalesRow = {
+  productId: string;
+  units: number;
+  /** Integer Toman. */
+  revenue: number;
+  /** Distinct revenue orders the product was on. */
+  orders: number;
+};
+
 /**
  * The order statuses that represent a booked sale — the first half of the
  * revenue definition. The second half (an actually-settled payment) is
@@ -498,6 +508,36 @@ export class OrderDao {
       .select({ createdAt: orders.createdAt, total: orders.total })
       .from(orders)
       .where(and(isRevenueOrder(), gte(orders.createdAt, cutoff)));
+  }
+
+  /**
+   * Units, revenue and order count per product over the revenue orders created
+   * on or after `cutoff` — the «فروش» half of the admin insights page. Revenue
+   * is `sum(qty × unit_price)` from the line snapshots, integer Toman, so a
+   * later re-price never rewrites a past window; the order's shipping fee and
+   * discount are not a product's and stay out. `orders` counts distinct
+   * orders, the numerator of the page's conversion rate. The window is the
+   * order's creation, as on the dashboard: an order placed before `cutoff`
+   * and paid after it stays out.
+   */
+  static async salesByProductSince(cutoff: Date): Promise<ProductSalesRow[]> {
+    const rows = await db
+      .select({
+        productId: orderItems.productId,
+        units: sql<string>`sum(${orderItems.qty})`,
+        revenue: sql<string>`sum(${orderItems.qty} * ${orderItems.unitPrice})`,
+        orders: sql<number>`count(distinct ${orderItems.orderId})::int`,
+      })
+      .from(orderItems)
+      .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .where(and(isRevenueOrder(), gte(orders.createdAt, cutoff)))
+      .groupBy(orderItems.productId);
+    return rows.map((row) => ({
+      productId: row.productId,
+      units: Number(row.units),
+      revenue: Number(row.revenue),
+      orders: row.orders,
+    }));
   }
 
   /** How many orders are in one status — the dashboard's «awaiting action» tile. */
