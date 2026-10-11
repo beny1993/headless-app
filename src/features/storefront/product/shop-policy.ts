@@ -4,9 +4,9 @@
 import { formatNumber } from '@/lib/format';
 
 /** Days from the order to the parcel leaving the shop. */
-export const HANDLING_DAYS = { min: 1, max: 3 } as const;
+export const HANDLING_DAYS = { min: 1, max: 2 } as const;
 /** Days from the parcel leaving to it reaching the shopper. */
-export const TRANSIT_DAYS = { min: 3, max: 10 } as const;
+export const TRANSIT_DAYS = { min: 2, max: 5 } as const;
 /** Days from delivery a shopper may send a product back, at their own cost. */
 export const RETURN_DAYS = 7;
 
