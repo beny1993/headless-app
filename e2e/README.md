@@ -129,8 +129,8 @@ drives the browser only for a story's new behaviour.
   already running" — stop that server, or run the suite from a worktree.
 - **Checkout is rate-capped per account** (`MAX_ORDERS_PER_WINDOW` in
   `src/logic/checkout/create-order.ts`, 30 orders an hour, any status). One
-  run's throwaway customer places 26 across both viewports (`checkout` 12,
-  `admin` 8, `admin-users` 2, `admin-settings` 2, `admin-catalog` 2 at 1280px
+  run's throwaway customer places 28 across both viewports (`checkout` 12,
+  `courier` 2, `admin` 8, `admin-users` 2, `admin-settings` 2, `admin-catalog` 2 at 1280px
   only), so a spec that adds checkouts eats into that headroom — raise the
   constant before the suite trips it with a 422 mid-run.
 - **A card-to-card order is open until its receipt arrives.** The open-order
@@ -152,16 +152,16 @@ drives the browser only for a story's new behaviour.
   for the whole machine, so a run started within a minute of the last one
   waits about a minute.
 - **What a run leaves in the dev database:** two throwaway `0999…` accounts,
-  the 26 orders counted under «Checkout is rate-capped per account» (none left
+  the 28 orders counted under «Checkout is rate-capped per account» (none left
   open: the admin spec's waiting one is cancelled by the admin, the checkout
   spec's cut one by the shopper, and the users spec's, the pager's, the
-  discount's, the ordered product's and the saved card's — accepted at
+  discount's, the ordered product's, the courier one and the saved card's — accepted at
   checkout — by `closeOrder`),
-  18 receipt files a run under `uploads/receipts/`, one per card-to-card
-  checkout whose screenshot stored (eight per width — `checkout` 3: the
+  20 receipt files a run under `uploads/receipts/`, one per card-to-card
+  checkout whose screenshot stored (nine per width — `checkout` 3: the
   accepted one, the retried one and the resumed one, `admin` 3: the shipped,
   the turned-down and the pager's, the cut ones storing nothing, `admin-users` 1,
-  `admin-settings` 1 — and `admin-catalog`'s two at 1280px; receipts are
+  `admin-settings` 1, `courier` 1 — and `admin-catalog`'s two at 1280px; receipts are
   append-only, so nothing deletes them), one inactive `e2e-…` product with no
   photo, kept for the order a shopper placed on it (the catalog spec's other
   product, given three photos, is deleted with its files at the end), one

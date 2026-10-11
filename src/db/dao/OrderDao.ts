@@ -24,6 +24,7 @@ import {
   type OrderItem,
   type OrderWithItems,
 } from '@/db/schema/orders';
+import type { DeliveryMethod } from '@/lib/orders/delivery-method';
 import {
   OPEN_ORDER_STATUSES,
   ORDER_STATUSES,
@@ -63,6 +64,8 @@ export type AdminOrderRow = {
   recipientName: string;
   status: OrderStatus;
   paymentMethod: PaymentMethod;
+  /** Post or courier — the list marks a courier order, which ships differently. */
+  deliveryMethod: DeliveryMethod;
   total: number;
   createdAt: Date;
   itemCount: number;
@@ -443,6 +446,7 @@ export class OrderDao {
         recipientName: orders.recipientName,
         status: orders.status,
         paymentMethod: orders.paymentMethod,
+        deliveryMethod: orders.deliveryMethod,
         total: orders.total,
         createdAt: orders.createdAt,
         itemCount: count(orderItems.id),

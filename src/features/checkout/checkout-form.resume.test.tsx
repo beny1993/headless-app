@@ -47,6 +47,7 @@ const RATES = [{ provinceId: 1, name: 'تهران', fee: 40_000 }];
 
 const WAITING: ResumableOrder = {
   orderId: '77777777-7777-4777-8777-777777777777',
+  deliveryMethod: 'post',
   lines: [
     {
       id: 'line-1',

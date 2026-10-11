@@ -8,6 +8,11 @@ import { toLocalIranPhone } from '@/lib/auth/phone';
 import { adminUserPath, PROTECTED_PATHS } from '@/lib/constant/paths';
 import { formatJalali, formatToman, toPersianDigits } from '@/lib/format';
 import {
+  COURIER_FEE_TEXT,
+  DELIVERY_METHODS,
+  DELIVERY_METHOD_LABELS,
+} from '@/lib/orders/delivery-method';
+import {
   ORDER_STATUSES,
   PAYMENT_METHOD_LABELS,
   PAYMENT_METHODS,
@@ -18,6 +23,7 @@ import {
 } from '@/lib/orders/order-status-display';
 import { getAdminOrder } from '@/logic/orders/get-admin-order';
 import { OrderReceipts } from '@/features/admin-panel/orders/order-receipts';
+import { Pill } from '@/features/admin-panel/shared/pill';
 import { OrderTransition } from '@/features/admin-panel/orders/order-transition';
 import {
   PaymentRow,
@@ -124,8 +130,16 @@ export default async function AdminOrderDetailPage({
                 value={formatToman(order.subtotal)}
               />
               <TotalsRow
-                label={`هزینه ارسال (${order.provinceName})`}
-                value={formatToman(order.shippingFee)}
+                label={
+                  order.deliveryMethod === DELIVERY_METHODS.COURIER
+                    ? `${DELIVERY_METHOD_LABELS[order.deliveryMethod]} (${order.provinceName})`
+                    : `هزینه ارسال (${order.provinceName})`
+                }
+                value={
+                  order.deliveryMethod === DELIVERY_METHODS.COURIER
+                    ? COURIER_FEE_TEXT
+                    : formatToman(order.shippingFee)
+                }
               />
               {order.discount > 0 && (
                 <TotalsRow
@@ -179,6 +193,17 @@ export default async function AdminOrderDetailPage({
 
           <section className="border-border rounded-2xl border bg-white p-5">
             <h2 className="mb-3 font-bold">آدرس تحویل</h2>
+            <p className="mb-2 text-sm">
+              <Pill
+                tone={
+                  order.deliveryMethod === DELIVERY_METHODS.COURIER
+                    ? 'accent'
+                    : 'muted'
+                }
+              >
+                {DELIVERY_METHOD_LABELS[order.deliveryMethod]}
+              </Pill>
+            </p>
             <p className="mb-1 text-sm font-medium">{order.provinceName}</p>
             <p className="text-muted-foreground text-sm leading-relaxed">
               {order.city} · {order.addressLine}

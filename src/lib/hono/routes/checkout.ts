@@ -13,6 +13,7 @@
 // typed `RouteHandler` export. `z` from `zod`, not `@hono/zod-openapi` — see
 // ../envelope.ts. The body schema is imported from `@/lib/checkout/checkout-input`
 // (the one contract the checkout form will share); response schemas are built here.
+import { deliveryMethodSchema } from '@/lib/orders/delivery-method';
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import type { Env } from 'hono';
 import { z } from 'zod';
@@ -48,6 +49,7 @@ const CheckoutResultSchema = z
     /** The human-readable order number, for SMS / support / the result page. */
     orderNo: z.number().int().positive(),
     status: orderStatusSchema,
+    deliveryMethod: deliveryMethodSchema,
     // Server-authoritative, integer Toman. `total = subtotal + shippingFee - discount`.
     subtotal: z.number().int().positive(),
     shippingFee: z.number().int().nonnegative(),
@@ -200,6 +202,7 @@ export const checkoutHandler: RouteHandler<
         orderId: order.id,
         orderNo: order.orderNo,
         status: order.status,
+        deliveryMethod: order.deliveryMethod,
         subtotal: order.subtotal,
         shippingFee: order.shippingFee,
         discount: order.discount,

@@ -10,9 +10,11 @@ import {
 import { useRouter } from 'next/navigation';
 import {
   AlertCircle,
+  Bike,
   Check,
   ChevronRight,
   CreditCard,
+  Package,
   Shield,
   Wallet,
 } from 'lucide-react';
@@ -62,6 +64,14 @@ import {
   PAYMENT_METHODS,
   type PaymentMethod,
 } from '@/lib/orders/order-status';
+import {
+  COURIER_NOTE,
+  COURIER_TEHRAN_ONLY,
+  DELIVERY_METHODS,
+  DELIVERY_METHOD_LABELS,
+  effectiveDeliveryMethod,
+  type DeliveryMethod,
+} from '@/lib/orders/delivery-method';
 import { RECEIPT_UPLOAD_FAILED, receiptSchema } from '@/lib/orders/receipt';
 import { toPersianDigits } from '@/lib/format';
 import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
@@ -102,6 +112,7 @@ const STEP_OF_FIELD: Record<string, number> = {
   'address.city': 2,
   'address.postalCode': 2,
   'address.addressLine': 2,
+  deliveryMethod: 3,
   paymentMethod: 3,
 };
 
@@ -115,6 +126,7 @@ const stepOfField = (path: string) => STEP_OF_FIELD[path] ?? 3;
  */
 export type ResumableOrder = {
   orderId: string;
+  deliveryMethod: DeliveryMethod;
   lines: SummaryLine[];
   subtotal: number;
   discount: number;
@@ -213,6 +225,12 @@ export function CheckoutForm({
       ? PAYMENT_METHODS.COD
       : PAYMENT_METHODS.ZARINPAL,
   );
+  // The method the shopper picked. What the order is placed with is DERIVED
+  // (`deliveryMethod` below): courier only while the province is Tehran, so
+  // moving the address elsewhere falls back to post with no effect to sync.
+  const [deliveryChoice, setDeliveryChoice] = useState<DeliveryMethod>(
+    resumedOrder?.deliveryMethod ?? DELIVERY_METHODS.POST,
+  );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [topError, setTopError] = useState<string | undefined>();
   // A create that got no answer — a 5xx, a dropped connection — may have
@@ -249,6 +267,7 @@ export function CheckoutForm({
   // order has no `address`: its «save this address» went with the old page.
   const [placed, setPlaced] = useState<{
     orderId: string;
+    deliveryMethod: DeliveryMethod;
     address?: CheckoutInput['address'];
     lines: SummaryLine[];
     subtotal: number;
@@ -276,8 +295,25 @@ export function CheckoutForm({
   // throws.
   const keptKeys = useRef<KeptKey[]>([]);
 
+  const selectedRate =
+    rates.find((rate) => String(rate.provinceId) === provinceId) ?? null;
+  // Courier is offered where it goes — Tehran — and the order is placed with
+  // it only there (`effectiveDeliveryMethod`), so the choice can never send a
+  // body the server refuses for its province.
+  const courierAvailable =
+    effectiveDeliveryMethod(
+      DELIVERY_METHODS.COURIER,
+      selectedRate?.name ?? null,
+    ) === DELIVERY_METHODS.COURIER;
+  const deliveryMethod = effectiveDeliveryMethod(
+    deliveryChoice,
+    selectedRate?.name ?? null,
+  );
+  // A courier order carries no fee: the ride is paid to the courier.
   const selectedFee =
-    rates.find((rate) => String(rate.provinceId) === provinceId)?.fee ?? null;
+    deliveryMethod === DELIVERY_METHODS.COURIER
+      ? 0
+      : (selectedRate?.fee ?? null);
   // A saved-address prefill onto a province the admin has since deactivated:
   // `rates` holds only active provinces, so no option matches the stale id and
   // React would display the first enabled one («تهران») — which re-picking fires
@@ -543,6 +579,7 @@ export function CheckoutForm({
         addressLine: addressLine.trim(),
       },
       paymentMethod,
+      deliveryMethod,
       // Only when a code is present — the server re-validates and claims it
       // atomically, whatever the preview showed.
       ...(discountCode.trim() ? { discountCode: discountCode.trim() } : {}),
@@ -582,7 +619,10 @@ export function CheckoutForm({
       // parsed, kept, and shown nowhere) and the request's own message.
       const top = Object.entries(fields)
         .filter(
-          ([path]) => path.startsWith('items.') || path === 'paymentMethod',
+          ([path]) =>
+            path.startsWith('items.') ||
+            path === 'paymentMethod' ||
+            path === 'deliveryMethod',
         )
         .map(([, fieldMessage]) => fieldMessage);
       if (message) top.push(message);
@@ -635,6 +675,7 @@ export function CheckoutForm({
     if (screenshot && !(await storeReceipt(order.orderId, screenshot))) {
       setPlaced({
         orderId: order.orderId,
+        deliveryMethod: order.deliveryMethod,
         address: body.address,
         lines: summaryLines,
         subtotal: order.subtotal,
@@ -946,6 +987,75 @@ export function CheckoutForm({
 
             {step === 3 && (
               <div>
+                <h2 className="mb-5 text-xl font-bold">روش ارسال</h2>
+                <fieldset className="mb-8 space-y-3">
+                  <legend className="sr-only">روش ارسال را انتخاب کن</legend>
+                  {(
+                    [
+                      {
+                        id: DELIVERY_METHODS.POST,
+                        sub: 'هزینهٔ ارسال بر اساس استان به سفارش اضافه می‌شود',
+                        icon: <Package size={18} aria-hidden="true" />,
+                        disabled: false,
+                      },
+                      {
+                        id: DELIVERY_METHODS.COURIER,
+                        sub: courierAvailable
+                          ? COURIER_NOTE
+                          : COURIER_TEHRAN_ONLY,
+                        icon: <Bike size={18} aria-hidden="true" />,
+                        disabled: !courierAvailable,
+                      },
+                    ] as const
+                  ).map((option) => {
+                    // Once the order exists, the method it was created with
+                    // stays marked and locked, as the payment method does.
+                    const checked =
+                      (placed?.deliveryMethod ?? deliveryMethod) === option.id;
+                    const locked = placed !== null ? !checked : option.disabled;
+                    return (
+                      <label
+                        key={option.id}
+                        htmlFor={`${fieldId}-delivery-${option.id}`}
+                        className={cn(
+                          'flex items-center gap-3 rounded-xl border-2 p-4 transition-colors',
+                          locked
+                            ? 'border-border cursor-not-allowed opacity-60'
+                            : checked
+                              ? cn(
+                                  'border-accent-strong bg-accent/5',
+                                  placed === null && 'cursor-pointer',
+                                )
+                              : 'border-border hover:border-accent/50 cursor-pointer',
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="deliveryMethod"
+                          id={`${fieldId}-delivery-${option.id}`}
+                          value={option.id}
+                          checked={checked}
+                          disabled={option.disabled || placed !== null}
+                          onChange={() => setDeliveryChoice(option.id)}
+                          className="accent-accent-strong size-5"
+                          data-umami-event={`checkout-delivery-${option.id}`}
+                        />
+                        <span className="text-accent-strong">
+                          {option.icon}
+                        </span>
+                        <span>
+                          <span className="block font-medium">
+                            {DELIVERY_METHOD_LABELS[option.id]}
+                          </span>
+                          <span className="text-muted-foreground block text-xs">
+                            {option.sub}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </fieldset>
+
                 <h2 className="mb-5 text-xl font-bold">روش پرداخت</h2>
                 <fieldset className="space-y-3">
                   <legend className="sr-only">روش پرداخت را انتخاب کن</legend>
@@ -1184,6 +1294,7 @@ export function CheckoutForm({
                 discount={placed.discount}
                 shippingFee={placed.shippingFee}
                 total={placed.total}
+                deliveryMethod={placed.deliveryMethod}
               />
             ) : (
               <OrderSummary
@@ -1192,6 +1303,7 @@ export function CheckoutForm({
                 discount={discountForDisplay}
                 shippingFee={selectedFee}
                 total={estimatedTotal}
+                deliveryMethod={deliveryMethod}
               />
             )}
             <p className="text-muted-foreground mt-4 text-xs leading-relaxed">

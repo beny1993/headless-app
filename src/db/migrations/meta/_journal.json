@@ -141,6 +141,13 @@
       "when": 1790778377996,
       "tag": "0019_card_to_card_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791716369418,
+      "tag": "0020_order_delivery_method",
+      "breakpoints": true
     }
   ]
 }

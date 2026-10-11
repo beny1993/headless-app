@@ -243,6 +243,32 @@ describe('checkoutInputSchema', () => {
     });
   });
 
+  describe('deliveryMethod', () => {
+    it('defaults to post when the body names none', () => {
+      expect(checkoutInputSchema.parse(validBody()).deliveryMethod).toBe(
+        'post',
+      );
+    });
+
+    it('accepts courier and post', () => {
+      for (const deliveryMethod of ['courier', 'post'] as const) {
+        expect(
+          checkoutInputSchema.parse({ ...validBody(), deliveryMethod })
+            .deliveryMethod,
+        ).toBe(deliveryMethod);
+      }
+    });
+
+    it('rejects an unknown method, and a null', () => {
+      for (const deliveryMethod of ['express', '', null, 1]) {
+        expect(
+          checkoutInputSchema.safeParse({ ...validBody(), deliveryMethod })
+            .success,
+        ).toBe(false);
+      }
+    });
+  });
+
   describe('discountCode', () => {
     it('is optional', () => {
       expect(checkoutInputSchema.safeParse(validBody()).success).toBe(true);

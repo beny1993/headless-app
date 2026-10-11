@@ -21,6 +21,11 @@ import type { OrderWithItems } from '@/db/schema/orders';
 import { displayTitle } from '@/lib/catalog/variant';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 import { computeDiscount } from '@/lib/discount/discount-code';
+import {
+  COURIER_UNAVAILABLE,
+  DELIVERY_METHODS,
+  isCourierProvince,
+} from '@/lib/orders/delivery-method';
 import { isZarinpalEnabled } from '@/lib/zarinpal/client';
 import {
   OPEN_ORDER_STATUSES,
@@ -122,7 +127,8 @@ const READ_COMMITTED = { isolationLevel: 'read committed' } as const;
  *
  *  1. Look up the shipping fee by province (fail-fast, before the transaction:
  *     an unknown province reserves nothing).
- *  2. Refuse a Zarinpal order while online payment is off.
+ *  2. Refuse a Zarinpal order while online payment is off, and a courier
+ *     order outside the one province a courier reaches.
  *  3. In one transaction, lock this account's user row FIRST, so its checkouts
  *     run one at a time; hand back the order a queued replay of this key already
  *     created; then enforce the rolling creation cap (every method — see
@@ -186,6 +192,17 @@ export const createOrder = async (
     !isZarinpalEnabled()
   ) {
     throw new CheckoutError('paymentMethod', ONLINE_PAYMENT_UNAVAILABLE);
+  }
+
+  // 2b. Courier goes from Heravi, so only within Tehran. The checkout offers it
+  // only there, but the body is the boundary: judged against the province the
+  // server just looked up, never a name the client sent. Before the
+  // transaction, like the province itself, so a refusal reserves nothing.
+  if (
+    input.deliveryMethod === DELIVERY_METHODS.COURIER &&
+    !isCourierProvince(rate.name)
+  ) {
+    throw new CheckoutError('deliveryMethod', COURIER_UNAVAILABLE);
   }
 
   // Keep each line's original request index so an error names the line the
@@ -308,7 +325,11 @@ export const createOrder = async (
         subtotal += reserved.price * line.qty;
       }
 
-      const shippingFee = rate.fee;
+      // A courier's ride is the shopper's to pay on delivery: the shop adds no
+      // fee, and the snapshot says so, so the total and a card-to-card
+      // transfer are the items alone.
+      const shippingFee =
+        input.deliveryMethod === DELIVERY_METHODS.COURIER ? 0 : rate.fee;
 
       // Discount, if a code was given. Everything money about it is decided here,
       // server-side, against the re-priced subtotal — the client sends only the
@@ -353,6 +374,7 @@ export const createOrder = async (
           userId,
           status: initialStatusFor(input.paymentMethod),
           paymentMethod: input.paymentMethod,
+          deliveryMethod: input.deliveryMethod ?? DELIVERY_METHODS.POST,
           subtotal,
           shippingFee,
           discount,

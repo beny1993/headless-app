@@ -1,6 +1,12 @@
 import Image from 'next/image';
 import { ShoppingBag } from 'lucide-react';
 import { formatToman, toPersianDigits } from '@/lib/format';
+import {
+  COURIER_FEE_TEXT,
+  DELIVERY_METHODS,
+  DELIVERY_METHOD_LABELS,
+  type DeliveryMethod,
+} from '@/lib/orders/delivery-method';
 import { imageSrc } from '@/lib/storage/image-url';
 
 /**
@@ -51,6 +57,7 @@ export function OrderSummary({
   discount = null,
   shippingFee,
   total,
+  deliveryMethod = DELIVERY_METHODS.POST,
 }: {
   lines: SummaryLine[];
   subtotal: bigint | number;
@@ -63,7 +70,13 @@ export function OrderSummary({
   /** `null` on `/checkout` before a province is chosen. */
   shippingFee: bigint | number | null;
   total: bigint | number;
+  /**
+   * Courier carries no fee on the order — the shopper pays the ride on
+   * delivery — so its row names the courier and says so instead of an amount.
+   */
+  deliveryMethod?: DeliveryMethod;
 }) {
+  const courier = deliveryMethod === DELIVERY_METHODS.COURIER;
   const hasDiscount =
     discount != null &&
     (typeof discount === 'bigint' ? discount > 0n : discount > 0);
@@ -135,13 +148,19 @@ export function OrderSummary({
           </div>
         )}
         <div className="flex justify-between">
-          <dt className="text-muted-foreground">ارسال</dt>
+          <dt className="text-muted-foreground">
+            {courier ? DELIVERY_METHOD_LABELS[deliveryMethod] : 'ارسال'}
+          </dt>
           <dd
-            className={shippingFee === null ? 'text-muted-foreground' : 'nums'}
+            className={
+              courier || shippingFee === null ? 'text-muted-foreground' : 'nums'
+            }
           >
-            {shippingFee === null
-              ? 'بعد از انتخاب استان'
-              : formatToman(shippingFee)}
+            {courier
+              ? COURIER_FEE_TEXT
+              : shippingFee === null
+                ? 'بعد از انتخاب استان'
+                : formatToman(shippingFee)}
           </dd>
         </div>
         <div className="border-border mt-2 flex justify-between border-t pt-2 text-base font-bold lg:text-lg">

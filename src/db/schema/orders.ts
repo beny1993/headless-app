@@ -35,6 +35,10 @@ import {
   PAYMENT_METHOD_VALUES,
   PAYMENT_STATUS_VALUES,
 } from '@/lib/orders/order-status';
+import {
+  DELIVERY_METHODS,
+  DELIVERY_METHOD_VALUES,
+} from '@/lib/orders/delivery-method';
 import { MAX_RECEIPT_BYTES } from '@/lib/orders/receipt';
 import { products } from '@/db/schema/catalog';
 import { provinces } from '@/db/schema/shipping';
@@ -44,6 +48,10 @@ export const orderStatusEnum = pgEnum('order_status', ORDER_STATUS_VALUES);
 export const paymentMethodEnum = pgEnum(
   'payment_method',
   PAYMENT_METHOD_VALUES,
+);
+export const deliveryMethodEnum = pgEnum(
+  'delivery_method',
+  DELIVERY_METHOD_VALUES,
 );
 export const paymentStatusEnum = pgEnum(
   'payment_status',
@@ -70,6 +78,15 @@ export const orders = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     status: orderStatusEnum('status').notNull(),
     paymentMethod: paymentMethodEnum('payment_method').notNull(),
+    /**
+     * Post or courier («ارسال با پیک», Tehran only — `@/lib/orders/delivery-method`).
+     * A courier order snapshots `shipping_fee = 0`: the shopper pays the
+     * courier on delivery, never the shop. Defaults to post, which every order
+     * placed before courier existed was.
+     */
+    deliveryMethod: deliveryMethodEnum('delivery_method')
+      .default(DELIVERY_METHODS.POST)
+      .notNull(),
     // Money snapshots, integer Toman. `total = subtotal + shipping_fee -
     // discount`, all captured at order time so a later price, rate or code
     // change never rewrites a placed order.
