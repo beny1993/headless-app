@@ -10,6 +10,7 @@
 // and the shopper's browser both price from it).
 import { eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
+import { discountCodes } from '@/db/schema/discounts';
 import { orders } from '@/db/schema/orders';
 import { products as productsTable } from '@/db/schema/catalog';
 import { provinces, shippingRates } from '@/db/schema/shipping';
@@ -17,14 +18,18 @@ import {
   COURIER_UNAVAILABLE,
   DELIVERY_METHODS,
 } from '@/lib/orders/delivery-method';
+import { DISCOUNT_TYPES } from '@/lib/discount/discount-code';
 import { PAYMENT_METHODS } from '@/lib/orders/order-status';
 import { CheckoutError } from '@/logic/checkout/checkout-error';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 
-const { createOrder } = await importWithDb(
+const { createOrder, ZERO_TOTAL_REFUSED } = await importWithDb(
   () => import('@/logic/checkout/create-order'),
+);
+const { DiscountCodeDao } = await importWithDb(
+  () => import('@/db/dao/DiscountCodeDao'),
 );
 const { ShippingRateDao } = await importWithDb(
   () => import('@/db/dao/ShippingRateDao'),
@@ -35,9 +40,16 @@ const token = () => crypto.randomUUID().slice(0, 12);
 describe.skipIf(!databaseReachable)('createOrder — delivery method', () => {
   const fx = new OrderFixtures();
   const provinceIds: number[] = [];
+  const codeIds: string[] = [];
 
   afterEach(async () => {
     await fx.cleanup();
+    if (codeIds.length > 0) {
+      await testDb
+        .delete(discountCodes)
+        .where(inArray(discountCodes.id, codeIds));
+      codeIds.length = 0;
+    }
     if (provinceIds.length > 0) {
       await testDb
         .delete(shippingRates)
@@ -190,5 +202,45 @@ describe.skipIf(!databaseReachable)('createOrder — delivery method', () => {
       .from(orders)
       .where(eq(orders.userId, user.id));
     expect(placed).toHaveLength(0);
+  });
+
+  it('refuses a courier order a 100% code brings to zero; the same code by post pays the fee', async () => {
+    const user = await fx.user();
+    const product = await fx.product(await fx.category(), {
+      price: 120_000,
+      stock: 5,
+    });
+    const rate = await tehran();
+    const code = await DiscountCodeDao.create({
+      code: `TEST-${token().toUpperCase()}`,
+      type: DISCOUNT_TYPES.PERCENT,
+      value: 100,
+      expiresAt: null,
+      usageLimit: null,
+      minOrderAmount: 0,
+      isActive: true,
+    });
+    codeIds.push(code.id);
+
+    await expect(
+      createOrder(
+        user.id,
+        input(rate.provinceId, product.id, {
+          deliveryMethod: DELIVERY_METHODS.COURIER,
+          discountCode: code.code,
+        }),
+      ),
+    ).rejects.toMatchObject({ message: ZERO_TOTAL_REFUSED });
+    expect(await stockOf(product.id)).toBe(5);
+
+    const order = await createOrder(
+      user.id,
+      input(rate.provinceId, product.id, {
+        deliveryMethod: DELIVERY_METHODS.POST,
+        discountCode: code.code,
+      }),
+    );
+    fx.remember(order.id);
+    expect(order.total).toBe(rate.fee);
   });
 });

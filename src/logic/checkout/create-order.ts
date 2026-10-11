@@ -45,6 +45,14 @@ import {
 // Persian, customer-facing. The `errors[]` detail the route builds is
 // `${field}: ${message}`, per the design note.
 export const PRODUCT_UNAVAILABLE = 'محصول انتخابی دیگر در دسترس نیست.';
+/**
+ * A code that leaves nothing to pay. A courier order has no shipping fee, so a
+ * 100% code brings it to zero — and a zero-Toman order has nothing a gateway,
+ * a receipt or the courier can settle. Refused (Benyamin, 2026-10-11) rather
+ * than placed free.
+ */
+export const ZERO_TOTAL_REFUSED =
+  'با این کد مبلغ سفارش صفر می‌شود و قابل ثبت نیست. کد دیگری وارد کن یا بدون کد ادامه بده.';
 const INVALID_PROVINCE = 'استان انتخاب‌شده نامعتبر است.';
 const ONLINE_PAYMENT_UNAVAILABLE =
   'پرداخت آنلاین در حال حاضر در دسترس نیست. پرداخت کارت به کارت را انتخاب کن.';
@@ -357,6 +365,10 @@ export const createOrder = async (
       }
 
       const total = subtotal + shippingFee - discount;
+      // Inside the transaction, after the claim: throwing here rolls back the
+      // code's use and every reserved line with it.
+      if (total === 0)
+        throw new CheckoutError(DISCOUNT_FIELD, ZERO_TOTAL_REFUSED);
 
       // Overflow backstop. The schema bounds qty and the line count, but not
       // qty × price — a corrupt near-2^53 price would otherwise be stored as a

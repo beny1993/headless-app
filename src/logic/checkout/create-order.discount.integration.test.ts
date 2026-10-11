@@ -16,11 +16,12 @@ import { provinces, shippingRates } from '@/db/schema/shipping';
 import { DISCOUNT_TYPES } from '@/lib/discount/discount-code';
 import { PAYMENT_METHODS } from '@/lib/orders/order-status';
 import { CheckoutError } from '@/logic/checkout/checkout-error';
+import { DISCOUNT_FIELD } from '@/logic/checkout/discount';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 import type { CheckoutInput } from '@/lib/checkout/checkout-input';
 
-const { createOrder } = await importWithDb(
+const { createOrder, ZERO_TOTAL_REFUSED } = await importWithDb(
   () => import('@/logic/checkout/create-order'),
 );
 const { DiscountCodeDao } = await importWithDb(
@@ -221,12 +222,43 @@ describe.skipIf(!databaseReachable)('createOrder — discount codes', () => {
       expect(order.total).toBe(25_000); // shipping only, never negative
     });
 
-    it('a 100% code with free shipping yields a zero total (still a valid order)', async () => {
+    // Refused since courier delivery (Benyamin, 2026-10-11): an order totalling
+    // 0 can never be paid — Zarinpal cannot charge 0, and card to card would
+    // wait on a screenshot of a 0 transfer — so it would only hold its stock
+    // until a sweep expired it. Courier made it reachable from any Tehran
+    // address (its fee is 0); free shipping already could.
+    it('refuses a 100% code that brings the total to zero, reserving and claiming nothing', async () => {
       const user = await fx.user();
       const category = await fx.category();
       const product = await fx.product(category, { price: 80_000, stock: 10 });
       const prov = await province(0);
       const code = await makeCode({ type: DISCOUNT_TYPES.PERCENT, value: 100 });
+
+      const attempt = createOrder(
+        user.id,
+        buildInput(prov, [{ productId: product.id, qty: 1 }], {
+          discountCode: code.code,
+        }),
+      );
+      await expect(attempt).rejects.toBeInstanceOf(CheckoutError);
+      await expect(attempt).rejects.toMatchObject({
+        field: DISCOUNT_FIELD,
+        message: ZERO_TOTAL_REFUSED,
+      });
+      expect(await stockOf(product.id)).toBe(10);
+      expect(await usageOf(code.id)).toBe(0);
+      expect(await ordersForUser(user.id)).toHaveLength(0);
+    });
+
+    it('takes a code that leaves one Toman to pay', async () => {
+      const user = await fx.user();
+      const category = await fx.category();
+      const product = await fx.product(category, { price: 80_000, stock: 10 });
+      const prov = await province(0);
+      const code = await makeCode({
+        type: DISCOUNT_TYPES.FIXED,
+        value: 79_999,
+      });
 
       const order = await createOrder(
         user.id,
@@ -235,8 +267,7 @@ describe.skipIf(!databaseReachable)('createOrder — discount codes', () => {
         }),
       );
       fx.remember(order.id);
-      expect(order.discount).toBe(80_000);
-      expect(order.total).toBe(0);
+      expect(order.total).toBe(1);
     });
 
     it('applies when the subtotal exactly equals the minimum (boundary is >=)', async () => {
