@@ -26,14 +26,20 @@ const SHELF_SKELETON = 'shop-shelf-skeleton';
 /**
  * The page's RSC payload as one string. Next writes it into the HTML as a run
  * of `self.__next_f.push([1,"…"])` scripts, one per chunk React flushed, and a
- * chunk ends wherever it fills, so a test id can straddle two scripts.
+ * chunk ends wherever it fills, so a test id can straddle two scripts. A chunk
+ * that is not valid UTF-8 on its own goes as base64 in `[3,"…"]` instead, so
+ * the bytes are joined before they are read back as text.
  */
 function rscPayload(html: string): string {
-  return [
-    ...html.matchAll(/self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g),
-  ]
-    .map((match) => JSON.parse(match[1] ?? '""') as string)
-    .join('');
+  const chunks = [
+    ...html.matchAll(/self\.__next_f\.push\(\[([13]),("(?:[^"\\]|\\.)*")\]\)/g),
+  ].map(([, type, literal]) =>
+    Buffer.from(
+      JSON.parse(literal ?? '""') as string,
+      type === '3' ? 'base64' : 'utf8',
+    ),
+  );
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 /**

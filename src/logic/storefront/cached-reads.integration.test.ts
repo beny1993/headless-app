@@ -183,21 +183,17 @@ describe.skipIf(!databaseReachable)('storefront cached reads', () => {
   });
 
   describe('the header and footer', () => {
-    let saved: { value: unknown } | undefined;
-    beforeEach(async () => {
-      [saved] = await testDb
-        .select({ value: siteContent.value })
-        .from(siteContent)
-        .where(eq(siteContent.key, 'header'));
-    });
-    afterEach(async () => {
-      await testDb.delete(siteContent).where(eq(siteContent.key, 'header'));
-      if (saved) {
-        await testDb
-          .insert(siteContent)
-          .values({ key: 'header', value: saved.value });
-      }
-    });
+    // Both rows go before and after, as in the layout's own suite: a category
+    // destination saved in either (by an admin on the dev database, or by a run
+    // of this test killed before its cleanup) makes the chrome load every
+    // category, and the first expectation would see the new one's slug before
+    // any save.
+    const clearChrome = () =>
+      testDb
+        .delete(siteContent)
+        .where(inArray(siteContent.key, ['header', 'footer']));
+    beforeEach(clearChrome);
+    afterEach(clearChrome);
 
     it('follow a header save, then a rename of the category it links to', async () => {
       const slug = `chrome-${faker.string.alphanumeric(10).toLowerCase()}`;

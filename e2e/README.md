@@ -209,9 +209,10 @@ drives the browser only for a story's new behaviour.
 - **Selectors are the `data-umami-event` names** (roles for headings and
   dialogs). The loading skeletons, which nothing taps, carry a `data-testid`
   instead: `streaming.spec.ts` searches the raw HTML for it, the page's RSC
-  payload included, where it must not be confused with another label. App routes come from `paths.ts`, and the product and province a
-  spec uses from the seed data in `src/db/seed/`, never restated. Renaming an
-  event is a spec change.
+  payload included, where it must not be confused with another label. App
+  routes come from `paths.ts`, and the product and province a spec uses from
+  the seed data in `src/db/seed/`, never restated. Renaming an event is a spec
+  change.
 - **Browser: the installed Google Chrome** (`channel: 'chrome'`), no download.
   A failure keeps its trace and screenshot: `pnpm exec playwright show-report`.
 

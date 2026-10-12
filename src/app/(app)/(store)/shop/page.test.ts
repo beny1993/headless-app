@@ -45,12 +45,13 @@ describe('the shop page', () => {
     const listing = new Promise<never>(() => {});
     mocks.list.mockReturnValue(listing);
 
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const page = await Promise.race([
       ShopPage({ searchParams: Promise.resolve({}) }),
-      new Promise<typeof STILL_WAITING>((resolve) =>
-        setTimeout(() => resolve(STILL_WAITING), 2000),
-      ),
-    ]);
+      new Promise<typeof STILL_WAITING>((resolve) => {
+        timer = setTimeout(() => resolve(STILL_WAITING), 2000);
+      }),
+    ]).finally(() => clearTimeout(timer));
 
     expect(page).not.toBe(STILL_WAITING);
     const tree = [...elements(page)];
