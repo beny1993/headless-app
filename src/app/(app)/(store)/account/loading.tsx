@@ -7,9 +7,12 @@ import { Skeleton } from '@/components/ui/skeleton';
  * the name row, the tab rail, a few order rows.
  *
  * Safe here, and only here among the storefront's pages: once this streams the
- * answer is 200, so a missing order's 404 arrives as a noindexed «not found»
- * page instead — fine for pages no crawler can sign in to. `/shop` and
- * `/product/[slug]` must keep their real 404s and have no loading.tsx.
+ * answer is 200. So a missing order's 404 arrives as a noindexed «not found»
+ * page, and a signed-out visit's `requireSession` redirect arrives as a
+ * streamed client redirect to `/login?next=…` rather than a 307 — a browser
+ * lands in the same place, only a status check sees the difference. Fine for
+ * pages no crawler can sign in to. `/shop` and `/product/[slug]` must keep
+ * their real 404s and have no loading.tsx.
  */
 export default function AccountLoading() {
   return (

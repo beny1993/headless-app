@@ -226,6 +226,18 @@ describe.skipIf(!databaseReachable)('storefront cached reads', () => {
       }
     });
 
+    it('a category save drops the category list itself', async () => {
+      // By identity: the sitemap's shelf check reads the same DAO, so a call
+      // count would mix the two.
+      const before = await reads.storefrontCategories();
+      expect(await reads.storefrontCategories()).toBe(before);
+
+      asAdmin();
+      await send(apiAdminCategoryPath(id), 'PUT', { not: 'a valid body' });
+
+      expect(await reads.storefrontCategories()).not.toBe(before);
+    });
+
     it.each([
       ['an anonymous caller', anon, 401],
       ['a customer', asCustomer, 403],

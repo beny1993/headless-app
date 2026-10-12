@@ -130,6 +130,10 @@ export default async function ShopPage({
   // anything streams: once the first bytes are out the status is 200.
   if (isUnknownCategory(query, categories)) notFound();
 
+  // `generateMetadata` awaits this same listing (its noindex decision). Next
+  // streams metadata to browsers, so that does not hold the page up; only
+  // HTML-limited bots get the shell after it, which is what they need.
+  //
   // Started, not awaited: the listing is the one live read (it shows stock), so
   // everything above the results renders now and `ShopShelf` streams in behind
   // its skeleton when it lands. The filter sheet's count waits on the same read.

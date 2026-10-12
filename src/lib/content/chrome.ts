@@ -40,6 +40,8 @@ type SiteChrome = Pick<ContentValues, 'header' | 'footer'> & {
 export async function readSiteChrome(): Promise<SiteChrome> {
   await connection();
   const { SITE_CONTENT, CATEGORIES, PRODUCTS } = CACHE_TAGS;
+  // Nested on purpose: the content and categories inside are entries of their
+  // own, shared with the pages, and this one adds the resolved link targets.
   return cached(
     'site-chrome',
     { tags: [SITE_CONTENT, CATEGORIES, PRODUCTS], ttlMs: CACHE_TTL_MS },

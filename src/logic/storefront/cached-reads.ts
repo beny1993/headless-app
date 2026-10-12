@@ -27,7 +27,9 @@ export const CACHE_TTL_MS = 10 * 60_000;
 
 /**
  * The sitemap's lists also depend on stock — a shelf drops out when it sells
- * out — and an order's stock change clears nothing, so this is how long a
+ * out — and a stock change clears nothing (a checkout's decrement, the restock
+ * of a cancel by the shopper, an admin or the receipt sweep; `/admin/orders/*`
+ * is deliberately not an invalidating mount), so this is how long a
  * sold-out shelf can stay listed. Crawlers do not mind an hour.
  */
 export const SITEMAP_TTL_MS = 60 * 60_000;
