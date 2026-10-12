@@ -1,8 +1,10 @@
 // The storefront read cache against the real Hono app and the dev database:
 // a cached read is served from memory, and every admin write path drops the
 // reads that depend on it — so what `invalidateOnWrite`'s mounts in
-// `src/lib/hono/index.ts` promise is proven at the request level. Only the
-// session lookup is mocked. `Story - Storefront Caching and Streaming`.
+// `src/lib/hono/index.ts` promise is proven at the request level. Mocked: the
+// session lookup, and `connection()`, which throws outside a request scope
+// (see `src/app/(app)/layout.integration.test.ts`) and stands between
+// `readSiteChrome` and its read. `Story - Storefront Caching and Streaming`.
 import { faker } from '@faker-js/faker';
 import { eq, inArray } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,9 +20,14 @@ import {
   apiShippingRatePath,
 } from '@/lib/constant/paths';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
+import { LINK_TYPES } from '@/lib/content/link';
 
 const mocks = vi.hoisted(() => ({ getSession: vi.fn() }));
 vi.mock('@/lib/auth', () => ({ isAuthenticatedUser: mocks.getSession }));
+vi.mock('next/server', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/server')>()),
+  connection: () => Promise.resolve(),
+}));
 
 const { app } = await importWithDb(() => import('@/lib/hono'));
 const { CategoryDao } = await importWithDb(
@@ -34,6 +41,9 @@ const { SiteContentDao } = await importWithDb(
   () => import('@/db/dao/SiteContentDao'),
 );
 const reads = await importWithDb(() => import('./cached-reads'));
+const { readSiteChrome } = await importWithDb(
+  () => import('@/lib/content/chrome'),
+);
 
 const asAdmin = () =>
   mocks.getSession.mockResolvedValue({
@@ -172,6 +182,59 @@ describe.skipIf(!databaseReachable)('storefront cached reads', () => {
     });
   });
 
+  describe('the header and footer', () => {
+    let saved: { value: unknown } | undefined;
+    beforeEach(async () => {
+      [saved] = await testDb
+        .select({ value: siteContent.value })
+        .from(siteContent)
+        .where(eq(siteContent.key, 'header'));
+    });
+    afterEach(async () => {
+      await testDb.delete(siteContent).where(eq(siteContent.key, 'header'));
+      if (saved) {
+        await testDb
+          .insert(siteContent)
+          .values({ key: 'header', value: saved.value });
+      }
+    });
+
+    it('follow a header save, then a rename of the category it links to', async () => {
+      const slug = `chrome-${faker.string.alphanumeric(10).toLowerCase()}`;
+      const [category] = await testDb
+        .insert(categories)
+        .values({ title: 'دسته منو', slug })
+        .returning();
+      const linkedSlug = async () =>
+        (await readSiteChrome()).targets.categories[category!.id];
+      try {
+        expect(await linkedSlug()).toBeUndefined();
+
+        asAdmin();
+        const header = await send(apiAdminContentPath('header'), 'PUT', {
+          ...DEFAULT_CONTENT.header,
+          navLinks: [
+            null,
+            { type: LINK_TYPES.SHOP, categoryId: category!.id },
+            null,
+          ],
+        });
+        expect(header.status).toBe(200);
+        expect(await linkedSlug()).toBe(slug);
+
+        const renamed = await send(apiAdminCategoryPath(category!.id), 'PUT', {
+          title: 'دسته منو',
+          slug: `${slug}-2`,
+          sortOrder: 0,
+        });
+        expect(renamed.status).toBe(200);
+        expect(await linkedSlug()).toBe(`${slug}-2`);
+      } finally {
+        await testDb.delete(categories).where(eq(categories.id, category!.id));
+      }
+    });
+  });
+
   // The middleware drops on any write its guard let through, so a refused
   // body is enough to prove a path is covered without touching shared rows.
   describe('every admin write path drops its reads', () => {
@@ -180,6 +243,9 @@ describe.skipIf(!databaseReachable)('storefront cached reads', () => {
       sitemap: vi.spyOn(ProductDao, 'listForSitemap'),
       rates: vi.spyOn(ShippingRateDao, 'listActive'),
       content: vi.spyOn(SiteContentDao, 'getMany'),
+      // The header and footer's link targets: a lookup only the chrome's own
+      // entry makes, on every load of it.
+      chrome: vi.spyOn(ProductDao, 'getByIds'),
     });
     const readAll = () =>
       Promise.all([
@@ -187,6 +253,7 @@ describe.skipIf(!databaseReachable)('storefront cached reads', () => {
         reads.sitemapLists(),
         reads.storefrontShippingRates(),
         reads.storefrontContent(),
+        readSiteChrome(),
       ]);
 
     const id = '00000000-0000-4000-8000-000000000000';
@@ -195,20 +262,35 @@ describe.skipIf(!databaseReachable)('storefront cached reads', () => {
         'a product create',
         API_PATHS.ADMIN_PRODUCTS,
         'POST',
-        ['bounds', 'sitemap'],
+        ['bounds', 'sitemap', 'chrome'],
       ],
-      ['a product edit', apiAdminProductPath(id), 'PUT', ['bounds', 'sitemap']],
+      [
+        'a product edit',
+        apiAdminProductPath(id),
+        'PUT',
+        ['bounds', 'sitemap', 'chrome'],
+      ],
       [
         'a product removal',
         apiAdminProductPath(id),
         'DELETE',
-        ['bounds', 'sitemap'],
+        ['bounds', 'sitemap', 'chrome'],
       ],
       ['a fee change', apiShippingRatePath(1), 'PUT', ['rates']],
       ['a province switch', apiAdminProvincePath(1), 'PATCH', ['rates']],
       ['one fee for all', API_PATHS.ADMIN_PROVINCES_FEE, 'PUT', ['rates']],
-      ['a content save', apiAdminContentPath('home.hero'), 'PUT', ['content']],
-      ['a category save', apiAdminCategoryPath(id), 'PUT', ['sitemap']],
+      [
+        'a content save',
+        apiAdminContentPath('home.hero'),
+        'PUT',
+        ['content', 'chrome'],
+      ],
+      [
+        'a category save',
+        apiAdminCategoryPath(id),
+        'PUT',
+        ['sitemap', 'chrome'],
+      ],
     ] as const)('%s', async (_name, path, method, dropped) => {
       const spies = counts();
       await readAll();

@@ -11,26 +11,39 @@
 // skeleton markup: its order is asserted whenever it is there. What holds on
 // every run is the page's RSC payload, which the same HTML carries for
 // hydration and which holds each boundary's fallback whoever wins. A skeleton
-// found nowhere in the document therefore means its boundary is gone. Proven
-// by removing each one (the shop's <Suspense>, each loading.tsx): the spec
-// then fails on every run.
+// found in neither therefore means its boundary is gone. Proven by removing
+// each one (the shop's <Suspense>, each loading.tsx): the spec then fails on
+// every run. That the shop sends the rest without waiting for its listing is
+// a promise no timing here can check; `src/app/(app)/(store)/shop/page.test.ts`
+// pins it.
 import { SEED_CATEGORIES } from '@/db/seed/catalog-data';
+import { SHOP_TITLE } from '@/features/storefront/shop/shop-metadata';
 import { PATHS, PROTECTED_PATHS, shopPath } from '@/lib/constant/paths';
 import { ADMIN_STATE, CUSTOMER_STATE, expect, test } from './support';
 
 const SHELF_SKELETON = 'shop-shelf-skeleton';
 
 /**
- * Where a skeleton is in the HTML the server sent: `shipped` when it is
- * anywhere in the document, as markup or in the RSC payload (where its test id
- * appears without the attribute's quotes), and `markup`, the index of the
- * rendered element, -1 when the content beat the shell.
+ * The page's RSC payload as one string. Next writes it into the HTML as a run
+ * of `self.__next_f.push([1,"…"])` scripts, one per chunk React flushed, and a
+ * chunk ends wherever it fills, so a test id can straddle two scripts.
+ */
+function rscPayload(html: string): string {
+  return [
+    ...html.matchAll(/self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)/g),
+  ]
+    .map((match) => JSON.parse(match[1] ?? '""') as string)
+    .join('');
+}
+
+/**
+ * Where a skeleton is in the HTML the server sent: `markup`, the index of the
+ * rendered element (-1 when the content beat the shell), and `shipped`, true
+ * when it is there or in the RSC payload.
  */
 function skeletonIn(html: string, testId: string) {
-  return {
-    shipped: html.includes(testId),
-    markup: html.indexOf(`data-testid="${testId}"`),
-  };
+  const markup = html.indexOf(`data-testid="${testId}"`);
+  return { markup, shipped: markup > -1 || rscPayload(html).includes(testId) };
 }
 
 test.describe('the shop', () => {
@@ -38,7 +51,7 @@ test.describe('the shop', () => {
     page,
   }) => {
     const html = await (await page.request.get(PATHS.SHOP)).text();
-    const heading = html.indexOf('<h1');
+    const heading = html.indexOf(`>${SHOP_TITLE}</h1>`);
     const skeleton = skeletonIn(html, SHELF_SKELETON);
     // A product card is an <article>; the first one arrives after the fallback.
     const firstCard = html.indexOf('<article');
@@ -111,7 +124,9 @@ test.describe('loading skeletons', () => {
       const skeleton = skeletonIn(html, 'account-skeleton');
 
       expect(skeleton.shipped).toBe(true);
-      expect(html.indexOf('سفارش‌های من')).toBeGreaterThan(skeleton.markup);
+      expect(html.indexOf('>سفارش‌های من</h2>')).toBeGreaterThan(
+        skeleton.markup,
+      );
 
       await page.goto(PATHS.ACCOUNT);
       await expect(
