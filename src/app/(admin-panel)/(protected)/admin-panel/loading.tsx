@@ -9,7 +9,9 @@ import { Skeleton } from '@/components/ui/skeleton';
  *
  * A page that answers `notFound()` (an unknown order or product id) shows its
  * «not found» with status 200 under this boundary; the panel is behind a
- * sign-in and never indexed, so nothing depends on that status.
+ * sign-in and never indexed, so nothing depends on that status. Turning away a
+ * signed-out visitor or a customer stays a real redirect: `requireAdmin` runs
+ * in `(protected)/layout.tsx`, above this boundary, before anything streams.
  */
 export default function AdminPanelLoading() {
   return (

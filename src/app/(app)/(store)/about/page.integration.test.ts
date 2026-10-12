@@ -148,6 +148,9 @@ describe.skipIf(!databaseReachable)('the About page', () => {
           slug: `about-${faker.string.alphanumeric(10).toLowerCase()}`,
         })
         .returning();
+      // What the admin API's category create does after the write: the page
+      // resolves the link against the cached category list.
+      invalidateTags(CACHE_TAGS.CATEGORIES);
       try {
         await SiteContentDao.set('about.cta', {
           ...DEFAULT_CONTENT['about.cta'],

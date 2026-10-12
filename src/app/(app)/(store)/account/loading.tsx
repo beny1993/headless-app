@@ -16,14 +16,14 @@ import { Skeleton } from '@/components/ui/skeleton';
  */
 export default function AccountLoading() {
   return (
-    <main
-      className="min-h-screen pt-4"
-      role="status"
-      aria-busy="true"
-      aria-label="در حال بارگذاری حساب کاربری"
-      data-testid="account-skeleton"
-    >
-      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-8">
+    <main className="min-h-screen pt-4">
+      <div
+        className="mx-auto max-w-6xl px-4 py-10 sm:px-8"
+        role="status"
+        aria-busy="true"
+        aria-label="در حال بارگذاری حساب کاربری"
+        data-testid="account-skeleton"
+      >
         <div className="mb-8 flex items-center gap-4">
           <Skeleton className="size-14 rounded-full" />
           <div className="space-y-2">

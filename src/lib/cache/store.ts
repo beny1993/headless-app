@@ -54,7 +54,9 @@ const freshState = (): CacheState => ({
 // In development a module re-evaluates when its file is edited, and a loader
 // that changed must not keep serving what the old one cached. Production
 // evaluates once per layer, and there the instrumentation layer must not wipe
-// what the pages' layer already holds.
+// what the pages' layer already holds. `NODE_ENV` is read straight off
+// `process.env` rather than through `src/lib/utils/env.ts`, which would break
+// the import-free rule above.
 if (!scope[STATE] || process.env.NODE_ENV !== 'production') {
   scope[STATE] = freshState();
 }
