@@ -21,6 +21,7 @@ export default function AccountLoading() {
       role="status"
       aria-busy="true"
       aria-label="در حال بارگذاری حساب کاربری"
+      data-testid="account-skeleton"
     >
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-8">
         <div className="mb-8 flex items-center gap-4">

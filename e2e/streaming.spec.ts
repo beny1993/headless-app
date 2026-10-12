@@ -5,19 +5,33 @@
 // where admins save (admin-categories, admin-settings, admin-provinces): each
 // checks the storefront right after the save.
 //
-// Streaming is read off the HTML the server sends (`request.get`): the
-// fallback is in the document, ahead of the content that replaces it. React
-// emits a fallback only while its boundary is still waiting when the shell is
-// done, so a listing that beats the shell leaves none — the ordering is
-// asserted whenever the fallback is there, and what must hold every time (the
-// heading before the grid, no skeleton left on screen) is asserted always.
-// The pin was proven by removing the boundary: the HTML then carried no
-// fallback on every run.
+// Streaming is read off the HTML the server sends (`request.get`). React
+// writes a boundary's fallback as markup only while the boundary is still
+// waiting when the shell is done, so content that beats the shell leaves no
+// skeleton markup: its order is asserted whenever it is there. What holds on
+// every run is the page's RSC payload, which the same HTML carries for
+// hydration and which holds each boundary's fallback whoever wins. A skeleton
+// found nowhere in the document therefore means its boundary is gone. Proven
+// by removing each one (the shop's <Suspense>, each loading.tsx): the spec
+// then fails on every run.
 import { SEED_CATEGORIES } from '@/db/seed/catalog-data';
 import { PATHS, PROTECTED_PATHS, shopPath } from '@/lib/constant/paths';
 import { ADMIN_STATE, CUSTOMER_STATE, expect, test } from './support';
 
-const SKELETON = 'data-testid="shop-shelf-skeleton"';
+const SHELF_SKELETON = 'shop-shelf-skeleton';
+
+/**
+ * Where a skeleton is in the HTML the server sent: `shipped` when it is
+ * anywhere in the document, as markup or in the RSC payload (where its test id
+ * appears without the attribute's quotes), and `markup`, the index of the
+ * rendered element, -1 when the content beat the shell.
+ */
+function skeletonIn(html: string, testId: string) {
+  return {
+    shipped: html.includes(testId),
+    markup: html.indexOf(`data-testid="${testId}"`),
+  };
+}
 
 test.describe('the shop', () => {
   test('sends heading and filters first, then streams the grid in', async ({
@@ -25,15 +39,16 @@ test.describe('the shop', () => {
   }) => {
     const html = await (await page.request.get(PATHS.SHOP)).text();
     const heading = html.indexOf('<h1');
-    const skeleton = html.indexOf(SKELETON);
+    const skeleton = skeletonIn(html, SHELF_SKELETON);
     // A product card is an <article>; the first one arrives after the fallback.
     const firstCard = html.indexOf('<article');
 
     expect(heading).toBeGreaterThan(-1);
     expect(firstCard).toBeGreaterThan(heading);
-    if (skeleton > -1) {
-      expect(skeleton).toBeGreaterThan(heading);
-      expect(firstCard).toBeGreaterThan(skeleton);
+    expect(skeleton.shipped).toBe(true);
+    if (skeleton.markup > -1) {
+      expect(skeleton.markup).toBeGreaterThan(heading);
+      expect(firstCard).toBeGreaterThan(skeleton.markup);
     }
     expect(html).toContain('data-umami-event="shop-search-type"');
   });
@@ -44,7 +59,7 @@ test.describe('the shop', () => {
     await page.goto(PATHS.SHOP);
 
     await expect(page.locator('article').first()).toBeVisible();
-    await expect(page.getByTestId('shop-shelf-skeleton')).toHaveCount(0);
+    await expect(page.getByTestId(SHELF_SKELETON)).toHaveCount(0);
     // The toolbar's count arrived with the grid it counts.
     await expect(
       page.locator('[aria-live="polite"]', { hasText: /محصول$/ }),
@@ -59,7 +74,7 @@ test.describe('the shop', () => {
     );
 
     expect(response.status()).toBe(404);
-    expect(await response.text()).not.toContain(SKELETON);
+    expect(await response.text()).not.toContain(SHELF_SKELETON);
   });
 
   test('the phone filter sheet counts the shelf once the listing is in', async ({
@@ -93,9 +108,10 @@ test.describe('loading skeletons', () => {
       page,
     }) => {
       const html = await (await page.request.get(PATHS.ACCOUNT)).text();
-      const skeleton = html.indexOf('در حال بارگذاری حساب کاربری');
+      const skeleton = skeletonIn(html, 'account-skeleton');
 
-      expect(html.indexOf('سفارش‌های من')).toBeGreaterThan(skeleton);
+      expect(skeleton.shipped).toBe(true);
+      expect(html.indexOf('سفارش‌های من')).toBeGreaterThan(skeleton.markup);
 
       await page.goto(PATHS.ACCOUNT);
       await expect(
@@ -112,9 +128,10 @@ test.describe('loading skeletons', () => {
 
     test('gets the panel skeleton first, then the page', async ({ page }) => {
       const html = await (await page.request.get(PROTECTED_PATHS.INDEX)).text();
-      const skeleton = html.indexOf('aria-label="در حال بارگذاری"');
+      const skeleton = skeletonIn(html, 'admin-panel-skeleton');
 
-      expect(html.indexOf('>داشبورد</h1>')).toBeGreaterThan(skeleton);
+      expect(skeleton.shipped).toBe(true);
+      expect(html.indexOf('>داشبورد</h1>')).toBeGreaterThan(skeleton.markup);
     });
   });
 });

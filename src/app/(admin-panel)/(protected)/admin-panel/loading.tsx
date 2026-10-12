@@ -18,6 +18,7 @@ export default function AdminPanelLoading() {
       role="status"
       aria-busy="true"
       aria-label="در حال بارگذاری"
+      data-testid="admin-panel-skeleton"
     >
       <Skeleton className="h-8 w-48" />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
