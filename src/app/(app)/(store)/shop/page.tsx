@@ -1,19 +1,18 @@
-import { cache } from 'react';
+import { cache, Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { CategoryDao } from '@/db/dao/CategoryDao';
 import { orderAsTree } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
-import { ProductCard } from '@/features/storefront/product/product-card';
 import {
   ShopFilters,
   ShopFilterSheet,
 } from '@/features/storefront/shop/shop-filters';
-import { ShopPagination } from '@/features/storefront/shop/shop-pagination';
-import { ShopResults } from '@/features/storefront/shop/shop-results';
 import { ShopSearch } from '@/features/storefront/shop/shop-search';
-import { ShopEmptyState } from '@/features/storefront/shop/shop-empty-state';
+import {
+  ShopShelf,
+  ShopShelfSkeleton,
+} from '@/features/storefront/shop/shop-shelf';
 import {
   isUnknownCategory,
   SHOP_TITLE,
@@ -21,20 +20,24 @@ import {
   shopMetadata,
 } from '@/features/storefront/shop/shop-metadata';
 import {
-  buildShopHref,
   parseShopQuery,
-  updateShopQuery,
   type ShopQuery,
 } from '@/features/storefront/shop/shop-query';
 import { PATHS } from '@/lib/constant/paths';
+import {
+  storefrontCategories,
+  storefrontPriceBounds,
+} from '@/logic/storefront/cached-reads';
 
 type PageSearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 /**
- * The categories, read once per request: `generateMetadata` titles a shelf by
- * its category, and the page lists them in the filters.
+ * The categories: `generateMetadata` titles a shelf by its category, and the
+ * page lists them in the filters. From the storefront cache an admin save drops
+ * (`src/logic/storefront/cached-reads.ts`), which also shares one read between
+ * the two.
  */
-const listCategories = cache(() => CategoryDao.list());
+const listCategories = storefrontCategories;
 
 type ListOptions = NonNullable<Parameters<typeof ProductDao.list>[0]>;
 
@@ -99,8 +102,8 @@ export const dynamic = 'force-dynamic';
  * listing rather than a 500 or a redirect, and the next click writes the clean
  * URL back.
  *
- * Reads go through the DAOs directly, as on the home page: two independent
- * single-DAO reads, so they belong here and not in `src/logic/`. The listing
+ * The listing reads through the DAO directly, live; the categories and the
+ * price bounds come from the storefront cache. The listing
  * does not call its own HTTP API — that would be a network round trip to this
  * same process — but it does obey that API's contract, which is why
  * `shop-query.ts` borrows its types.
@@ -112,20 +115,25 @@ export default async function ShopPage({
 }) {
   const query = parseShopQuery(await searchParams);
 
-  const [{ items, total }, categories, priceBounds] = await Promise.all([
-    shelfListing(query),
+  const [categories, priceBounds] = await Promise.all([
     listCategories(),
     // The slider's ends. Catalogue-wide on purpose: bounds that narrowed with
     // the current category would move the handles under the shopper's hand
     // every time they picked a shelf.
-    ProductDao.priceBounds(),
+    storefrontPriceBounds(),
   ]);
 
   // A category that does not exist is a page that does not exist, like a
   // removed product: a real 404, so Google drops an old link to it. A known
   // category that lists nothing right now stays a page (noindexed by its
-  // metadata), since it fills again when stock returns.
+  // metadata), since it fills again when stock returns. Decided here, before
+  // anything streams: once the first bytes are out the status is 200.
   if (isUnknownCategory(query, categories)) notFound();
+
+  // Started, not awaited: the listing is the one live read (it shows stock), so
+  // everything above the results renders now and `ShopShelf` streams in behind
+  // its skeleton when it lands. The filter sheet's count waits on the same read.
+  const listing = shelfListing(query);
 
   // Narrowed to what the filter panel renders: `Category` also carries
   // timestamps, and the panel is a client component. Tree order, so each
@@ -134,11 +142,6 @@ export default async function ShopPage({
     ({ title, slug, depth }) => ({ title, slug, depth }),
   );
 
-  const totalPages = Math.ceil(total / query.limit);
-  // A page past the end is not the same as a filter set that matches nothing,
-  // and the two need different ways out. Neither is clamped: the URL asked for
-  // page 9, so page 9 is what gets answered — honestly.
-  const pastLastPage = items.length === 0 && total > 0;
   // The heading names the shelf, as the tab title does: a shelf the sitemap
   // lists is a page of its own, and its visible title has to say so.
   const shelf = shelfTitle(query, categories);
@@ -190,7 +193,7 @@ export default async function ShopPage({
             query={query}
             categories={categoryOptions}
             priceBounds={priceBounds}
-            total={total}
+            total={listing.then(({ total }) => total)}
           />
         </div>
 
@@ -205,39 +208,9 @@ export default async function ShopPage({
           </aside>
 
           <div className="min-w-0 flex-1">
-            <ShopResults query={query} total={total} count={items.length}>
-              {items.length === 0 ? (
-                <ShopEmptyState
-                  pastLastPage={pastLastPage}
-                  searchTerm={query.q}
-                  // Back to the first page *of this filter set* — sending a
-                  // shopper who over-shot page 9 to the bare shop would throw
-                  // away the filters they were browsing with.
-                  firstPageHref={buildShopHref(
-                    updateShopQuery(query, { page: 1 }),
-                  )}
-                  // Same reasoning for a search that missed: drop the term the
-                  // shopper mistyped, keep the category and price they chose.
-                  clearSearchHref={buildShopHref(
-                    updateShopQuery(query, { q: undefined }),
-                  )}
-                />
-              ) : (
-                items.map((product, index) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    // The first row at the widest grid (`xl:grid-cols-3`). One
-                    // of these is the shop's LCP element, and which one depends
-                    // on the viewport — so all three are eager and none is
-                    // preloaded.
-                    eager={index < 3}
-                  />
-                ))
-              )}
-            </ShopResults>
-
-            <ShopPagination query={query} totalPages={totalPages} />
+            <Suspense fallback={<ShopShelfSkeleton />}>
+              <ShopShelf query={query} listing={listing} />
+            </Suspense>
           </div>
         </div>
       </div>

@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { categories } from '@/db/schema/catalog';
 import { siteContent } from '@/db/schema/site-content';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
+import { CACHE_TAGS, invalidateTags } from '@/lib/cache/store';
 import { PATHS, shopPath } from '@/lib/constant/paths';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 
@@ -118,12 +119,20 @@ describe.skipIf(!databaseReachable)('the About page', () => {
   });
 
   describe('after an admin saves a block', () => {
-    it('shows the new value on the very next load (no cache to go stale)', async () => {
+    it('shows the new value on the very next load once the save drops the cache', async () => {
+      // Read first, so the content is cached the way a live storefront has it.
+      expect((await inspect()).strings).toContain(
+        DEFAULT_CONTENT['about.cta'].headline,
+      );
       await SiteContentDao.set('about.cta', {
         ...DEFAULT_CONTENT['about.cta'],
         headline: 'سلام تازه‌وارد',
       });
+      // A write that skips the admin API (psql, a seed) waits out the cache…
+      expect((await inspect()).strings).not.toContain('سلام تازه‌وارد');
 
+      // …while the admin API's save drops it (`invalidateOnWrite`).
+      invalidateTags(CACHE_TAGS.SITE_CONTENT);
       const { strings } = await inspect();
       expect(strings).toContain('سلام تازه‌وارد');
       expect(strings).not.toContain(DEFAULT_CONTENT['about.cta'].headline);
@@ -144,6 +153,8 @@ describe.skipIf(!databaseReachable)('the About page', () => {
           ...DEFAULT_CONTENT['about.cta'],
           ctaLink: { type: 'shop', categoryId: category.id },
         });
+        // What the admin API's save does after the write (`invalidateOnWrite`).
+        invalidateTags(CACHE_TAGS.SITE_CONTENT);
         const { strings } = await inspect();
         // Stored by id, resolved to the category's current slug on the page.
         expect(strings).toContain(shopPath({ category: category.slug }));

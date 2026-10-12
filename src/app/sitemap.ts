@@ -1,14 +1,14 @@
 import type { MetadataRoute } from 'next';
-import { ProductDao } from '@/db/dao/ProductDao';
 import { sitemapEntries } from '@/lib/seo';
 import { getEnvFlag, VARS } from '@/lib/utils/env';
-import { listStockedShelves } from '@/logic/seo/stocked-shelves';
+import { sitemapLists } from '@/logic/storefront/cached-reads';
 
 /**
  * Built per request, like the pages it lists. Next caches `sitemap.ts` by
  * default, which would freeze the catalogue into the build output, and
  * `next build` (a quality gate, and the Docker image build) has no database
- * to reach.
+ * to reach. Its lists come from the storefront cache (`sitemapLists`): crawlers
+ * ask often, and the shelf check is a query per shelf.
  */
 export const dynamic = 'force-dynamic';
 
@@ -20,9 +20,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     return sitemapEntries([], []);
   }
 
-  const [products, shelves] = await Promise.all([
-    ProductDao.listForSitemap(),
-    listStockedShelves(),
-  ]);
+  const { products, shelves } = await sitemapLists();
   return sitemapEntries(products, shelves);
 }

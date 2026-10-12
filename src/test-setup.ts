@@ -2,6 +2,7 @@
 import { createHash } from 'node:crypto';
 import { beforeEach } from 'vitest';
 
+import { resetCache } from '@/lib/cache/store';
 import { resetRateLimitBuckets } from '@/lib/hono/middleware/rate-limit-store';
 
 // The `/api/*` rate limiter counts into a module-level Map, and every suite
@@ -14,8 +15,14 @@ import { resetRateLimitBuckets } from '@/lib/hono/middleware/rate-limit-store';
 // The import is the dependency-free store, never the middleware: importing
 // `rate-limit.ts` here pulled better-auth and zod-openapi into every test file
 // and cost the suite ~25s of setup.
+//
+// The storefront read cache (`src/lib/cache/store.ts`) is the same kind of
+// state, on `globalThis`: one worker runs every suite, so a value one suite
+// cached would answer another's read, and a test asserting "no DAO read before
+// the guard" would pass on a warm entry.
 beforeEach(() => {
   resetRateLimitBuckets();
+  resetCache();
 });
 
 // `crypto.subtle.digest` hashes off the main thread here, so its promise
