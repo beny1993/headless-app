@@ -2,6 +2,7 @@
 // stops working in SDK v11.
 import { withSentryConfig } from '@sentry/nextjs/config';
 import type { NextConfig } from 'next';
+import { z } from 'zod';
 
 // When uploads live in object storage (production `s3`), `next/image` must be
 // told the bucket host is allowed — an un-allowlisted remote host is blocked.
@@ -39,7 +40,47 @@ const storageRemotePatterns: NonNullable<
     })()
   : [];
 
+// The E2E suite's own `next dev` (playwright.config.ts sets `E2E_SERVER`) builds
+// into a folder of its own and starts without Turbopack's dev cache. Unset, as
+// for `pnpm dev`, `next build` and the Docker image, Next's defaults stand.
+//
+// Its own folder, because Next allows one `next dev` per build folder: in
+// `.next` the suite could not start beside a running `pnpm dev`. No dev cache,
+// because of a reload loop: the server answered every page load with a reload
+// ("HMR hash mismatch" on its HMR socket), and the spec on that page timed
+// out, sign-in included. Each time it appeared, the server had started on a
+// cache left by an earlier one: a `.next` shared by servers on different ports
+// after files changed while none ran, and once right after a run Playwright
+// ended with SIGKILL (as it does while `webServer.gracefulShutdown` is unset).
+// With the cache off it never appeared. The price is a cold compile of every
+// route each run, and `⨯ turbopackFileSystemCacheForDev` in the startup banner.
+//
+// Blank means unset, as for the provider switches in src/lib/utils/env.ts; a
+// value it cannot read stops the server rather than guessing.
+const e2eServer = z
+  .enum(['true', 'false'])
+  .safeParse(process.env.E2E_SERVER?.trim() || 'false');
+if (!e2eServer.success) {
+  throw new Error(
+    `E2E_SERVER must be "true", "false" or unset, got ${JSON.stringify(process.env.E2E_SERVER)}`,
+  );
+}
+const isE2EServer = e2eServer.data === 'true';
+
+/**
+ * Spread first into the config below, which sets neither key. One that ever
+ * sets `experimental` must merge this in, or the E2E server loses it silently
+ * (next.config.test.ts would say so).
+ */
+const e2eServerConfig: NextConfig = isE2EServer
+  ? {
+      distDir: '.next-e2e',
+      experimental: { turbopackFileSystemCacheForDev: false },
+    }
+  : {};
+
 const nextConfig: NextConfig = {
+  ...e2eServerConfig,
   // Plain Node output — the app ships as a Docker image to an Iranian PaaS,
   // never to a serverless/Vercel runtime.
   output: 'standalone',

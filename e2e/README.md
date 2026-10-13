@@ -61,7 +61,7 @@ tile under the pointer), then two photos removed — the first of them from the
 keyboard — whose `uploads/…` files stop
 serving while the kept one goes on serving (all probed with `request.get`,
 never an `<img>`: `next/image` caches what it optimized, so a deleted file
-renders on from `.next/cache`) — repriced, found
+renders on from `.next-e2e/dev/cache/images`) — repriced, found
 under both category filters, then deleted from the list through its
 confirmation modal (cancelled once first, sending nothing): gone from the list,
 its page 404 and its last photo's file no longer served; a product a shopper
@@ -132,9 +132,18 @@ drives the browser only for a story's new behaviour.
   the login page, mock Zarinpal switched on (`APP_CONFIG_ZARINPAL_ENABLED`,
   off by default) and local storage, and blanks Sentry, Umami and the S3 image
   base URL over whatever `.env` says. Only the dev Postgres has to
-  be up already. Next allows one `next dev` per checkout: if `pnpm dev` is
-  running in the same checkout, the suite stops at "Another next dev server is
-  already running" — stop that server, or run the suite from a worktree.
+  be up already.
+- **Its server builds into `.next-e2e`**, a folder of its own, with Turbopack's
+  dev cache off (`E2E_SERVER` in `webServer.env`, read by `next.config.ts`). So
+  it runs beside a `pnpm dev` in the same checkout, sharing its source tree: an
+  edit made mid-run changes what the suite tests. And it cannot start on a
+  stale cache, which on 16.4 reloaded a page over and over until the spec on it
+  timed out; every route compiles cold instead. Still one run per checkout: a
+  second, even on another `E2E_PORT`, stops at "Another next dev server is
+  already running" (the lock is per build folder), so parallel suites run from
+  worktrees. After a run, `next-env.d.ts` imports `.next-e2e`'s route types
+  until `pnpm dev` or a build rewrites it, so deleting `.next-e2e` by hand
+  breaks `pnpm type-check` until one of them runs, as deleting `.next` does.
 - **Checkout is rate-capped per account** (`MAX_ORDERS_PER_WINDOW` in
   `src/logic/checkout/create-order.ts`, 30 orders an hour, any status). One
   run's throwaway customer places 28 across both viewports (`checkout` 12,
