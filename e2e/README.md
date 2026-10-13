@@ -233,5 +233,9 @@ an anonymous listing, which is what keeps receipts unlisted (the suite runs the
 local driver; `pnpm verify-s3` checks the live bucket, docs/DEPLOY.md §3), a checkout whose answer is lost followed
 by a reload that resends the same order (the client's resend is
 component-tested in `src/features/checkout/checkout-form.key.test.tsx`, the
-server's replay in `src/logic/checkout/create-order.idempotency.integration.test.ts`)
+server's replay in `src/logic/checkout/create-order.idempotency.integration.test.ts`),
+an add pressed between the product page's hydration commit and the cart
+drawer's subscription (a window one task wide, which no ordinary step lands in;
+the drawer still opening is component-tested in
+`src/features/storefront/cart/cart-drawer.early-open.test.tsx`)
 — and anything visual (RTL layout, Persian font rendering).
