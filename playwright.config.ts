@@ -81,6 +81,9 @@ export default defineConfig({
     // Pinned over whatever .env says. An empty string wins over the file too:
     // @next/env never overwrites a variable that is already set.
     env: {
+      // A build folder of its own, without Turbopack's dev cache: see
+      // next.config.ts.
+      E2E_SERVER: 'true',
       NEXT_PUBLIC_APP_URL: baseURL,
       // The specs read the OTP off the login page, and only the console
       // driver's staging echo puts it there.

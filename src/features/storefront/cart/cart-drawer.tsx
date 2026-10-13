@@ -43,7 +43,11 @@ export function CartDrawer({ className }: { className?: string }) {
 
   // Opening from elsewhere on the site — the product page's add button, which
   // is in a different branch of the tree entirely. See ./drawer-open.ts for
-  // why that is a listener and not a context or a window global.
+  // why that is a listener and not a context or a window global. The button is
+  // live from the hydration commit and this effect runs a task later; an add
+  // pressed in between is handed over when it subscribes. That also covers a
+  // drawer hydrated in a later commit than the button, the one case a layout
+  // effect here would still miss (./cart-drawer.early-open.test.tsx).
   useEffect(() => subscribeToCartDrawer(show), [show]);
 
   return (

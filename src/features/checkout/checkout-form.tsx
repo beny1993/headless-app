@@ -40,6 +40,7 @@ import {
   FieldShell,
   TextField,
 } from '@/components/ui/field';
+import { useHydrated } from '@/hooks/use-hydrated';
 import { ApiRequestError, postData, postForm } from '@/lib/api-client';
 import { normalizePostalCode, validateAddress } from '@/lib/account/address';
 import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
@@ -204,11 +205,7 @@ export function CheckoutForm({
   // a passive `mounted` flag could lag it and briefly read a real empty cart as
   // "still loading".
   const lines = useSyncExternalStore(subscribe, getCart, getServerCart);
-  const hydrated = useSyncExternalStore(
-    subscribe,
-    () => true,
-    () => false,
-  );
+  const hydrated = useHydrated();
 
   const [step, setStep] = useState(resumedOrder ? 3 : 1);
   // '' is «آدرس جدید»; otherwise the index into `savedAddresses` of the picked
@@ -845,6 +842,8 @@ export function CheckoutForm({
                           ? startNewAddress()
                           : applySavedAddress(event.target.value)
                       }
+                      // Until hydration a pick would be lost (`useHydrated`).
+                      disabled={!hydrated}
                       className={controlClass(false)}
                       data-umami-event="checkout-saved-address-select"
                     >
