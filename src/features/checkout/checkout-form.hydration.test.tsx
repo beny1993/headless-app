@@ -12,9 +12,15 @@
 // Asserted on the order summary, which every step renders; `next/navigation` is
 // stubbed because the form calls `useRouter`, and `@/lib/api-client` is stubbed
 // so importing the form never reaches a real fetch (it is not called at render).
+//
+// Also pinned here: the saved-address select arrives disabled from the server
+// and is enabled by the render right after hydration. A pick made before React
+// listens is lost (`useHydrated`). Asserted on the DOM's `disabled`, as in
+// ./retry-payment-button.test.tsx.
 import { act } from 'react';
 import { hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
+import { fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CheckoutForm } from './checkout-form';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
@@ -23,9 +29,13 @@ import {
   clearCart,
   type CartLineInput,
 } from '@/features/storefront/cart/cart';
+import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
 
+const { replace } = vi.hoisted(() => ({
+  replace: vi.fn<(href: string) => void>(),
+}));
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace }),
 }));
 vi.mock('@/lib/api-client', () => ({
   postData: vi.fn(),
@@ -46,10 +56,25 @@ const CAT_TOY: CartLineInput = {
   unitPrice: 185_000,
 };
 
+/** On the one active province, as in ./checkout-form.saved-address.test.tsx. */
+const SAVED: AddressResponse = {
+  id: 'address-1',
+  title: 'خانه',
+  recipientName: 'سارا محمدی',
+  recipientPhone: '09120000000',
+  provinceId: 1,
+  provinceName: 'تهران',
+  city: 'تهران',
+  postalCode: '1234567890',
+  addressLine: 'خیابان آزادی، کوچه بهار، پلاک ۱۲',
+  createdAt: '2026-09-01T00:00:00Z',
+};
+
 let container: HTMLDivElement;
 let unmount: () => void = () => undefined;
 
 beforeEach(() => {
+  replace.mockClear();
   clearCart();
   container = document.createElement('div');
   document.body.append(container);
@@ -99,5 +124,45 @@ describe('the checkout form, hydrating', () => {
     expect(recovered).toEqual([]);
     // …and the stored cart is on screen right after.
     expect(container.textContent).toContain(CAT_TOY.title);
+    // It arrived in the same render as `hydrated`: a render that had one
+    // without the other would send a shopper with a cart to the shop.
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('takes a saved address only once React listens', () => {
+    const form = (
+      <CheckoutForm
+        rates={RATES}
+        defaultName=""
+        defaultPhone=""
+        savedAddresses={[SAVED]}
+        payment={DEFAULT_CONTENT['checkout.payment']}
+      />
+    );
+    const savedSelect = () =>
+      container.querySelector<HTMLSelectElement>(
+        '[data-umami-event="checkout-saved-address-select"]',
+      )!;
+
+    container.innerHTML = renderToString(form);
+    expect(savedSelect().disabled).toBe(true);
+
+    addToCart(CAT_TOY, 1);
+    const recovered: unknown[] = [];
+    act(() => {
+      const root = hydrateRoot(container, form, {
+        onRecoverableError: (error) => recovered.push(error),
+      });
+      unmount = () => root.unmount();
+    });
+    expect(recovered).toEqual([]);
+    expect(savedSelect().disabled).toBe(false);
+
+    fireEvent.change(savedSelect(), { target: { value: '0' } });
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-umami-event="checkout-recipient-name"]',
+      )!.value,
+    ).toBe(SAVED.recipientName);
   });
 });
