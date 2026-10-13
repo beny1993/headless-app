@@ -6,7 +6,13 @@
 //
 // Also pins the single-tick rule: the panel mirrors one `?category=`, so ticking
 // a sub-category must not also tick its parent.
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ShopFilterSheet,
@@ -106,6 +112,53 @@ describe('the mobile sheet\u2019s badge', () => {
     renderSheet();
 
     expect(openButton().textContent).not.toContain('(');
+  });
+});
+
+// The shop streams its listing in (`Story - Storefront Caching and
+// Streaming`), so the sheet gets the count as a promise: its open button must
+// not wait for the listing, and the confirm button fills its number in when it
+// lands. Wiring a unit test cannot reach — the promise is resolved by React.
+describe('the mobile sheet while the listing streams in', () => {
+  const applyButton = (container: HTMLElement) =>
+    container.querySelector('[data-umami-event="shop-filter-sheet-apply"]')!;
+
+  it('is usable at once, and counts once the listing arrives', async () => {
+    let resolve!: (total: number) => void;
+    const total = new Promise<number>((res) => (resolve = res));
+
+    const { container } = await act(async () =>
+      render(
+        <ShopFilterSheet
+          query={parseShopQuery({ pet: 'cat' })}
+          categories={OPTIONS}
+          priceBounds={BOUNDS}
+          total={total}
+        />,
+      ),
+    );
+
+    expect(screen.getByRole('button', { name: /فیلتر/ }).textContent).toContain(
+      '(۱)',
+    );
+    expect(applyButton(container).textContent).toBe('نمایش محصولات');
+
+    await act(async () => resolve(1234));
+
+    expect(applyButton(container).textContent).toBe('نمایش ۱٬۲۳۴ محصول');
+  });
+
+  it('counts at once when handed a number', () => {
+    const { container } = render(
+      <ShopFilterSheet
+        query={parseShopQuery({})}
+        categories={OPTIONS}
+        priceBounds={BOUNDS}
+        total={7}
+      />,
+    );
+
+    expect(applyButton(container).textContent).toBe('نمایش ۷ محصول');
   });
 });
 

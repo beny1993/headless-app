@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { AddressDao } from '@/db/dao/AddressDao';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { PetDao } from '@/db/dao/PetDao';
-import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
 import { AccountView } from '@/features/account/account-view';
 import { toLocalIranPhone } from '@/lib/auth/phone';
 import { requireSession } from '@/lib/auth/session';
@@ -10,6 +9,7 @@ import { PATHS } from '@/lib/constant/paths';
 import { toAddressResponse } from '@/lib/account/address';
 import { toPetResponse } from '@/lib/account/pet';
 import { toOrderSummary } from '@/lib/orders/order-summary';
+import { storefrontShippingRates } from '@/logic/storefront/cached-reads';
 
 export const metadata: Metadata = { title: 'حساب کاربری' };
 
@@ -32,7 +32,8 @@ export default async function Page() {
     PetDao.listByUser(userId),
     AddressDao.listByUser(userId),
     OrderDao.listByUser(userId),
-    ShippingRateDao.listActive(),
+    // Not the shopper's: the province list, from the storefront cache.
+    storefrontShippingRates(),
   ]);
 
   return (

@@ -117,10 +117,22 @@ test('an admin creates a category, renames it and deletes it', async ({
   const title = `دسته آزمایشی ${id}`;
   const renamed = `دسته تازه ${id}`;
   const slug = `e2e-category-${id}`;
+  // The storefront reads the category list from a cache the admin's saves drop
+  // (`Story - Storefront Caching and Streaming`), so each step is checked on
+  // the shop right after it: a shelf that is there, renamed, then gone. Read
+  // with `request.get` — the watch would count the last one's 404 document.
+  const shelf = () => page.request.get(shopPath({ category: slug }));
+  const shelfHeading = async () =>
+    /<h1[^>]*>([^<]*)<\/h1>/.exec(await (await shelf()).text())?.[1];
+
+  // Warm the cache with the list as it stands, so a missed drop would show.
+  expect((await shelf()).status()).toBe(404);
 
   await page.goto(PROTECTED_PATHS.CATEGORIES);
   try {
     await createCategory(page, title, slug);
+    expect((await shelf()).status()).toBe(200);
+    expect(await shelfHeading()).toBe(title);
 
     // Renamed in place: the row turns into its own fields, then saves.
     await editCategory(page, slug, (editing) =>
@@ -129,9 +141,11 @@ test('an admin creates a category, renames it and deletes it', async ({
         .fill(renamed),
     );
     await expect(rowFor(page, slug)).toContainText(renamed);
+    expect(await shelfHeading()).toBe(renamed);
 
     // No product uses it, so it deletes outright.
     await deleteCategory(page, slug);
+    expect((await shelf()).status()).toBe(404);
   } finally {
     // The delete above is the assertion; this is the safety net for a failure
     // anywhere before it, which would otherwise leave the row in the shared

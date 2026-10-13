@@ -68,6 +68,9 @@ its page 404 and its last photo's file no longer served; a product a shopper
 orders, whose modal then names the orders and offers only «غیرفعال», the row
 staying inactive with no 🗑 left; a sub-category nested under
 a category the panel then refuses to delete until it is emptied; a category
+created, renamed and deleted, its shop shelf read right after each save —
+there under its title, renamed, then 404 — since each save drops the
+storefront's cached category list; a category
 given a photo that its home-page tile then shows (the file probed with
 `request.get`), a new one picked in its edit row that the tile then follows,
 and a plain tile once the photo is removed; a photo picked through the button
@@ -99,6 +102,11 @@ they typed (`0999…`, stored `+98…`) listing exactly their row, their account
 page, with the sidebar's «کاربران» lit on both, opening one of their orders,
 whose «مشاهده حساب سفارش‌دهنده» leads back to that same account — and
 anonymous visitors and customers turned away from the list and a detail page.
+How pages arrive (`streaming.spec.ts`): the shop's
+HTML with its heading ahead of the first card and the grid's skeleton in the
+page, a real 404 carrying no skeleton for an unknown category, the phone filter
+sheet's count agreeing with the toolbar once the listing is in, and the
+account and admin panel skeletons in their pages' HTML.
 For search engines: `sitemap.xml` listing a seeded
 product, a family member and their shelves by the URL each page names as its
 canonical; a product page's `Product` JSON-LD priced in Rial, with its Google
@@ -199,9 +207,12 @@ drives the browser only for a story's new behaviour.
   local driver has no file for them. The catalog spec proves the upload path
   instead: it uploads a photo and checks that it renders.
 - **Selectors are the `data-umami-event` names** (roles for headings and
-  dialogs). App routes come from `paths.ts`, and the product and province a
-  spec uses from the seed data in `src/db/seed/`, never restated. Renaming an
-  event is a spec change.
+  dialogs). The loading skeletons, which nothing taps, carry a `data-testid`
+  instead: `streaming.spec.ts` searches the raw HTML for it, the page's RSC
+  payload included, where it must not be confused with another label. App
+  routes come from `paths.ts`, and the product and province a spec uses from
+  the seed data in `src/db/seed/`, never restated. Renaming an event is a spec
+  change.
 - **Browser: the installed Google Chrome** (`channel: 'chrome'`), no download.
   A failure keeps its trace and screenshot: `pnpm exec playwright show-report`.
 

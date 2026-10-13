@@ -4,9 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Check, Truck, Undo2 } from 'lucide-react';
 import { JsonLd } from '@/components/json-ld';
-import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
-import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
 import {
   AVAILABILITY,
   availability,
@@ -32,6 +30,10 @@ import type { ProductDetail } from '@/db/schema/catalog';
 import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
 import { formatToman } from '@/lib/format';
 import { breadcrumbJsonLd } from '@/lib/seo';
+import {
+  storefrontCategories,
+  storefrontShippingRates,
+} from '@/logic/storefront/cached-reads';
 
 /**
  * The product detail page, ported from `design/src/app/App.tsx`.
@@ -85,15 +87,14 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 export default async function ProductDetailPage({ params }: Params) {
   const { slug } = await params;
 
-  // Independent single-DAO reads, as on the home and shop pages, so they
-  // belong here rather than in `src/logic/`. The category list is six rows and
-  // is needed for one breadcrumb link; the province fees price shipping in the
-  // structured data. Asking for both alongside the product costs nothing and
-  // keeps the DAOs' shapes untouched.
+  // Independent reads, in parallel. The product is live — its price and stock
+  // must be exact — while the category list (for the breadcrumb) and the
+  // province fees (shipping in the structured data) come from the storefront
+  // cache an admin save drops (`src/logic/storefront/cached-reads.ts`).
   const [product, categories, rates] = await Promise.all([
     findProduct(slug),
-    CategoryDao.list(),
-    ShippingRateDao.listActive(),
+    storefrontCategories(),
+    storefrontShippingRates(),
   ]);
   if (!product) notFound();
 
