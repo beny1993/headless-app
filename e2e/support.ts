@@ -90,6 +90,23 @@ export async function expectRendered(img: Locator) {
 }
 
 /**
+ * How many lines a block of text wraps onto: its height over its line height,
+ * which `getComputedStyle` reads back in pixels whenever one is set, as
+ * Tailwind's text sizes do (`normal` reads back as the word, and the count as
+ * NaN). For copy that must read as a line, not squeezed into a column beside a
+ * button at 375px. Read it through `expect.poll`: the self-hosted font can
+ * still swap in and reflow the text.
+ */
+export function lineCount(block: Locator): Promise<number> {
+  return block.evaluate((element) =>
+    Math.round(
+      element.getBoundingClientRect().height /
+        parseFloat(getComputedStyle(element).lineHeight),
+    ),
+  );
+}
+
+/**
  * An uploaded image, straight or through the image optimizer. A dev database
  * keeps the uploads it was given while `.env` pointed at object storage, and
  * this run serves `/uploads` from the local driver, which has no file for
