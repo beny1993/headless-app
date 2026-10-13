@@ -334,8 +334,9 @@ test('an admin adds a product with photos, reorders them, reprices it and delete
     ).toBe(uploadedKeys[1]);
     // And a reorder deleted nothing: both files still serve. Probed through the
     // uploads route rather than an `<img>` — `next/image` caches what it
-    // optimized, so a deleted file goes on rendering from `.next/cache` and an
-    // on-page check passes against the very bug this is here to catch.
+    // optimized, so a deleted file goes on rendering from the server's image
+    // cache (`.next-e2e/dev/cache/images`) and an on-page check passes against
+    // the very bug this is here to catch.
     for (const key of uploadedKeys) {
       expect((await page.request.get(`/${key}`)).status()).toBe(200);
     }

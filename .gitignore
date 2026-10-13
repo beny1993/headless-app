@@ -8,6 +8,8 @@
 
 # next.js
 /.next/
+# the E2E suite's own build folder (next.config.ts)
+/.next-e2e/
 /out/
 
 # production

@@ -351,6 +351,11 @@ Other commands: `pnpm drizzle-studio`,
 (design prototype).
 Running `next dev` on any port but 3000 needs `NEXT_PUBLIC_APP_URL` overridden
 in the shell to match, or Better Auth rejects every POST with 403.
+If a dev server reloads a page over and over (its HMR socket sends a reload
+with "HMR hash mismatch"), the one cause seen so far is a Turbopack dev cache
+left by an earlier server on the same build folder: stop the server, delete
+`.next/dev/cache` and start it again. The E2E suite's own server runs with
+that cache off (`e2e/README.md`).
 
 Agent worktrees have no `.env` of their own: build there with
 `pnpm build:local` (see Quality gates), and give the database-backed tests the
