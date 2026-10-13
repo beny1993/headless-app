@@ -2,6 +2,3 @@
 build
 coverage
 src/db/migrations
-
-# Vendored Figma design prototype — reference material, not app code.
-design

@@ -8,12 +8,6 @@
       "port": 3000
     },
     {
-      "name": "design-prototype",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--dir", "design", "dev", "--host"],
-      "port": 5173
-    },
-    {
       "name": "Drizzle Studio",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["drizzle-studio"],

@@ -17,7 +17,7 @@ ESLint 9 + Prettier · husky + lint-staged + commitlint · pnpm 11 / Node 24 ·
 Docker for dev Postgres.
 
 No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
-`/admin` area built from the design prototype.
+`/admin-panel` area built from the design prototype (see Layout).
 
 ## Layout
 
@@ -37,11 +37,17 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/features/<area>/<feature>/` | Feature components; route files stay thin |
 | `src/hooks/` | Shared client hooks (`@/hooks`). `use-modal-dialog.ts` is the one wiring for every native modal `<dialog>` — mobile menu, cart drawer, shop filter sheet. `use-drag-reorder.ts` is the one drag-to-reorder — the product gallery's photos and the content editor's category picks: the pointer gesture carried by `window` listeners, the RTL arrow keys, focus following the moved handle and one polite live region, each trap documented beside its code |
 | `src/lib/catalog/variant.ts` | Product families: `displayTitle` (the **single** derivation used by the product heading, the admin list and the `order_items` snapshot), the label cap and the Persian refusals. A family is `products.variant_of` + `variant_label` — a member is an ordinary product row, so the cart, the stock decrement and `order_items` are untouched; the storefront lists `variant_of is null` and reaches members from the head's page |
-| `design/` | **Canonical design reference** — vendored Figma prototype (own deps, own `pnpm dev` on :5173). FE stories port from it. Never imported by the app. |
 | `scripts/create-admin.ts` | Grant admin by phone (`pnpm create-admin <phone> [name]`) — creates or promotes |
 | `src/db/seed/`, `scripts/seed-catalog.ts` | Demo catalog seed (`pnpm seed-catalog`), idempotent; its images live in `public/products/`, plus the hygiene tile's `public/site/cat-hygiene.jpg` |
 | `scripts/seed-shipping.ts` | Seed all 31 provinces + placeholder shipping rates (`pnpm seed-shipping`), idempotent (upserts by name, never resets a tuned fee). Migration `0011_seed_provinces` plants the same 31 in every environment — production cannot run this script — adding only what is missing and recognising a hand-typed spelling (spaces/ZWNJ) as the same province; pinned by `src/db/seed/shipping-migration.integration.test.ts` |
 | `e2e/`, `playwright.config.ts` | Playwright E2E suite (`pnpm test:e2e`): the core-flow regression walk — see *End-to-end tests* under Testing standard |
+
+The design prototype the storefront and the admin panel were ported from left
+the tree in `37f0724`; the `design/…` paths in code comments point into it.
+Read it from the commit before: `git show e0978e0:design/README.md` (screens
+in `design/src/app/App.tsx`, tokens in `design/src/styles/theme.css`), or open
+the Figma file it was exported from:
+<https://www.figma.com/design/9HOHop6CYyUz1w8Xt6ahlU/Start-Working-on-Project>.
 
 ## Conventions
 
@@ -76,8 +82,9 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
   `formatJalali`, `formatJalaliYear`) — never a Persian numeral literal or an
   ad-hoc `toLocaleString` in a component, or the same screen ends up with two
   different thousands separators.
-- **Styling**: Tailwind v4, CSS-first config in `src/app/globals.css`;
-  tokens port from `design/src/styles/theme.css`. Merge classes with `cn()`.
+- **Styling**: Tailwind v4, CSS-first config in `src/app/globals.css`, which
+  owns the tokens ported from the prototype's `theme.css` (see Layout). Merge
+  classes with `cn()`.
   Fonts are **self-hosted** with `next/font/local` (`src/lib/fonts.ts` →
   `src/assets/fonts/`); `next/font/google` fetches from Google at build time
   and fails on Iranian infrastructure.
@@ -346,9 +353,8 @@ pnpm create-admin 09121234567       # grant admin to a phone number
 `/api/reference` interactive API docs (non-production only). Sign-in is `/login`
 for customers and admins alike; the console SMS driver prints the one-time code
 to the server log, so no SMS account is needed locally.
-Other commands: `pnpm drizzle-studio`,
-`pnpm migration:reset-dev` (nuke volumes, re-migrate), `pnpm --dir design dev`
-(design prototype).
+Other commands: `pnpm drizzle-studio` and `pnpm migration:reset-dev` (nuke
+volumes, re-migrate).
 Running `next dev` on any port but 3000 needs `NEXT_PUBLIC_APP_URL` overridden
 in the shell to match, or Better Auth rejects every POST with 403.
 
