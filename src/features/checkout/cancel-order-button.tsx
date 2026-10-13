@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
 import { AlertCircle, XCircle } from 'lucide-react';
+import { useHydrated } from '@/hooks/use-hydrated';
 import { postData } from '@/lib/api-client';
 import { reasonFrom } from '@/lib/checkout/field-errors';
 import { apiOrderCancelPath } from '@/lib/constant/paths';
@@ -19,6 +20,7 @@ import { apiOrderCancelPath } from '@/lib/constant/paths';
  */
 export function CancelOrderButton({ orderId }: { orderId: string }) {
   const router = useRouter();
+  const hydrated = useHydrated();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -84,6 +86,9 @@ export function CancelOrderButton({ orderId }: { orderId: string }) {
           ref={openButton}
           type="button"
           onClick={() => setConfirming(true)}
+          // Until hydration a tap would be dropped (`useHydrated` says why).
+          // The question's own buttons only ever render after it.
+          disabled={!hydrated}
           className="text-destructive hover:bg-destructive-soft/40 inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-colors"
           data-umami-event="account-order-cancel"
         >

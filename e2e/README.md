@@ -198,6 +198,17 @@ drives the browser only for a story's new behaviour.
   uploads it was given while `.env` pointed at object storage, and this run's
   local driver has no file for them. The catalog spec proves the upload path
   instead: it uploads a photo and checks that it renders.
+- **A tap that leaves no trace right after a load is a hydration race.**
+  Playwright acts the moment a control is visible and enabled, and right after
+  a full load (a `goto` or `reload`, which return at `load`, or a redirect's
+  landing, which nothing waits for) that can be before React listens to it:
+  React drops the tap, and the next render writes a `<select>`'s pick back
+  over. The fix is in the app, not a wait in the spec: render the control
+  `disabled` until it hydrates (`useHydrated`, `src/hooks/use-hydrated.ts`),
+  and Playwright waits for it. The checkout's saved-address select, the
+  retry-payment button and the account order's «لغو سفارش» do, for the
+  province, the Zarinpal and the cancel specs that act on them straight after
+  a load.
 - **Selectors are the `data-umami-event` names** (roles for headings and
   dialogs). App routes come from `paths.ts`, and the product and province a
   spec uses from the seed data in `src/db/seed/`, never restated. Renaming an
