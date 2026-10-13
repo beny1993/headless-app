@@ -38,8 +38,11 @@ photo; a screenshot whose upload is cut keeping the shopper on the checkout,
 where «ارسال دوباره رسید» resends it to the same order, then accepted; a
 reload of that retry landing on `/checkout?resume=` for the same order,
 whose screenshot then accepts it; a waiting order the shopper cancels from
-their account, its stock coming back — and through the mock Zarinpal gateway (paid, and failed → retry →
-paid). Admin: anonymous visitors and
+their account, its question reading as a sentence at both widths rather than
+squeezed into a column beside its buttons, and its stock coming back — and
+through the mock Zarinpal gateway (paid, and failed → the order's own page
+offering the retry too, under a banner whose title stays on one line at both
+widths → back on the result page, retry → paid). Admin: anonymous visitors and
 customers turned away; the dashboard figures; an order whose receipt the admin
 sees before shipping it; one whose screenshot upload the spec cuts with
 `page.route` — the checkout staying with «ارسال دوباره رسید», its result page
@@ -223,4 +226,5 @@ local driver; `pnpm verify-s3` checks the live bucket, docs/DEPLOY.md §3), a ch
 by a reload that resends the same order (the client's resend is
 component-tested in `src/features/checkout/checkout-form.key.test.tsx`, the
 server's replay in `src/logic/checkout/create-order.idempotency.integration.test.ts`)
-— and anything visual (RTL layout, Persian font rendering).
+— and anything visual the specs do not measure (RTL layout, Persian font
+rendering).

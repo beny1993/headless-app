@@ -121,21 +121,26 @@ export default async function Page({
           </div>
         </div>
 
+        {/* Text and button share a row from `sm` up. On a phone the button
+            goes under the text, centred by its own wrapper as on the result
+            page: beside the button, the text had a column one word wide. */}
         {view.showRetry && (
-          <div className="bg-warning-soft border-warning/30 mb-5 flex flex-wrap items-start gap-3 rounded-2xl border p-4">
-            <Clock
-              size={18}
-              className="text-warning mt-0.5 shrink-0"
-              aria-hidden="true"
-            />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold">
-                این سفارش هنوز پرداخت نشده است
-              </p>
-              <p className="text-muted-foreground mt-0.5 text-xs">
-                اقلام برایت نگه داشته شده‌اند؛ می‌توانی همین حالا پرداخت را کامل
-                کنی.
-              </p>
+          <div className="bg-warning-soft border-warning/30 mb-5 flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-start">
+            <div className="flex min-w-0 items-start gap-3 sm:flex-1">
+              <Clock
+                size={18}
+                className="text-warning mt-0.5 shrink-0"
+                aria-hidden="true"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">
+                  این سفارش هنوز پرداخت نشده است
+                </p>
+                <p className="text-muted-foreground mt-0.5 text-xs">
+                  اقلام برایت نگه داشته شده‌اند؛ می‌توانی همین حالا پرداخت را
+                  کامل کنی.
+                </p>
+              </div>
             </div>
             <RetryPaymentButton orderId={order.id} />
           </div>
