@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
 import { JsonLd } from '@/components/json-ld';
-import { CategoryDao } from '@/db/dao/CategoryDao';
 import { ProductDao } from '@/db/dao/ProductDao';
-import { SiteContentDao } from '@/db/dao/SiteContentDao';
 import { CONTENT_AREAS, isVisible } from '@/lib/content/site-content';
 import { loadFeaturedPicks } from '@/logic/content/featured-picks';
 import { loadLinkTargets } from '@/logic/content/link-targets';
+import {
+  storefrontCategories,
+  storefrontContent,
+} from '@/logic/storefront/cached-reads';
 import { CategoriesSection } from '@/features/storefront/home/categories';
 import { CommunitySection } from '@/features/storefront/home/community';
 import { FeaturedStorySection } from '@/features/storefront/home/featured-story';
@@ -39,14 +41,15 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
-  // Independent single-DAO reads, so they belong here rather than in
-  // `src/logic/` — that is for operations that span DAOs. The content read is
-  // one primary-key `IN` over the home area's rows; a missing or invalid row
-  // resolves to its default inside the DAO, so an empty table renders today's copy.
+  // Independent reads, in parallel. The product listing is live — it shows
+  // stock — while the categories and the content come from the storefront cache
+  // an admin save drops (`src/logic/storefront/cached-reads.ts`). A missing or
+  // invalid content row resolves to its default, so an empty table renders
+  // today's copy.
   const [{ items }, categories, content] = await Promise.all([
     ProductDao.list(),
-    CategoryDao.list(),
-    SiteContentDao.getMany(CONTENT_AREAS.home.keys),
+    storefrontCategories(),
+    storefrontContent(),
   ]);
 
   // Saved destinations store catalog ids: resolve them once for every linked
@@ -58,7 +61,10 @@ export default async function HomePage() {
   // its box.
   const recommends = content['home.recommends'];
   const [targets, picks] = await Promise.all([
-    loadLinkTargets(Object.values(content), categories),
+    loadLinkTargets(
+      CONTENT_AREAS.home.keys.map((key) => content[key]),
+      categories,
+    ),
     isVisible(recommends)
       ? loadFeaturedPicks(recommends.productIds, items)
       : [],

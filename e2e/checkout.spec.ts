@@ -15,6 +15,7 @@ import {
   expectFailedRequest,
   expectRendered,
   IN_STOCK_PRODUCT,
+  lineCount,
   LOW_STOCK_PRODUCT,
   placeOrder,
   reachPayment,
@@ -292,6 +293,11 @@ test('card to card: the shopper cancels a waiting order from their account, its 
   const account = await page.context().newPage();
   await account.goto(accountOrderPath(orderId));
   await account.locator('[data-umami-event="account-order-cancel"]').click();
+  // The question reads as a sentence at both widths, never squeezed into a
+  // column beside its buttons, as it was at 375px.
+  await expect
+    .poll(() => lineCount(account.getByText('این سفارش لغو شود؟')))
+    .toBeLessThanOrEqual(2);
   await account
     .locator('[data-umami-event="account-order-cancel-confirm"]')
     .click();
@@ -340,6 +346,19 @@ test('Zarinpal: a failed payment can be retried and paid', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'در انتظار تایید پرداخت' }),
   ).toBeVisible();
+
+  // The order's own page offers the same retry, under a banner whose title
+  // stays on one line at both widths: at 375px it once wrapped a word a line
+  // beside the button.
+  const orderId = await resultOrderId(page);
+  await page.goto(accountOrderPath(orderId));
+  await expect(
+    page.locator('[data-umami-event="checkout-result-retry-pay"]'),
+  ).toBeVisible();
+  await expect
+    .poll(() => lineCount(page.getByText('این سفارش هنوز پرداخت نشده است')))
+    .toBe(1);
+  await page.goto(checkoutResultPath(orderId));
 
   await page.locator('[data-umami-event="checkout-result-retry-pay"]').click();
   await page.locator(gatewayButton('pay')).click();

@@ -10,6 +10,7 @@
 # Dependencies and build output — reinstalled/regenerated inside the image.
 node_modules
 .next
+.next-e2e
 out
 build
 coverage

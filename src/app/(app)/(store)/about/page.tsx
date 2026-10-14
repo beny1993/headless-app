@@ -1,7 +1,10 @@
 import type { Metadata } from 'next';
-import { SiteContentDao } from '@/db/dao/SiteContentDao';
-import { CONTENT_AREAS, isVisible } from '@/lib/content/site-content';
+import { isVisible } from '@/lib/content/site-content';
 import { loadLinkTargets } from '@/logic/content/link-targets';
+import {
+  storefrontCategories,
+  storefrontContent,
+} from '@/logic/storefront/cached-reads';
 import { PATHS } from '@/lib/constant/paths';
 import { absoluteUrl } from '@/lib/seo';
 import {
@@ -26,18 +29,21 @@ export const metadata: Metadata = {
  * so — like `/` and `/shop` — it must read the database per request rather than
  * prerender at build time: the Docker image build has no reachable database
  * (`next build` must not touch Postgres), and a build-time snapshot would freeze
- * the copy until the next deploy, defeating the admin editor. The read is one
- * primary-key `IN` over at most five small rows, plus one slug lookup only when
- * the closing button's saved destination names a category or a product; a
- * missing or invalid row resolves to its default inside the DAO, so an empty
- * table renders today's copy.
+ * the copy until the next deploy, defeating the admin editor. The content and
+ * the categories come from the storefront cache an admin save drops
+ * (`cached-reads.ts`), plus one slug lookup only when the closing button's
+ * saved destination names a product; a missing or invalid row resolves to its
+ * default inside the DAO, so an empty table renders today's copy.
  */
 export const dynamic = 'force-dynamic';
 
 export default async function AboutPage() {
-  const content = await SiteContentDao.getMany(CONTENT_AREAS.about.keys);
+  const [content, categories] = await Promise.all([
+    storefrontContent(),
+    storefrontCategories(),
+  ]);
   // The closing button's saved destination, when it names a category or product.
-  const targets = await loadLinkTargets([content['about.cta']]);
+  const targets = await loadLinkTargets([content['about.cta']], categories);
 
   // Each section renders unless the admin has explicitly hidden it (`isVisible` =
   // "shown unless visible === false"); absent/true → shown, so an empty table

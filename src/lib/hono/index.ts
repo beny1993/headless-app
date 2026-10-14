@@ -2,6 +2,7 @@ import { Scalar } from '@scalar/hono-api-reference';
 import type { Env } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { DEFAULT_SITE_NAME } from '@/constants';
+import { CACHE_TAGS } from '@/lib/cache/store';
 import { MAX_RECEIPT_BYTES } from '@/lib/orders/receipt';
 import { MAX_UPLOAD_BYTES } from '@/lib/storage/image-upload';
 import { isProductionServer } from '@/lib/utils/env';
@@ -9,6 +10,7 @@ import { apiErrorHandler, createRouter } from './create-router';
 import { apiError } from './envelope';
 import { IMAGE_TOO_LARGE_MESSAGE } from './image-upload';
 import { requireAdmin, requireAuth, type AuthedEnv } from './middleware/auth';
+import { invalidateOnWrite } from './middleware/invalidate-cache';
 import { rateLimit, RATE_LIMITED_MESSAGE } from './middleware/rate-limit';
 import {
   categoryCreateHandler,
@@ -160,6 +162,8 @@ app.openapi(productDetailRoute, productDetailHandler);
 // body.
 app.openapi(shippingRatesRoute, shippingRatesHandler);
 app.use('/shipping/rates/:provinceId', requireAdmin);
+// After the guard: a save drops the cached rates the storefront shows.
+app.use('/shipping/rates/:provinceId', invalidateOnWrite(CACHE_TAGS.SHIPPING));
 app.openapi(shippingRateUpdateRoute, shippingRateUpdateHandler);
 
 // Zarinpal payments. The callback is unauthenticated by design (a browser
@@ -255,6 +259,14 @@ app.route('/', authed);
 // unauthenticated caller is turned away before anything is buffered.
 const admin = createRouter<Env & AuthedEnv>();
 admin.use('/admin/*', requireAdmin);
+// Every admin write drops the storefront reads that depend on it, so the next
+// storefront render shows the save (`src/lib/cache/store.ts`). Mounted after the
+// guard, so a caller it turns away cannot empty the cache. Products also clear
+// what resolves a saved link to a product slug; categories, a category slug.
+admin.use('/admin/products/*', invalidateOnWrite(CACHE_TAGS.PRODUCTS));
+admin.use('/admin/categories/*', invalidateOnWrite(CACHE_TAGS.CATEGORIES));
+admin.use('/admin/content/*', invalidateOnWrite(CACHE_TAGS.SITE_CONTENT));
+admin.use('/admin/provinces/*', invalidateOnWrite(CACHE_TAGS.SHIPPING));
 const imageBodyLimit = bodyLimit({
   maxSize: MAX_UPLOAD_BYTES,
   onError: (c) => c.json(apiError(IMAGE_TOO_LARGE_MESSAGE), 413),

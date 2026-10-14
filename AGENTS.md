@@ -35,7 +35,7 @@ No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
 | `src/lib/umami/client.ts` | Server-only reader of our self-hosted Umami's API for the admin «پرطرفدارها» page (`src/logic/admin/product-insights.ts`): signs in as a view-only user (`APP_CONFIG_UMAMI_USERNAME`/`_PASSWORD`), caches five minutes, and answers `off`/`unavailable` instead of throwing, so the page always renders its sales |
 | `src/lib/content/` | Storefront editorial content: the client-safe zod schemas + key enum + area map + `isVisible` (`site-content.ts`), the saved-link contract + `resolveLink` (`link.ts`; its id → slug targets load in `src/logic/content/link-targets.ts`), the typed defaults + `resolveContent` fallback (`defaults.ts`), and the header/footer request-time read `readSiteChrome` (`chrome.ts`, `await connection()`). Values live in the `site_content` table; the page-organized admin editor is `/admin-panel/content/[area]` |
 | `src/features/<area>/<feature>/` | Feature components; route files stay thin |
-| `src/hooks/` | Shared client hooks (`@/hooks`). `use-modal-dialog.ts` is the one wiring for every native modal `<dialog>` — mobile menu, cart drawer, shop filter sheet. `use-drag-reorder.ts` is the one drag-to-reorder — the product gallery's photos and the content editor's category picks: the pointer gesture carried by `window` listeners, the RTL arrow keys, focus following the moved handle and one polite live region, each trap documented beside its code |
+| `src/hooks/` | Shared client hooks (`@/hooks`). `use-modal-dialog.ts` is the one wiring for every native modal `<dialog>` — mobile menu, cart drawer, shop filter sheet. `use-drag-reorder.ts` is the one drag-to-reorder — the product gallery's photos and the content editor's category picks: the pointer gesture carried by `window` listeners, the RTL arrow keys, focus following the moved handle and one polite live region, each trap documented beside its code. `use-hydrated.ts` says whether React has hydrated the caller: a server-rendered control whose tap must not be lost renders `disabled={!hydrated}`, since before hydration React drops it — the checkout's saved-address select, the retry-payment button (result and account order pages), the account order's «لغو سفارش» |
 | `src/lib/catalog/variant.ts` | Product families: `displayTitle` (the **single** derivation used by the product heading, the admin list and the `order_items` snapshot), the label cap and the Persian refusals. A family is `products.variant_of` + `variant_label` — a member is an ordinary product row, so the cart, the stock decrement and `order_items` are untouched; the storefront lists `variant_of is null` and reaches members from the head's page |
 | `scripts/create-admin.ts` | Grant admin by phone (`pnpm create-admin <phone> [name]`) — creates or promotes |
 | `src/db/seed/`, `scripts/seed-catalog.ts` | Demo catalog seed (`pnpm seed-catalog`), idempotent; its images live in `public/products/`, plus the hygiene tile's `public/site/cat-hygiene.jpg` |
@@ -357,6 +357,11 @@ Other commands: `pnpm drizzle-studio` and `pnpm migration:reset-dev` (nuke
 volumes, re-migrate).
 Running `next dev` on any port but 3000 needs `NEXT_PUBLIC_APP_URL` overridden
 in the shell to match, or Better Auth rejects every POST with 403.
+If a dev server reloads a page over and over (its HMR socket sends a reload
+with "HMR hash mismatch"), the one cause seen so far is a Turbopack dev cache
+left by an earlier server on the same build folder: stop the server, delete
+`.next/dev/cache` and start it again. The E2E suite's own server runs with
+that cache off (`e2e/README.md`).
 
 Agent worktrees have no `.env` of their own: build there with
 `pnpm build:local` (see Quality gates), and give the database-backed tests the
@@ -364,7 +369,7 @@ main checkout's with `DOTENV_CONFIG_PATH=<main checkout>/.env pnpm test`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
-# This is NOT the Next.js you know
+## This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 

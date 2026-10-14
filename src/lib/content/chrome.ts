@@ -13,21 +13,24 @@
 // config, so `connection()` is the only live-read tool there.
 //
 // Consequence, checked in the PR: `/checkout/failed` and `/_not-found` become `ƒ`
-// in the build legend, and `next build` still never touches Postgres. There is no
-// cache and nothing to invalidate — a saved header/footer shows on the very next
-// render of every page's layout and of a 404.
+// in the build legend, and `next build` still never touches Postgres.
 //
-// ponytail: two PK reads per request (this + the page's own area). React `cache()`
-// dedupe pays only if one `getAll()` replaces the per-area `getMany`; wrap a
-// `cache()`-ed getAll if it ever shows in p95.
-// Saved header/footer destinations add at most a category list and a
-// products-by-id read, and only when one of those links names a category or a
-// product (`loadLinkTargets`).
+// Cached in memory after `connection()` (`Story - Storefront Caching and
+// Streaming`): every storefront page waited on this read before it could start,
+// for content that changes when an admin saves. The admin API drops the entry on
+// any content, category or product write — a saved header/footer destination
+// resolves a category or product id to its current slug — so a save still shows
+// on the very next render (`src/lib/cache/store.ts`).
 import { connection } from 'next/server';
-import { SiteContentDao } from '@/db/dao/SiteContentDao';
+import { CACHE_TAGS, cached } from '@/lib/cache/store';
 import type { LinkTargets } from '@/lib/content/link';
 import type { ContentValues } from '@/lib/content/site-content';
 import { loadLinkTargets } from '@/logic/content/link-targets';
+import {
+  CACHE_TTL_MS,
+  storefrontCategories,
+  storefrontContent,
+} from '@/logic/storefront/cached-reads';
 
 type SiteChrome = Pick<ContentValues, 'header' | 'footer'> & {
   /** The catalog slugs the header's and footer's saved destinations resolve to. */
@@ -36,6 +39,22 @@ type SiteChrome = Pick<ContentValues, 'header' | 'footer'> & {
 
 export async function readSiteChrome(): Promise<SiteChrome> {
   await connection();
-  const { header, footer } = await SiteContentDao.getMany(['header', 'footer']);
-  return { header, footer, targets: await loadLinkTargets([header, footer]) };
+  const { SITE_CONTENT, CATEGORIES, PRODUCTS } = CACHE_TAGS;
+  // Nested on purpose: the content and categories inside are entries of their
+  // own, shared with the pages, and this one adds the resolved link targets.
+  return cached(
+    'site-chrome',
+    { tags: [SITE_CONTENT, CATEGORIES, PRODUCTS], ttlMs: CACHE_TTL_MS },
+    async () => {
+      const [{ header, footer }, categories] = await Promise.all([
+        storefrontContent(),
+        storefrontCategories(),
+      ]);
+      return {
+        header,
+        footer,
+        targets: await loadLinkTargets([header, footer], categories),
+      };
+    },
+  );
 }

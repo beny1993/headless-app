@@ -38,8 +38,11 @@ photo; a screenshot whose upload is cut keeping the shopper on the checkout,
 where «ارسال دوباره رسید» resends it to the same order, then accepted; a
 reload of that retry landing on `/checkout?resume=` for the same order,
 whose screenshot then accepts it; a waiting order the shopper cancels from
-their account, its stock coming back — and through the mock Zarinpal gateway (paid, and failed → retry →
-paid). Admin: anonymous visitors and
+their account, its question reading as a sentence at both widths rather than
+squeezed into a column beside its buttons, and its stock coming back — and
+through the mock Zarinpal gateway (paid, and failed → the order's own page
+offering the retry too, under a banner whose title stays on one line at both
+widths → back on the result page, retry → paid). Admin: anonymous visitors and
 customers turned away; the dashboard figures; an order whose receipt the admin
 sees before shipping it; one whose screenshot upload the spec cuts with
 `page.route` — the checkout staying with «ارسال دوباره رسید», its result page
@@ -61,13 +64,16 @@ tile under the pointer), then two photos removed — the first of them from the
 keyboard — whose `uploads/…` files stop
 serving while the kept one goes on serving (all probed with `request.get`,
 never an `<img>`: `next/image` caches what it optimized, so a deleted file
-renders on from `.next/cache`) — repriced, found
+renders on from `.next-e2e/dev/cache/images`) — repriced, found
 under both category filters, then deleted from the list through its
 confirmation modal (cancelled once first, sending nothing): gone from the list,
 its page 404 and its last photo's file no longer served; a product a shopper
 orders, whose modal then names the orders and offers only «غیرفعال», the row
 staying inactive with no 🗑 left; a sub-category nested under
 a category the panel then refuses to delete until it is emptied; a category
+created, renamed and deleted, its shop shelf read right after each save —
+there under its title, renamed, then 404 — since each save drops the
+storefront's cached category list; a category
 given a photo that its home-page tile then shows (the file probed with
 `request.get`), a new one picked in its edit row that the tile then follows,
 and a plain tile once the photo is removed; a photo picked through the button
@@ -99,6 +105,11 @@ they typed (`0999…`, stored `+98…`) listing exactly their row, their account
 page, with the sidebar's «کاربران» lit on both, opening one of their orders,
 whose «مشاهده حساب سفارش‌دهنده» leads back to that same account — and
 anonymous visitors and customers turned away from the list and a detail page.
+How pages arrive (`streaming.spec.ts`): the shop's
+HTML with its heading ahead of the first card and the grid's skeleton in the
+page, a real 404 carrying no skeleton for an unknown category, the phone filter
+sheet's count agreeing with the toolbar once the listing is in, and the
+account and admin panel skeletons in their pages' HTML.
 For search engines: `sitemap.xml` listing a seeded
 product, a family member and their shelves by the URL each page names as its
 canonical; a product page's `Product` JSON-LD priced in Rial, with its Google
@@ -124,9 +135,18 @@ drives the browser only for a story's new behaviour.
   the login page, mock Zarinpal switched on (`APP_CONFIG_ZARINPAL_ENABLED`,
   off by default) and local storage, and blanks Sentry, Umami and the S3 image
   base URL over whatever `.env` says. Only the dev Postgres has to
-  be up already. Next allows one `next dev` per checkout: if `pnpm dev` is
-  running in the same checkout, the suite stops at "Another next dev server is
-  already running" — stop that server, or run the suite from a worktree.
+  be up already.
+- **Its server builds into `.next-e2e`**, a folder of its own, with Turbopack's
+  dev cache off (`E2E_SERVER` in `webServer.env`, read by `next.config.ts`). So
+  it runs beside a `pnpm dev` in the same checkout, sharing its source tree: an
+  edit made mid-run changes what the suite tests. And it cannot start on a
+  stale cache, which on 16.4 reloaded a page over and over until the spec on it
+  timed out; every route compiles cold instead. Still one run per checkout: a
+  second, even on another `E2E_PORT`, stops at "Another next dev server is
+  already running" (the lock is per build folder), so parallel suites run from
+  worktrees. After a run, `next-env.d.ts` imports `.next-e2e`'s route types
+  until `pnpm dev` or a build rewrites it, so deleting `.next-e2e` by hand
+  breaks `pnpm type-check` until one of them runs, as deleting `.next` does.
 - **Checkout is rate-capped per account** (`MAX_ORDERS_PER_WINDOW` in
   `src/logic/checkout/create-order.ts`, 30 orders an hour, any status). One
   run's throwaway customer places 28 across both viewports (`checkout` 12,
@@ -198,10 +218,24 @@ drives the browser only for a story's new behaviour.
   uploads it was given while `.env` pointed at object storage, and this run's
   local driver has no file for them. The catalog spec proves the upload path
   instead: it uploads a photo and checks that it renders.
+- **A tap that leaves no trace right after a load is a hydration race.**
+  Playwright acts the moment a control is visible and enabled, and right after
+  a full load (a `goto` or `reload`, which return at `load`, or a redirect's
+  landing, which nothing waits for) that can be before React listens to it:
+  React drops the tap, and the next render writes a `<select>`'s pick back
+  over. The fix is in the app, not a wait in the spec: render the control
+  `disabled` until it hydrates (`useHydrated`, `src/hooks/use-hydrated.ts`),
+  and Playwright waits for it. The checkout's saved-address select, the
+  retry-payment button and the account order's «لغو سفارش» do, for the
+  province, the Zarinpal and the cancel specs that act on them straight after
+  a load.
 - **Selectors are the `data-umami-event` names** (roles for headings and
-  dialogs). App routes come from `paths.ts`, and the product and province a
-  spec uses from the seed data in `src/db/seed/`, never restated. Renaming an
-  event is a spec change.
+  dialogs). The loading skeletons, which nothing taps, carry a `data-testid`
+  instead: `streaming.spec.ts` searches the raw HTML for it, the page's RSC
+  payload included, where it must not be confused with another label. App
+  routes come from `paths.ts`, and the product and province a spec uses from
+  the seed data in `src/db/seed/`, never restated. Renaming an event is a spec
+  change.
 - **Browser: the installed Google Chrome** (`channel: 'chrome'`), no download.
   A failure keeps its trace and screenshot: `pnpm exec playwright show-report`.
 
@@ -222,5 +256,10 @@ an anonymous listing, which is what keeps receipts unlisted (the suite runs the
 local driver; `pnpm verify-s3` checks the live bucket, docs/DEPLOY.md §3), a checkout whose answer is lost followed
 by a reload that resends the same order (the client's resend is
 component-tested in `src/features/checkout/checkout-form.key.test.tsx`, the
-server's replay in `src/logic/checkout/create-order.idempotency.integration.test.ts`)
-— and anything visual (RTL layout, Persian font rendering).
+server's replay in `src/logic/checkout/create-order.idempotency.integration.test.ts`),
+an add pressed between the product page's hydration commit and the cart
+drawer's subscription (a window one task wide, which no ordinary step lands in;
+the drawer still opening is component-tested in
+`src/features/storefront/cart/cart-drawer.early-open.test.tsx`)
+— and anything visual the specs do not measure (RTL layout, Persian font
+rendering).

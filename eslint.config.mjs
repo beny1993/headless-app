@@ -11,6 +11,8 @@ const config = [
     ignores: [
       'node_modules/**',
       '.next/**',
+      // The E2E suite's own build folder (next.config.ts).
+      '.next-e2e/**',
       'out/**',
       'build/**',
       'next-env.d.ts',

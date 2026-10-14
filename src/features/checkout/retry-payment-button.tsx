@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import { useHydrated } from '@/hooks/use-hydrated';
 import { reasonFrom } from '@/lib/checkout/field-errors';
 import { startZarinpalPayment } from '@/lib/checkout/start-zarinpal-payment';
 
@@ -11,6 +12,7 @@ import { startZarinpalPayment } from '@/lib/checkout/start-zarinpal-payment';
  * crosses to the client; `startZarinpalPayment` does the rest.
  */
 export function RetryPaymentButton({ orderId }: { orderId: string }) {
+  const hydrated = useHydrated();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
@@ -31,7 +33,8 @@ export function RetryPaymentButton({ orderId }: { orderId: string }) {
       <button
         type="button"
         onClick={retry}
-        disabled={busy}
+        // Until hydration a tap would be dropped (`useHydrated` says why).
+        disabled={busy || !hydrated}
         className="bg-brand hover:bg-brand-hover text-brand-foreground flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60"
         data-umami-event="checkout-result-retry-pay"
       >

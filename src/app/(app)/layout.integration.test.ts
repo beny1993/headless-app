@@ -180,6 +180,10 @@ describe.skipIf(!databaseReachable)('the storefront chrome', () => {
     });
   });
 
+  // These saves land through the DAO on an empty cache (`src/test-setup.ts`
+  // resets it before every test). A save through the admin API after the chrome
+  // was already read is pinned in
+  // `src/logic/storefront/cached-reads.integration.test.ts`.
   describe('after an admin saves the header', () => {
     it('shows the new nav label on the very next render of the layout AND a 404', async () => {
       await SiteContentDao.set('header', {

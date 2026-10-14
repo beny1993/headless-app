@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
 import { AlertCircle, XCircle } from 'lucide-react';
+import { useHydrated } from '@/hooks/use-hydrated';
 import { postData } from '@/lib/api-client';
 import { reasonFrom } from '@/lib/checkout/field-errors';
 import { apiOrderCancelPath } from '@/lib/constant/paths';
@@ -19,6 +20,7 @@ import { apiOrderCancelPath } from '@/lib/constant/paths';
  */
 export function CancelOrderButton({ orderId }: { orderId: string }) {
   const router = useRouter();
+  const hydrated = useHydrated();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -54,36 +56,44 @@ export function CancelOrderButton({ orderId }: { orderId: string }) {
         <div
           role="group"
           aria-labelledby={questionId}
-          className="border-border flex flex-wrap items-center gap-3 rounded-2xl border p-4"
+          // Question and buttons share a row from `sm` up. On a phone the
+          // buttons go under the question: beside them, it had a column a word
+          // or two wide.
+          className="border-border flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center"
         >
-          <p id={questionId} className="min-w-0 flex-1 text-sm">
+          <p id={questionId} className="min-w-0 text-sm sm:flex-1">
             این سفارش لغو شود؟ اقلام آن به فروشگاه برمی‌گردند.
           </p>
-          <button
-            type="button"
-            onClick={cancel}
-            disabled={busy}
-            className="bg-destructive min-h-11 rounded-xl px-4 py-2 text-sm font-bold text-white transition-opacity disabled:opacity-60"
-            data-umami-event="account-order-cancel-confirm"
-          >
-            {busy ? 'در حال لغو…' : 'بله، لغو کن'}
-          </button>
-          <button
-            ref={keepButton}
-            type="button"
-            onClick={() => setConfirming(false)}
-            disabled={busy}
-            className="border-border hover:bg-secondary min-h-11 rounded-xl border-2 px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60"
-            data-umami-event="account-order-cancel-keep"
-          >
-            نه، بماند
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={cancel}
+              disabled={busy}
+              className="bg-destructive min-h-11 rounded-xl px-4 py-2 text-sm font-bold text-white transition-opacity disabled:opacity-60"
+              data-umami-event="account-order-cancel-confirm"
+            >
+              {busy ? 'در حال لغو…' : 'بله، لغو کن'}
+            </button>
+            <button
+              ref={keepButton}
+              type="button"
+              onClick={() => setConfirming(false)}
+              disabled={busy}
+              className="border-border hover:bg-secondary min-h-11 rounded-xl border-2 px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60"
+              data-umami-event="account-order-cancel-keep"
+            >
+              نه، بماند
+            </button>
+          </div>
         </div>
       ) : (
         <button
           ref={openButton}
           type="button"
           onClick={() => setConfirming(true)}
+          // Until hydration a tap would be dropped (`useHydrated` says why).
+          // The question's own buttons only ever render after it.
+          disabled={!hydrated}
           className="text-destructive hover:bg-destructive-soft/40 inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-colors"
           data-umami-event="account-order-cancel"
         >

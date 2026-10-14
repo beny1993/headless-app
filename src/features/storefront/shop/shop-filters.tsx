@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useRef, useState, useTransition } from 'react';
+import { Suspense, use, useId, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Filter, X } from 'lucide-react';
 import {
@@ -633,8 +633,12 @@ export function ShopFilterSheet({
   categories: readonly ShopCategoryOption[];
   /** Handed straight to the panel below. */
   priceBounds: { min: number; max: number };
-  /** Shown on the confirm button, so the shopper knows before closing it. */
-  total: number;
+  /**
+   * Shown on the confirm button, so the shopper knows before closing it. The
+   * shop passes the listing's promise, so the sheet's button is there at once
+   * and the count fills in when the listing streams in.
+   */
+  total: number | Promise<number>;
 }) {
   const { open, show, close, dialogProps } = useModalDialog();
 
@@ -695,10 +699,18 @@ export function ShopFilterSheet({
             className="bg-brand hover:bg-brand-hover text-brand-foreground w-full rounded-xl py-3.5 font-bold transition-colors"
             data-umami-event="shop-filter-sheet-apply"
           >
-            نمایش {formatNumber(total)} محصول
+            <Suspense fallback="نمایش محصولات">
+              <ApplyLabel total={total} />
+            </Suspense>
           </button>
         </div>
       </dialog>
     </>
   );
+}
+
+/** «نمایش N محصول», once the count is in. */
+function ApplyLabel({ total }: { total: number | Promise<number> }) {
+  const count = typeof total === 'number' ? total : use(total);
+  return <>نمایش {formatNumber(count)} محصول</>;
 }
