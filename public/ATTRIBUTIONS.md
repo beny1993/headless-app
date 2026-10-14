@@ -3,8 +3,9 @@
 Every image in `public/` is committed to this repo and served from our own
 origin. Nothing here is hotlinked: Unsplash and other external hosts are slow or
 unreachable from Iranian IPs, and the local-first decision in `Smokey Shop Info`
-rules them out. See also `design/ATTRIBUTIONS.md`, which covers the design
-prototype's own copy of these files plus its font.
+rules them out. The one bundled font, Vazirmatn, keeps its copyright notice and
+SIL OFL 1.1 licence in `src/assets/fonts/OFL.txt`, beside the file that
+`src/lib/fonts.ts` loads.
 
 ## Photos
 

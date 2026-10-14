@@ -1,5 +1,10 @@
 {
   "enabledPlugins": {
     "vercel@claude-plugins-official": false
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git -c user.name=Benyamin -c user.email=66206204+beny1993@users.noreply.github.com commit *)"
+    ]
   }
 }

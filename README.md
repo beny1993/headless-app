@@ -23,7 +23,4 @@ pnpm create-admin 09121234567       # provision (or promote) an admin by phone
 | `http://localhost:3000/admin-panel` | Admin panel (sign in at `/login` by phone OTP; admin granted by `pnpm create-admin`) |
 | `http://localhost:3000/api/reference` | Interactive API docs (non-production) |
 
-`design/` holds the vendored design prototype the front-end ports from —
-`pnpm --dir design install && pnpm --dir design dev` (http://localhost:5173).
-
 Conventions, architecture and quality gates: **[AGENTS.md](./AGENTS.md)**.

@@ -100,7 +100,7 @@ describe.skipIf(!databaseReachable)('createOrder — delivery method', () => {
       provinceId,
       city: 'تهران',
       postalCode: '1234567890',
-      addressLine: 'هروی، خیابان آزمایشی، پلاک ۱',
+      addressLine: 'پاسداران، خیابان آزمایشی، پلاک ۱',
     },
     paymentMethod: PAYMENT_METHODS.COD,
     ...overrides,

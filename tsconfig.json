@@ -42,5 +42,5 @@
     ".next-e2e/types/**/*.ts",
     ".next-e2e/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", ".next/dev", ".next-e2e", "design"]
+  "exclude": ["node_modules", ".next/dev", ".next-e2e"]
 }
