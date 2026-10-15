@@ -31,6 +31,7 @@ const ORDER: AdminOrderRow = {
   createdAt: new Date('2026-09-01T10:00:00Z'),
   itemCount: 1,
   isPaid: true,
+  hasCustomerNote: false,
 };
 
 const renderPage = async (searchParams: Record<string, string>) =>
@@ -149,5 +150,35 @@ describe('admin orders delivery method', () => {
     )!;
     expect(courierRow.textContent).toContain('ارسال با پیک');
     expect(postRow.textContent).not.toContain('ارسال با پیک');
+  });
+});
+
+describe('admin orders customer note', () => {
+  it('flags an order whose shopper left a note, and only that one', async () => {
+    pageForAdmin.mockResolvedValue({
+      items: [
+        ORDER,
+        {
+          ...ORDER,
+          id: '00000000-0000-4000-8000-000000000103',
+          orderNo: 103,
+          recipientName: 'گیرنده با توضیح',
+          hasCustomerNote: true,
+        },
+      ],
+      total: 2,
+    });
+
+    await renderPage({});
+
+    const rows = screen.getAllByRole('row');
+    const noted = rows.find((row) =>
+      row.textContent?.includes('گیرنده با توضیح'),
+    )!;
+    const plain = rows.find((row) =>
+      row.textContent?.includes('گیرنده آزمایشی'),
+    )!;
+    expect(noted.textContent).toContain('توضیحات');
+    expect(plain.textContent).not.toContain('توضیحات');
   });
 });

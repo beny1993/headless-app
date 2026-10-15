@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_CART_LINES,
+  MAX_CUSTOMER_NOTE,
   MAX_LINE_QTY,
   checkoutInputSchema,
 } from '@/lib/checkout/checkout-input';
@@ -14,6 +15,9 @@ const NUL = String.fromCharCode(0);
 const RLO = String.fromCharCode(0x202e);
 const RLM = String.fromCharCode(0x200f);
 const LF = String.fromCharCode(10);
+const CR = String.fromCharCode(13);
+const TAB = String.fromCharCode(9);
+const ZWNJ = String.fromCharCode(0x200c);
 const uuidA = '11111111-1111-4111-8111-111111111111';
 const uuidB = '22222222-2222-4222-8222-222222222222';
 
@@ -289,6 +293,75 @@ describe('checkoutInputSchema', () => {
           discountCode: `AB${NUL}CD`,
         }).success,
       ).toBe(false);
+    });
+  });
+
+  describe('customerNote', () => {
+    const withNote = (customerNote: unknown) =>
+      checkoutInputSchema.safeParse({ ...validBody(), customerNote });
+
+    it('is optional, and absent stays absent', () => {
+      const parsed = checkoutInputSchema.parse(validBody());
+      expect(parsed.customerNote).toBeUndefined();
+    });
+
+    it('keeps a Persian note, trimmed, with its ZWNJ and line breaks', () => {
+      const note = `لطفاً یک روز دیرتر بفرستید${LF}رنگ آبی می${ZWNJ}خواهم`;
+      const parsed = withNote(`  ${note}  `);
+      expect(parsed.success && parsed.data.customerNote).toBe(note);
+    });
+
+    it.each([
+      ['empty', ''],
+      ['spaces only', '   '],
+      ['line breaks and tabs only', `${LF}${TAB}${CR}${LF}`],
+    ])('reads a %s note as no note', (_label, value) => {
+      const parsed = withNote(value);
+      expect(parsed.success).toBe(true);
+      expect(parsed.success && parsed.data.customerNote).toBeUndefined();
+    });
+
+    it('drops trailing spaces, so a lone line of spaces reads as blank', () => {
+      const parsed = withNote(`الف  ${LF}  ${TAB}${LF}ب`);
+      expect(parsed.success && parsed.data.customerNote).toBe(`الف${LF}${LF}ب`);
+    });
+
+    it('folds a run of blank lines to one, and CRLF to LF', () => {
+      const parsed = withNote(
+        `الف${CR}${LF}${LF}  ${LF}${TAB}${LF}${LF}ب${CR}${LF}ج`,
+      );
+      expect(parsed.success && parsed.data.customerNote).toBe(
+        `الف${LF}${LF}ب${LF}ج`,
+      );
+    });
+
+    it('accepts exactly the cap and rejects one past it', () => {
+      expect(withNote('ن'.repeat(MAX_CUSTOMER_NOTE)).success).toBe(true);
+      const over = withNote('ن'.repeat(MAX_CUSTOMER_NOTE + 1));
+      expect(over.success).toBe(false);
+      expect(!over.success && over.error.issues[0]?.message).toBe(
+        'مقدار واردشده بیش از حد طولانی است.',
+      );
+    });
+
+    it.each([
+      ['a null byte', NUL],
+      ['a right-to-left override', RLO],
+      ['a right-to-left mark', RLM],
+    ])('rejects %s, with a Persian message', (_label, char) => {
+      const parsed = withNote(`رنگ آبی${char}`);
+      expect(parsed.success).toBe(false);
+      expect(!parsed.success && parsed.error.issues[0]?.message).toBe(
+        'مقدار واردشده نامعتبر است.',
+      );
+    });
+
+    it.each([
+      ['a number', 5],
+      ['null', null],
+      ['an object', { text: 'سلام' }],
+    ])('rejects %s', (_label, value) => {
+      expect(withNote(value).success).toBe(false);
     });
   });
 });

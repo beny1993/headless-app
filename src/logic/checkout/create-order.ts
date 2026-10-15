@@ -399,6 +399,8 @@ export const createOrder = async (
           city: input.address.city,
           postalCode: input.address.postalCode,
           addressLine: input.address.addressLine,
+          // Parsed by the route, so already trimmed and blank-as-absent.
+          customerNote: input.customerNote ?? null,
           // The idempotency anchor. Written in the SAME transaction as the stock
           // decrement above, so an insert that ever got past the lock with a
           // taken key trips the partial unique index and rolls its reservation

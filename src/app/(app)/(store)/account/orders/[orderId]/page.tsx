@@ -41,6 +41,10 @@ import {
   orderStatusBadge,
   paymentStatusBadge,
 } from '@/lib/orders/order-status-display';
+import {
+  CUSTOMER_NOTE_LABEL,
+  CustomerNoteText,
+} from '@/features/checkout/customer-note';
 
 export const metadata: Metadata = { title: 'جزئیات سفارش' };
 
@@ -212,6 +216,16 @@ export default async function Page({
             deliveryMethod={order.deliveryMethod}
           />
         </div>
+
+        {order.customerNote && (
+          <div className="bg-card border-border mb-5 rounded-2xl border p-5">
+            <h2 className="mb-3 font-bold">{CUSTOMER_NOTE_LABEL}</h2>
+            <CustomerNoteText
+              note={order.customerNote}
+              className="text-muted-foreground"
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           <div className="bg-card border-border rounded-2xl border p-5">

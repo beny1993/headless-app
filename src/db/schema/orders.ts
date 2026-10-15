@@ -135,6 +135,14 @@ export const orders = pgTable(
      * cancelled before a reason was asked for.
      */
     cancellationReason: text('cancellation_reason'),
+    /**
+     * What the shopper asked of this order at checkout, in their words — «a
+     * day later», «the blue one» — shown on their order pages and to the
+     * admin. Null when they wrote nothing. Capped and character-checked by the
+     * checkout contract (`customerNoteSchema`), like `cancellation_reason`
+     * with no CHECK of its own.
+     */
+    customerNote: text('customer_note'),
     createdAt,
     updatedAt,
   },

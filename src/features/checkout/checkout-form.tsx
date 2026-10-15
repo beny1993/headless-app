@@ -46,7 +46,11 @@ import { normalizePostalCode, validateAddress } from '@/lib/account/address';
 import { reasonFrom, requestFieldErrors } from '@/lib/checkout/field-errors';
 import { REFUND_SENTENCE } from '@/lib/checkout/result-view';
 import { startZarinpalPayment } from '@/lib/checkout/start-zarinpal-payment';
-import type { CheckoutInput } from '@/lib/checkout/checkout-input';
+import {
+  customerNoteSchema,
+  MAX_CUSTOMER_NOTE,
+  type CheckoutInput,
+} from '@/lib/checkout/checkout-input';
 import {
   API_PATHS,
   PATHS,
@@ -75,7 +79,7 @@ import {
   type DeliveryMethod,
 } from '@/lib/orders/delivery-method';
 import { RECEIPT_UPLOAD_FAILED, receiptSchema } from '@/lib/orders/receipt';
-import { toPersianDigits } from '@/lib/format';
+import { formatNumber, toPersianDigits } from '@/lib/format';
 import { STALE_PROVINCE_MESSAGE } from '@/lib/shipping/province-input';
 import { IMAGE_FIELD_NAME } from '@/lib/storage/image-upload';
 import { cn } from '@/lib/utils';
@@ -106,6 +110,8 @@ const GENERIC_ERROR = 'ثبت سفارش انجام نشد. لطفاً دوبا�
 
 const PROVINCE_HINT = 'هزینه ارسال بر اساس استان محاسبه می‌شود.';
 
+const NOTE_HINT = `خواسته‌ای درباره‌ی زمان ارسال، رنگ یا مدل داری؟ حداکثر ${formatNumber(MAX_CUSTOMER_NOTE)} نویسه.`;
+
 /** Which wizard step (1-based) a server/client field error belongs to. */
 const STEP_OF_FIELD: Record<string, number> = {
   'address.recipientName': 1,
@@ -115,6 +121,7 @@ const STEP_OF_FIELD: Record<string, number> = {
   'address.postalCode': 2,
   'address.addressLine': 2,
   deliveryMethod: 3,
+  customerNote: 3,
   paymentMethod: 3,
 };
 
@@ -129,6 +136,8 @@ const stepOfField = (path: string) => STEP_OF_FIELD[path] ?? 3;
 export type ResumableOrder = {
   orderId: string;
   deliveryMethod: DeliveryMethod;
+  /** The note it was placed with, shown read-only on the retry. */
+  customerNote: string | null;
   lines: SummaryLine[];
   subtotal: number;
   discount: number;
@@ -250,6 +259,8 @@ export function CheckoutForm({
   // against, so a changed code or cart drops it with no cascading re-render. The
   // order re-validates and claims the code atomically at submit regardless.
   const [discountCode, setDiscountCode] = useState('');
+  // The shopper's optional note to the shop: a later day, another colour.
+  const [customerNote, setCustomerNote] = useState('');
   const [applied, setApplied] = useState<
     (DiscountPreviewResponse & { code: string; signature: string }) | null
   >(null);
@@ -266,6 +277,7 @@ export function CheckoutForm({
   const [placed, setPlaced] = useState<{
     orderId: string;
     deliveryMethod: DeliveryMethod;
+    customerNote: string | null;
     address?: CheckoutInput['address'];
     lines: SummaryLine[];
     subtotal: number;
@@ -493,6 +505,15 @@ export function CheckoutForm({
       const path = `address.${field}`;
       if (stepOfField(path) === which) errors[path] = message;
     }
+    // The note, against the same schema the route parses it with: the
+    // textarea's `maxLength` already holds the cap, so this is the character
+    // check (a pasted control or bidi mark), answered before any request.
+    if (which === 3) {
+      const note = customerNoteSchema.safeParse(customerNote);
+      if (!note.success) {
+        errors.customerNote = note.error.issues[0]?.message ?? GENERIC_ERROR;
+      }
+    }
     setFieldErrors((prev) => ({ ...prev, ...errors }));
     return Object.keys(errors).length === 0;
   };
@@ -581,6 +602,9 @@ export function CheckoutForm({
       // Only when a code is present — the server re-validates and claims it
       // atomically, whatever the preview showed.
       ...(discountCode.trim() ? { discountCode: discountCode.trim() } : {}),
+      // Only when written, so a checkout without one sends the body — and
+      // keeps the Idempotency-Key — it always did.
+      ...(customerNote.trim() ? { customerNote: customerNote.trim() } : {}),
     };
 
     const idempotencyKey = await checkoutKeyFor(JSON.stringify(body), keptKeys);
@@ -674,6 +698,7 @@ export function CheckoutForm({
       setPlaced({
         orderId: order.orderId,
         deliveryMethod: order.deliveryMethod,
+        customerNote: body.customerNote ?? null,
         address: body.address,
         lines: summaryLines,
         subtotal: order.subtotal,
@@ -1055,6 +1080,39 @@ export function CheckoutForm({
                     );
                   })}
                 </fieldset>
+
+                <FieldShell
+                  id={`${fieldId}-note`}
+                  label="توضیحات سفارش (اختیاری)"
+                  error={fieldErrors.customerNote}
+                  hint={NOTE_HINT}
+                  className="mb-8"
+                >
+                  <textarea
+                    id={`${fieldId}-note`}
+                    rows={3}
+                    maxLength={MAX_CUSTOMER_NOTE}
+                    // Once the order exists the note went with it: shown as
+                    // sent, and locked like the methods above.
+                    value={placed ? (placed.customerNote ?? '') : customerNote}
+                    disabled={placed !== null}
+                    onChange={(event) => {
+                      setCustomerNote(event.target.value);
+                      clearError('customerNote');
+                    }}
+                    placeholder="مثلاً: لطفاً یک روز دیرتر ارسال شود، یا رنگ آبی را بفرستید."
+                    {...fieldAria(
+                      `${fieldId}-note`,
+                      fieldErrors.customerNote,
+                      NOTE_HINT,
+                    )}
+                    className={cn(
+                      controlClass(Boolean(fieldErrors.customerNote)),
+                      'disabled:opacity-60',
+                    )}
+                    data-umami-event="checkout-customer-note"
+                  />
+                </FieldShell>
 
                 <h2 className="mb-5 text-xl font-bold">روش پرداخت</h2>
                 <fieldset className="space-y-3">

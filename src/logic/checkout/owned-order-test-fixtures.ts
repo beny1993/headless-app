@@ -33,6 +33,7 @@ export const waitingCardToCardOrder: OwnedOrder = {
   addressLine: 'خیابان آزادی، کوچه بهار، پلاک ۱۲',
   idempotencyKey: '22222222-2222-4222-8222-222222222222',
   cancellationReason: null,
+  customerNote: null,
   createdAt: PLACED_AT,
   updatedAt: PLACED_AT,
   items: [
