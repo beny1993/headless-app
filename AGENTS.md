@@ -367,6 +367,46 @@ Agent worktrees have no `.env` of their own: build there with
 `pnpm build:local` (see Quality gates), and give the database-backed tests the
 main checkout's with `DOTENV_CONFIG_PATH=<main checkout>/.env pnpm test`.
 
+## Google Search Console
+
+Agents read Search Console through its API, never through Benyamin's browser.
+The property is the Domain property `sc-domain:smokeypetshop.ir` (in a URL
+path: `sc-domain%3Asmokeypetshop.ir`). Access is the service account
+`claude-gsc@smokey-projects.iam.gserviceaccount.com`, a **Full** user on that
+property and holding no Google Cloud roles. Its JSON key is the base64 cloud
+environment variable `GSC_SA_KEY_B64`. A session started before the variable
+was saved does not see it.
+
+- **Never print the key.** Decode it straight to a file in the session's
+  scratch folder, `umask 077; printf '%s' "$GSC_SA_KEY_B64" | base64 -d > "$f"`,
+  and never `cat` it or echo the variable.
+- **Mint the token** with `gcloud auth activate-service-account --key-file="$f"`,
+  then `gcloud auth print-access-token
+  --scopes=https://www.googleapis.com/auth/webmasters.readonly`. `--scopes` is
+  hidden from `--help` and takes only the full URI; the default
+  `cloud-platform` token is refused. Run both with `CLOUDSDK_CONFIG=<scratch
+  dir>`, since activating copies the key into gcloud's config, and delete that
+  dir and `$f` when done. If the environment presets
+  `CLOUDSDK_AUTH_ACCESS_TOKEN`, unset it for these commands so gcloud uses the
+  service account.
+- **Read-only by default:** use the `webmasters.readonly` scope. Mint
+  `webmasters` (write) only to submit or delete a sitemap, and only when asked.
+- **Host:** `searchconsole.googleapis.com`. Sites, sitemaps and
+  `searchAnalytics/query` live under `/webmasters/v3/`, URL Inspection at
+  `/v1/urlInspection/index:inspect`. `developers.google.com` is blocked from
+  the cloud environment, so the docs cannot be fetched from there.
+- **What the API reaches:** performance data (16 months; pass
+  `dataState: "all"` for the last two days), URL Inspection (2,000 calls a day
+  and 600 a minute per property), sitemaps, and the sites list. Core Web Vitals
+  field data comes from the CrUX API instead.
+- **What it does not reach:** Request Indexing, Removals, the aggregate Page
+  indexing report (URL Inspection still answers per URL), the Links and
+  Enhancements reports, manual actions, security issues, and users
+  and settings. For those, tell Benyamin which URLs to act on in the UI.
+- **Rotate** by adding a new JSON key on the service account, replacing
+  `GSC_SA_KEY_B64` with it, then deleting the old key. **Revoke** by removing
+  the service account under Search Console's Users and permissions.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know
