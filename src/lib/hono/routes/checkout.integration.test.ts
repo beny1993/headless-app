@@ -309,6 +309,76 @@ describe.skipIf(!databaseReachable)('POST /api/checkout', () => {
     expect(await ordersFor(product.id)).toBe(0);
   });
 
+  it("stores the shopper's note as the contract parses it — trimmed, blank lines folded", async () => {
+    const user = await fx.user();
+    asUser(user.id);
+    const prov = await province();
+    const product = await fx.product(await fx.category(), { stock: 5 });
+    const LF = String.fromCharCode(10);
+
+    const response = await post(
+      body(prov.provinceId, [{ productId: product.id, qty: 1 }], {
+        customerNote: `  لطفاً یک روز دیرتر${LF}${LF}${LF}${LF}رنگ آبی  `,
+      }),
+    );
+    const payload = (await response.json()) as ApiResponse<CheckoutResult>;
+
+    expect(response.status).toBe(200);
+    if (payload.status !== 'success') throw new Error(payload.message);
+    fx.remember(payload.data.orderId);
+    const [row] = await testDb
+      .select({ customerNote: orders.customerNote })
+      .from(orders)
+      .where(eq(orders.id, payload.data.orderId));
+    expect(row.customerNote).toBe(`لطفاً یک روز دیرتر${LF}${LF}رنگ آبی`);
+  });
+
+  it.each([
+    ['no note', {}],
+    ['a blank note', { customerNote: '   ' }],
+  ])('stores %s as null', async (_label, extra) => {
+    const user = await fx.user();
+    asUser(user.id);
+    const prov = await province();
+    const product = await fx.product(await fx.category(), { stock: 5 });
+
+    const response = await post(
+      body(prov.provinceId, [{ productId: product.id, qty: 1 }], extra),
+    );
+    const payload = (await response.json()) as ApiResponse<CheckoutResult>;
+
+    expect(response.status).toBe(200);
+    if (payload.status !== 'success') throw new Error(payload.message);
+    fx.remember(payload.data.orderId);
+    const [row] = await testDb
+      .select({ customerNote: orders.customerNote })
+      .from(orders)
+      .where(eq(orders.id, payload.data.orderId));
+    expect(row.customerNote).toBeNull();
+  });
+
+  it('400s a note carrying a bidi override, naming the field, creating nothing', async () => {
+    const user = await fx.user();
+    asUser(user.id);
+    const prov = await province();
+    const product = await fx.product(await fx.category(), { stock: 5 });
+
+    const response = await post(
+      body(prov.provinceId, [{ productId: product.id, qty: 1 }], {
+        customerNote: `رنگ آبی${String.fromCharCode(0x202e)}`,
+      }),
+    );
+    const payload = (await response.json()) as ApiResponse<unknown>;
+
+    expect(response.status).toBe(400);
+    if (payload.status === 'error') {
+      expect(payload.errors?.some((e) => e.startsWith('customerNote'))).toBe(
+        true,
+      );
+    }
+    expect(await ordersFor(product.id)).toBe(0);
+  });
+
   it('400s a malformed body (non-uuid productId) before touching the DB', async () => {
     const user = await fx.user();
     asUser(user.id);

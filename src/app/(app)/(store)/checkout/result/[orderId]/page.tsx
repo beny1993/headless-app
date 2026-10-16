@@ -27,6 +27,10 @@ import {
   PAYMENT_METHOD_LABELS,
 } from '@/lib/orders/order-status';
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
+import {
+  CUSTOMER_NOTE_LABEL,
+  CustomerNoteText,
+} from '@/features/checkout/customer-note';
 
 export const metadata: Metadata = { title: 'نتیجه سفارش' };
 
@@ -94,6 +98,14 @@ export default async function Page({
         </span>
         <span className="text-muted-foreground">وضعیت سفارش</span>
       </div>
+      {order.customerNote && (
+        <div className="border-border border-t px-4 py-3">
+          <p className="text-muted-foreground mb-1 text-sm">
+            {CUSTOMER_NOTE_LABEL}
+          </p>
+          <CustomerNoteText note={order.customerNote} />
+        </div>
+      )}
       <div className="border-border border-t p-4">
         <OrderSummary
           lines={toSummaryLines(order.items)}

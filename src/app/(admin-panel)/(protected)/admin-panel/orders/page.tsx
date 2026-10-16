@@ -160,6 +160,13 @@ export default async function AdminOrdersPage({
                       </Pill>
                     </span>
                   )}
+                  {/* The shopper asked for something — a later day, a colour:
+                      read it on the order before packing. */}
+                  {order.hasCustomerNote && (
+                    <span className="ms-2 inline-block align-middle whitespace-nowrap">
+                      <Pill tone="muted">توضیحات</Pill>
+                    </span>
+                  )}
                 </td>
                 <td className="text-muted-foreground px-4 py-3.5 text-xs">
                   {formatJalali(order.createdAt)}

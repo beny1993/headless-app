@@ -10,6 +10,7 @@ import {
   eq,
   gte,
   inArray,
+  isNotNull,
   lt,
   sql,
   type SQL,
@@ -71,6 +72,8 @@ export type AdminOrderRow = {
   itemCount: number;
   /** Whether any payment attempt on the order has settled (`status = paid`). */
   isPaid: boolean;
+  /** Whether the shopper left a note — the list flags it, the detail reads it. */
+  hasCustomerNote: boolean;
 };
 
 /** One product's sales over a window — see `OrderDao.salesByProductSince`. */
@@ -461,6 +464,7 @@ export class OrderDao {
         createdAt: orders.createdAt,
         itemCount: count(orderItems.id),
         isPaid: hasPaidPayment,
+        hasCustomerNote: isNotNull(orders.customerNote).mapWith(Boolean),
       })
       .from(orders)
       .leftJoin(orderItems, eq(orderItems.orderId, orders.id))

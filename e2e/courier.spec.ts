@@ -1,8 +1,14 @@
 // Courier delivery at checkout ([[Story - Courier Delivery at Checkout]]):
 // «ارسال با پیک» is offered for a Tehran address and not elsewhere, adds no
 // shipping fee, and the order it places says so to the shopper and the admin.
+//
+// The same order carries the shopper's note («توضیحات سفارش»): typed on the
+// checkout's last step, read back on both of the shopper's order pages and
+// the admin's. Folded in here rather than given an order of its own — each
+// run's customer is near the per-account checkout cap (`e2e/README.md`).
+import type { Locator } from '@playwright/test';
 import { SEED_PROVINCES } from '@/db/seed/shipping-data';
-import { adminOrderPath } from '@/lib/constant/paths';
+import { accountOrderPath, adminOrderPath } from '@/lib/constant/paths';
 import { formatToman } from '@/lib/format';
 import {
   COURIER_FEE_TEXT,
@@ -24,8 +30,21 @@ test.use({ storageState: CUSTOMER_STATE });
 
 const TEHRAN = SEED_PROVINCES[0];
 const ELSEWHERE = SEED_PROVINCES[1];
+/**
+ * The note as stored: trimmed, its line break kept. `toHaveText` folds
+ * whitespace, so it would pass with the two lines run together; the raw
+ * text does not.
+ */
+const expectNote = async (note: Locator) => {
+  await expect(note).toBeVisible();
+  expect(await note.textContent()).toBe(NOTE_LINES.join('\n'));
+};
+const NOTE_LINES = [
+  'لطفاً یک روز دیرتر ارسال شود.',
+  'اگر شد رنگ آبی را بفرستید.',
+];
 
-test('courier: a Tehran order goes by courier with no shipping fee, and the admin sees it', async ({
+test('courier: a Tehran order goes by courier with no shipping fee, and the admin sees it and its note', async ({
   page,
   browser,
   baseURL,
@@ -75,6 +94,11 @@ test('courier: a Tehran order goes by courier with no shipping fee, and the admi
   await page.locator('[data-umami-event="checkout-step-next"]').click();
   await courier.check();
 
+  // The shopper's note, on two lines, with spaces the form trims.
+  await page
+    .locator('[data-umami-event="checkout-customer-note"]')
+    .fill(`  ${NOTE_LINES.join('\n')}  `);
+
   await page.locator('[data-umami-event="checkout-payment-cod"]').check();
   await attachReceipt(page);
   await page.locator('[data-umami-event="checkout-submit-order"]').click();
@@ -91,6 +115,17 @@ test('courier: a Tehran order goes by courier with no shipping fee, and the admi
       page.getByText('روش ارسال', { exact: true }).locator('..'),
     ).toContainText('ارسال با پیک');
     await expect(page.getByRole('main')).toContainText(COURIER_FEE_TEXT);
+    const note = (on: typeof page) =>
+      on.getByText(NOTE_LINES[0], { exact: false });
+    // Its note, trimmed, both lines kept.
+    await expectNote(note(page));
+
+    // And on their account's order page.
+    await page.goto(accountOrderPath(orderId));
+    await expect(
+      page.getByRole('heading', { name: 'توضیحات سفارش' }),
+    ).toBeVisible();
+    await expectNote(note(page));
 
     // The admin's order page says courier, on the address and the totals.
     await adminPage.goto(adminOrderPath(orderId));
@@ -98,6 +133,10 @@ test('courier: a Tehran order goes by courier with no shipping fee, and the admi
       adminPage.getByRole('heading', { name: 'آدرس تحویل' }).locator('..'),
     ).toContainText('ارسال با پیک');
     await expect(adminPage.getByRole('main')).toContainText(COURIER_FEE_TEXT);
+    await expect(
+      adminPage.getByRole('heading', { name: 'توضیحات سفارش' }).locator('..'),
+    ).toContainText(NOTE_LINES[1]);
+    await expectNote(note(adminPage));
   } finally {
     await closeOrder(adminPage, orderId);
     await admin.close();

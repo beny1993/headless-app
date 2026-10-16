@@ -843,4 +843,37 @@ describe.skipIf(!databaseReachable)('createOrder', () => {
       expect(error.message).toMatch(/[؀-ۿ]/); // contains Persian
     });
   });
+
+  describe("the shopper's note", () => {
+    it('stores a raw note in the contract form even when no route parsed it', async () => {
+      const user = await fx.user();
+      const product = await fx.product(await fx.category(), { stock: 5 });
+      const prov = await province();
+      const LF = String.fromCharCode(10);
+
+      const order = await createOrder(
+        user.id,
+        buildInput(prov, [{ productId: product.id, qty: 1 }], {
+          customerNote: `  رنگ آبی  ${LF}${LF}${LF}${LF}یک روز دیرتر  `,
+        }),
+      );
+      fx.remember(order.id);
+
+      expect(order.customerNote).toBe(`رنگ آبی${LF}${LF}یک روز دیرتر`);
+    });
+
+    it('stores no note when none is given', async () => {
+      const user = await fx.user();
+      const product = await fx.product(await fx.category(), { stock: 5 });
+      const prov = await province();
+
+      const order = await createOrder(
+        user.id,
+        buildInput(prov, [{ productId: product.id, qty: 1 }]),
+      );
+      fx.remember(order.id);
+
+      expect(order.customerNote).toBeNull();
+    });
+  });
 });

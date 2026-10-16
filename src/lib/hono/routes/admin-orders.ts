@@ -103,6 +103,8 @@ const AdminOrderDetailSchema = z
     addressLine: z.string(),
     /** Why an admin cancelled it; null unless it was cancelled with a reason. */
     cancellationReason: z.string().nullable(),
+    /** The shopper's own note from checkout; null when they left none. */
+    customerNote: z.string().nullable(),
     createdAt: z.iso.datetime(),
     items: z.array(AdminOrderItemSchema),
     payments: z.array(AdminPaymentSchema),
@@ -133,6 +135,7 @@ const toAdminOrderResponse = (order: AdminOrder): AdminOrderDetailResponse => ({
   postalCode: order.postalCode,
   addressLine: order.addressLine,
   cancellationReason: order.cancellationReason,
+  customerNote: order.customerNote,
   createdAt: order.createdAt.toISOString(),
   items: order.items.map((item) => ({
     productId: item.productId,

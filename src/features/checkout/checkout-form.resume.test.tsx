@@ -49,6 +49,7 @@ const RATES = [{ provinceId: 1, name: 'تهران', fee: 40_000 }];
 const WAITING: ResumableOrder = {
   orderId: '77777777-7777-4777-8777-777777777777',
   deliveryMethod: 'post',
+  customerNote: null,
   lines: [
     {
       id: 'line-1',
@@ -125,6 +126,19 @@ describe('the checkout resuming a waiting card-to-card order', () => {
     ).toBe(false);
     expect(screen.getByText(COURIER_FEE_TEXT)).toBeTruthy();
     expect(document.body.textContent).not.toContain('۲۲۵٬۰۰۰');
+  });
+
+  it('shows the note the resumed order was placed with, locked', () => {
+    form({
+      resume: { ...WAITING, customerNote: 'لطفاً رنگ آبی بفرستید' },
+      resumed: true,
+    });
+
+    const note = screen.getByLabelText(
+      'توضیحات سفارش (اختیاری)',
+    ) as HTMLTextAreaElement;
+    expect(note.value).toBe('لطفاً رنگ آبی بفرستید');
+    expect(note.disabled).toBe(true);
   });
 
   it('opens on that order’s retry screen and resends to it — no create, no address book', async () => {

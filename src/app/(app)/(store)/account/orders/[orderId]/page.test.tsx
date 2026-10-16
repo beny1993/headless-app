@@ -81,3 +81,26 @@ describe('the account page of a card-to-card order', () => {
     expect(document.body.textContent).toContain(toPersianDigits(SUPPORT_PHONE));
   });
 });
+
+describe("the shopper's note on the order", () => {
+  it('shows the note under its heading, line breaks kept', async () => {
+    const LF = String.fromCharCode(10);
+    render(
+      await page({
+        ...acceptedCardToCardOrder,
+        customerNote: `لطفاً یک روز دیرتر${LF}رنگ آبی`,
+      }),
+    );
+
+    expect(screen.getByText('توضیحات سفارش')).toBeTruthy();
+    const note = screen.getByText(/لطفاً یک روز دیرتر/);
+    expect(note.textContent).toBe(`لطفاً یک روز دیرتر${LF}رنگ آبی`);
+    expect(note.className).toContain('whitespace-pre-line');
+  });
+
+  it('shows nothing about a note when the shopper left none', async () => {
+    render(await page(acceptedCardToCardOrder));
+
+    expect(screen.queryByText('توضیحات سفارش')).toBeNull();
+  });
+});
