@@ -10,6 +10,7 @@ import {
   eq,
   gte,
   inArray,
+  isNotNull,
   lt,
   sql,
   type SQL,
@@ -463,7 +464,7 @@ export class OrderDao {
         createdAt: orders.createdAt,
         itemCount: count(orderItems.id),
         isPaid: hasPaidPayment,
-        hasCustomerNote: sql<boolean>`${orders.customerNote} is not null`,
+        hasCustomerNote: isNotNull(orders.customerNote).mapWith(Boolean),
       })
       .from(orders)
       .leftJoin(orderItems, eq(orderItems.orderId, orders.id))

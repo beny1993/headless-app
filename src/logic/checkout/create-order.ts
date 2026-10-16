@@ -19,7 +19,10 @@ import { ShippingRateDao } from '@/db/dao/ShippingRateDao';
 import { UserDao } from '@/db/dao/UserDao';
 import type { OrderWithItems } from '@/db/schema/orders';
 import { displayTitle } from '@/lib/catalog/variant';
-import type { CheckoutInput } from '@/lib/checkout/checkout-input';
+import {
+  customerNoteSchema,
+  type CheckoutInput,
+} from '@/lib/checkout/checkout-input';
 import { computeDiscount } from '@/lib/discount/discount-code';
 import {
   COURIER_UNAVAILABLE,
@@ -399,8 +402,10 @@ export const createOrder = async (
           city: input.address.city,
           postalCode: input.address.postalCode,
           addressLine: input.address.addressLine,
-          // Parsed by the route, so already trimmed and blank-as-absent.
-          customerNote: input.customerNote ?? null,
+          // The route parsed it already; parsed again because the type is the
+          // schema's input, so a caller that skipped the route (a script, a
+          // fixture) cannot store a note the contract would refuse. Idempotent.
+          customerNote: customerNoteSchema.parse(input.customerNote) ?? null,
           // The idempotency anchor. Written in the SAME transaction as the stock
           // decrement above, so an insert that ever got past the lock with a
           // taken key trips the partial unique index and rolls its reservation

@@ -575,6 +575,38 @@ describe("the shopper's note", () => {
     );
   });
 
+  it('sends the note as the server will store it, blank lines folded', async () => {
+    postData.mockReturnValue(new Promise(() => undefined));
+    advanceToPayment();
+    const LF = String.fromCharCode(10);
+
+    fireEvent.change(noteField(), {
+      target: { value: `رنگ آبی   ${LF}${LF}${LF}${LF}یک روز دیرتر` },
+    });
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    // Not merely trimmed: the body — and the Idempotency-Key hashed from it —
+    // carries the stored form, so an edit that stores the same note keeps the
+    // same key.
+    expect(createBody().customerNote).toBe(`رنگ آبی${LF}${LF}یک روز دیرتر`);
+  });
+
+  it('sends no note key for a note of only a ZWNJ', async () => {
+    postData.mockReturnValue(new Promise(() => undefined));
+    advanceToPayment();
+
+    fireEvent.change(noteField(), {
+      target: { value: String.fromCharCode(0x200c) },
+    });
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expect('customerNote' in createBody()).toBe(false);
+  });
+
   it.each([
     ['left empty', ''],
     ['only spaces', '   '],

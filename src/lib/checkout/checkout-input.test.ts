@@ -18,6 +18,7 @@ const LF = String.fromCharCode(10);
 const CR = String.fromCharCode(13);
 const TAB = String.fromCharCode(9);
 const ZWNJ = String.fromCharCode(0x200c);
+const NBSP = String.fromCharCode(0xa0);
 const uuidA = '11111111-1111-4111-8111-111111111111';
 const uuidB = '22222222-2222-4222-8222-222222222222';
 
@@ -319,6 +320,22 @@ describe('checkoutInputSchema', () => {
       const parsed = withNote(value);
       expect(parsed.success).toBe(true);
       expect(parsed.success && parsed.data.customerNote).toBeUndefined();
+    });
+
+    it.each([
+      ['a lone ZWNJ', ZWNJ],
+      ['ZWNJ and spaces', ` ${ZWNJ} ${ZWNJ} `],
+      ['NBSP and line breaks', `${NBSP}${LF}${NBSP}${LF}${ZWNJ}`],
+    ])('reads %s — nothing visible — as no note', (_label, value) => {
+      const parsed = withNote(value);
+      expect(parsed.success).toBe(true);
+      expect(parsed.success && parsed.data.customerNote).toBeUndefined();
+    });
+
+    it('folds lines of NBSP or ZWNJ like blank ones, so they cannot pile up', () => {
+      const filler = `${NBSP}${LF}${ZWNJ}${LF}`.repeat(100);
+      const parsed = withNote(`الف${LF}${filler}ب${NBSP}`);
+      expect(parsed.success && parsed.data.customerNote).toBe(`الف${LF}${LF}ب`);
     });
 
     it('drops trailing spaces, so a lone line of spaces reads as blank', () => {

@@ -584,6 +584,7 @@ export function CheckoutForm({
     setTopError(undefined);
     setOrderMayExist(false);
 
+    const note = customerNoteSchema.safeParse(customerNote).data;
     const body: CheckoutInput = {
       items: lines.map((line) => ({
         productId: line.productId,
@@ -602,9 +603,10 @@ export function CheckoutForm({
       // Only when a code is present — the server re-validates and claims it
       // atomically, whatever the preview showed.
       ...(discountCode.trim() ? { discountCode: discountCode.trim() } : {}),
-      // Only when written, so a checkout without one sends the body — and
-      // keeps the Idempotency-Key — it always did.
-      ...(customerNote.trim() ? { customerNote: customerNote.trim() } : {}),
+      // As the server will store it (validateStep(3) passed, so it parses),
+      // and only when there is one: a checkout without a note sends the body
+      // — and keeps the Idempotency-Key — it always did.
+      ...(note ? { customerNote: note } : {}),
     };
 
     const idempotencyKey = await checkoutKeyFor(JSON.stringify(body), keptKeys);

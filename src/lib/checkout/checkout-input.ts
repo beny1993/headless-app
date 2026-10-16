@@ -34,7 +34,11 @@ import {
 } from '@/lib/orders/delivery-method';
 import { paymentMethodSchema } from '@/lib/orders/order-status';
 import { provinceIdParamSchema } from '@/lib/shipping/shipping-query';
-import { boundedText, optionalBoundedText } from '@/lib/validation/text';
+import {
+  boundedText,
+  optionalBoundedText,
+  VISIBLE_CHAR,
+} from '@/lib/validation/text';
 
 /**
  * The most distinct products one cart may hold. A cart with more lines than this
@@ -69,19 +73,27 @@ export const MAX_CUSTOMER_NOTE = 500;
  * The shopper's optional note on the order («یه روز دیرتر بفرستید», «رنگ
  * آبی»). Trimmed, capped and character-checked like every free-text field —
  * newlines and tabs pass, the bidi family and control characters do not —
- * and blank becomes absent, so a cleared textarea stores no note. Each line
- * loses its trailing spaces and runs of blank lines fold to one: a note is
- * read on a narrow admin screen, and five hundred newlines would push the
- * order off it.
+ * and blank becomes absent, so a cleared textarea stores no note. A line
+ * with nothing visible on it (spaces, NBSP, a lone ZWNJ) is blank, each line
+ * loses its trailing whitespace, and runs of blank lines fold to one: a note
+ * is read on a narrow admin screen, and five hundred newlines would push the
+ * order off it. A note with nothing visible at all is no note — else the
+ * admin list would flag an order whose note reads empty.
+ *
+ * The form sends what this returns, not what was typed, so the body it
+ * hashes for its Idempotency-Key is the note the server stores.
  */
 export const customerNoteSchema = optionalBoundedText(
   MAX_CUSTOMER_NOTE,
-).transform((value) =>
-  value
-    ?.replace(/\r\n?/g, '\n')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n'),
-);
+).transform((value) => {
+  if (value === undefined || !VISIBLE_CHAR.test(value)) return undefined;
+  return value
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => (VISIBLE_CHAR.test(line) ? line.trimEnd() : ''))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n');
+});
 
 const cartLineSchema = z.object({
   productId: z.uuid(),
