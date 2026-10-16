@@ -27,6 +27,7 @@ const checkoutQuerySchema = z.object({
 const toResumableOrder = (order: OwnedOrder): ResumableOrder => ({
   orderId: order.id,
   deliveryMethod: order.deliveryMethod,
+  customerNote: order.customerNote,
   lines: toSummaryLines(order.items),
   subtotal: order.subtotal,
   discount: order.discount,

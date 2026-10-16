@@ -22,6 +22,10 @@ import {
   paymentStatusBadge,
 } from '@/lib/orders/order-status-display';
 import { getAdminOrder } from '@/logic/orders/get-admin-order';
+import {
+  CUSTOMER_NOTE_LABEL,
+  CustomerNoteText,
+} from '@/features/checkout/customer-note';
 import { OrderReceipts } from '@/features/admin-panel/orders/order-receipts';
 import { Pill } from '@/features/admin-panel/shared/pill';
 import { OrderTransition } from '@/features/admin-panel/orders/order-transition';
@@ -208,6 +212,13 @@ export default async function AdminOrderDetailPage({
               کد پستی: {toPersianDigits(order.postalCode)}
             </p>
           </section>
+
+          {order.customerNote && (
+            <section className="border-border rounded-2xl border bg-white p-5">
+              <h2 className="mb-3 font-bold">{CUSTOMER_NOTE_LABEL}</h2>
+              <CustomerNoteText note={order.customerNote} />
+            </section>
+          )}
 
           <section className="border-border rounded-2xl border bg-white p-5">
             <h2 className="mb-3 font-bold">پرداخت</h2>

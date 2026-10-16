@@ -551,3 +551,123 @@ describe('the checkout submit state machine', () => {
     expect(getCart()).toHaveLength(1); // nothing created, cart kept
   });
 });
+
+describe("the shopper's note", () => {
+  const noteField = () =>
+    screen.getByLabelText('توضیحات سفارش (اختیاری)') as HTMLTextAreaElement;
+  const createBody = () => postData.mock.calls[0][1] as Record<string, unknown>;
+
+  it('sends the note, trimmed, in the create body', async () => {
+    postData.mockReturnValue(new Promise(() => undefined));
+    advanceToPayment();
+    const LF = String.fromCharCode(10);
+
+    fireEvent.change(noteField(), {
+      target: { value: `  لطفاً یک روز دیرتر بفرستید${LF}رنگ آبی  ` },
+    });
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expect(postData).toHaveBeenCalledTimes(1);
+    expect(createBody().customerNote).toBe(
+      `لطفاً یک روز دیرتر بفرستید${LF}رنگ آبی`,
+    );
+  });
+
+  it('sends the note as the server will store it, blank lines folded', async () => {
+    postData.mockReturnValue(new Promise(() => undefined));
+    advanceToPayment();
+    const LF = String.fromCharCode(10);
+
+    fireEvent.change(noteField(), {
+      target: { value: `رنگ آبی   ${LF}${LF}${LF}${LF}یک روز دیرتر` },
+    });
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    // Not merely trimmed: the body — and the Idempotency-Key hashed from it —
+    // carries the stored form, so an edit that stores the same note keeps the
+    // same key.
+    expect(createBody().customerNote).toBe(`رنگ آبی${LF}${LF}یک روز دیرتر`);
+  });
+
+  it('sends no note key for a note of only a ZWNJ', async () => {
+    postData.mockReturnValue(new Promise(() => undefined));
+    advanceToPayment();
+
+    fireEvent.change(noteField(), {
+      target: { value: String.fromCharCode(0x200c) },
+    });
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expect('customerNote' in createBody()).toBe(false);
+  });
+
+  it.each([
+    ['left empty', ''],
+    ['only spaces', '   '],
+  ])(
+    'sends no note key when it is %s — the body stays as it always was',
+    async (_label, value) => {
+      postData.mockReturnValue(new Promise(() => undefined));
+      advanceToPayment();
+
+      fireEvent.change(noteField(), { target: { value } });
+      await act(async () => {
+        fireEvent.click(submitButton());
+      });
+
+      expect(postData).toHaveBeenCalledTimes(1);
+      expect('customerNote' in createBody()).toBe(false);
+    },
+  );
+
+  it('caps the textarea at the contract length', () => {
+    advanceToPayment();
+    expect(noteField().maxLength).toBe(500);
+  });
+
+  it('refuses a pasted bidi mark before any request, inline on the note', async () => {
+    advanceToPayment();
+
+    fireEvent.change(noteField(), {
+      target: { value: `رنگ آبی${String.fromCharCode(0x200f)}` },
+    });
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expect(postData).not.toHaveBeenCalled();
+    expect(noteField().getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByText('مقدار واردشده نامعتبر است.')).toBeTruthy();
+    expect(getCart()).toHaveLength(1);
+
+    // Editing the note clears its error.
+    fireEvent.change(noteField(), { target: { value: 'رنگ آبی' } });
+    expect(noteField().getAttribute('aria-invalid')).toBe('false');
+  });
+
+  it('shows a server 400 on the note inline, not in the top alert', async () => {
+    postData.mockRejectedValue(
+      new ApiRequestError(400, 'ورودی نامعتبر است', [
+        'customerNote: مقدار واردشده بیش از حد طولانی است.',
+      ]),
+    );
+    advanceToPayment();
+    fireEvent.change(noteField(), { target: { value: 'رنگ آبی' } });
+
+    await act(async () => {
+      fireEvent.click(submitButton());
+    });
+
+    expect(noteField().getAttribute('aria-invalid')).toBe('true');
+    expect(
+      screen.getByText('مقدار واردشده بیش از حد طولانی است.'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
