@@ -13,7 +13,7 @@ one branch. Read the story note before touching code.
 Next 16 App Router (React 19, TypeScript strict) · Hono `@hono/zod-openapi` +
 Scalar mounted at `/api/[[...route]]` · Postgres + Drizzle (schema / DAO /
 migrations) · Better Auth · Tailwind v4 + shadcn-style primitives · Vitest ·
-ESLint 9 + Prettier · husky + lint-staged + commitlint · pnpm 11 / Node 24 ·
+ESLint 10 + Prettier · husky + lint-staged + commitlint · pnpm 11 / Node 24 ·
 Docker for dev Postgres.
 
 No CMS. The commerce schema is ours, in Drizzle; the admin panel is a custom
