@@ -31,6 +31,11 @@ overrides:
   # source-map section offsets. Nine paths, all via postcss (next, and
   # @sentry/nextjs -> webpack's minimizer): build-time CSS processing.
   'source-map-js@>=1.0.0 <1.2.2': ^1.2.2
+  # GHSA-587h-7wmj-h5pm (high), GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw:
+  # vite 8.2.0–8.2.3 bundles a launch-editor whose path and argument checks
+  # can be bypassed (Windows-only for two of them). Arrives via vitest and
+  # its mocker: the test runner, never the app.
+  'vite@>=8.2.0 <8.2.4': ^8.2.4
 
 # pnpm 11 blocks dependency build scripts by default. Without these allows,
 # install looks green but native binaries never compile.

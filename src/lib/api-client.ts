@@ -145,7 +145,7 @@ export const postForm = async <T>(
     // malformed-envelope assertion and Zod's issue strings, both English and
     // neither fit for a toast.
     if (envelope?.status === 'error') throw error;
-    throw new Error(DEFAULT_ERROR_MESSAGE);
+    throw new Error(DEFAULT_ERROR_MESSAGE, { cause: error });
   }
 };
 
