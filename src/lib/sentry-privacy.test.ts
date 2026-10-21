@@ -361,16 +361,19 @@ describe('receipt key privacy', () => {
 
       expect(captured).toBeDefined();
       for (const id of ids) expect(captured).not.toContain(id);
-      // The SDK did record all four, each scrubbed where it filed the key:
-      // the URL, or the query it keeps apart from it.
+      // The SDK did record all four: the three keys in a path scrubbed in
+      // place, and the one in a query string gone with the query, which SDK
+      // 10.76 leaves off the breadcrumb under `urlQueryParams: false` (10.73
+      // kept it apart as `http.query`, where the scrubber redacted it).
       for (const scrubbed of [
         `${origin}/bucket/receipts/[redacted]`,
         `${origin}/receipts/[redacted]`,
-        '?file=receipts/[redacted]',
+        `"${origin}/bucket/x"`,
         `${origin}/bucket/x/receipts%2F[redacted]`,
       ]) {
         expect(captured).toContain(scrubbed);
       }
+      expect(captured).not.toContain('?file=');
     });
   });
 });

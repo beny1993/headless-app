@@ -27,7 +27,7 @@ export type SentryIntegration = ReturnType<
  * A string comparison against a vendor constant, and the unit test cannot pin it
  * to the SDK's own value: `consoleIntegration` is exported only from the server
  * build, and the suite resolves `@sentry/nextjs` through its browser condition.
- * Verified by hand against @sentry/core 10.73.0
+ * Verified by hand against @sentry/core 10.76.2
  * (`build/cjs/integrations/console.js`: `const INTEGRATION_NAME = "Console"`).
  * Re-check it on a major SDK bump — a rename upstream turns the filter into a
  * no-op, and a no-op here means one-time codes on their way to Sentry.
@@ -57,7 +57,7 @@ export const withoutConsoleBreadcrumbs = (integrations: SentryIntegration[]) =>
 /**
  * What the SDK is allowed to collect on its own.
  *
- * Every category that can hold a customer's data is set explicitly; SDK 10.73.0
+ * Every category that can hold a customer's data is set explicitly; SDK 10.76.2
  * also has `graphQL`, `genAI` and `frameContextLines`, left at their defaults
  * (no GraphQL or AI client here, and context lines are our own source).
  * `dataCollection` is opt-*out*: passing the object at all — even `{}` —
@@ -205,7 +205,7 @@ export const withoutAdminQuery = (
 /**
  * The event without the HTTP request body the SDK attached to it.
  *
- * `httpBodies: []` above does not stop that: in SDK 10.73.0 the Node `Http`
+ * `httpBodies: []` above does not stop that: in SDK 10.76.2 the Node `Http`
  * integration records an incoming body read through `req.on('data')` without
  * consulting the list, and the request-data integration attaches it to every
  * event captured in that request, transactions as well as errors

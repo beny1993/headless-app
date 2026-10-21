@@ -76,7 +76,7 @@ export const auth = betterAuth({
       // default reads `x-forwarded-for` and trusts it only when it holds a
       // SINGLE address; behind the CDN + Traefik it holds either the CDN
       // edge address (so every visitor through one edge shares a bucket) or
-      // two hops (so `getIp` returns null and EVERY request
+      // two hops (so `getIP` returns null and EVERY request
       // collapses into the one shared `no-trusted-ip` bucket — 3 OTP sends per
       // minute for the entire shop). Neither failure is visible in a log.
       //

@@ -1,4 +1,4 @@
-import { getIp } from 'better-auth/api';
+import { getIP } from 'better-auth/api';
 
 import { getEnvFlag, VARS } from '@/lib/utils/env';
 
@@ -37,7 +37,7 @@ export const clientIpHeaders = (): string[] =>
 /**
  * Resolves the caller's address, or `null` when no header can be trusted.
  *
- * Delegates to Better Auth's own `getIp` rather than parsing headers here, so
+ * Delegates to Better Auth's own `getIP` rather than parsing headers here, so
  * precedence, the single-hop `x-forwarded-for` rule and IPv6 /64 bucketing are
  * literally the same code the auth limiter uses — not a mirror of it that can
  * drift. A multi-hop `x-forwarded-for` resolves to `null` by design: trusting
@@ -45,11 +45,11 @@ export const clientIpHeaders = (): string[] =>
  */
 export const clientIpFrom = (headers: Headers): string | null => {
   // Annotated, not cast. A force-cast here would let a Better Auth upgrade
-  // rename or restructure this option and still compile — `getIp` would then
+  // rename or restructure this option and still compile — `getIP` would then
   // silently fall back to its own default header handling, resolving callers
   // by a rule nobody chose, on the path that decides who gets rate limited.
-  const options: Parameters<typeof getIp>[1] = {
+  const options: Parameters<typeof getIP>[1] = {
     advanced: { ipAddress: { ipAddressHeaders: clientIpHeaders() } },
   };
-  return getIp(headers, options);
+  return getIP(headers, options);
 };
