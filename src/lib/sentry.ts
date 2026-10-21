@@ -165,7 +165,9 @@ export const sanitizeDatabaseError = (
  * The users search puts a customer's phone or name in an admin page's `?q=`.
  * `urlQueryParams: false` above only drops the separate `query_string`: the SDK
  * still sends the page URL whole as `request.url` (and as `Referer`), and
- * records navigations and fetches, query included, as breadcrumbs. And
+ * records navigations as breadcrumbs, query included. (Since SDK 10.76 its
+ * Node fetch and `http` breadcrumbs drop their query under that switch; the
+ * filter does not lean on it.) And
  * `onRequestError` (`src/instrumentation.ts`) copies Next's `req.url`, query
  * included, into `contexts.nextjs.request_path`, with or without a `request`.
  */
@@ -259,9 +261,10 @@ export const withoutAdminQueryBreadcrumb = (
  * percent-encoded the slash once or twice — to the end of that path, so a
  * bucket or base path itself named `receipts` cannot leave the filename behind;
  * and not only in a URL's path, since a redirect can move the key into a query
- * string, which the SDK files apart from the URL as `http.query`. Any case,
- * and on no word boundary — no lookbehind either: this module ships to the
- * browser, and Safari before 16.4 throws on one — so it over-redacts:
+ * string, which SDK 10.73 filed apart from the URL as `http.query` (10.76 drops
+ * it under `urlQueryParams: false`; the scrubber stays for any other path).
+ * Any case, and on no word boundary — no lookbehind either: this module ships
+ * to the browser, and Safari before 16.4 throws on one — so it over-redacts:
  * `/my-receipts/…` and the app's own `/api/orders/<id>/receipts/<id>` lose
  * their tails too, which is harmless.
  */
