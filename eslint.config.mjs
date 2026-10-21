@@ -1,7 +1,6 @@
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
 import prettier_plugin from 'eslint-plugin-prettier';
-import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import unusedImports from 'eslint-plugin-unused-imports';
 import tseslint from 'typescript-eslint';
@@ -31,7 +30,6 @@ const config = [
   prettier,
   {
     plugins: {
-      react,
       'react-hooks': reactHooks,
       prettier: prettier_plugin,
       'unused-imports': unusedImports,
@@ -46,8 +44,6 @@ const config = [
       'no-console': 'off',
       'no-debugger': 'error',
       'linebreak-style': 'off',
-      'react/react-in-jsx-scope': 'off',
-      'react/prop-types': 'off',
       'react-hooks/preserve-manual-memoization': 'warn',
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/purity': 'warn',
@@ -78,11 +74,6 @@ const config = [
             'Use next/image: the production bucket 404s a browser loading it directly.',
         },
       ],
-    },
-    settings: {
-      react: {
-        version: 'detect',
-      },
     },
   },
   {

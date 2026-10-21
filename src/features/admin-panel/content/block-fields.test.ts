@@ -47,8 +47,10 @@ const ID_LIST_KINDS: Record<string, FieldDescriptor['kind']> = {
  * tab's `categoryIds`, or the featured boxes' `productIds`. Read from the schema
  * itself — the defaults carry none — and a destination list (`navLinks`,
  * `linkTargets`) holds up to its `.max()`.
- * `_zod.bag.maximum` is zod's internal check metadata: a zod upgrade that moves it
- * breaks this test, not the app.
+ * The bound is read through `z.toJSONSchema`'s `maxItems`, the public face of
+ * `.max()` — zod 4.6 stopped filling the internal `_zod.bag` this test used to
+ * read, which emptied every list silently. A list with no readable bound throws
+ * rather than counting as zero destinations.
  */
 function destinationPaths(schema: z.ZodType, prefix = ''): string[] {
   const at = (segment: string | number) =>
@@ -70,8 +72,10 @@ function destinationPaths(schema: z.ZodType, prefix = ''): string[] {
     );
   }
   if (schema instanceof z.ZodArray) {
-    const { maximum = 0 } = schema._zod.bag as { maximum?: number };
-    return Array.from({ length: maximum }, (_, i) =>
+    const { maxItems } = z.toJSONSchema(schema, { unrepresentable: 'any' });
+    if (maxItems === undefined)
+      throw new Error(`${prefix}: list has no .max()`);
+    return Array.from({ length: maxItems }, (_, i) =>
       destinationPaths(schema.element as z.ZodType, at(i)),
     ).flat();
   }
