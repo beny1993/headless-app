@@ -36,7 +36,7 @@
     "security:check": "pnpm audit --audit-level=high"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1153.0",
+    "@aws-sdk/client-s3": "^3.1154.0",
     "@hono/zod-openapi": "^1.6.3",
     "@scalar/hono-api-reference": "^0.12.13",
     "@sentry/nextjs": "^10.76.2",
@@ -45,7 +45,7 @@
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.13",
-    "lucide-react": "^1.60.0",
+    "lucide-react": "^1.61.0",
     "next": "^16.4.2",
     "pg": "^8.23.1",
     "react": "^19.3.1",
@@ -72,7 +72,7 @@
     "eslint-plugin-prettier": "^5.5.7",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-unused-imports": "^4.4.1",
-    "happy-dom": "^21.0.3",
+    "happy-dom": "^21.0.4",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",
     "postcss": "^8.5.31",
@@ -82,7 +82,7 @@
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.72.0",
-    "vitest": "^4.1.12"
+    "vitest": "^5.0.5"
   },
   "packageManager": "pnpm@11.20.0"
 }

@@ -218,6 +218,13 @@ verify, cross-user isolation (IDOR). Tests assert behavior, not implementation; 
 story is not done until its tests would fail if its logic broke. Tests sit next
 to the code (`foo.test.ts`). Write the failing test first.
 
+Vitest 5 clears every mock's call history before each test (`clearMocks` is on
+by default), so a call recorded in `beforeAll` or at module top level is gone
+by the time the test reads it — and a `not.toHaveBeenCalled()` against it
+passes for nothing. Act inside the test body. It also fails a test whose
+`resolves`/`rejects` is not awaited, and throws on a `vi.mock`/`vi.hoisted`
+that is not at the top of the file.
+
 Constraints (CHECK, unique, FK) and anything else the database itself enforces
 cannot be proven against a mocked `db`, so those suites run against the dev
 Postgres (`src/db/test-db.ts`). They skip only when `APP_CONFIG_DATABASE_URL` is
