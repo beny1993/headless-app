@@ -36,6 +36,12 @@ overrides:
   # can be bypassed (Windows-only for two of them). Arrives via vitest and
   # its mocker: the test runner, never the app.
   'vite@>=8.2.0 <8.2.4': ^8.2.4
+  # @sentry/nextjs 10's OpenTelemetry 2.x (core, resources, sdk-trace) peers
+  # on @opentelemetry/api <1.10, while every other consumer (next, better-auth,
+  # drizzle-orm, vitest) takes ^1.x and so resolved the newest, 1.10.0 — an
+  # unmet peer on every install. Hold the one shared copy on 1.9 until the SDK
+  # moves to OpenTelemetry 3 (Sentry 11), which wants 1.10; drop this then.
+  '@opentelemetry/api': ~1.9.1
 
 # pnpm 11 blocks dependency build scripts by default. Without these allows,
 # install looks green but native binaries never compile.
