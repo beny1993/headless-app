@@ -14,7 +14,7 @@ formatting, storage and SMS seams, a mobile-friendly RTL admin. The pet-specific
 small and listed in `docs/extraction-map.md`.
 
 We want a product where any Iranian shop (pet, clothing, cosmetics, electronics, books,
-food) signs up, picks a preset and gets a working RTL shop on a subdomain or its own domain.
+food) signs up, picks a preset and gets a working shop (Persian RTL, English LTR, or both) on a subdomain or its own domain.
 What Smokey lacks is not commerce features but three platform layers: **tenancy**, a
 **configurable catalog**, and **themes**.
 
@@ -42,6 +42,12 @@ waiting.
 - Tenant resolved from the `Host` header for every page and API request.
 - Split into separate apps only when a second client (mobile app, agency storefront)
   actually exists.
+
+### 3b. Languages and direction
+
+The platform is multilingual: Persian (RTL) and English (LTR) at launch, more locales by
+adding a registry entry and a message file. Each shop picks its default and enabled
+languages; merchant-entered shopper-facing text is stored per locale. Details in ADR 0004.
 
 ### 4. Stack: unchanged from Smokey
 
@@ -131,8 +137,9 @@ client-safe contracts; DB only through DAOs, multi-DAO logic in `src/logic/`; th
 state machine; atomic `UPDATE … WHERE stock >= qty`; idempotent payment verify;
 owner-scoped **and** tenant-scoped reads with mandatory IDOR and cross-tenant tests; phone
 OTP only with canonical `+989…` phones; Persian search normalization + `pg_trgm`;
-local-first (console SMS, local storage, mock gateway); Persian UI copy, English
-code/comments/commits; conventional commits; the unit + integration (real Postgres) +
+local-first (console SMS, local storage, mock gateway); UI copy in typed message files
+with Persian as the source and English alongside (ADR 0004), logical CSS properties only;
+English code/comments/commits; conventional commits; the unit + integration (real Postgres) +
 component + Playwright testing standard.
 
 **Generic by default:** no vertical-specific field, copy or enum in core. It belongs in a

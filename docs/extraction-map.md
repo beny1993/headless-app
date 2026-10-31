@@ -96,7 +96,8 @@ detail. Every module is **TENANT** (runs inside the request's tenant context) un
 | `catalog/product-query.ts` | **GENERALIZE** | `PET_TYPES`/pet filter **DROP**; the shared client-safe contract pattern KEEP (it is the model for Phase 2's generated attribute filters). | `product-query.test.ts` |
 | `catalog/product-input.ts` | **GENERALIZE** | Loses `petTypes`; Phase 2 adds generated attribute validation. | `product-input.test.ts` |
 | `catalog/variant.ts`, `sku.ts`, `search-text.ts`, `category-*.ts`, `product-delete.ts` | **KEEP** | `search-text.ts` is the Persian normalization (ي→ی, ك→ک, ZWNJ). | one suite each |
-| `checkout/*`, `orders/*`, `discount/*`, `shipping/*`, `insights/*`, `pagination.ts`, `format.ts`, `validation/text.ts`, `warn-once.ts`, `utils.ts`, `api-client.ts`, `admin-url.ts` | **KEEP** | `orders/delivery-method.ts`: Tehran courier becomes a per-tenant toggle + city (Phase 1: setting; default off for non-Tehran shops). | one suite each |
+| `format.ts` | **GENERALIZE** | Takes the request locale: Persian digits + Jalali for `fa`, Latin digits + Gregorian (or Jalali by tenant setting) for `en`; Toman stays integer (ADR 0004 §5). | `format.test.ts` |
+| `checkout/*`, `orders/*`, `discount/*`, `shipping/*`, `insights/*`, `pagination.ts`, `validation/text.ts`, `warn-once.ts`, `utils.ts`, `api-client.ts`, `admin-url.ts` | **KEEP** | `orders/delivery-method.ts`: Tehran courier becomes a per-tenant toggle + city (Phase 1: setting; default off for non-Tehran shops). | one suite each |
 | `account/address.ts` | **KEEP** | | `address.test.ts` |
 | `account/pet.ts` | **DROP** | | `pet.test.ts` |
 | `content/site-content.ts`, `defaults.ts`, `link.ts`, `chrome.ts` | **TENANT + GENERALIZE** | Pet keys drop; the saved-link contract's `pet` field (`link.ts`) DROP; defaults lose Smokey copy (social handles `smokey.petshop`, Persian pet copy) and come from the tenant's preset. `checkout.payment` card number moves to `tenant_secrets`-adjacent settings (ADR 0003 §8). | 3 suites |
@@ -131,6 +132,7 @@ detail. Every module is **TENANT** (runs inside the request's tenant context) un
 | `auth/login/`, `sign-out-button` | **KEEP** | Login shows the shop's name. | 2 suites, `e2e/auth.setup.ts` |
 | `admin-panel/*` (orders, products, categories, discounts, shipping, content, dashboard, insights, shell, shared) | **KEEP / TENANT** | Guard switches to `requireMerchant`. `products/product-form.tsx` loses the pet picker and `products/products-query.ts` its `pet` filter. `content/block-fields.ts` + `link-picker.tsx` lose pet blocks. `users/` becomes customers. | 17 suites, `e2e/admin*.spec.ts` (7) |
 | `src/app/(admin-panel)`, `(app)`, `api`, `uploads`, `sitemap.ts`, `robots.ts`, `layout.tsx` | **TENANT** | Root layout reads the tenant (name, lang/dir stay `fa`/`rtl`). `sitemap`/`robots` per host. New `(platform)` route group for platform admin later (Phase 4). | `app/*.test.ts`, `sitemap.test.ts`, `uploads/[...key]/route.test.ts` |
+| All UI copy (Persian text in ~200 non-test files, incl. zod messages, SMS and SEO text) | **GENERALIZE** | Moves to typed message files, `fa` as source, `en` alongside; `<html lang="fa" dir="rtl">` in `app/layout.tsx` and `global-error.tsx` comes from the locale (ADR 0004, stories L1-L4). | existing component tests render with an explicit locale |
 | `components/`, `hooks/` | **KEEP** | | 5 suites |
 
 ## 6. Scripts, seeds, assets, tooling
