@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Throwaway values for CI only. The database is the job's own service
+  # container; the secret signs nothing that outlives the run.
+  APP_CONFIG_DATABASE_URL: postgres://postgres:postgres@localhost:5432/platform
+  APP_CONFIG_AUTH_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
+  NEXT_PUBLIC_APP_URL: http://localhost:3000
+  APP_CONFIG_SMS_PROVIDER: console
+  APP_CONFIG_ZARINPAL_PROVIDER: mock
+  APP_CONFIG_STORAGE_PROVIDER: local
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  static:
+    name: Type-check, lint, format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm type-check
+      - run: pnpm lint --max-warnings 0
+      - run: pnpm format:check
+      - run: pnpm migration:check
+
+  test:
+    name: Unit + Postgres integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: platform
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d platform"
+          --health-interval 2s --health-timeout 3s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm migration:migrate
+      # The integration suites skip only when APP_CONFIG_DATABASE_URL is
+      # unset; it is set above, so a broken database fails the run.
+      - run: pnpm test
+
+  e2e:
+    name: Playwright (desktop + mobile)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: platform
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d platform"
+          --health-interval 2s --health-timeout 3s --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # playwright.config.ts uses channel 'chrome'; the runner image ships
+      # Google Chrome, so no browser download is needed.
+      - run: pnpm test:e2e
+        env:
+          CI: 'true'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:local
+      - run: pnpm security:check
