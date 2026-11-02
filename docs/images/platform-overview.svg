@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">
+  <rect width="1200" height="620" rx="24" fill="#f6f7f9"/>
+  <!-- three shops -->
+  <g>
+    <g transform="translate(60,48)">
+      <rect width="320" height="250" rx="16" fill="#ffffff" stroke="#d9dde3"/>
+      <rect width="320" height="34" rx="16" fill="#1f6feb"/><rect y="18" width="320" height="16" fill="#1f6feb"/>
+      <circle cx="20" cy="17" r="5" fill="#fff" opacity=".7"/><circle cx="36" cy="17" r="5" fill="#fff" opacity=".7"/><circle cx="52" cy="17" r="5" fill="#fff" opacity=".7"/>
+      <text x="300" y="22" text-anchor="end" font-size="12" fill="#fff">fashion.example</text>
+      <text x="20" y="66" font-size="18" font-weight="700" fill="#1b1f24">Clothing shop</text>
+      <text x="20" y="86" font-size="12" fill="#57606a">English · LTR · size × color variants</text>
+      <g transform="translate(20,104)" fill="#e8eef9"><rect width="84" height="84" rx="10"/><rect x="98" width="84" height="84" rx="10"/><rect x="196" width="84" height="84" rx="10"/></g>
+      <g transform="translate(20,198)" fill="#d0d7de"><rect width="60" height="8" rx="4"/><rect x="98" width="60" height="8" rx="4"/><rect x="196" width="60" height="8" rx="4"/></g>
+      <g transform="translate(20,214)" fill="#1f6feb"><rect width="40" height="8" rx="4"/><rect x="98" width="40" height="8" rx="4"/><rect x="196" width="40" height="8" rx="4"/></g>
+    </g>
+    <g transform="translate(440,48)">
+      <rect width="320" height="250" rx="16" fill="#ffffff" stroke="#d9dde3"/>
+      <rect width="320" height="34" rx="16" fill="#0f766e"/><rect y="18" width="320" height="16" fill="#0f766e"/>
+      <circle cx="20" cy="17" r="5" fill="#fff" opacity=".7"/><circle cx="36" cy="17" r="5" fill="#fff" opacity=".7"/><circle cx="52" cy="17" r="5" fill="#fff" opacity=".7"/>
+      <text x="300" y="22" text-anchor="end" font-size="12" fill="#fff">tech.example</text>
+      <text x="300" y="66" text-anchor="end" font-size="18" font-weight="700" fill="#1b1f24">فروشگاه کالای دیجیتال</text>
+      <text x="300" y="86" text-anchor="end" font-size="12" fill="#57606a">فارسی · راست‌به‌چپ · گارانتی</text>
+      <g transform="translate(20,104)" fill="#e3f2ef"><rect width="84" height="84" rx="10"/><rect x="98" width="84" height="84" rx="10"/><rect x="196" width="84" height="84" rx="10"/></g>
+      <g transform="translate(40,198)" fill="#d0d7de"><rect x="24" width="60" height="8" rx="4"/><rect x="122" width="60" height="8" rx="4"/><rect x="220" width="40" height="8" rx="4"/></g>
+      <g transform="translate(40,214)" fill="#0f766e"><rect x="44" width="40" height="8" rx="4"/><rect x="142" width="40" height="8" rx="4"/><rect x="220" width="40" height="8" rx="4"/></g>
+    </g>
+    <g transform="translate(820,48)">
+      <rect width="320" height="250" rx="16" fill="#ffffff" stroke="#d9dde3"/>
+      <rect width="320" height="34" rx="16" fill="#b45309"/><rect y="18" width="320" height="16" fill="#b45309"/>
+      <circle cx="20" cy="17" r="5" fill="#fff" opacity=".7"/><circle cx="36" cy="17" r="5" fill="#fff" opacity=".7"/><circle cx="52" cy="17" r="5" fill="#fff" opacity=".7"/>
+      <text x="300" y="22" text-anchor="end" font-size="12" fill="#fff">books.example</text>
+      <text x="20" y="66" font-size="18" font-weight="700" fill="#1b1f24">Bookstore</text>
+      <text x="20" y="86" font-size="12" fill="#57606a">Bilingual · فارسی + English</text>
+      <g transform="translate(20,104)" fill="#f6ead9"><rect width="84" height="84" rx="10"/><rect x="98" width="84" height="84" rx="10"/><rect x="196" width="84" height="84" rx="10"/></g>
+      <g transform="translate(20,198)" fill="#d0d7de"><rect width="60" height="8" rx="4"/><rect x="98" width="60" height="8" rx="4"/><rect x="196" width="60" height="8" rx="4"/></g>
+      <g transform="translate(20,214)" fill="#b45309"><rect width="40" height="8" rx="4"/><rect x="98" width="40" height="8" rx="4"/><rect x="196" width="40" height="8" rx="4"/></g>
+    </g>
+  </g>
+  <!-- connectors -->
+  <g stroke="#8c959f" stroke-width="2" fill="none" stroke-dasharray="6 6">
+    <path d="M220 298 V340 Q220 360 240 360 H560 Q600 360 600 380"/>
+    <path d="M600 298 V380"/>
+    <path d="M980 298 V340 Q980 360 960 360 H640 Q600 360 600 380"/>
+  </g>
+  <!-- platform -->
+  <g transform="translate(160,384)">
+    <rect width="880" height="196" rx="18" fill="#1b1f24"/>
+    <text x="32" y="42" font-size="20" font-weight="700" fill="#ffffff">One platform, many shops</text>
+    <text x="32" y="66" font-size="13" fill="#9aa4ae">Each shop is a tenant: its own domain, catalog, theme, languages, payments and customers</text>
+    <g transform="translate(32,88)" font-size="14" fill="#e6edf3">
+      <rect width="190" height="76" rx="12" fill="#2d333b"/><text x="16" y="32" font-weight="600">Storefront</text><text x="16" y="54" font-size="12" fill="#9aa4ae">themes · RTL + LTR</text>
+      <rect x="208" width="190" height="76" rx="12" fill="#2d333b"/><text x="224" y="32" font-weight="600">Merchant admin</text><text x="224" y="54" font-size="12" fill="#9aa4ae">orders · products · content</text>
+      <rect x="416" width="190" height="76" rx="12" fill="#2d333b"/><text x="432" y="32" font-weight="600">Headless API</text><text x="432" y="54" font-size="12" fill="#9aa4ae">typed · OpenAPI</text>
+      <rect x="624" width="192" height="76" rx="12" fill="#2d333b"/><text x="640" y="32" font-weight="600">Postgres + RLS</text><text x="640" y="54" font-size="12" fill="#9aa4ae">isolated per tenant</text>
+    </g>
+  </g>
+</svg>
