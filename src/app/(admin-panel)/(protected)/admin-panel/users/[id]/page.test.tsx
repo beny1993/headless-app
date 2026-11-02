@@ -159,7 +159,7 @@ describe('admin user detail: the profile', () => {
   });
 
   it('never renders an email, even one that reached the page', async () => {
-    const email = '989121234567@phone.smokey.invalid';
+    const email = '989121234567@phone.invalid';
     getAdminUser.mockResolvedValue({
       ...DETAIL,
       user: { ...DETAIL.user, email },

@@ -133,15 +133,15 @@ export const DEFAULT_CONTENT: ContentValues = {
     telegram: FOOTER_SOCIAL_DEFAULT.telegram,
   },
   header: {
-    // A display wordmark, independent of DEFAULT_SITE_NAME (which drives page
-    // <title>s and emails).
-    brand: 'Demo Shop',
-    tagline: 'فروشگاه نمونه',
+    // A display wordmark, independent of DEFAULT_SITE_NAME (which is «نمونه»
+    // and drives page <title>s and messages).
+    brand: 'Demo',
+    tagline: 'فروشگاه آنلاین',
     // Labels only; the hrefs are NAV_TARGETS in nav-links.ts at the same index.
     nav: ['خانه', 'فروشگاه', 'درباره ما'],
   },
   footer: {
-    brand: 'Demo Shop',
+    brand: 'Demo',
     tagline: 'فروشگاه آنلاین با محصولات انتخاب‌شده. کیفیت اول، همیشه.',
     // Column titles + link labels; the hrefs are FOOTER_TARGETS at the same index.
     columns: [
@@ -149,10 +149,10 @@ export const DEFAULT_CONTENT: ContentValues = {
         title: 'فروشگاه',
         links: ['آشپزخانه', 'نوشت‌افزار', 'دکوراسیون', 'کیف و سفر', 'سرگرمی'],
       },
-      { title: 'فروشگاه نمونه', links: ['درباره ما'] },
+      { title: 'نمونه', links: ['درباره ما'] },
     ],
     // The text AFTER the `© {jalali year}` prefix (rendered in code).
-    copyright: 'فروشگاه نمونه. تمام حقوق محفوظ است.',
+    copyright: 'نمونه. تمام حقوق محفوظ است.',
     credit: 'ساخته شده با ❤️ در ایران',
     social: { ...FOOTER_SOCIAL_DEFAULT },
   },

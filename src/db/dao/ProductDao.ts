@@ -283,7 +283,7 @@ export class ProductDao {
    * The storefront cards for these ids, in no particular order — callers key by
    * id. The listing's own row and where clause, so an inactive product or a
    * family member does not come back; no page and no count. What the home
-   * page's «انتخاب‌های اسموکی» boxes show and what the content save check
+   * page's «پیشنهادهای ما» boxes show and what the content save check
    * accepts as a pick both come from here, so the two cannot disagree about what
    * a card is.
    */

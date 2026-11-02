@@ -114,10 +114,10 @@ export function Footer({
           <div className="md:max-w-lg">
             <div className="flex items-center gap-2.5">
               <Image
-                src="/brand/smokey-mark.png"
+                src="/brand/mark.png"
                 width={40}
                 height={40}
-                alt={`لوگوی ${content.brand}، فروشگاه حیوانات خانگی`}
+                alt={`لوگوی ${content.brand}`}
                 className="size-10 shrink-0"
               />
               <p

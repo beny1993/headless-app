@@ -1,4 +1,4 @@
-// The admin's «انتخاب‌های اسموکی» picks, read as the cards the home page shows:
+// The admin's «پیشنهادهای ما» picks, read as the cards the home page shows:
 // ids stored in content (`home.recommends.productIds`) resolved against the
 // catalog, beside `loadLinkTargets`, hence src/logic/.
 import { ProductDao } from '@/db/dao/ProductDao';

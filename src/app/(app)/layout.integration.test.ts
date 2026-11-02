@@ -158,7 +158,7 @@ describe.skipIf(!databaseReachable)('the storefront chrome', () => {
         `لوگوی ${DEFAULT_CONTENT.header.brand}`,
       );
       expect(footerLogo?.props?.alt).toBe(
-        `لوگوی ${DEFAULT_CONTENT.footer.brand}، فروشگاه حیوانات خانگی`,
+        `لوگوی ${DEFAULT_CONTENT.footer.brand}`,
       );
     });
 

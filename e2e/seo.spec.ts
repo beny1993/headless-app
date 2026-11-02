@@ -151,16 +151,12 @@ test('a product page gives Google its price in Rial, its stock, shipping, return
 
 test('the home page names the shop for Google', async ({ page }) => {
   await page.goto(PATHS.HOME);
-  await expect(page).toHaveTitle(
-    'پت‌شاپ اسموکی | فروشگاه آنلاین حیوانات خانگی',
-  );
+  await expect(page).toHaveTitle('فروشگاه نمونه | فروشگاه آنلاین');
   const footer = page.getByRole('contentinfo');
   await expect(
-    footer.getByText('پت‌شاپ اسموکی', { exact: true }),
+    footer.getByText('فروشگاه نمونه', { exact: true }),
   ).toBeVisible();
-  await expect(
-    footer.getByText('Smokey Pet Shop', { exact: true }),
-  ).toBeVisible();
+  await expect(footer.getByText('Demo Shop', { exact: true })).toBeVisible();
 
   // Compared as URLs: Next writes the root without its slash and the sitemap
   // with it, and those are one URL (an empty path is `/`).
@@ -173,7 +169,7 @@ test('the home page names the shop for Google', async ({ page }) => {
         expect.objectContaining({
           '@type': 'Organization',
           name: DEFAULT_SITE_NAME,
-          alternateName: ['پت‌شاپ اسموکی', 'Smokey Pet Shop'],
+          alternateName: ['فروشگاه نمونه', 'Demo Shop'],
           url: absoluteUrl(PATHS.HOME),
         }),
       ]),

@@ -25,7 +25,7 @@ vi.mock('@/lib/seo', async (importOriginal) => {
   const seo = await importOriginal<typeof import('@/lib/seo')>();
   return {
     ...seo,
-    SITE_TWITTER: { ...seo.SITE_TWITTER, site: '@smokeypetshop' },
+    SITE_TWITTER: { ...seo.SITE_TWITTER, site: '@demoshop' },
   };
 });
 
@@ -167,7 +167,7 @@ describe('productMetadata', () => {
   it('keeps the site-wide Twitter fields on the large card too', () => {
     expect(productMetadata(product()).twitter).toMatchObject({
       card: 'summary_large_image',
-      site: '@smokeypetshop',
+      site: '@demoshop',
     });
   });
 

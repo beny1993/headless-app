@@ -50,7 +50,7 @@ export default async function HomePage() {
 
   // Saved destinations store catalog ids: resolve them once for every linked
   // section, reusing the categories just read (so only linked products query).
-  // The «انتخاب‌های اسموکی» boxes the admin picked a product for resolve beside
+  // The «پیشنهادهای ما» boxes the admin picked a product for resolve beside
   // them, as cards — from the listing page just read where they are on it, so
   // no query at all then — and only while the section is shown. A hidden
   // product or a family member does not come back; `selectFeatured` refills

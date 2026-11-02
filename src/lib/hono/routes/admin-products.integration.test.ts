@@ -109,7 +109,7 @@ const originalRoot = process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT];
 const originalProvider = process.env[VARS.APP_CONFIG_STORAGE_PROVIDER];
 
 beforeAll(async () => {
-  storageRoot = await mkdtemp(path.join(tmpdir(), 'smokey-admin-uploads-'));
+  storageRoot = await mkdtemp(path.join(tmpdir(), 'shop-admin-uploads-'));
   process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = storageRoot;
   // Pin the local driver regardless of what .env selects: this suite uploads
   // through the real route and reads the bytes back off disk. With a real .env

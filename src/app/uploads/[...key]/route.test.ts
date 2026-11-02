@@ -18,7 +18,7 @@ let root: string;
 const original = process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT];
 
 beforeEach(async () => {
-  root = await mkdtemp(path.join(tmpdir(), 'smokey-serve-'));
+  root = await mkdtemp(path.join(tmpdir(), 'shop-serve-'));
   process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = root;
 });
 

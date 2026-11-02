@@ -136,7 +136,7 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
     ],
   },
   'home.recommends': {
-    title: 'انتخاب‌های اسموکی',
+    title: 'پیشنهادهای ما',
     fields: [
       { path: 'eyebrow', label: 'عنوان کوچک', kind: 'input' },
       { path: 'headline', label: 'سرتیتر', kind: 'input' },
@@ -153,7 +153,7 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
     ],
   },
   'home.guide': {
-    title: 'راهنمای اسموکی',
+    title: 'راهنمای خرید',
     fields: [
       { path: 'eyebrow', label: 'عنوان کوچک', kind: 'input' },
       { path: 'headline', label: 'سرتیتر', kind: 'textarea' },
@@ -182,7 +182,7 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
     ],
   },
   'home.philosophy': {
-    title: 'فلسفه اسموکی',
+    title: 'روش ما',
     fields: [
       { path: 'eyebrow', label: 'عنوان کوچک', kind: 'input' },
       { path: 'headline', label: 'سرتیتر', kind: 'textarea' },

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // client). A plain `vi.stubEnv` therefore does not reach it — the value must be
 // set BEFORE the module graph is (re)loaded. So each case stubs the env, resets
 // the module registry, then imports a fresh copy.
-const BASE = 'https://storage.c2.liara.site/smokeypetshop';
+const BASE = 'https://storage.c2.liara.site/demoshop';
 
 const freshImageSrc = async (base: string) => {
   vi.stubEnv('NEXT_PUBLIC_STORAGE_BASE_URL', base);

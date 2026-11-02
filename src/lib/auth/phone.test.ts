@@ -184,9 +184,7 @@ describe('toLocalIranPhone', () => {
 
 describe('tempEmailForPhone', () => {
   it('derives the address a phone-only account is filed under', () => {
-    expect(tempEmailForPhone(CANONICAL)).toBe(
-      '989121234567@phone.smokey.invalid',
-    );
+    expect(tempEmailForPhone(CANONICAL)).toBe('989121234567@phone.invalid');
   });
 
   it('uses a TLD that can never resolve', () => {

@@ -258,9 +258,7 @@ describe.skipIf(!databaseReachable)('phone OTP authentication', () => {
         .select()
         .from(users)
         .where(eq(users.phoneNumber, phone));
-      expect(user!.email).toBe(
-        `${phone.replace('+', '')}@phone.smokey.invalid`,
-      );
+      expect(user!.email).toBe(`${phone.replace('+', '')}@phone.invalid`);
     });
 
     it('leaves the name blank for the shopper to fill in', async () => {

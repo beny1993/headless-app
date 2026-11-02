@@ -15,7 +15,7 @@
 import { z } from 'zod';
 
 /** Where the keys are kept; versioned so a changed shape is never misread. */
-export const CHECKOUT_KEY_STORAGE = 'smokey.checkout-keys.v1';
+export const CHECKOUT_KEY_STORAGE = 'shop.checkout-keys.v1';
 
 /** A key not sent for this long is not resent; its checkout is a new one. */
 export const CHECKOUT_KEY_TTL_MS = 30 * 60 * 1000;

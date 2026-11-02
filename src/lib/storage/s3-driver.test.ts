@@ -34,7 +34,7 @@ beforeEach(() => {
   sendMock.mockResolvedValue({});
   __resetS3ClientForTests();
   vi.stubEnv('LIARA_ENDPOINT', 'https://storage.c2.liara.site');
-  vi.stubEnv('LIARA_BUCKET_NAME', 'smokeypetshop');
+  vi.stubEnv('LIARA_BUCKET_NAME', 'demoshop');
   vi.stubEnv('LIARA_ACCESS_KEY', 'test-access-key');
   vi.stubEnv('LIARA_SECRET_KEY', 'test-secret-key');
 });
@@ -60,7 +60,7 @@ describe('s3Driver', () => {
   it('puts an uploads object with the sniffed content type and an immutable cache header', async () => {
     await s3Driver.put(KEY, bytes, 'image/webp');
     expect(PutObjectCommand).toHaveBeenCalledWith({
-      Bucket: 'smokeypetshop',
+      Bucket: 'demoshop',
       Key: KEY,
       Body: bytes,
       ContentType: 'image/webp',
@@ -72,7 +72,7 @@ describe('s3Driver', () => {
   it('deletes an uploads object', async () => {
     await s3Driver.delete(KEY);
     expect(DeleteObjectCommand).toHaveBeenCalledWith({
-      Bucket: 'smokeypetshop',
+      Bucket: 'demoshop',
       Key: KEY,
     });
     expect(sendMock).toHaveBeenCalledTimes(1);

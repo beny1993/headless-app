@@ -293,7 +293,9 @@ describe('step two: the code', () => {
 
     await act(async () => {
       fireEvent.paste(codeBoxes()[0]!, {
-        clipboardData: { getData: () => 'کد ورود شما به اسموکی: 482913' },
+        clipboardData: {
+          getData: () => 'کد ورود شما به فروشگاه نمونه: 482913',
+        },
       });
     });
 

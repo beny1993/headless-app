@@ -84,12 +84,12 @@ const categoryIds = (max: number) => {
     .optional();
 };
 /**
- * The «انتخاب‌های اسموکی» grid's cards — one row on desktop — and so the most
+ * The «پیشنهادهای ما» grid's cards — one row on desktop — and so the most
  * boxes an admin can pick a product for. The storefront rule, the editor's
  * picker and the schema below all read it from here.
  */
 export const FEATURED_COUNT = 4;
-// A «انتخاب‌های اسموکی» box: the product the admin picked for it, stored by id,
+// A «پیشنهادهای ما» box: the product the admin picked for it, stored by id,
 // or `null` for «خودکار» — the box then takes the next product the automatic
 // rule offers (`selectFeatured`). Up to FEATURED_COUNT entries, box by box: a
 // shorter list leaves the later boxes on «خودکار», so growing the grid never

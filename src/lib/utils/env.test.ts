@@ -16,11 +16,11 @@ afterEach(() => {
 describe('getAppBaseUrl', () => {
   it('returns the configured URL', async () => {
     const { getAppBaseUrl } = await loadEnv({
-      NEXT_PUBLIC_APP_URL: 'https://smokey.example',
+      NEXT_PUBLIC_APP_URL: 'https://shop.example',
       NODE_ENV: 'production',
     });
 
-    expect(getAppBaseUrl()).toBe('https://smokey.example');
+    expect(getAppBaseUrl()).toBe('https://shop.example');
   });
 
   it('falls back to localhost outside production', async () => {

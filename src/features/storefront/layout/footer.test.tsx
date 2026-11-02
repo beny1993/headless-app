@@ -29,12 +29,12 @@ describe('Footer social pills', () => {
   it('shows both full shop names alongside saved editorial branding', () => {
     render(
       <Footer
-        content={{ ...footer, brand: 'Smokey', tagline: 'متن دلخواه فروشگاه' }}
+        content={{ ...footer, brand: 'Acme', tagline: 'متن دلخواه فروشگاه' }}
         targets={NO_TARGETS}
       />,
     );
-    expect(screen.getByText('پت‌شاپ اسموکی')).toBeTruthy();
-    const latin = screen.getByText('Smokey Pet Shop');
+    expect(screen.getByText('فروشگاه نمونه')).toBeTruthy();
+    const latin = screen.getByText('Demo Shop');
     expect(latin.getAttribute('lang')).toBe('en');
     expect(latin.getAttribute('dir')).toBe('ltr');
     expect(latin.closest('[aria-hidden="true"]')).toBeNull();

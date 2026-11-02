@@ -6,7 +6,7 @@ import { resolveLink, type LinkTargets } from '@/lib/content/link';
 import { knownShelfPath } from './content';
 
 /**
- * «راهنمای اسموکی» — an editorial block above the fold of the lower page.
+ * «راهنمای خرید» — an editorial block above the fold of the lower page.
  *
  * The magazine it originally linked to is parked on the backlog, so the CTA
  * points at the products the text is actually about (wet food, for a cat that

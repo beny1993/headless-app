@@ -1,3 +1,4 @@
+import { SITE_FULL_NAME } from '@/constants';
 import { toLocalIranPhone } from '@/lib/auth/phone';
 import { requireAdmin } from '@/lib/auth/session';
 import { AdminSidebar } from '@/features/admin-panel/shell/admin-sidebar';
@@ -32,10 +33,10 @@ export default async function ProtectedLayout({
             takes over and the hamburger is hidden. */}
         <header className="border-border flex shrink-0 items-center justify-between border-b bg-white py-4 ps-16 pe-6 lg:ps-6">
           <span className="text-muted-foreground text-sm">
-            پنل مدیریت اسموکی
+            پنل مدیریت {SITE_FULL_NAME}
           </span>
           <div className="flex items-center gap-4">
-            {/* The phone number, not the derived `…@phone.smokey.invalid`
+            {/* The phone number, not the derived `…@phone.invalid`
                 address, which identifies nobody. LTR so the digits and + don't
                 bidi-reorder inside the RTL shell. */}
             <span className="text-muted-foreground text-sm" dir="ltr">

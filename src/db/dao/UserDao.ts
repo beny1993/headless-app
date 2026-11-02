@@ -24,7 +24,7 @@ import { classifyUserSearch } from '@/lib/users/user-search';
 
 /**
  * One user as the admin users list and detail show them. An explicit
- * projection: the `email` column (a fake `…@phone.smokey.invalid`) and every
+ * projection: the `email` column (a fake `…@phone.invalid`) and every
  * Better Auth session or account field are never selected, so they cannot
  * reach a page.
  */

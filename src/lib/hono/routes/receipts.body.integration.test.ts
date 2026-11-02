@@ -54,7 +54,7 @@ const MiB = 1024 * 1024;
 let root: string;
 const originalRoot = process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT];
 beforeAll(async () => {
-  root = await mkdtemp(path.join(tmpdir(), 'smokey-receipt-body-'));
+  root = await mkdtemp(path.join(tmpdir(), 'shop-receipt-body-'));
   process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = root;
 });
 afterAll(async () => {

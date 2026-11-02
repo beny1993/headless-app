@@ -269,7 +269,7 @@ describe('collectLinkRefs', () => {
     ]);
   });
 
-  it('lists the «انتخاب‌های اسموکی» picks as cards, skipping the «خودکار» boxes', () => {
+  it('lists the «پیشنهادهای ما» picks as cards, skipping the «خودکار» boxes', () => {
     // Not `product`: a link may point at any active product, a family member's
     // own page included, while a pick must be a card the shop lists.
     const value = {

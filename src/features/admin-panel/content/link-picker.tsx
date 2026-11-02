@@ -37,7 +37,7 @@ export type LinkOptions = {
   products: LinkOption[];
   /**
    * The products the shop lists as a card — family heads and standalone
-   * products, never a member — for the «انتخاب‌های اسموکی» boxes. A member
+   * products, never a member — for the «پیشنهادهای ما» boxes. A member
    * picked there would be dropped by the listing and its box silently refilled.
    */
   cards: LinkOption[];
@@ -463,7 +463,7 @@ export function CategoryPicker({
 }
 
 /**
- * The «انتخاب‌های اسموکی» boxes: one select per card, in grid order, each holding
+ * The «پیشنهادهای ما» boxes: one select per card, in grid order, each holding
  * a product the shop lists as a card, or «خودکار» (`null`) — the storefront then
  * fills that box by the automatic rule (`fallback`). A product picked in one box
  * is disabled in the others. Every box on «خودکار» is `undefined`, never four

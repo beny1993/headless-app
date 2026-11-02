@@ -92,7 +92,7 @@ confirm, then confirmed) that checkout then charges; a province an admin adds, t
 offer and, once it is switched off, no longer offer — a saved address on it
 flagged in both — until it is switched back on; a home headline that the
 storefront then shows; a product the home grid already shows, picked for the
-first «انتخاب‌های اسموکی» box — the seeded family offered by its head's row and
+first «پیشنهادهای ما» box — the seeded family offered by its head's row and
 never a member's (matched by id) — that the grid then shows first and only
 there, every other box still filled; home categories an admin picks in the
 content editor, leading the strip in the order picked, and two more dragged

@@ -17,7 +17,7 @@ import {
  * products that are still active — a hidden or deleted product is left out, so
  * its link resolves to the shop. No link ids, no queries. A caller already
  * holding the category rows (the home page) passes them to skip that read.
- * The «انتخاب‌های اسموکی» picks (`card` refs) are not links and are never
+ * The «پیشنهادهای ما» picks (`card` refs) are not links and are never
  * loaded here; the home page reads them as cards.
  */
 export async function loadLinkTargets(
@@ -58,7 +58,7 @@ const MISSING = {
  * The save-side check: one `path: message` error (the zod 400's own shape, so
  * the editor maps it onto the field) for each id in `value` that names no
  * category, no active product for a link, or no card the shop lists for a
- * «انتخاب‌های اسموکی» box — read through the same `cardsByIds` the home page
+ * «پیشنهادهای ما» box — read through the same `cardsByIds` the home page
  * shows its picks with, so a family member (a valid link target, never a card)
  * is refused here instead of being stored and silently never shown. The ids are
  * already uuids — the block's schema runs first.

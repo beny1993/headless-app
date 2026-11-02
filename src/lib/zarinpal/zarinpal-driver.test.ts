@@ -45,7 +45,7 @@ describe('real Zarinpal driver', () => {
 
       const result = await createZarinpalDriver().requestPayment({
         amountToman: 340_000,
-        callbackUrl: 'https://smokey.example/api/payments/zarinpal/callback',
+        callbackUrl: 'https://shop.example/api/payments/zarinpal/callback',
         description: 'سفارش',
         orderId: 'order-1',
         mobile: '+989120000000',
@@ -76,7 +76,7 @@ describe('real Zarinpal driver', () => {
 
       const result = await createZarinpalDriver().requestPayment({
         amountToman: 1000,
-        callbackUrl: 'https://smokey.example/cb',
+        callbackUrl: 'https://shop.example/cb',
         description: 'x',
         orderId: 'o',
       });
@@ -94,7 +94,7 @@ describe('real Zarinpal driver', () => {
       await expect(
         createZarinpalDriver().requestPayment({
           amountToman: 1000,
-          callbackUrl: 'https://smokey.example/cb',
+          callbackUrl: 'https://shop.example/cb',
           description: 'x',
           orderId: 'o',
         }),

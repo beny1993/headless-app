@@ -181,12 +181,12 @@ describe('readinessHandler', () => {
 
   it('does not leak the driver error to the client', async () => {
     ping.mockRejectedValueOnce(
-      new Error('password authentication failed for user "smokey"'),
+      new Error('password authentication failed for user "shopuser"'),
     );
 
     const res = await invoke();
 
     expect(JSON.stringify(res.body)).not.toContain('password');
-    expect(JSON.stringify(res.body)).not.toContain('smokey');
+    expect(JSON.stringify(res.body)).not.toContain('shopuser');
   });
 });

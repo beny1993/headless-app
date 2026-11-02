@@ -181,7 +181,7 @@ describe.skipIf(!databaseReachable)('the home page', () => {
     }
   });
 
-  describe('the «انتخاب‌های اسموکی» picks', () => {
+  describe('the «پیشنهادهای ما» picks', () => {
     // Records each row as it is created, so a throw between inserts still
     // leaves nothing behind.
     const fx = new OrderFixtures();

@@ -18,13 +18,10 @@ import {
 describe('the site share cards', () => {
   it('uses the full Persian shop name in the home title and both full names as aliases', () => {
     expect(SITE_METADATA.title).toMatchObject({
-      default: 'پت‌شاپ اسموکی | فروشگاه آنلاین حیوانات خانگی',
+      default: 'فروشگاه نمونه | فروشگاه آنلاین',
     });
     for (const entity of SITE_JSON_LD['@graph']) {
-      expect(entity.alternateName).toEqual([
-        'پت‌شاپ اسموکی',
-        'Smokey Pet Shop',
-      ]);
+      expect(entity.alternateName).toEqual(['فروشگاه نمونه', 'Demo Shop']);
     }
   });
 

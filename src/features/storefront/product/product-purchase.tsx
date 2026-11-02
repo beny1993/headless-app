@@ -24,7 +24,7 @@ import { formatNumber } from '@/lib/format';
  *
  * The ceiling is the cart module's own `MAX_LINE_QTY`, deliberately not the
  * product's stock. Stock-aware caps were deferred to checkout, where the
- * atomic decrement actually enforces them (`Smokey Shop Info`), and the cart
+ * atomic decrement actually enforces them, and the cart
  * drawer's stepper already behaves this way — a page that capped at stock and
  * a drawer that capped at 99 would disagree about the same line.
  */

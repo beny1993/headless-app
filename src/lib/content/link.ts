@@ -164,7 +164,7 @@ export function resolveLink(
  * A catalog id a content value references, at the field path it sits on. A
  * `product` is a link target — any active product, a family member's own page
  * included. A `card` is a product the shop lists as a card — active and never a
- * member — which is what a «انتخاب‌های اسموکی» box shows; it is not a link, so
+ * member — which is what a «پیشنهادهای ما» box shows; it is not a link, so
  * `loadLinkTargets` never resolves it.
  */
 type LinkRef = {
@@ -175,7 +175,7 @@ type LinkRef = {
 
 /**
  * The fields that store a list of bare ids rather than links — a routine tab's
- * categories, the «انتخاب‌های اسموکی» boxes (whose `null` entries are «خودکار»)
+ * categories, the «پیشنهادهای ما» boxes (whose `null` entries are «خودکار»)
  * — and what each id names.
  */
 const ID_LISTS = new Map<string, LinkRef['kind']>([

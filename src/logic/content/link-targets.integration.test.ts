@@ -161,7 +161,7 @@ describe.skipIf(!databaseReachable)('content link targets', () => {
       ).toEqual({ categories: {}, products: {} });
     });
 
-    it('leaves the «انتخاب‌های اسموکی» picks out: they are cards, not links', async () => {
+    it('leaves the «پیشنهادهای ما» picks out: they are cards, not links', async () => {
       // The home page reads its picks as cards on its own; resolving them here
       // too would fetch the same rows for slugs nothing renders.
       expect(
@@ -207,7 +207,7 @@ describe.skipIf(!databaseReachable)('content link targets', () => {
       ]);
     });
 
-    it('passes a «انتخاب‌های اسموکی» box holding a card the shop lists — a family by its head — and «خودکار» ones', async () => {
+    it('passes a «پیشنهادهای ما» box holding a card the shop lists — a family by its head — and «خودکار» ones', async () => {
       expect(
         await findBrokenLinks(recommends([active.id, head.id, null, null])),
       ).toEqual([]);

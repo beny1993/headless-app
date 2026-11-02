@@ -93,7 +93,7 @@ export function Navbar({
             data-umami-event="nav-logo-home"
           >
             <Image
-              src="/brand/smokey-mark.png"
+              src="/brand/mark.png"
               width={44}
               height={44}
               alt={`لوگوی ${content.brand}`}

@@ -651,7 +651,7 @@ describe('content editor destinations', () => {
     expect(sentBody().categoryIds).toBeUndefined();
   });
 
-  describe('the «انتخاب‌های اسموکی» boxes', () => {
+  describe('the «پیشنهادهای ما» boxes', () => {
     const recommends = DEFAULT_CONTENT['home.recommends'];
     const renderBoxes = (value: typeof recommends = recommends) => {
       render(

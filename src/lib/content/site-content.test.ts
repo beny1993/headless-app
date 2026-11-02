@@ -122,7 +122,7 @@ describe('CONTENT_SCHEMAS string fields', () => {
     expect(
       CONTENT_SCHEMAS['home.hero'].safeParse({
         ...base,
-        headline: `اسموکی${RLO}`,
+        headline: `نمونه${RLO}`,
       }).success,
     ).toBe(false);
   });
@@ -548,7 +548,7 @@ describe('CONTENT_SCHEMAS link fields (every one optional: compat)', () => {
     }
   });
 
-  it('lets each «انتخاب‌های اسموکی» box hold a product, or null for «خودکار»', () => {
+  it('lets each «پیشنهادهای ما» box hold a product, or null for «خودکار»', () => {
     const recommends = d['home.recommends'];
     const parse = (productIds: unknown) =>
       CONTENT_SCHEMAS['home.recommends'].safeParse({

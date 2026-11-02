@@ -1,5 +1,5 @@
 // The shopping cart. Client-side only, in localStorage — there is no server
-// cart table and no guest-merge, by decision at kickoff (`Smokey Shop Info`).
+// cart table and no guest-merge, by decision at kickoff.
 //
 // **Every price here is display-only.** A line snapshots title, SKU and unit
 // price at the moment it was added, so the drawer can render without a fetch;
@@ -33,7 +33,7 @@ export type CartLine = {
 /** A product ready to be added; quantity is the caller's separate argument. */
 export type CartLineInput = Omit<CartLine, 'qty'>;
 
-export const CART_STORAGE_KEY = 'smokey.cart.v1';
+export const CART_STORAGE_KEY = 'shop.cart.v1';
 
 /**
  * Per-line ceiling. Deliberately not the product's stock: this module cannot

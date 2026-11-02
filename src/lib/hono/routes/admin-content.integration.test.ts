@@ -78,7 +78,7 @@ const originalRoot = process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT];
 const originalProvider = process.env[VARS.APP_CONFIG_STORAGE_PROVIDER];
 
 beforeAll(async () => {
-  storageRoot = await mkdtemp(path.join(tmpdir(), 'smokey-content-uploads-'));
+  storageRoot = await mkdtemp(path.join(tmpdir(), 'shop-content-uploads-'));
   process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = storageRoot;
   // Pin the local driver regardless of what .env selects (belt-and-suspenders on
   // top of vitest.config's global pin) so this suite never writes to a real bucket.
