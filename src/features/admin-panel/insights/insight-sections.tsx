@@ -202,7 +202,7 @@ export function ProductTable({ products }: { products: ProductInsight[] }) {
   );
 }
 
-/** A roll-up (by category, by pet) with the same numbers as the products. */
+/** A roll-up (by category) with the same numbers as the products. */
 export function GroupTable({
   title,
   heading,

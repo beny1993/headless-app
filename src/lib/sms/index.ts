@@ -10,6 +10,7 @@
 // could only have been served by the bulk endpoint, which needs a dedicated
 // line. Each template has its own panel id behind its own env var, so order data
 // is never stuffed into the `#OTP#` template.
+import { SITE_FULL_NAME } from '@/constants';
 import { z } from 'zod';
 import { toLocalIranPhone } from '@/lib/auth/phone';
 import {
@@ -85,7 +86,7 @@ const DEFAULT_PROVIDER: SmsProvider = 'console';
  * instead, which is the provider's rule, not ours.
  */
 export function otpMessage(code: string): string {
-  return `کد ورود شما به اسموکی: ${code}`;
+  return `کد ورود شما به ${SITE_FULL_NAME}: ${code}`;
 }
 
 /**
@@ -97,7 +98,7 @@ export function newOrderMessage(
   parameters: NewOrderSmsMessage['parameters'],
 ): string {
   return (
-    `سفارش جدید در اسموکی — شماره ${parameters.ORDER}، ` +
+    `سفارش جدید در ${SITE_FULL_NAME} — شماره ${parameters.ORDER}، ` +
     `مبلغ ${parameters.AMOUNT}، پرداخت: ${parameters.METHOD}`
   );
 }

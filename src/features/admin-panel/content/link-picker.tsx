@@ -2,11 +2,6 @@
 
 import { GripVertical } from 'lucide-react';
 import {
-  PET_LABELS,
-  PET_TYPE_VALUES,
-  type PetType,
-} from '@/lib/catalog/product-query';
-import {
   LINK_PAGES,
   LINK_TYPES,
   resolveLink,
@@ -42,7 +37,7 @@ export type LinkOptions = {
   products: LinkOption[];
   /**
    * The products the shop lists as a card — family heads and standalone
-   * products, never a member — for the «انتخاب‌های اسموکی» boxes. A member
+   * products, never a member — for the «پیشنهادهای ما» boxes. A member
    * picked there would be dropped by the listing and its box silently refilled.
    */
   cards: LinkOption[];
@@ -53,7 +48,6 @@ export const LINK_PICKER_LABELS = {
   type: 'نوع مقصد',
   page: 'صفحه',
   category: 'دسته‌بندی',
-  pet: 'حیوان',
   product: 'محصول',
   url: 'آدرس لینک',
 } as const;
@@ -83,17 +77,16 @@ const MISSING_CARD = 'محصول حذف‌شده، غیرفعال یا زیرم�
 const AUTO = 'خودکار';
 
 /** A shop link carrying only the filters actually chosen — an empty select is "all". */
-const shopLink = (categoryId: string | undefined, pet: string): Link => ({
+const shopLink = (categoryId: string | undefined): Link => ({
   type: LINK_TYPES.SHOP,
   ...(categoryId ? { categoryId } : {}),
-  ...(pet ? { pet: pet as PetType } : {}),
 });
 
 /**
  * One link's destination: a type, then the one or two choices that type needs,
  * and a live «مقصد» preview of where the storefront will send it. While nothing
- * is saved it shows the built-in `fallback`, which the storefront narrows to the
- * pet's shelf when the catalogue has no such category. Fully controlled (`value` / `onChange`): the
+ * is saved it shows the built-in `fallback`, which the storefront widens to the
+ * whole shop when the catalogue has no such category. Fully controlled (`value` / `onChange`): the
  * block form owns the state and saves it with the rest of the block. Unset is
  * `undefined`, never an empty link, so a cleared picker stores nothing.
  *
@@ -194,9 +187,7 @@ export function LinkPicker({
             <select
               aria-label={LINK_PICKER_LABELS.category}
               value={value.categoryId ?? ''}
-              onChange={(e) =>
-                onChange(shopLink(e.target.value, value.pet ?? ''))
-              }
+              onChange={(e) => onChange(shopLink(e.target.value))}
               {...fieldAria(id, error)}
               className={controlClass(Boolean(error))}
               data-umami-event="admin-panel-content-link-category-change"
@@ -209,23 +200,6 @@ export function LinkPicker({
               {options.categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.label ?? category.title}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label={LINK_PICKER_LABELS.pet}
-              value={value.pet ?? ''}
-              onChange={(e) =>
-                onChange(shopLink(value.categoryId, e.target.value))
-              }
-              {...fieldAria(id, error)}
-              className={controlClass(Boolean(error))}
-              data-umami-event="admin-panel-content-link-pet-change"
-            >
-              <option value="">همه حیوانات</option>
-              {PET_TYPE_VALUES.map((pet) => (
-                <option key={pet} value={pet}>
-                  {PET_LABELS[pet]}
                 </option>
               ))}
             </select>
@@ -489,7 +463,7 @@ export function CategoryPicker({
 }
 
 /**
- * The «انتخاب‌های اسموکی» boxes: one select per card, in grid order, each holding
+ * The «پیشنهادهای ما» boxes: one select per card, in grid order, each holding
  * a product the shop lists as a card, or «خودکار» (`null`) — the storefront then
  * fills that box by the automatic rule (`fallback`). A product picked in one box
  * is disabled in the others. Every box on «خودکار» is `undefined`, never four

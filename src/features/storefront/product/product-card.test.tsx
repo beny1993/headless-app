@@ -19,7 +19,6 @@ const standalone: ProductCardRow = {
   stock: 0,
   isActive: true,
   categoryId: 'category-id',
-  petTypes: ['cat'],
   variantOf: null,
   variantLabel: null,
   createdAt: new Date(0),

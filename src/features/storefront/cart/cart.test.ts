@@ -22,7 +22,7 @@ const DRY_FOOD: CartLineInput = {
   sku: 'SKU-CAT-DRY-01',
   brand: 'رویال کنین',
   unitPrice: 2_450_000,
-  imageKey: 'products/cat-dry-food.jpg',
+  imageKey: 'products/mug.jpg',
 };
 
 const TOY: CartLineInput = {
@@ -100,7 +100,7 @@ describe('parseCart', () => {
     const parsed = parseCart(JSON.stringify([line(DRY_FOOD, 1)]));
 
     expect(parsed[0]?.brand).toBe('رویال کنین');
-    expect(parsed[0]?.imageKey).toBe('products/cat-dry-food.jpg');
+    expect(parsed[0]?.imageKey).toBe('products/mug.jpg');
   });
 
   it('keeps a line that has no brand or image', () => {

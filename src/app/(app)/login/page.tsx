@@ -1,8 +1,9 @@
+import { SITE_FULL_NAME } from '@/constants';
 import type { Metadata } from 'next';
 import { LoginForm } from '@/features/auth/login/login-form';
 import { nextPathSchema } from '@/lib/auth/next-path';
 
-export const metadata: Metadata = { title: 'ورود به اسموکی' };
+export const metadata: Metadata = { title: `ورود به ${SITE_FULL_NAME}` };
 
 /**
  * The site's only sign-in. Customers and admins use the same one — an admin is

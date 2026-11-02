@@ -122,7 +122,7 @@ export function isCanonicalIranPhone(value: unknown): value is string {
  * derivations that drifted apart would let one person hold two accounts.
  */
 export function tempEmailForPhone(phoneNumber: string): string {
-  return `${phoneNumber.replace('+', '')}@phone.smokey.invalid`;
+  return `${phoneNumber.replace('+', '')}@phone.invalid`;
 }
 
 /**

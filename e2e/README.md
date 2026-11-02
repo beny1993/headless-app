@@ -8,13 +8,12 @@ The Playwright suite (`pnpm test:e2e`, Playwright config in `playwright.config.t
 hand, run at 1280px and again at 375px. Storefront: phone-OTP sign-in for a
 customer and an admin; home → shop → product → cart drawer (quantity, removal,
 empty state) and a sold-out product; the sort control stepped through all
-three orderings on the sold-out product's pet shelf, every in-stock card
-listed before any sold-out one, and «فقط محصولات موجود» hiding it there
-until its chip is removed; the home page's category mosaic with no
+three orderings across the shop, every in-stock card
+listed before any sold-out one, and «فقط محصولات موجود» hiding the sold-out
+product on its own category shelf until its chip is removed; the home page's category mosaic with no
 empty cell and its tall tiles two rows tall (three at 1280px, two at 375px); a
-both-pets product under either pet
-filter and under its sub-category's parent, reading «گربه و سگ» on its page —
-each of those shelves also checked for a product it must _not_ list; the one
+sub-category's product on its own shelf and on its parent's — each of those
+shelves also checked for a product it must _not_ list; the one
 seeded product with a gallery walked at both widths, its last thumbnail — two
 slides away, the jump a one-slide test cannot make — opening the photo it
 names; a product
@@ -54,8 +53,8 @@ sees before shipping it; one whose screenshot upload the spec cuts with
 upload or the card numbers — cancelled while still waiting, with a reason, and
 its stock coming back; an accepted one cancelled with a reason the
 shopper then reads on their order page, no upload box left and the stock
-back; a product added with three photos — for
-both pets, filed under a sub-category and given a second category — its
+back; a product added with three photos — filed under a sub-category and
+given a second category, both named on its page — its
 gallery read on the product page (the strip, the numbered later slides, the
 first photo as the opening image), then dragged in both directions and
 reordered with the arrow keys — the arrow moves leaving focus on the handle
@@ -93,7 +92,7 @@ confirm, then confirmed) that checkout then charges; a province an admin adds, t
 offer and, once it is switched off, no longer offer — a saved address on it
 flagged in both — until it is switched back on; a home headline that the
 storefront then shows; a product the home grid already shows, picked for the
-first «انتخاب‌های اسموکی» box — the seeded family offered by its head's row and
+first «پیشنهادهای ما» box — the seeded family offered by its head's row and
 never a member's (matched by id) — that the grid then shows first and only
 there, every other box still filled; home categories an admin picks in the
 content editor, leading the strip in the order picked, and two more dragged

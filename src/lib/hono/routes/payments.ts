@@ -13,6 +13,7 @@
 // gateway, and an expired session must never strand a completed payment. It is
 // safe because it keys only off the stored authority, verifies with the stored
 // amount, and settles through the CAS in src/logic/payments/verify.ts.
+import { SITE_FULL_NAME } from '@/constants';
 import { createRoute, type RouteHandler } from '@hono/zod-openapi';
 import * as Sentry from '@sentry/nextjs';
 import type { Context, Env } from 'hono';
@@ -215,7 +216,7 @@ const mockGatewayPage = (authority: string, amount: number): string => `
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>درگاه پرداخت آزمایشی — اسموکی</title>
+    <title>درگاه پرداخت آزمایشی — ${SITE_FULL_NAME}</title>
     <style>
       body { font-family: system-ui, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.8; }
       .amount { font-size: 1.5rem; font-weight: 700; }

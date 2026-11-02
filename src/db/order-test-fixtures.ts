@@ -13,7 +13,6 @@ import { users, type User } from '@/db/schema/auth';
 import {
   categories,
   products,
-  PET_TYPES,
   type Category,
   type NewProduct,
   type Product,
@@ -71,7 +70,6 @@ export class OrderFixtures {
         price: 100_000,
         stock: 5,
         categoryId: category.id,
-        petTypes: [PET_TYPES.CAT],
         ...overrides,
       })
       .returning();

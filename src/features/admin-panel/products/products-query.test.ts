@@ -15,10 +15,9 @@ const filters = (raw: Record<string, string>) =>
 
 describe('adminProductFilterSchema', () => {
   it('degrades a nonsense query to the unfiltered first page', () => {
-    expect(filters({ pet: 'parrot', active: 'maybe', page: '-4' })).toEqual({
+    expect(filters({ active: 'maybe', page: '-4' })).toEqual({
       q: undefined,
       category: undefined,
-      pet: undefined,
       active: 'all',
       page: 1,
     });
@@ -58,7 +57,7 @@ describe('adminProductFilterSchema', () => {
 describe('productsHref', () => {
   it('drops `page` on page one and keeps every filter', () => {
     const href = productsHref(
-      filters({ q: 'غذای خشک', category: 'dry-food', pet: 'cat', page: '3' }),
+      filters({ q: 'غذای خشک', category: 'dry-food', page: '3' }),
       1,
     );
 
@@ -67,7 +66,6 @@ describe('productsHref', () => {
     expect(url.searchParams.get('page')).toBeNull();
     expect(url.searchParams.get('q')).toBe('غذای خشک');
     expect(url.searchParams.get('category')).toBe('dry-food');
-    expect(url.searchParams.get('pet')).toBe('cat');
   });
 
   it('writes a later page and leaves `active=all` out of the URL', () => {

@@ -72,7 +72,7 @@ let root: string;
 const originalRoot = process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT];
 
 beforeAll(async () => {
-  root = await mkdtemp(path.join(tmpdir(), 'smokey-receipts-'));
+  root = await mkdtemp(path.join(tmpdir(), 'shop-receipts-'));
   process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = root;
 });
 

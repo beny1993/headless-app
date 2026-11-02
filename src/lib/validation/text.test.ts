@@ -39,7 +39,7 @@ describe('boundedText', () => {
   });
 
   // This is the gate the class exists for, and it was missing here: the field
-  // behind checkout, pets and the address book only ever checked for NUL, so a
+  // behind checkout and the address book only ever checked for NUL, so a
   // shopper could post a recipient name that reorders the admin's order screen.
   it.each([
     ['a right-to-left override', RLO],

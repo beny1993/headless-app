@@ -1,11 +1,11 @@
 // The editor's field map: for each content block, its Persian heading and the
 // ordered list of editable fields — each with a label and how it renders: a text
 // leaf (`input`, `textarea`), an `image`, or a destination picker, for a link
-// (`link`), a routine tab's categories (`categories`) or the featured boxes'
+// (`link`), the home strip's categories (`categories`) or the featured boxes'
 // products (`products`). A picker sits right after the label it sends somewhere
 // and carries the code destination it previews while nothing is saved
-// (`fallback`). That preview is the built-in default: the storefront narrows a
-// default shelf to its pet when the catalogue has no such category
+// (`fallback`). That preview is the built-in default: the storefront widens a
+// default shelf to the whole shop when the catalogue has no such category
 // (`knownShelfPath`), and the preview does not show that. This is the ONE
 // place the schemas' fields are spelled out for the UI —
 // `block-fields.test.ts` checks the text and image fields against each key's
@@ -13,17 +13,13 @@
 //
 // Client-safe: only a type from the content contract, the Persian-digit
 // formatter, and the code-side link TARGETS (all client-safe: `paths.ts`, the
-// pure `nav-links.ts`, `home/content.ts`). No drizzle/pg/hono.
+// pure `nav-links.ts`). No drizzle/pg/hono.
 // Paths are dotted, with numeric segments for tuple and list entries
-// (`slots.0.name`, `cards.2.link`, `navLinks.0`), read/written by getPath/setPath.
+// (`steps.0.desc`, `columns.0.links.2`, `navLinks.0`), read/written by getPath/setPath.
 import type { ContentKey } from '@/lib/content/site-content';
 import { HOME_CATEGORY_TILES } from '@/lib/catalog/category-tree';
 import { PATHS, shopPath } from '@/lib/constant/paths';
 import { toPersianDigits } from '@/lib/format';
-import {
-  LIFE_MOMENT_TARGETS,
-  ROUTINE_TARGETS,
-} from '@/features/storefront/home/content';
 import {
   FOOTER_TARGETS,
   NAV_TARGETS,
@@ -33,23 +29,17 @@ type FieldKind =
   'input' | 'textarea' | 'image' | 'link' | 'categories' | 'products';
 
 export type FieldDescriptor = {
-  /** Dotted path into the block value, e.g. `image.key`, `slots.0.quote`, `navLinks.0`. */
+  /** Dotted path into the block value, e.g. `image.key`, `steps.0.desc`, `navLinks.0`. */
   path: string;
   label: string;
   kind: FieldKind;
   /**
    * A picker's code destination: what the storefront uses while nothing is saved
    * at `path` — the href for a `link` (a `*_TARGETS` entry or a section's inline
-   * path), the category slugs for `categories` (for the home strip, its rule in
-   * words), the automatic rule for `products`. Only pickers carry one.
+   * path), the home strip's fill rule in words for `categories`, the automatic
+   * rule for `products`. Only pickers carry one.
    */
   fallback?: string;
-  /**
-   * A `categories` picker for the home strip: it offers main categories only,
-   * up to the strip's tile count, and previews the tiles filled by display
-   * order behind the picks — as `homeTiles` fills them on the page.
-   */
-  homeTiles?: true;
 };
 
 type BlockDescriptor = { title: string; fields: FieldDescriptor[] };
@@ -68,55 +58,6 @@ const imageFields = (prefix: string): FieldDescriptor[] => [
   { path: `${prefix}.key`, label: 'تصویر', kind: 'image' },
   { path: `${prefix}.alt`, label: 'متن جایگزین تصویر', kind: 'input' },
 ];
-
-/** One «خرید بر اساس لحظه» card: title, description, photo and destination. */
-const momentCard = (i: number): FieldDescriptor[] => {
-  const n = fa(i + 1);
-  return [
-    {
-      path: `cards.${i}.title`,
-      label: `عنوان کارت ${n}`,
-      kind: 'input',
-    },
-    { path: `cards.${i}.desc`, label: `توضیح کارت ${n}`, kind: 'input' },
-    { path: `cards.${i}.image`, label: `عکس کارت ${n}`, kind: 'image' },
-    link(
-      `cards.${i}.link`,
-      `مقصد کارت ${n}`,
-      shopPath(LIFE_MOMENT_TARGETS[i].filters),
-    ),
-  ];
-};
-
-/** One «روتین روزانه» tab: its label, sub-label, and the categories it opens. */
-const routineTab = (i: number): FieldDescriptor[] => {
-  const n = fa(i + 1);
-  return [
-    {
-      path: `slots.${i}.label`,
-      label: `عنوان تب ${n}`,
-      kind: 'input',
-    },
-    { path: `slots.${i}.sub`, label: `زیرعنوان تب ${n}`, kind: 'input' },
-    {
-      path: `slots.${i}.categoryIds`,
-      label: `دسته‌بندی‌های تب ${n}`,
-      kind: 'categories',
-      fallback: ROUTINE_TARGETS[i].categories.join(', '),
-    },
-  ];
-};
-
-/** One family photo-wall slot (no alt — it is derived in code from name + owner). */
-const familySlot = (i: number): FieldDescriptor[] => {
-  const n = fa(i + 1);
-  return [
-    { path: `slots.${i}.image`, label: `عکس اسلات ${n}`, kind: 'image' },
-    { path: `slots.${i}.name`, label: `نام اسلات ${n}`, kind: 'input' },
-    { path: `slots.${i}.owner`, label: `صاحب اسلات ${n}`, kind: 'input' },
-    { path: `slots.${i}.quote`, label: `نقل‌قول اسلات ${n}`, kind: 'textarea' },
-  ];
-};
 
 const stepFields = (i: number): FieldDescriptor[] => {
   const n = fa(i + 1);
@@ -194,18 +135,8 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
       link('aboutCtaLink', 'مقصد دکمه درباره ما', PATHS.ABOUT),
     ],
   },
-  'home.moments': {
-    title: 'خرید بر اساس لحظه',
-    fields: [
-      { path: 'eyebrow', label: 'عنوان کوچک', kind: 'input' },
-      { path: 'headline', label: 'سرتیتر', kind: 'input' },
-      { path: 'cta', label: 'پیوند «مشاهده همه»', kind: 'input' },
-      link('ctaLink', 'مقصد پیوند «مشاهده همه»', shopPath()),
-      ...[0, 1, 2, 3, 4].flatMap(momentCard),
-    ],
-  },
   'home.recommends': {
-    title: 'انتخاب‌های اسموکی',
+    title: 'پیشنهادهای ما',
     fields: [
       { path: 'eyebrow', label: 'عنوان کوچک', kind: 'input' },
       { path: 'headline', label: 'سرتیتر', kind: 'input' },
@@ -221,40 +152,19 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
       },
     ],
   },
-  'home.journey': {
-    title: 'خرید شخصی‌سازی شده',
-    fields: [
-      { path: 'eyebrow', label: 'عنوان کوچک', kind: 'input' },
-      { path: 'headline', label: 'سرتیتر', kind: 'input' },
-      { path: 'body', label: 'متن', kind: 'textarea' },
-    ],
-  },
   'home.guide': {
-    title: 'راهنمای اسموکی',
+    title: 'راهنمای خرید',
     fields: [
       { path: 'eyebrow', label: 'عنوان کوچک', kind: 'input' },
       { path: 'headline', label: 'سرتیتر', kind: 'textarea' },
       { path: 'body', label: 'متن', kind: 'textarea' },
       ...imageFields('image'),
       { path: 'cta', label: 'دکمه فراخوان', kind: 'input' },
-      link('ctaLink', 'مقصد دکمه فراخوان', shopPath({ category: 'wet-food' })),
-    ],
-  },
-  'home.routine': {
-    title: 'روتین روزانه',
-    fields: [
-      { path: 'eyebrow', label: 'عنوان کوچک', kind: 'input' },
-      { path: 'headline', label: 'سرتیتر', kind: 'input' },
-      { path: 'body', label: 'متن', kind: 'input' },
-      ...[0, 1, 2, 3].flatMap(routineTab),
-    ],
-  },
-  'home.family': {
-    title: 'خانواده اسموکی',
-    fields: [
-      { path: 'eyebrow', label: 'عنوان کوچک', kind: 'input' },
-      { path: 'headline', label: 'سرتیتر', kind: 'input' },
-      ...[0, 1, 2, 3, 4, 5].flatMap(familySlot),
+      link(
+        'ctaLink',
+        'مقصد دکمه فراخوان',
+        shopPath({ category: 'home-decor' }),
+      ),
     ],
   },
   'home.categories': {
@@ -268,12 +178,11 @@ export const BLOCK_FIELDS: Record<ContentKey, BlockDescriptor> = {
         label: 'دسته‌بندی‌های صفحه اصلی',
         kind: 'categories',
         fallback: `${fa(HOME_CATEGORY_TILES)} دسته‌بندی اصلی اول، به ترتیب نمایش`,
-        homeTiles: true,
       },
     ],
   },
   'home.philosophy': {
-    title: 'فلسفه اسموکی',
+    title: 'روش ما',
     fields: [
       { path: 'eyebrow', label: 'عنوان کوچک', kind: 'input' },
       { path: 'headline', label: 'سرتیتر', kind: 'textarea' },

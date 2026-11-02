@@ -44,7 +44,7 @@ describe('phone number plugin', () => {
 
   it('has replaced email OTP entirely', () => {
     // Keeping both would leave every customer reachable at a derived
-    // `<phone>@phone.smokey.invalid` address whose sign-in code prints to the
+    // `<phone>@phone.invalid` address whose sign-in code prints to the
     // server console in development.
     const ids = options.plugins?.map((plugin) => String(plugin.id)) ?? [];
     expect(ids).not.toContain('email-otp');
@@ -86,9 +86,7 @@ describe('phone number plugin', () => {
       getTempEmail: (phone: string) => string;
     };
 
-    expect(getTempEmail('+989121234567')).toBe(
-      '989121234567@phone.smokey.invalid',
-    );
+    expect(getTempEmail('+989121234567')).toBe('989121234567@phone.invalid');
   });
 
   it('derives a distinct temp email per number', () => {

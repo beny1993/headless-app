@@ -1,6 +1,6 @@
 'use client';
 
-// The account page shell: a sidebar of tabs (orders · pets · addresses · profile)
+// The account page shell: a sidebar of tabs (orders · addresses · profile)
 // over one signed-in customer's data. The server page (../../app/(app)/(store)/account)
 // loads every tab's data owner-scoped and hands it in as props; this component
 // only chooses which tab is on screen.
@@ -18,26 +18,19 @@ import {
   AddressesTab,
   type ProvinceOption,
 } from '@/features/account/addresses-tab';
-import { PetsTab } from '@/features/account/pets-tab';
 import { SignOutButton } from '@/features/auth/sign-out-button';
 import { accountOrderPath } from '@/lib/constant/paths';
 import { formatJalali, formatToman, toPersianDigits } from '@/lib/format';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
 import type { OrderSummaryResponse } from '@/lib/hono/routes/me-orders';
-import type { PetResponse } from '@/lib/hono/routes/me-pets';
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
 import { cn } from '@/lib/utils';
 import { EmptyState } from './account-ui';
 
-type Tab = 'orders' | 'pets' | 'addresses' | 'profile';
+type Tab = 'orders' | 'addresses' | 'profile';
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'orders', label: 'سفارش‌ها', icon: <Package size={16} /> },
-  {
-    id: 'pets',
-    label: 'حیوانات من',
-    icon: <span className="text-base">🐾</span>,
-  },
   { id: 'addresses', label: 'آدرس‌ها', icon: <MapPin size={16} /> },
   { id: 'profile', label: 'پروفایل', icon: <User size={16} /> },
 ];
@@ -46,19 +39,16 @@ export function AccountView({
   name,
   phone,
   orders,
-  pets,
   addresses,
   provinces,
 }: {
   name: string;
   phone: string;
   orders: OrderSummaryResponse[];
-  pets: PetResponse[];
   addresses: AddressResponse[];
   provinces: ProvinceOption[];
 }) {
   const [tab, setTab] = useState<Tab>('orders');
-  const [savedPets, setSavedPets] = useState(pets);
   const [savedAddresses, setSavedAddresses] = useState(addresses);
 
   return (
@@ -103,9 +93,6 @@ export function AccountView({
 
           <div className="flex-1">
             {tab === 'orders' && <OrdersTab orders={orders} />}
-            {tab === 'pets' && (
-              <PetsTab pets={savedPets} onPetsChange={setSavedPets} />
-            )}
             {tab === 'addresses' && (
               <AddressesTab
                 addresses={savedAddresses}

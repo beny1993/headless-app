@@ -56,13 +56,13 @@ export const checkoutFailurePath = () => `${PATHS.CHECKOUT}/failed`;
  * The shop's filter query, borrowed from the catalog API's own query schema
  * rather than restated.
  *
- * Every deep link on the site — the home quiz, the category tiles, the routine
- * — lands on `/shop?…`, and [[Story - Shop Listing Page]] reads those params
+ * Every deep link on the site — the category tiles, the hero, the editorial
+ * blocks — lands on `/shop?…`, and [[Story - Shop Listing Page]] reads those params
  * straight back into `GET /api/products`. Taking the type from there means
- * renaming `pet` in the API breaks `pnpm type-check` instead of silently
+ * renaming `category` in the API breaks `pnpm type-check` instead of silently
  * producing links that filter nothing.
  */
-export type ShopFilters = Partial<Pick<ProductListQuery, 'category' | 'pet'>>;
+export type ShopFilters = Partial<Pick<ProductListQuery, 'category'>>;
 
 /**
  * `/shop`, with whatever filters are actually known.
@@ -74,7 +74,6 @@ export type ShopFilters = Partial<Pick<ProductListQuery, 'category' | 'pet'>>;
 export function shopPath(filters: ShopFilters = {}): string {
   const query = new URLSearchParams();
   if (filters.category) query.set('category', filters.category);
-  if (filters.pet) query.set('pet', filters.pet);
 
   const search = query.toString();
   return search ? `${PATHS.SHOP}?${search}` : PATHS.SHOP;
@@ -163,10 +162,9 @@ export const API_PATHS = {
   CHECKOUT_PREVIEW: '/api/checkout/preview',
   ORDERS: '/api/orders',
   // Authenticated, owner-scoped customer routes. The user id is always taken from
-  // the session, never from these paths — the `{id}` in a pet/address path is the
+  // the session, never from these paths — the `{id}` in an address path is the
   // resource, and the DAO's `WHERE` also demands the row's `user_id` match.
   ME_ORDERS: '/api/me/orders',
-  ME_PETS: '/api/me/pets',
   ME_ADDRESSES: '/api/me/addresses',
   // Zarinpal payment endpoints. `request` starts a payment (auth), `callback` is
   // the unauthenticated gateway redirect target, `reconcile` is the admin-run
@@ -232,10 +230,6 @@ export const apiAdminCategoryPath = (id: string) =>
 /** The image-upload path for one product, by id. */
 export const apiAdminProductImagesPath = (id: string) =>
   `${API_PATHS.ADMIN_PRODUCTS}/${encodeURIComponent(id)}/images`;
-
-/** One of the caller's pets, by id (owner-scoped server-side). */
-export const apiMePetPath = (id: string) =>
-  `${API_PATHS.ME_PETS}/${encodeURIComponent(id)}`;
 
 /** One of the caller's addresses, by id (owner-scoped server-side). */
 export const apiMeAddressPath = (id: string) =>

@@ -25,11 +25,6 @@ import { z } from 'zod';
 import { imageKeySchema } from '@/lib/storage/image-upload';
 import { toPersianDigits } from '@/lib/format';
 import { hasNoForbiddenChars, VISIBLE_CHAR } from '@/lib/validation/text';
-import {
-  PET_TYPE_VALUES,
-  normalizePetTypes,
-  type PetType,
-} from './product-query';
 import { MAX_SLUG_LENGTH } from './sku';
 import { VARIANT_LABEL_LIMIT, VARIANT_MESSAGES } from './variant';
 
@@ -85,8 +80,6 @@ export const PRODUCT_MESSAGES = {
   price: 'قیمت باید عددی صحیح و بزرگ‌تر از صفر باشد (تومان).',
   oldPrice: 'قیمت قبلی باید عددی صحیح و بیشتر از قیمت فعلی باشد.',
   stock: 'موجودی باید عددی صحیح و صفر یا بیشتر باشد.',
-  pet: 'نوع حیوان نامعتبر است.',
-  petRequired: 'حداقل یک نوع حیوان را انتخاب کن.',
   // One sentence for a malformed id and for an id no category has: the form
   // only ever sends ids it was given, so to the admin both are «the list you
   // are looking at is stale», and the route maps the junction's foreign-key
@@ -107,7 +100,7 @@ export const SLUG_PATTERN = new RegExp(`^[a-z0-9-]{${MIN_SLUG_LENGTH},}$`);
  * An array element that accepts anything, so a bad one is reported by the
  * array's own check instead of by the element's.
  *
- * `formatZodIssues` renders an element issue as `petTypes.0`, and both the form
+ * `formatZodIssues` renders an element issue as `extraCategoryIds.0`, and both the form
  * and `parseFieldErrors` look an error up by its exact field name — so such an
  * issue is one no field ever shows, and the admin gets a refused save with no
  * message anywhere. `meta` is what keeps the element's real shape in the
@@ -120,9 +113,6 @@ const UUID = z.uuid();
 
 const isUuid = (value: unknown): value is string =>
   UUID.safeParse(value).success;
-
-const isPetType = (value: unknown): value is PetType =>
-  (PET_TYPE_VALUES as readonly unknown[]).includes(value);
 
 /**
  * A required single-line text field: trimmed, `min`–`max` long, free of forbidden
@@ -235,21 +225,6 @@ export const productInputSchema = z
       // Absent means «none», so every body written before this field existed
       // stays valid.
       .default([]),
-    // One pet or both, stored in the canonical order with duplicates dropped —
-    // so `['dog','cat']` and `['cat','cat','dog']` reach the column as the one
-    // value they mean. The form runs this very schema, so «at least one» is one
-    // sentence said in one place (A1).
-    petTypes: z
-      .array(
-        anyElement({ type: 'string', enum: PET_TYPE_VALUES }),
-        PRODUCT_MESSAGES.petRequired,
-      )
-      .min(1, PRODUCT_MESSAGES.petRequired)
-      // Checked on the array, not on the element, for `anyElement`'s reason.
-      .refine((values) => values.every(isPetType), {
-        error: PRODUCT_MESSAGES.pet,
-      })
-      .transform((values) => normalizePetTypes(values as PetType[])),
     // The product this one is a variant of — a smell, a colour, a size — or
     // `null` for a standalone product and for a family's head, which points at
     // nothing itself. That «head points at nothing» is what lets the storefront

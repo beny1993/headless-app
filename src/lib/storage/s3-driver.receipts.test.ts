@@ -37,7 +37,7 @@ vi.mock('@sentry/nextjs', () => ({
   captureException: vi.fn(),
 }));
 
-const BASE = 'https://storage.c2.liara.site/smokeypetshop';
+const BASE = 'https://storage.c2.liara.site/demoshop';
 const RECEIPT = 'receipts/123e4567-e89b-12d3-a456-426614174000.jpg';
 const PHOTO = 'uploads/123e4567-e89b-12d3-a456-426614174000.jpg';
 const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
@@ -64,7 +64,7 @@ beforeEach(() => {
   mocks.fetch.mockResolvedValue(new Response(null, { status: 403 }));
   vi.stubGlobal('fetch', mocks.fetch);
   vi.stubEnv('LIARA_ENDPOINT', 'https://storage.c2.liara.site');
-  vi.stubEnv('LIARA_BUCKET_NAME', 'smokeypetshop');
+  vi.stubEnv('LIARA_BUCKET_NAME', 'demoshop');
   vi.stubEnv('LIARA_ACCESS_KEY', 'test-access-key');
   vi.stubEnv('LIARA_SECRET_KEY', 'test-secret-key');
 });
@@ -82,7 +82,7 @@ describe('s3Driver — receipts', () => {
     await s3Driver.put(RECEIPT, bytes, 'image/jpeg');
 
     expect(mocks.PutObjectCommand).toHaveBeenCalledWith({
-      Bucket: 'smokeypetshop',
+      Bucket: 'demoshop',
       Key: RECEIPT,
       Body: bytes,
       ContentType: 'image/jpeg',
@@ -121,7 +121,7 @@ describe('s3Driver — receipts', () => {
 
     expect(await s3Driver.get(RECEIPT)).toEqual(bytes);
     expect(mocks.GetObjectCommand).toHaveBeenCalledWith({
-      Bucket: 'smokeypetshop',
+      Bucket: 'demoshop',
       Key: RECEIPT,
     });
   });

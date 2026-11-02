@@ -58,7 +58,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   // The once-per-process guard lives on globalThis; each test starts clean.
   delete (globalThis as Record<symbol, unknown>)[
-    Symbol.for('smokey-shop.order-sweeps')
+    Symbol.for('headless-app.order-sweeps')
   ];
 });
 

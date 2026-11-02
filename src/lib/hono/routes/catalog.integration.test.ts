@@ -9,7 +9,6 @@ import { and, inArray, isNotNull } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   categories,
-  PET_TYPES,
   productImages,
   products,
   type Category,
@@ -79,7 +78,6 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       price: 100_000,
       stock: 5,
       categoryId: category.id,
-      petTypes: [PET_TYPES.CAT],
       ...overrides,
     };
   };
@@ -146,7 +144,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       const list = await getData<CategoryResponse[]>(API_PATHS.CATEGORIES);
 
       expect(list.map((row) => row.slug)).toEqual(
-        expect.arrayContaining(['dry-food', 'wet-food', 'toys']),
+        expect.arrayContaining(['kitchen', 'stationery', 'audio']),
       );
     });
 
@@ -185,11 +183,12 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
     });
 
     it('includes a category that has no products yet', async () => {
-      // The design's category strip shows «بهداشت» before anything is filed
+      // The category strip shows a new category before anything is filed
       // under it — a join-driven list would silently drop it.
+      const empty = await makeCategory();
       const list = await getData<CategoryResponse[]>(API_PATHS.CATEGORIES);
 
-      expect(list.map((row) => row.slug)).toContain('hygiene');
+      expect(list.map((row) => row.slug)).toContain(empty.slug);
     });
   });
 
@@ -206,24 +205,6 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       expect(page.page).toBe(1);
       expect(page.limit).toBe(12);
       expect(page.totalPages).toBe(1);
-    });
-
-    it('lists a both-pets product under each pet, and carries both in the payload', async () => {
-      const category = await makeCategory();
-      const both = await ProductDao.create(
-        makeProduct(category, { petTypes: [PET_TYPES.CAT, PET_TYPES.DOG] }),
-      );
-
-      const listed = async (pet: string) =>
-        getData<ProductListResponse>(
-          `${API_PATHS.PRODUCTS}?category=${category.slug}&pet=${pet}`,
-        );
-      const [cats, dogs] = await Promise.all([listed('cat'), listed('dog')]);
-
-      expect(cats.items.map((row) => row.id)).toEqual([both.id]);
-      expect(dogs.items.map((row) => row.id)).toEqual([both.id]);
-      expect([cats.total, dogs.total]).toEqual([1, 1]);
-      expect(cats.items[0].petTypes).toEqual(['cat', 'dog']);
     });
 
     it('lists a product under an additional category, and carries them all', async () => {
@@ -251,23 +232,6 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       });
       const detail = await getData<ProductResponse>(productPath(product.slug));
       expect(detail.extraCategoryIds).toEqual([extra.id]);
-    });
-
-    it('filters by pet type', async () => {
-      const category = await makeCategory();
-      await ProductDao.create(
-        makeProduct(category, { petTypes: [PET_TYPES.CAT] }),
-      );
-      const dog = await ProductDao.create(
-        makeProduct(category, { petTypes: [PET_TYPES.DOG] }),
-      );
-
-      const page = await getData<ProductListResponse>(
-        `${API_PATHS.PRODUCTS}?category=${category.slug}&pet=dog`,
-      );
-
-      expect(page.items.map((row) => row.id)).toEqual([dog.id]);
-      expect(page.total).toBe(1);
     });
 
     it('lists only what can be bought when asked for in-stock products', async () => {
@@ -477,14 +441,13 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       // combination that could reach around the flag is the bug worth catching.
       const category = await makeCategory();
       const removed = await ProductDao.create(
-        makeProduct(category, { price: 70_000, petTypes: [PET_TYPES.DOG] }),
+        makeProduct(category, { price: 70_000 }),
       );
       await ProductDao.softDelete(removed.id);
 
       const queries = [
         '',
-        '&pet=dog',
-        '&pet=cat',
+        '&inStock=true',
         '&sort=newest',
         '&sort=price-asc',
         '&sort=price-desc',
@@ -730,7 +693,6 @@ describe.skipIf(!databaseReachable)('GET /api/products?q=', () => {
         price: 100_000,
         stock: 5,
         categoryId: category.id,
-        petTypes: [PET_TYPES.CAT],
         ...overrides,
       });
     };
@@ -745,7 +707,6 @@ describe.skipIf(!databaseReachable)('GET /api/products?q=', () => {
         title: 'شامپو ضد کک و کنه سگ',
         brand: 'Beaphar',
         benefit: 'پوست حساس',
-        petTypes: [PET_TYPES.DOG],
       }),
     ]);
 
@@ -800,16 +761,6 @@ describe.skipIf(!databaseReachable)('GET /api/products?q=', () => {
     expect(list.items).toEqual([]);
     expect(list.total).toBe(0);
     expect(list.totalPages).toBe(0);
-  });
-
-  it('composes with the pet filter', async () => {
-    const { category, shampoo } = await searchCatalog();
-
-    const list = await getData<ProductListResponse>(
-      `${API_PATHS.PRODUCTS}?category=${category.slug}&q=${encodeURIComponent('حساس')}&pet=dog`,
-    );
-
-    expect(list.items.map((item) => item.id)).toEqual([shampoo.id]);
   });
 
   it('reports a total and page count that count the search', async () => {

@@ -10,7 +10,6 @@ import {
   SEED_SUBCATEGORIES,
 } from '@/db/seed/catalog-data';
 import { LOW_STOCK_THRESHOLD } from '@/features/storefront/product/availability';
-import { normalizePetTypes } from '@/lib/catalog/product-query';
 
 /** Main and sub-categories alike — what a product may be filed under. */
 const known = new Set<string>([
@@ -67,20 +66,10 @@ describe('catalog seed data', () => {
         expect(slug).not.toBe(product.categorySlug);
       }
     }
-    // The malt paste of the story: one product really does use this.
+    // The travel tumbler: one product really does use this.
     expect(
       SEED_PRODUCTS.some((p) => (p.extraCategorySlugs ?? []).length > 0),
     ).toBe(true);
-  });
-
-  it('stores every pet selection non-empty and in canonical order', () => {
-    // What the database's CHECK and the shared schema's transform enforce —
-    // caught here before a re-seed hits either.
-    for (const product of SEED_PRODUCTS) {
-      expect(product.petTypes.length).toBeGreaterThan(0);
-      expect(normalizePetTypes(product.petTypes)).toEqual(product.petTypes);
-    }
-    expect(SEED_PRODUCTS.some((p) => p.petTypes.length === 2)).toBe(true);
   });
 
   it('keeps the stock the E2E fixtures pick on, appended rows and all', () => {
@@ -92,7 +81,7 @@ describe('catalog seed data', () => {
     // fixtures skip family rows.
     const best = SEED_PRODUCTS.reduce((a, b) => (b.stock > a.stock ? b : a));
 
-    expect(best.sku).toBe('AP-CAT-TREAT-60');
+    expect(best.sku).toBe('PC-NOTEBOOK-A5');
     expect(
       SEED_PRODUCTS.filter((p) => p.stock === 0 && !p.variantLabel),
     ).toHaveLength(1);
@@ -124,12 +113,12 @@ describe('catalog seed data', () => {
     }
   });
 
-  it('keeps the Persian titles the design wrote, ZWNJ intact', () => {
-    // U+200C inside «اسباب‌بازی». Normalizing it away here would quietly
+  it('keeps the Persian titles intact, ZWNJ included', () => {
+    // U+200C inside «نوشت‌افزار». Normalizing it away here would quietly
     // change what the storefront renders and what the search story indexes.
-    expect(SEED_CATEGORIES.map((c) => c.title)).toContain('اسباب‌بازی');
-    expect(SEED_PRODUCTS[7].title).toBe('اسباب‌بازی تعاملی پر و زنگوله');
-    expect(SEED_PRODUCTS[7].title).toContain('\u200C');
+    expect(SEED_CATEGORIES.map((c) => c.title)).toContain('نوشت‌افزار');
+    expect(SEED_PRODUCTS[5].title).toBe('کوله‌پشتی روزانه');
+    expect(SEED_PRODUCTS[5].title).toContain('\u200C');
   });
 
   it('seeds one product with a gallery, so the strip is reachable without building one', () => {
@@ -208,10 +197,7 @@ describe('catalog seed data', () => {
     expect(SEED_PRODUCTS.some((p) => p.stock > 0 && p.stock <= 5)).toBe(true);
   });
 
-  it('covers both pet types and offers at least one discounted product', () => {
-    expect(new Set(SEED_PRODUCTS.flatMap((p) => p.petTypes))).toEqual(
-      new Set(['cat', 'dog']),
-    );
+  it('offers at least one discounted product', () => {
     expect(SEED_PRODUCTS.some((p) => p.oldPrice !== null)).toBe(true);
   });
 });
@@ -274,7 +260,7 @@ describe('the seeded product family', () => {
 
   it('files every member where its head is', () => {
     // No longer a change detector on data nobody reads: a family is filed
-    // once, on its head, and `ProductDao` copies the head's category and pets
+    // once, on its head, and `ProductDao` copies the head's categories
     // onto a member on every write. `upsertBySku` is the one writer that does
     // not — the seed inserts the whole catalogue in one pass — so the seed
     // data has to hold the invariant itself or a re-seed would quietly break
@@ -283,7 +269,6 @@ describe('the seeded product family', () => {
     for (const member of members) {
       const head = bySku.get(member.variantOfSku!);
       expect(member.categorySlug).toBe(head?.categorySlug);
-      expect(member.petTypes).toEqual(head?.petTypes);
       expect(member.extraCategorySlugs ?? []).toEqual(
         head?.extraCategorySlugs ?? [],
       );

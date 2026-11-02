@@ -44,7 +44,7 @@ describe.skipIf(!databaseReachable)(
     const account = (id: string, name: string, phoneNumber: string | null) => ({
       id,
       name,
-      email: `${id}@phone.smokey.invalid`,
+      email: `${id}@phone.invalid`,
       phoneNumber,
     });
 

@@ -1,7 +1,6 @@
 // The owner-scoped address CRUD: GET/POST /api/me/addresses and PATCH/DELETE
-// /api/me/addresses/{id}. Same shape and same guarantees as ./me-pets.ts — auth by
-// `requireAuth` on `/me/*`, ownership by `AddressDao` (session id ANDed into every
-// query), one 404 for missing-or-not-yours, a uuid `{id}` param to keep a bad id
+// /api/me/addresses/{id}. Auth by `requireAuth` on `/me/*`, ownership by
+// `AddressDao` (session id ANDed into every query), one 404 for missing-or-not-yours, a uuid `{id}` param to keep a bad id
 // from becoming a 22P02 500.
 //
 // Reads return the address joined to its province name. The stored address holds a
@@ -33,7 +32,12 @@ import type { AuthedEnv } from '../middleware/auth';
 /** User-facing copy, so Persian. Same answer for missing and not-owned. */
 const ADDRESS_NOT_FOUND_MESSAGE = 'آدرس یافت نشد';
 
-/** A soft per-user ceiling, refused (422) rather than stored unbounded — see me-pets.ts. */
+/**
+ * A soft per-user ceiling. A real account holds a handful of addresses; a
+ * request past this is a bug or abuse, not a shopper, so it is refused (422)
+ * rather than stored unbounded. Enforced with a count-then-insert — no
+ * concurrency-critical invariant rides on the exact number.
+ */
 const MAX_ADDRESSES_PER_USER = 20;
 const TOO_MANY_ADDRESSES_MESSAGE = 'به سقف تعداد آدرس‌ها رسیده‌ای.';
 

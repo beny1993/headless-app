@@ -64,34 +64,6 @@ describe('DEFAULT_CONTENT', () => {
       ).resolves.toBeUndefined();
     }
   });
-
-  it('uses the real pet identities independently across Home and About', () => {
-    // Smokey owns the first community slot and the About story independently
-    // uses Smokey too. The name and photo identity now agree in both places.
-    expect(DEFAULT_CONTENT['home.family'].slots[0]).toMatchObject({
-      image: 'site/smokey-v2.webp',
-      name: 'اسموکی',
-    });
-    expect(DEFAULT_CONTENT['about.story']).toMatchObject({
-      title: 'این اسموکی‌ه',
-      image: {
-        key: 'site/smokey-v2.webp',
-        alt: 'اسموکی، گربه خاکستری اسکاتیش فولد با چشمان سبز',
-      },
-    });
-  });
-
-  it('keeps the four routine tab labels the design shows, in order', () => {
-    // Moved here from content.test.ts: the routine tab labels are content now
-    // (`home.routine.slots`), not code (`ROUTINE`); the emoji + category slugs
-    // stay in ROUTINE_TARGETS and are checked there.
-    expect(DEFAULT_CONTENT['home.routine'].slots.map((s) => s.label)).toEqual([
-      'صبح',
-      'ظهر',
-      'عصر',
-      'شب',
-    ]);
-  });
 });
 
 describe('resolveContent', () => {

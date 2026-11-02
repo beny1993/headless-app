@@ -1,5 +1,6 @@
 'use client';
 
+import { SITE_FULL_NAME, SITE_LATIN_NAME } from '@/constants';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -216,14 +217,14 @@ export function AdminSidebar() {
           {showLabels && (
             <>
               <Image
-                src="/brand/smokey-mark.png"
+                src="/brand/mark.png"
                 width={32}
                 height={32}
-                alt="لوگوی اسموکی"
+                alt={`لوگوی ${SITE_FULL_NAME}`}
                 className="size-8 shrink-0"
               />
               <span aria-hidden="true" className="font-black text-white">
-                Smokey
+                {SITE_LATIN_NAME}
               </span>
             </>
           )}

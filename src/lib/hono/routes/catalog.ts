@@ -130,9 +130,6 @@ const ProductListQuerySchema = z.object({
     description: 'Category slug, as returned by GET /api/categories.',
     example: 'dry-food',
   }),
-  pet: productListQueryShape.pet.meta({
-    description: 'Restrict to one pet type.',
-  }),
   inStock: productListQueryShape.inStock.meta({
     description:
       'Only products that can be bought: a family counts when a member has stock, and with a price bound that member must be inside it. Case-insensitive `true`, `1`, `yes`, `on`, `y`, `enabled` turn it on; `false`, `0`, `no`, `off`, `n`, `disabled` or absence leave it off; anything else is a 400.',
@@ -159,7 +156,7 @@ const ProductListQuerySchema = z.object({
       'benefit with a trigram index. Sent as typed: Arabic ي/ك, Persian or ' +
       'Arabic-Indic digits and ZWNJ are normalized server-side, so a term ' +
       `typed on an Arabic keyboard matches Persian titles. At most ${MAX_SEARCH_TERM_LENGTH} characters.`,
-    example: 'غذای خشک گربه',
+    example: 'ماگ سرامیکی',
   }),
 });
 
@@ -215,7 +212,6 @@ const toProductResponse = (row: ProductWithImages): ProductResponse => ({
   price: row.price,
   oldPrice: row.oldPrice,
   stock: row.stock,
-  petTypes: row.petTypes,
   categoryId: row.categoryId,
   extraCategoryIds: row.extraCategoryIds,
   variantOf: row.variantOf,
@@ -303,12 +299,11 @@ export const productListRoute = createRoute({
 export const productListHandler: RouteHandler<typeof productListRoute> = async (
   c,
 ) => {
-  const { category, pet, inStock, sort, minPrice, maxPrice, page, limit, q } =
+  const { category, inStock, sort, minPrice, maxPrice, page, limit, q } =
     c.req.valid('query');
 
   const { items, total } = await ProductDao.list({
     categorySlug: category,
-    petType: pet,
     inStock,
     minPrice,
     maxPrice,

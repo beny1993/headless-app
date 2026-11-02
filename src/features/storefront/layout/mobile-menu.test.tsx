@@ -12,7 +12,7 @@ describe('MobileMenu links', () => {
     const { container } = render(
       <MobileMenu
         links={[
-          { label: 'فروشگاه', href: '/shop?pet=cat', external: false },
+          { label: 'فروشگاه', href: '/shop?category=kitchen', external: false },
           {
             label: 'راهنما',
             href: 'https://example.com/guide',
@@ -29,7 +29,9 @@ describe('MobileMenu links', () => {
     );
     expect(anchor('راهنما')?.getAttribute('target')).toBe('_blank');
     expect(anchor('راهنما')?.getAttribute('rel')).toBe('noopener noreferrer');
-    expect(anchor('فروشگاه')?.getAttribute('href')).toBe('/shop?pet=cat');
+    expect(anchor('فروشگاه')?.getAttribute('href')).toBe(
+      '/shop?category=kitchen',
+    );
     expect(anchor('فروشگاه')?.hasAttribute('target')).toBe(false);
   });
 });

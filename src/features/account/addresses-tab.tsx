@@ -1,8 +1,8 @@
 'use client';
 
 // The «آدرس‌ها» tab: the customer's saved address book, with add / edit / delete.
-// AccountView owns the saved list so it survives this tab unmounting; writes use
-// the same owner-scoped API shape as the pets tab.
+// AccountView owns the saved list so it survives this tab unmounting; writes go
+// through the owner-scoped /api/me/addresses routes.
 //
 // A saved address is a checkout delivery address plus a label, so the fields (and
 // their validation) match the checkout address step exactly — the same shared

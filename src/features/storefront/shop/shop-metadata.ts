@@ -1,5 +1,5 @@
-// What a shop URL tells search engines. A shelf (a category, a pet, or both)
-// is a page worth ranking, titled by what it lists. Everything else a shop URL
+// What a shop URL tells search engines. A shelf (a category) is a page
+// worth ranking, titled by what it lists. Everything else a shop URL
 // can be stays out of the index, its links still followed:
 // - a search;
 // - a view of a shelf (another sort order, a price range, a page size), which
@@ -12,7 +12,6 @@
 // real 404 (`isUnknownCategory`) and asks for no shop metadata at all.
 import type { Metadata } from 'next';
 import type { Category } from '@/db/schema/catalog';
-import { PET_LABELS } from '@/lib/catalog/product-query';
 import { absoluteUrl, purchaseSentence } from '@/lib/seo';
 import {
   buildShopHref,
@@ -27,21 +26,16 @@ export const SHOP_TITLE = 'فروشگاه';
 const NOT_INDEXED = { index: false, follow: true };
 
 /**
- * What a shelf lists, as its title and heading name it: the category's title,
- * the pet's products, or both. `undefined` for the whole shop, and for a
+ * What a shelf lists, as its title and heading name it: the category's title.
+ * `undefined` for the whole shop, and for a
  * category slug that names no category.
  */
 export function shelfTitle(
   query: ShopQuery,
   categories: Pick<Category, 'slug' | 'title'>[],
 ): string | undefined {
-  const pet = query.pet && PET_LABELS[query.pet];
-  if (query.category) {
-    const category = categories.find((row) => row.slug === query.category);
-    if (!category) return undefined;
-    return pet ? `${category.title} ${pet}` : category.title;
-  }
-  return pet ? `محصولات ${pet}` : undefined;
+  if (!query.category) return undefined;
+  return categories.find((row) => row.slug === query.category)?.title;
 }
 
 /**
@@ -84,7 +78,6 @@ export function shopMetadata(
   const shelfHref = buildShopHref({
     ...DEFAULT_SHOP_QUERY,
     category: query.category,
-    pet: query.pet,
     page: query.page,
   });
   // No canonical here: a noindexed page whose canonical points elsewhere

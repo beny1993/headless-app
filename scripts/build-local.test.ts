@@ -95,14 +95,14 @@ describe('scripts/build-local.mjs', () => {
       [
         'APP_CONFIG_DATABASE_URL=postgres://shop:secret@db.internal:5432/shop',
         'APP_CONFIG_AUTH_SECRET=a-real-secret',
-        'NEXT_PUBLIC_APP_URL=https://smokey.example',
+        'NEXT_PUBLIC_APP_URL=https://shop.example',
       ].join('\n'),
     );
 
     expect(runBuildLocal().env).toEqual({
       APP_CONFIG_DATABASE_URL: 'postgres://shop:secret@db.internal:5432/shop',
       APP_CONFIG_AUTH_SECRET: 'a-real-secret',
-      NEXT_PUBLIC_APP_URL: 'https://smokey.example',
+      NEXT_PUBLIC_APP_URL: 'https://shop.example',
     });
   });
 

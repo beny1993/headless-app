@@ -1,3 +1,4 @@
+import { SITE_FULL_NAME } from '@/constants';
 import type { Metadata } from 'next';
 import { isVisible } from '@/lib/content/site-content';
 import { loadLinkTargets } from '@/logic/content/link-targets';
@@ -17,8 +18,7 @@ import {
 
 export const metadata: Metadata = {
   title: 'درباره ما',
-  description:
-    'داستان اسموکی و فرآیندی که هر محصول پیش از رسیدن به فروشگاه از آن می‌گذرد.',
+  description: `داستان ${SITE_FULL_NAME} و فرآیندی که هر محصول پیش از رسیدن به فروشگاه از آن می‌گذرد.`,
   alternates: { canonical: absoluteUrl(PATHS.ABOUT) },
 };
 

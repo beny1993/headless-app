@@ -1,5 +1,9 @@
 # Deploy runbook — Smokey Shop on VPS + Coolify
 
+> Carried over from Smokey as the reference for how a single shop deploys. The
+> platform's own runbook (wildcard domains, per-tenant custom domains) replaces
+> it in a later story; the hostnames below are Smokey's, not this platform's.
+
 Hosting is a **self-managed VPS running [Coolify](https://coolify.io)** (decision
 2026-09-05, supersedes the managed Liara/Arvan pick). Coolify builds this repo's
 `Dockerfile` from Git, provisions Postgres, terminates TLS (Let's Encrypt), runs
@@ -269,7 +273,7 @@ jobs against a deployed database — the seed steps below:
 
 ```bash
 # On the VPS (or CI), against the same DATABASE_URL the app uses:
-docker build --target build -t smokey-shop:migrate .
+docker build --target build -t headless-app:migrate .
 ```
 
 ### Seed steps (first deploy only, from the `build`/`migrate` image)
@@ -278,12 +282,12 @@ Both scripts are idempotent (safe to re-run):
 
 ```bash
 docker run --rm -e APP_CONFIG_DATABASE_URL="$APP_CONFIG_DATABASE_URL" \
-  smokey-shop:migrate pnpm seed-shipping      # 31 provinces + placeholder rates
+  headless-app:migrate pnpm seed-shipping      # 31 provinces + placeholder rates
 docker run --rm -e APP_CONFIG_DATABASE_URL="$APP_CONFIG_DATABASE_URL" \
-  smokey-shop:migrate pnpm seed-catalog       # demo categories + products
+  headless-app:migrate pnpm seed-catalog       # demo categories + products
 # Grant the first admin by phone (creates or promotes):
 docker run --rm -e APP_CONFIG_DATABASE_URL="$APP_CONFIG_DATABASE_URL" \
-  smokey-shop:migrate pnpm create-admin 09121234567 "Admin Name"
+  headless-app:migrate pnpm create-admin 09121234567 "Admin Name"
 ```
 
 `seed-catalog` is demo data — skip it on a real production store.

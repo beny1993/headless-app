@@ -3,12 +3,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import {
-  knownShelfPath,
-  LIFE_MOMENT_TARGETS,
-  momentEmoji,
-  ROUTINE_TARGETS,
-} from '@/features/storefront/home/content';
+import { knownShelfPath } from '@/features/storefront/home/content';
 import { shopPath } from '@/lib/constant/paths';
 import {
   FOOTER_TARGETS,
@@ -17,11 +12,10 @@ import {
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import { CONTENT_SCHEMAS } from '@/lib/content/site-content';
 import { SEED_CATEGORIES } from '@/db/seed/catalog-data';
-import { PET_TYPES } from '@/db/schema/catalog';
 
 const SEED_SLUGS = new Set<string>(SEED_CATEGORIES.map((row) => row.slug));
 
-// The moment/hero/guide/community/card photos all moved into the content defaults
+// The hero/guide/about photos all moved into the content defaults
 // (`src/lib/content/defaults.ts`) as slash-less storage keys — covered by
 // `defaults.test.ts` — and the category photos into the catalog
 // (`categories.image_key`), whose demo keys `catalog-data.test.ts` checks.
@@ -50,53 +44,33 @@ describe('bundled photos', () => {
   });
 });
 
-describe('life-moment targets', () => {
-  it('deep-links every card into a real category and pet type', () => {
-    const pets = new Set<string>(Object.values(PET_TYPES));
-
-    expect(LIFE_MOMENT_TARGETS.length).toBeGreaterThan(0);
-    for (const target of LIFE_MOMENT_TARGETS) {
-      expect(SEED_SLUGS).toContain(target.filters.category);
-      expect(pets).toContain(target.filters.pet);
-    }
-  });
-});
-
 describe('knownShelfPath', () => {
-  const slugs = ['dry-food', 'cat-toys'];
+  const slugs = ['kitchen', 'mugs'];
 
-  it('keeps a category the catalogue has, with its pet', () => {
-    expect(knownShelfPath({ category: 'dry-food', pet: 'cat' }, slugs)).toBe(
-      shopPath({ category: 'dry-food', pet: 'cat' }),
+  it('keeps a category the catalogue has', () => {
+    expect(knownShelfPath({ category: 'kitchen' }, slugs)).toBe(
+      shopPath({ category: 'kitchen' }),
+    );
+    expect(knownShelfPath({ category: 'mugs' }, slugs)).toBe(
+      shopPath({ category: 'mugs' }),
     );
   });
 
-  it('drops a category the catalogue lacks and keeps the pet, as a deleted saved category does', () => {
-    expect(knownShelfPath({ category: 'toys', pet: 'cat' }, slugs)).toBe(
-      shopPath({ pet: 'cat' }),
-    );
-    expect(knownShelfPath({ category: 'wet-food' }, slugs)).toBe(shopPath());
-    expect(knownShelfPath({ category: 'dry-food', pet: 'dog' }, [])).toBe(
-      shopPath({ pet: 'dog' }),
-    );
+  it('drops a category the catalogue lacks for the whole shop, as a deleted saved category does', () => {
+    expect(knownShelfPath({ category: 'garden' }, slugs)).toBe(shopPath());
+    expect(knownShelfPath({ category: 'kitchen' }, [])).toBe(shopPath());
   });
 
   it('leaves a link that names no category as it is', () => {
-    expect(knownShelfPath({ pet: 'dog' }, slugs)).toBe(
-      shopPath({ pet: 'dog' }),
-    );
-    expect(knownShelfPath({}, [])).toBe(shopPath());
+    expect(knownShelfPath({}, slugs)).toBe(shopPath());
   });
 });
 
-describe('routine targets', () => {
-  it('names only categories that exist', () => {
-    // The prototype listed invented product names here linking to a product
-    // that was not the one named. Every tile is a real category instead.
-    for (const target of ROUTINE_TARGETS) {
-      expect(target.categories.length).toBeGreaterThan(0);
-      for (const slug of target.categories) expect(SEED_SLUGS).toContain(slug);
-    }
+describe('the built-in shelf links', () => {
+  it('name a category the demo catalogue seeds', () => {
+    // The featured story's button: `featured-story.tsx` and its editor preview
+    // in `block-fields.ts` both point at it.
+    expect(SEED_SLUGS).toContain('home-decor');
   });
 });
 
@@ -105,7 +79,7 @@ describe('routine targets', () => {
 // by index. If the two lengths ever diverge, label i and target i stop lining up
 // and a label silently renders on the wrong link — the misroute the whole rule
 // exists to prevent. This is the parity half of the guard (the render half is the
-// nav/footer/home-card integration tests).
+// nav/footer integration tests).
 describe('label ↔ target parity', () => {
   it('has one nav target per header nav label', () => {
     expect(DEFAULT_CONTENT.header.nav).toHaveLength(NAV_TARGETS.length);
@@ -117,18 +91,6 @@ describe('label ↔ target parity', () => {
     columns.forEach((column, i) => {
       expect(column.links).toHaveLength(FOOTER_TARGETS[i].length);
     });
-  });
-
-  it('has one moment target per moment card', () => {
-    expect(DEFAULT_CONTENT['home.moments'].cards).toHaveLength(
-      LIFE_MOMENT_TARGETS.length,
-    );
-  });
-
-  it('has one routine target per routine slot', () => {
-    expect(DEFAULT_CONTENT['home.routine'].slots).toHaveLength(
-      ROUTINE_TARGETS.length,
-    );
   });
 });
 
@@ -162,25 +124,5 @@ describe('destination list ↔ label parity', () => {
       expect(fits(targets.length), `column ${c}`).toBe(true);
       expect(fits(targets.length + 1), `column ${c}`).toBe(false);
     });
-  });
-});
-
-describe('momentEmoji', () => {
-  it('keeps each card’s code emoji until a destination is saved', () => {
-    LIFE_MOMENT_TARGETS.forEach((target, i) => {
-      expect(momentEmoji(undefined, i)).toBe(target.emoji);
-      expect(momentEmoji(null, i)).toBe(target.emoji);
-    });
-  });
-
-  it('follows the pet of a saved destination, 🐾 when it names none', () => {
-    // Card 2's code emoji is 🐶, so the saved cat is what shows.
-    expect(momentEmoji({ type: 'shop', pet: 'cat' }, 2)).toBe('🐱');
-    expect(momentEmoji({ type: 'shop', pet: 'dog' }, 0)).toBe('🐶');
-    expect(momentEmoji({ type: 'shop' }, 0)).toBe('🐾');
-    expect(momentEmoji({ type: 'page', page: 'about' }, 0)).toBe('🐾');
-    expect(
-      momentEmoji({ type: 'external', url: 'https://example.com/' }, 0),
-    ).toBe('🐾');
   });
 });

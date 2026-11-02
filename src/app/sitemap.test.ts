@@ -27,8 +27,8 @@ describe('sitemap.xml', () => {
       { slug: 'royal-canin', updatedAt: new Date('2026-09-20T10:00:00Z') },
     ]);
     read.listStockedShelves.mockResolvedValue([
-      shopPath({ pet: 'cat' }),
-      shopPath({ category: 'dry-food' }),
+      shopPath({ category: 'kitchen' }),
+      shopPath({ category: 'stationery' }),
     ]);
   });
 
@@ -42,10 +42,10 @@ describe('sitemap.xml', () => {
     const urls = await urlsOf();
 
     expect(urls).toContain(absoluteUrl(productPath('royal-canin')));
-    expect(urls).toContain(absoluteUrl(shopPath({ pet: 'cat' })));
-    expect(urls).toContain(absoluteUrl(shopPath({ category: 'dry-food' })));
+    expect(urls).toContain(absoluteUrl(shopPath({ category: 'kitchen' })));
+    expect(urls).toContain(absoluteUrl(shopPath({ category: 'stationery' })));
     // Nothing the shelf check left out comes back some other way.
-    expect(urls).not.toContain(absoluteUrl(shopPath({ pet: 'dog' })));
+    expect(urls).not.toContain(absoluteUrl(shopPath({ category: 'audio' })));
   });
 
   it('holds the catalogue back while the shop is closed', async () => {

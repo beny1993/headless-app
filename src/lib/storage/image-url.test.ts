@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // client). A plain `vi.stubEnv` therefore does not reach it — the value must be
 // set BEFORE the module graph is (re)loaded. So each case stubs the env, resets
 // the module registry, then imports a fresh copy.
-const BASE = 'https://storage.c2.liara.site/smokeypetshop';
+const BASE = 'https://storage.c2.liara.site/demoshop';
 
 const freshImageSrc = async (base: string) => {
   vi.stubEnv('NEXT_PUBLIC_STORAGE_BASE_URL', base);
@@ -30,9 +30,7 @@ describe('imageSrc', () => {
     // site/… and products/… are committed under public/ — they never live in the
     // bucket, so they must stay same-origin regardless of the storage provider.
     const imageSrc = await freshImageSrc(BASE);
-    expect(imageSrc('products/cat-dry-food.jpg')).toBe(
-      '/products/cat-dry-food.jpg',
-    );
+    expect(imageSrc('products/mug.jpg')).toBe('/products/mug.jpg');
     expect(imageSrc('site/hero-home.jpg')).toBe('/site/hero-home.jpg');
   });
 
@@ -42,9 +40,7 @@ describe('imageSrc', () => {
     expect(imageSrc('uploads/123e4567-e89b-12d3-a456-426614174000.webp')).toBe(
       '/uploads/123e4567-e89b-12d3-a456-426614174000.webp',
     );
-    expect(imageSrc('products/cat-dry-food.jpg')).toBe(
-      '/products/cat-dry-food.jpg',
-    );
+    expect(imageSrc('products/mug.jpg')).toBe('/products/mug.jpg');
   });
 
   it.each([BASE, ''])(
