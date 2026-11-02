@@ -144,7 +144,7 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
       const list = await getData<CategoryResponse[]>(API_PATHS.CATEGORIES);
 
       expect(list.map((row) => row.slug)).toEqual(
-        expect.arrayContaining(['dry-food', 'wet-food', 'toys']),
+        expect.arrayContaining(['kitchen', 'stationery', 'audio']),
       );
     });
 
@@ -183,11 +183,12 @@ describe.skipIf(!databaseReachable)('catalog API', () => {
     });
 
     it('includes a category that has no products yet', async () => {
-      // The design's category strip shows «بهداشت» before anything is filed
+      // The category strip shows a new category before anything is filed
       // under it — a join-driven list would silently drop it.
+      const empty = await makeCategory();
       const list = await getData<CategoryResponse[]>(API_PATHS.CATEGORIES);
 
-      expect(list.map((row) => row.slug)).toContain('hygiene');
+      expect(list.map((row) => row.slug)).toContain(empty.slug);
     });
   });
 
