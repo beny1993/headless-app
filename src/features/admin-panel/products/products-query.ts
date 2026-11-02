@@ -6,10 +6,7 @@
 // Page-level input degrades rather than 400s (the always-zod rule for pages): a
 // bad value falls back to "no filter" via `.catch`, never throws.
 import { z } from 'zod';
-import {
-  PET_TYPE_VALUES,
-  productListQueryShape,
-} from '@/lib/catalog/product-query';
+import { productListQueryShape } from '@/lib/catalog/product-query';
 import { PROTECTED_PATHS } from '@/lib/constant/paths';
 import { pageParamSchema } from '@/lib/pagination';
 
@@ -27,7 +24,6 @@ const trimmed = <T extends z.ZodType<unknown, string>>(field: T) =>
 export const adminProductFilterSchema = z.object({
   q: trimmed(productListQueryShape.q.unwrap()),
   category: trimmed(productListQueryShape.category.unwrap()),
-  pet: z.enum(PET_TYPE_VALUES).optional().catch(undefined),
   active: z.enum(ACTIVE_VALUES).catch('all'),
   page: pageParamSchema,
 });
@@ -46,7 +42,6 @@ export const productsHref = (
   const params = new URLSearchParams();
   if (filters.q) params.set('q', filters.q);
   if (filters.category) params.set('category', filters.category);
-  if (filters.pet) params.set('pet', filters.pet);
   if (filters.active !== 'all') params.set('active', filters.active);
   if (page > 1) params.set('page', String(page));
   const search = params.toString();

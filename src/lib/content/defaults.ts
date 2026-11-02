@@ -1,21 +1,15 @@
-// Today's hardcoded storefront copy, moved here verbatim from the section
-// components (`home/content.ts`, `home/*.tsx`, `about/about-sections.tsx`) and,
-// in v2, the chrome (`layout/navbar.tsx`, `layout/footer.tsx`, `layout/nav-links.ts`).
-// The link/card/tab *labels* moved here; their code *targets* (hrefs, shop
-// filters, category slugs) stay in code as the `*_TARGETS` tuples the components
-// zip with by index — the fallback wherever no destination is saved, which is
-// every default (none carries a link field). These serve as BOTH the
-// implicit seed and the fallback: with an empty `site_content` table every page
-// renders byte-identical to before this story, and no SQL migration carries a
-// second, driftable copy of the Persian copy.
+// The storefront's default copy: neutral demo text for a shop that has not
+// written its own yet, for the sections (`home/*.tsx`, `about/about-sections.tsx`)
+// and the chrome (`layout/navbar.tsx`, `layout/footer.tsx`, `layout/nav-links.ts`).
+// The link labels live here; their code *targets* (hrefs, category slugs) stay
+// in code as the `*_TARGETS` tuples the components zip with by index — the
+// fallback wherever no destination is saved, which is every default (none
+// carries a link field). These serve as BOTH the implicit seed and the
+// fallback: an empty `site_content` table renders this copy, and no SQL
+// migration carries a second, driftable copy of it.
 //
-// Two shapes change from the source, by the story's own security AC — content
-// cannot carry markup, so a headline's `<br />` becomes a `\n` rendered by CSS
-// `white-space: pre-line`, and a paragraph that spanned several source lines is
-// one string (JSX collapsed those breaks to a single space anyway). "Byte-
-// identical" is therefore: these strings equal today's (the unit tests here and
-// in the storefront), and the rendered text equals today's (the page integration
-// tests); pixels are confirmed at QA.
+// Content cannot carry markup, so a headline's line break is a `\n` rendered by
+// CSS `white-space: pre-line`.
 //
 // **Client-safe, like `site-content.ts`** — no drizzle / `pg` / hono import, so a
 // mis-formatted `console.warn` cannot drag a server-only dependency anywhere.
@@ -35,198 +29,103 @@ import {
 // generic index in `resolveContent` needs.
 export const DEFAULT_CONTENT: ContentValues = {
   'home.hero': {
-    eyebrow: 'زندگی با اسموکی',
-    headline: 'زندگی بهتر،\nکنار بهترین',
-    accent: 'دوستت',
-    body: 'محصولاتی که با دقت برای سلامت، شادی و زندگی روزمره‌ی گربه‌ها و سگ‌ها انتخاب شده‌اند.',
+    eyebrow: 'به فروشگاه ما خوش آمدی',
+    headline: 'چیزهای خوب،\nبرای هر روز',
+    accent: 'زندگی',
+    body: 'محصولاتی که با دقت انتخاب شده‌اند تا کار روزمره را ساده‌تر و خانه را دلنشین‌تر کنند.',
     image: {
-      key: 'site/smokey-hero-v4.jpg',
-      alt: 'اسموکی، گربه خاکستری اسکاتیش فولد در فضای خانه',
+      key: 'site/hero-shop.jpg',
+      alt: 'چند محصول رنگی کنار هم روی یک قفسه',
     },
-    shopCta: 'کشف محصولات',
-    aboutCta: 'داستان اسموکی',
-  },
-  'home.moments': {
-    eyebrow: 'خرید بر اساس لحظه',
-    headline: 'زندگی با حیوانات خانگی',
-    cta: 'مشاهده همه',
-    // Card photos are slash-less storage keys now (the family precedent); the
-    // emoji + shop filters live in LIFE_MOMENT_TARGETS at the same index.
-    cards: [
-      {
-        title: 'وقت غذا',
-        desc: 'بهترین تغذیه برای سلامت روزانه',
-        image: 'site/sansa.webp',
-      },
-      {
-        title: 'وقت بازی',
-        desc: 'سرگرمی هوشمند برای ذهن فعال',
-        image: 'site/khepelo.webp',
-      },
-      {
-        title: 'وقت تشویق',
-        desc: 'پاداش کوچک برای رفتار خوب',
-        image: 'products/dog-treats.jpg',
-      },
-      {
-        title: 'مراقبت روزانه',
-        desc: 'پوست، مو و بهداشت',
-        image: 'site/melis.webp',
-      },
-      {
-        title: 'وعده‌ی سگ',
-        desc: 'انرژی روزانه برای یک سگ فعال',
-        image: 'products/dog-dry-food.jpg',
-      },
-    ],
+    shopCta: 'مشاهده محصولات',
+    aboutCta: 'درباره ما',
   },
   'home.recommends': {
-    eyebrow: 'کیوریت شده با دقت',
-    headline: 'انتخاب‌های اسموکی',
-    body: 'محصولاتی که اسموکی شخصاً تجربه کرده و توصیه می‌کند',
-  },
-  'home.journey': {
-    eyebrow: 'خرید شخصی‌سازی شده',
-    headline: 'برای کی خرید می‌کنی؟',
-    body: 'چند سوال کوتاه تا بهترین محصولات رو بهت پیشنهاد بدیم',
+    eyebrow: 'انتخاب‌شده با دقت',
+    headline: 'پیشنهادهای ما',
+    body: 'محصولاتی که بیشتر از همه دوستشان داریم',
   },
   'home.guide': {
-    eyebrow: 'راهنمای اسموکی',
-    headline: 'چرا بعضی گربه‌ها\nآب کافی نمی‌خورند؟',
-    body: 'کم‌آبی در گربه‌ها یکی از مشکلات شایعی است که بسیاری از صاحبان نادیده می‌گیرند. غذای مرطوب ساده‌ترین راه جبران آن در وعده‌های روزانه است.',
+    eyebrow: 'راهنمای خرید',
+    headline: 'خانه‌ای گرم‌تر\nبا چند تغییر کوچک',
+    body: 'نور مناسب، یک شمع خوش‌بو و چند وسیله‌ی خوش‌رنگ می‌توانند حال و هوای خانه را عوض کنند. چند پیشنهاد ساده برای شروع آماده کرده‌ایم.',
     image: {
-      key: 'site/fiuna.webp',
-      alt: 'فیونا، گربه اسکاتیش فولد با چشم‌های زردسبز',
+      key: 'site/editorial.jpg',
+      alt: 'تصویر تزئینی یک دفترچه',
     },
-    cta: 'مشاهده غذای مرطوب',
-  },
-  'home.routine': {
-    eyebrow: 'روتین روزانه',
-    headline: 'روتین روزانه یک گربه خوشحال',
-    body: 'دسته‌بندی‌های پیشنهادی برای این مرحله',
-    // Emoji + category slugs are in ROUTINE_TARGETS at the same index.
-    slots: [
-      { label: 'صبح', sub: 'غذا' },
-      { label: 'ظهر', sub: 'بازی' },
-      { label: 'عصر', sub: 'مراقبت' },
-      { label: 'شب', sub: 'آرامش' },
-    ],
-  },
-  'home.family': {
-    eyebrow: 'داستان‌های واقعی',
-    headline: 'خانواده اسموکی',
-    slots: [
-      {
-        image: 'site/smokey-v2.webp',
-        name: 'اسموکی',
-        owner: 'خانواده اسموکی',
-        quote: 'همه‌چیز از عشق به اسموکی شروع شد.',
-      },
-      {
-        image: 'site/sansa.webp',
-        name: 'سانسا',
-        owner: 'خانواده اسموکی',
-        quote: 'سانسا دنیا را از کنار پنجره تماشا می‌کند.',
-      },
-      {
-        image: 'site/khepelo.webp',
-        name: 'خپلو',
-        owner: 'خانواده اسموکی',
-        quote: 'خپلو همیشه با کنجکاوی همه‌جا را کشف می‌کند.',
-      },
-      {
-        image: 'site/fiuna.webp',
-        name: 'فیونا',
-        owner: 'خانواده اسموکی',
-        quote: 'نگاه فیونا هر روز خانه را شیرین‌تر می‌کند.',
-      },
-      {
-        image: 'site/melis.webp',
-        name: 'ملیس',
-        owner: 'خانواده اسموکی',
-        quote: 'ملیس آرام‌ترین گوشه خانه را همیشه پیدا می‌کند.',
-      },
-      {
-        image: 'site/lili.webp',
-        name: 'لیلی',
-        owner: 'خانواده اسموکی',
-        quote: 'لیلی عاشق تماشای خانه از روی میز است.',
-      },
-    ],
+    cta: 'مشاهده دکوراسیون',
   },
   'home.categories': {
-    headline: 'فروشگاه',
+    headline: 'دسته‌بندی‌ها',
     cta: 'همه دسته‌بندی‌ها',
   },
   'home.philosophy': {
-    eyebrow: 'فلسفه اسموکی',
-    headline: 'ما هر چیزی را',
+    eyebrow: 'روش ما',
+    headline: 'هر چیزی را',
     accent: 'نمی‌فروشیم.',
-    body: 'محصولات اسموکی با تمرکز بر کیفیت، ترکیبات، کاربرد واقعی و تجربه‌ی حیوانات خانگی انتخاب می‌شوند.',
-    cta: 'بیشتر درباره انتخاب محصولات',
+    body: 'هر محصول پیش از رسیدن به فروشگاه از نظر کیفیت، کاربرد و دوام بررسی می‌شود.',
+    cta: 'بیشتر درباره ما',
   },
   'about.hero': {
     eyebrow: 'داستان ما',
-    headline: 'همه‌چیز از عشق\nبه یک گربه',
-    accent: 'شروع شد.',
+    headline: 'فروشگاهی کوچک\nبا دقتی بزرگ',
+    accent: 'برای تو.',
     image: {
-      key: 'site/smokey-hero.webp',
-      alt: 'اسموکی، گربه‌ای که فروشگاه از او شروع شد',
+      key: 'site/about-hero.jpg',
+      alt: 'تصویر تزئینی یک ویترین فروشگاه',
     },
   },
   'about.story': {
-    title: 'این اسموکی‌ه',
+    title: 'ما که هستیم',
     paragraphs: [
-      'وقتی اسموکی وارد زندگی‌مان شد، متوجه شدیم که پیدا کردن محصولات واقعاً مناسب چقدر سخت است. بازار پر از گزینه‌هاست اما اطلاعات درست کمیاب.',
-      'اسموکی فروشگاه از همین سوال ساده متولد شد: «چه محصولی واقعاً برای حیوان خانگی من خوب است؟»',
-      'امروز هر محصولی که پیشنهاد می‌دهیم، از فیلتر دقیق کیفیت، ترکیبات، و تجربه واقعی گذشته.',
+      'این فروشگاه با یک ایده‌ی ساده شروع شد: پیدا کردن محصول خوب نباید سخت باشد.',
+      'به جای فهرستی بی‌پایان، مجموعه‌ای کوچک و انتخاب‌شده عرضه می‌کنیم که پشت هر کدامش می‌ایستیم.',
+      'سفارش را با دقت بسته‌بندی می‌کنیم و تا رسیدن به دستت پیگیرش هستیم.',
     ],
     image: {
-      key: 'site/smokey-v2.webp',
-      alt: 'اسموکی، گربه خاکستری اسکاتیش فولد با چشمان سبز',
+      key: 'site/editorial.jpg',
+      alt: 'تصویر تزئینی یک دفترچه',
     },
   },
   'about.process': {
-    title: 'فرآیند انتخاب محصولات',
+    title: 'چطور انتخاب می‌کنیم',
     steps: [
-      { step: 'بررسی', desc: 'تحقیق عمیق روی ترکیبات و برند' },
-      { step: 'انتخاب', desc: 'انتخاب بهترین‌ها از بین صدها محصول' },
-      { step: 'تجربه', desc: 'تست واقعی توسط تیم و مشتریان' },
-      { step: 'پیشنهاد', desc: 'ارائه با اطمینان کامل' },
+      { step: 'بررسی', desc: 'جست‌وجو میان برندها و سازنده‌ها' },
+      { step: 'انتخاب', desc: 'برگزیدن بهترین‌ها از میان گزینه‌ها' },
+      { step: 'آزمایش', desc: 'استفاده‌ی واقعی پیش از عرضه' },
+      { step: 'پیشنهاد', desc: 'عرضه با اطمینان کامل' },
     ],
   },
   'about.values': {
     title: 'ارزش‌های ما',
     items: [
       {
-        title: 'کیفیت قبل از تعداد',
+        title: 'کیفیت پیش از تعداد',
         desc: 'ترجیح می‌دهیم کمتر بفروشیم اما بهترین را بفروشیم.',
       },
       {
         title: 'صداقت در پیشنهاد',
-        desc: 'فقط چیزی پیشنهاد می‌دهیم که خودمان به آن ایمان داریم.',
+        desc: 'فقط چیزی را پیشنهاد می‌دهیم که خودمان به آن باور داریم.',
       },
       {
-        title: 'احترام به حیوانات',
-        desc: 'رفاه حیوانات در تمام تصمیمات ما اولویت دارد.',
+        title: 'احترام به مشتری',
+        desc: 'پاسخ‌گویی سریع و روشن، پیش و پس از خرید.',
       },
       {
-        title: 'تجربه واقعی',
-        desc: 'محصولاتمان را واقعاً تست می‌کنیم، نه فقط مطالعه.',
+        title: 'تجربه‌ی واقعی',
+        desc: 'محصولات را واقعاً امتحان می‌کنیم، نه فقط درباره‌شان می‌خوانیم.',
       },
     ],
   },
-  'about.cta': { headline: 'به خانواده اسموکی خوش اومدی.', cta: 'کشف محصولات' },
-  // Ships with the shop's card in slot 1 (already in the schema's stored form:
-  // sixteen ASCII digits) and the shop's own handles — the coordination inbox
-  // is the shop account, never the education one; `''` is an unused slot, the same in
-  // the default, a stored row and the editor. The storefront shows only filled
-  // slots. A row saved before the handles were known keeps its own `''`: on
-  // staging the admin fills the two fields once.
+  'about.cta': { headline: 'خوشحالیم که اینجایی.', cta: 'مشاهده محصولات' },
+  // Ships with every card slot empty: a shop fills in its own card numbers and
+  // handles in the admin panel. `''` is an unused slot, the same in the
+  // default, a stored row and the editor; the storefront shows only filled
+  // slots and hides an empty handle.
   'checkout.payment': {
     note: 'مبلغ سفارش را به یکی از کارت‌های زیر واریز کن و اسکرین‌شات رسید را همین‌جا پیوست کن. سفارش پس از بررسی رسید ارسال می‌شود.',
     bankCards: [
-      { bank: '', number: '6129861927666866', holder: '' },
+      { bank: '', number: '', holder: '' },
       { bank: '', number: '', holder: '' },
       { bank: '', number: '', holder: '' },
     ],
@@ -234,24 +133,27 @@ export const DEFAULT_CONTENT: ContentValues = {
     telegram: FOOTER_SOCIAL_DEFAULT.telegram,
   },
   header: {
-    // A display wordmark, independent of DEFAULT_SITE_NAME (which is «اسموکی» and
-    // drives page <title>s and emails) — today's latin bar wordmark, verbatim.
-    brand: 'Smokey',
-    tagline: 'فروشگاه حیوانات',
+    // A display wordmark, independent of DEFAULT_SITE_NAME (which drives page
+    // <title>s and emails).
+    brand: 'Demo Shop',
+    tagline: 'فروشگاه نمونه',
     // Labels only; the hrefs are NAV_TARGETS in nav-links.ts at the same index.
     nav: ['خانه', 'فروشگاه', 'درباره ما'],
   },
   footer: {
-    brand: 'Smokey',
-    tagline: 'فروشگاه تخصصی محصولات حیوانات خانگی. کیفیت اول، همیشه.',
+    brand: 'Demo Shop',
+    tagline: 'فروشگاه آنلاین با محصولات انتخاب‌شده. کیفیت اول، همیشه.',
     // Column titles + link labels; the hrefs are FOOTER_TARGETS at the same index.
     columns: [
-      { title: 'فروشگاه', links: ['گربه', 'سگ', 'غذا', 'اسباب‌بازی', 'مکمل'] },
-      { title: 'اسموکی', links: ['درباره ما'] },
+      {
+        title: 'فروشگاه',
+        links: ['آشپزخانه', 'نوشت‌افزار', 'دکوراسیون', 'کیف و سفر', 'سرگرمی'],
+      },
+      { title: 'فروشگاه نمونه', links: ['درباره ما'] },
     ],
-    // The text AFTER the `© {jalali year}` prefix (rendered in code), verbatim.
-    copyright: 'اسموکی. تمام حقوق محفوظ است.',
-    credit: 'ساخته شده با ❤️ برای حیوانات خانگی ایران',
+    // The text AFTER the `© {jalali year}` prefix (rendered in code).
+    copyright: 'فروشگاه نمونه. تمام حقوق محفوظ است.',
+    credit: 'ساخته شده با ❤️ در ایران',
     social: { ...FOOTER_SOCIAL_DEFAULT },
   },
 };

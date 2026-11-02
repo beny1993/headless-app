@@ -13,33 +13,12 @@ import {
   type AnyPgColumn,
   index,
   integer,
-  pgEnum,
   pgTable,
   primaryKey,
   text,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { createdAt, updatedAt } from '@/db/schema/columns';
-import {
-  PET_TYPES,
-  PET_TYPE_VALUES,
-  type PetType,
-} from '@/lib/catalog/product-query';
-
-// The `pet_type` domain is defined in `@/lib/catalog/product-query`, not here:
-// the storefront's URL parser is a client module and cannot import this file
-// (it would put drizzle in the browser bundle), so the values live where both
-// sides can reach them and this column is built from them. Re-exported so every
-// existing importer of the schema keeps working — one definition, one alias.
-export { PET_TYPES, PET_TYPE_VALUES, type PetType };
-
-// Built from the array, like `order_status`, `payment_method`, `payment_status`,
-// `discount_type` and `pet_gender`: the database's domain and the client's are
-// one definition. Hand-listed, a third pet type would pass every zod schema and
-// `normalizePetTypes` while drizzle generated no `ALTER TYPE … ADD VALUE`, and
-// each write of it would fail at the driver.
-export const petTypeEnum = pgEnum('pet_type', PET_TYPE_VALUES);
-
 export const categories = pgTable(
   'categories',
   {
@@ -117,14 +96,6 @@ export const products = pgTable(
       .notNull()
       .references(() => categories.id, { onDelete: 'restrict' }),
     /**
-     * Which pets the product suits — one of them, or both. An array of the
-     * `pet_type` enum rather than a third `both` value, because the very same
-     * enum types a customer's own pet (`pets.type`) and a pet is one species.
-     * Stored in `PET_TYPE_VALUES` order; `products_pet_type_not_empty` is what
-     * keeps «no pet at all» out.
-     */
-    petTypes: petTypeEnum('pet_type').array().notNull(),
-    /**
      * The product this one is a variant of — a smell, a colour, a size — or
      * `null`. A **head** is null here and carries its own `variantLabel`, which
      * is what makes the storefront listing one predicate (`variant_of is null`)
@@ -154,12 +125,6 @@ export const products = pgTable(
     check(
       'products_old_price_above_price',
       sql`${table.oldPrice} is null or ${table.oldPrice} > ${table.price}`,
-    ),
-    // A product with no pet at all is filed nowhere and listed under neither
-    // filter. NOT NULL alone would let `{}` through.
-    check(
-      'products_pet_type_not_empty',
-      sql`cardinality(${table.petTypes}) >= 1`,
     ),
     // The one half of «one level deep» the database can enforce by itself.
     check('products_variant_not_self', sql`${table.variantOf} <> ${table.id}`),
@@ -242,7 +207,7 @@ export const productImages = pgTable(
       .references(() => products.id, { onDelete: 'cascade' }),
     /**
      * Storage key, not a URL. Today the dev stand-in is a file under `public/`
-     * (`products/cat-dry-food.jpg` → `/products/cat-dry-food.jpg`); the admin
+     * (`products/mug.jpg` → `/products/mug.jpg`); the admin
      * story puts an S3-compatible driver behind the same plain string.
      */
     objectKey: text('object_key').notNull(),

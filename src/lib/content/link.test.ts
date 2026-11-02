@@ -34,9 +34,7 @@ describe('linkSchema', () => {
       { type: 'page', page: 'about' },
       { type: 'page', page: 'account' },
       { type: 'shop' },
-      { type: 'shop', pet: 'cat' },
       { type: 'shop', categoryId: CATEGORY_ID },
-      { type: 'shop', categoryId: CATEGORY_ID, pet: 'dog' },
       { type: 'product', productId: PRODUCT_ID },
       { type: 'external', url: 'https://example.com/' },
     ]) {
@@ -46,13 +44,12 @@ describe('linkSchema', () => {
     }
   });
 
-  it('rejects an unknown type, page or pet, and an id that is not a uuid', () => {
+  it('rejects an unknown type or page, and an id that is not a uuid', () => {
     for (const link of [
       {},
       { type: 'href', href: '/shop' },
       { type: 'page' },
       { type: 'page', page: 'admin-panel' },
-      { type: 'shop', pet: 'bird' },
       { type: 'shop', categoryId: 'dry-food' },
       { type: 'product' },
       { type: 'product', productId: 'royal-canin-cat-sensible-2kg' },
@@ -62,6 +59,14 @@ describe('linkSchema', () => {
         false,
       );
     }
+  });
+
+  it('still reads a shop link saved with the retired pet filter, without it', () => {
+    // Rows written before the pet filter left core carry `pet`; dropping it on
+    // read keeps them valid instead of resetting their block to its default.
+    expect(
+      linkSchema.parse({ type: 'shop', categoryId: CATEGORY_ID, pet: 'cat' }),
+    ).toEqual({ type: 'shop', categoryId: CATEGORY_ID });
   });
 
   it('strips fields its type does not declare — a page link cannot smuggle a URL', () => {
@@ -160,9 +165,9 @@ describe('resolveLink', () => {
       href: PATHS.ABOUT,
       external: false,
     });
-    const petShop = shopPath({ pet: 'cat' });
-    expect(resolveLink(null, petShop, targets)).toEqual({
-      href: petShop,
+    const shelf = shopPath({ category: 'kitchen' });
+    expect(resolveLink(null, shelf, targets)).toEqual({
+      href: shelf,
       external: false,
     });
   });
@@ -176,37 +181,19 @@ describe('resolveLink', () => {
     expect(page('account').href).toBe(PATHS.ACCOUNT);
   });
 
-  it('resolves a shop link to the category’s current slug and the pet', () => {
+  it('resolves a shop link to the category’s current slug', () => {
     expect(
-      resolveLink(
-        { type: 'shop', categoryId: CATEGORY_ID, pet: 'cat' },
-        FALLBACK,
-        targets,
-      ),
+      resolveLink({ type: 'shop', categoryId: CATEGORY_ID }, FALLBACK, targets),
     ).toEqual({
-      href: shopPath({ category: 'dry-food', pet: 'cat' }),
+      href: shopPath({ category: 'dry-food' }),
       external: false,
     });
-    expect(
-      resolveLink({ type: 'shop', categoryId: CATEGORY_ID }, FALLBACK, targets)
-        .href,
-    ).toBe(shopPath({ category: 'dry-food' }));
-    expect(
-      resolveLink({ type: 'shop', pet: 'dog' }, FALLBACK, targets).href,
-    ).toBe(shopPath({ pet: 'dog' }));
     expect(resolveLink({ type: 'shop' }, FALLBACK, targets).href).toBe(
       PATHS.SHOP,
     );
   });
 
-  it('drops a deleted category but keeps the pet filter', () => {
-    expect(
-      resolveLink(
-        { type: 'shop', categoryId: UNKNOWN_ID, pet: 'dog' },
-        FALLBACK,
-        targets,
-      ).href,
-    ).toBe(shopPath({ pet: 'dog' }));
+  it('drops a deleted category for the whole shop', () => {
     expect(
       resolveLink({ type: 'shop', categoryId: UNKNOWN_ID }, FALLBACK, targets)
         .href,
@@ -252,7 +239,7 @@ describe('collectLinkRefs', () => {
       cards: [
         { title: 'a', link: { type: 'shop', categoryId: CATEGORY_ID } },
         { title: 'b', link: null },
-        { title: 'c', link: { type: 'shop', pet: 'dog' } },
+        { title: 'c', link: { type: 'shop' } },
         { title: 'd', link: { type: 'external', url: 'https://example.com/' } },
       ],
       slots: [
@@ -296,7 +283,7 @@ describe('collectLinkRefs', () => {
   });
 
   it('finds nothing in a block saved before links were editable', () => {
-    expect(collectLinkRefs(DEFAULT_CONTENT['home.moments'])).toEqual([]);
+    expect(collectLinkRefs(DEFAULT_CONTENT['home.hero'])).toEqual([]);
     expect(collectLinkRefs(DEFAULT_CONTENT.footer)).toEqual([]);
     expect(collectLinkRefs(DEFAULT_CONTENT['home.recommends'])).toEqual([]);
   });

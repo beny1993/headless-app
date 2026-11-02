@@ -68,11 +68,11 @@ describe('localDriver', () => {
     // A seed product's key lives under public/products — the local driver must
     // never reach it, so "change image" can never clobber a bundled asset.
     await expect(
-      localDriver.put('products/cat-dry-food.jpg', bytes, 'image/jpeg'),
+      localDriver.put('products/mug.jpg', bytes, 'image/jpeg'),
     ).rejects.toBeInstanceOf(StorageKeyError);
-    await expect(
-      localDriver.delete('products/cat-dry-food.jpg'),
-    ).rejects.toBeInstanceOf(StorageKeyError);
+    await expect(localDriver.delete('products/mug.jpg')).rejects.toBeInstanceOf(
+      StorageKeyError,
+    );
   });
 
   it('refuses a traversal key that would escape the root', async () => {

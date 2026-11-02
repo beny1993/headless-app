@@ -197,8 +197,8 @@ describe('categoryInputSchema', () => {
   describe('imageKey', () => {
     it.each([
       'uploads/123e4567-e89b-42d3-a456-426614174000.jpg',
-      'products/cat-dry-food.jpg',
-      'site/cat-hygiene.jpg',
+      'products/mug.jpg',
+      'site/hero-shop.jpg',
     ])('accepts the stored key %s', (imageKey) => {
       expect(categoryInputSchema.parse({ ...valid, imageKey }).imageKey).toBe(
         imageKey,
@@ -222,7 +222,7 @@ describe('categoryInputSchema', () => {
     it.each([
       '',
       'https://example.com/cat.jpg',
-      '/products/cat-dry-food.jpg',
+      '/products/mug.jpg',
       'uploads/../../.env',
       'uploads/not-a-uuid.jpg',
       // A bundled shape, so only the length cap refuses it.

@@ -4,7 +4,6 @@ import { eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { categories, productCategories, products } from '@/db/schema/catalog';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
-import { PET_TYPES } from '@/lib/catalog/product-query';
 import { pgErrorOf } from '@/db/pg-error';
 
 const { CategoryDao, CategoryParentError } = await importWithDb(
@@ -42,7 +41,6 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
       price: 100_000,
       stock: 1,
       categoryId,
-      petTypes: [PET_TYPES.CAT],
     });
   };
 
@@ -126,7 +124,7 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
     const inserted = await CategoryDao.upsertBySlug({
       title: 'غذای خشک',
       slug: value,
-      imageKey: 'products/cat-dry-food.jpg',
+      imageKey: 'products/mug.jpg',
     });
     const updated = await CategoryDao.update(inserted.id, {
       title: inserted.title,
@@ -138,7 +136,7 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
     const reseeded = await CategoryDao.upsertBySlug({
       title: 'غذای خشک',
       slug: value,
-      imageKey: 'products/cat-dry-food.jpg',
+      imageKey: 'products/mug.jpg',
     });
 
     // Seeded keyless, given a photo in the panel, re-seeded keyless: the
@@ -161,9 +159,9 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
       slug: keyless,
     });
 
-    expect(inserted.imageKey).toBe('products/cat-dry-food.jpg');
+    expect(inserted.imageKey).toBe('products/mug.jpg');
     expect(updated?.imageKey).toBe(UPLOAD_KEY);
-    expect(reseeded.imageKey).toBe('products/cat-dry-food.jpg');
+    expect(reseeded.imageKey).toBe('products/mug.jpg');
     expect(plain.imageKey).toBeNull();
     expect(given?.imageKey).toBe(UPLOAD_KEY);
     expect(cleared.imageKey).toBeNull();
@@ -283,7 +281,7 @@ describe.skipIf(!databaseReachable)('CategoryDao', () => {
         slug: slug(),
         sortOrder: 0,
         parentId: null,
-        imageKey: 'products/cat-wet-food.jpg',
+        imageKey: 'products/bottle.jpg',
       });
       const fields = {
         title: created.title,

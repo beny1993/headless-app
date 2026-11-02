@@ -3,7 +3,6 @@
 // show a price, stock, shipping and returns from.
 import type { Metadata } from 'next';
 import type { Product, ProductImage } from '@/db/schema/catalog';
-import { PET_TYPES, type PetType } from '@/lib/catalog/product-query';
 import { displayTitle } from '@/lib/catalog/variant';
 import { productPath } from '@/lib/constant/paths';
 import {
@@ -25,7 +24,6 @@ export type ProductForSeo = Pick<
   | 'variantLabel'
   | 'sku'
   | 'brand'
-  | 'petTypes'
   | 'description'
   | 'benefit'
   | 'price'
@@ -58,7 +56,7 @@ const oneLine = (text: string | null) =>
 /**
  * The meta description: the product's own description, else its benefit line,
  * else a sentence naming it. Both texts are read on one line, so the only cut
- * points are spaces and a ZWNJ compound («گربه‌ها») is never split.
+ * points are spaces and a ZWNJ compound («شمع‌ها») is never split.
  */
 export function productDescription(product: ProductForSeo): string {
   const text = oneLine(product.description) || oneLine(product.benefit);
@@ -105,28 +103,6 @@ export function productMetadata(product: ProductForSeo): Metadata {
     },
   };
 }
-
-/** Google's product taxonomy, which a `CategoryCode` is read against. */
-const GOOGLE_TAXONOMY =
-  'https://www.google.com/basepages/producttype/taxonomy-with-ids.en-US.txt';
-
-/** Its «Animals & Pet Supplies > Pet Supplies», and the branch for each pet. */
-const PET_SUPPLIES = '2';
-const PET_SUPPLIES_FOR: Record<PetType, string> = {
-  [PET_TYPES.CAT]: '4',
-  [PET_TYPES.DOG]: '5',
-};
-
-/**
- * The product's Google product category, by the pets it is for; a product for
- * both sits on the branch the two share. Search Console reported the Persian
- * category title, which this sent as plain text before, as an invalid value.
- */
-const googleCategory = ([pet, ...others]: PetType[]) => ({
-  '@type': 'CategoryCode',
-  inCodeSet: GOOGLE_TAXONOMY,
-  codeValue: pet && others.length === 0 ? PET_SUPPLIES_FOR[pet] : PET_SUPPLIES,
-});
 
 /** A span of days, as Google reads a handling or transit time. */
 const dayRange = ({ min, max }: { min: number; max: number }) => ({
@@ -185,7 +161,6 @@ export function productJsonLd(product: ProductForSeo, shippingFees: number[]) {
     description: productDescription(product),
     sku: product.sku,
     ...(product.brand && { brand: { '@type': 'Brand', name: product.brand } }),
-    category: googleCategory(product.petTypes),
     offers: {
       '@type': 'Offer',
       url: productUrl(product),

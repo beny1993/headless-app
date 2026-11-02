@@ -33,13 +33,10 @@ describe('shelfTitle', () => {
       shelfTitle(parseShopQuery(params), categories);
 
     expect(titleFor({ category: 'dry-food' })).toBe('غذای خشک');
-    expect(titleFor({ pet: 'cat' })).toBe('محصولات گربه');
-    expect(titleFor({ pet: 'dog', category: 'treats' })).toBe('تشویقی سگ');
+    expect(titleFor({ category: 'treats' })).toBe('تشویقی');
     expect(titleFor({})).toBeUndefined();
-    // A slug that names no category names no shelf, whatever the pet.
-    expect(
-      titleFor({ category: 'no-such-category', pet: 'cat' }),
-    ).toBeUndefined();
+    // A slug that names no category names no shelf.
+    expect(titleFor({ category: 'no-such-category' })).toBeUndefined();
   });
 });
 
@@ -49,14 +46,14 @@ describe('isUnknownCategory', () => {
 
   it('is a category slug no category has, alone or with any other filter', () => {
     expect(unknownFor({ category: 'toys' })).toBe(true);
-    expect(unknownFor({ category: 'toys', pet: 'cat', page: '2' })).toBe(true);
+    expect(unknownFor({ category: 'toys', page: '2' })).toBe(true);
   });
 
   it('is never a known category, nor a URL that names no category', () => {
     expect(unknownFor({ category: 'dry-food' })).toBe(false);
-    expect(unknownFor({ category: 'treats', pet: 'dog' })).toBe(false);
+    expect(unknownFor({ category: 'treats', inStock: 'true' })).toBe(false);
     expect(unknownFor({})).toBe(false);
-    expect(unknownFor({ pet: 'cat', q: 'توپ' })).toBe(false);
+    expect(unknownFor({ q: 'توپ' })).toBe(false);
   });
 
   it('knows nothing when there are no categories at all', () => {
@@ -91,19 +88,6 @@ describe('shopMetadata', () => {
     expect(metadata.alternates?.canonical).toBe(
       absoluteUrl(shopPath({ category: 'dry-food' })),
     );
-  });
-
-  it('titles a pet shelf by its pet, and a shelf with both by both, in one fixed order', () => {
-    expect(metadataFor({ pet: 'cat' })).toMatchObject({
-      title: 'محصولات گربه',
-      alternates: { canonical: absoluteUrl(shopPath({ pet: 'cat' })) },
-    });
-    expect(metadataFor({ pet: 'dog', category: 'treats' })).toMatchObject({
-      title: 'تشویقی سگ',
-      alternates: {
-        canonical: `${DEFAULT_SITE_ORIGIN}/shop?category=treats&pet=dog`,
-      },
-    });
   });
 
   it('describes a category titled like the shop itself', () => {

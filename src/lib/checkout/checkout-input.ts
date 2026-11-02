@@ -56,7 +56,7 @@ export const MAX_CART_LINES = 50;
 export const MAX_LINE_QTY = 1000;
 
 // Field caps. `boundedText` itself (the trim / min(1) / max / null-byte gate) is
-// shared with the account pet/address contracts in `@/lib/validation/text` so the
+// shared with the account address contract in `@/lib/validation/text` so the
 // U+0000 500-hole gate is defined once and never hand-mirrored across boundaries.
 const MAX_RECIPIENT_NAME = 200;
 const MAX_RECIPIENT_PHONE = 20;

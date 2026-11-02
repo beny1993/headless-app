@@ -325,7 +325,7 @@ export const createOrder = async (
         items.push({
           productId: reserved.id,
           // `displayTitle`, not the bare column: a family member's line has to
-          // read «غذای خشک سگ — ۱۰ کیلوگرم», or an invoice cannot say which
+          // read «شمع معطر — وانیل», or an invoice cannot say which
           // size was bought. The snapshot is the only record of that once the
           // product row is edited, so it is written here and never derived later.
           title: displayTitle(reserved),

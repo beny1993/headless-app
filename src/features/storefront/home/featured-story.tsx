@@ -54,7 +54,7 @@ export function FeaturedStorySection({
             <ContentLink
               {...resolveLink(
                 content.ctaLink,
-                knownShelfPath({ category: 'wet-food' }, categorySlugs),
+                knownShelfPath({ category: 'home-decor' }, categorySlugs),
                 targets,
               )}
               className="bg-brand hover:bg-brand-hover text-brand-foreground self-start rounded-xl px-6 py-3 font-bold transition-colors"

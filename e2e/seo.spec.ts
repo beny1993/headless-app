@@ -65,7 +65,6 @@ test('the sitemap lists products, family members and shelves, each by its canoni
     // A member is a page of its own, though the shop grid lists only heads.
     productPath(member.slug),
     shopPath({ category: shelf.slug }),
-    shopPath({ pet: product.petTypes[0] }),
   ]) {
     expect(xml).toContain(`<loc>${absoluteUrl(path)}</loc>`);
   }
@@ -96,14 +95,6 @@ test('a product page gives Google its price in Rial, its stock, shipping, return
   expect(data.find((doc) => doc['@type'] === 'Product')).toMatchObject({
     name: displayTitle(product),
     sku: product.sku,
-    // A Google product category, never the Persian title Search Console
-    // reported as an invalid value.
-    category: {
-      '@type': 'CategoryCode',
-      inCodeSet:
-        'https://www.google.com/basepages/producttype/taxonomy-with-ids.en-US.txt',
-      codeValue: expect.stringMatching(/^[245]$/),
-    },
     offers: {
       url: absoluteUrl(productPath(product.slug)),
       priceCurrency: 'IRR',
@@ -265,12 +256,12 @@ test('a search, and a page past the end, stay out of the index with no canonical
   }
 });
 
-test('an unknown category is not found, alone or with a pet', async ({
+test('an unknown category is not found, alone or with a filter', async ({
   page,
 }) => {
   const unknown: Record<string, string>[] = [
     { category: 'no-such-category' },
-    { category: 'no-such-category', pet: 'cat' },
+    { category: 'no-such-category', inStock: 'true' },
   ];
   // Fetched rather than visited: the watch would count a 404 document.
   for (const params of unknown) {

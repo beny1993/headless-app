@@ -55,7 +55,6 @@ const shelfListing = (query: ShopQuery) =>
   listShelf(
     JSON.stringify({
       categorySlug: query.category,
-      petType: query.pet,
       inStock: query.inStock,
       minPrice: query.minPrice,
       maxPrice: query.maxPrice,
@@ -184,7 +183,7 @@ export default async function ShopPage({
           </nav>
           <h1 className="mb-2 text-4xl font-black">{shelf ?? SHOP_TITLE}</h1>
           <p className="text-muted-foreground">
-            بهترین محصولات برای حیوان خانگی شما
+            مجموعه‌ای انتخاب‌شده از بهترین محصولات
           </p>
         </div>
       </div>

@@ -1,13 +1,11 @@
 // Pins the admin user detail: a malformed or unknown id is a 404 before or
-// instead of a read, the profile and the three lists show what the design
+// instead of a read, the profile and the two lists show what the design
 // lists with their own empty states, and nothing the page must never show
-// (the email, a pet's photo) reaches the markup. Renders for real with its
+// (the email) reaches the markup. Renders for real with its
 // read and the admin guard mocked at the module edge.
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ROLES } from '@/db/schema/auth';
-import { PET_GENDERS } from '@/lib/account/pet';
-import { PET_EMOJI, PET_TYPES } from '@/lib/catalog/product-query';
 import { adminOrderPath, PROTECTED_PATHS } from '@/lib/constant/paths';
 import {
   formatJalali,
@@ -71,18 +69,6 @@ const DETAIL: AdminUserDetail = {
       city: 'کاشان',
       addressLine: 'خیابان امیرکبیر، پلاک ۷',
       postalCode: '8715123456',
-    },
-  ],
-  pets: [
-    {
-      id: '00000000-0000-4000-8000-000000000301',
-      name: 'اسموکی',
-      type: PET_TYPES.CAT,
-      gender: PET_GENDERS.MALE,
-      neutered: true,
-      breed: 'پرشین',
-      age: '3 سال',
-      weight: null,
     },
   ],
 };
@@ -222,33 +208,11 @@ describe('admin user detail: the lists', () => {
     }
   });
 
-  it('shows each pet by its emoji and facts, never a photo', async () => {
-    const photo = 'https://tracker.example/pixel.jpg';
-    getAdminUser.mockResolvedValue({
-      ...DETAIL,
-      // A photo URL that reached the page anyway must still not be fetched.
-      pets: [{ ...DETAIL.pets[0], photoUrl: photo }],
-    });
-
-    const { container } = await renderPage(ID);
-
-    const card = section('حیوانات خانگی');
-    expect(within(card).getByText(PET_EMOJI[PET_TYPES.CAT])).toBeTruthy();
-    expect(within(card).getByText('اسموکی')).toBeTruthy();
-    expect(within(card).getByText('گربه · پرشین')).toBeTruthy();
-    for (const text of [toPersianDigits('3 سال'), '—', 'نر', 'بله']) {
-      expect(within(card).getByText(text)).toBeTruthy();
-    }
-    expect(container.querySelector('img')).toBeNull();
-    expect(container.innerHTML).not.toContain(photo);
-  });
-
   it('says so when a list is empty', async () => {
     getAdminUser.mockResolvedValue({
       ...DETAIL,
       orders: [],
       addresses: [],
-      pets: [],
     });
 
     await renderPage(ID);
@@ -258,9 +222,6 @@ describe('admin user detail: the lists', () => {
     ).toBeTruthy();
     expect(
       within(section('آدرس‌ها')).getByText('هنوز آدرسی ذخیره نشده است.'),
-    ).toBeTruthy();
-    expect(
-      within(section('حیوانات خانگی')).getByText('هنوز حیوانی ثبت نشده است.'),
     ).toBeTruthy();
   });
 });

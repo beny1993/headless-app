@@ -138,7 +138,7 @@ describe('UPLOAD_FILENAME_PATTERN', () => {
       '..%2fsecret.jpg',
       'a/b.jpg',
       '.env',
-      'products/cat-dry-food.jpg', // seed keys are served from public/, not here
+      'products/mug.jpg', // seed keys are served from public/, not here
       '123e4567-e89b-12d3-a456-426614174000.svg', // not an accepted extension
       '123e4567-e89b-12d3-a456-426614174000', // no extension
       `receipts/${UUID}.jpg`, // a receipt: /uploads/* must never serve one

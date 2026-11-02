@@ -8,7 +8,7 @@
 // account and checkout browser bundles. Plain zod only. The row type below is a
 // TYPE import, which is erased; it is what lets the wire projection live here
 // rather than inside the Hono route, which the account and checkout server pages
-// would otherwise have to import as a value (see `pet.ts` for the same note).
+// would otherwise have to import as a value.
 import { z } from 'zod';
 import type { AddressWithProvince } from '@/db/dao/AddressDao';
 import { addressSchema } from '@/lib/checkout/checkout-input';

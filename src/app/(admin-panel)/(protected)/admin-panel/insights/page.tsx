@@ -65,20 +65,12 @@ export default async function AdminInsightsPage({
 
       <ProductTable products={report.products} />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <GroupTable
-          title="دسته‌ها"
-          heading="دسته"
-          hint="بر اساس دسته اصلی هر محصول."
-          groups={report.categories}
-        />
-        <GroupTable
-          title="گربه و سگ"
-          heading="حیوان"
-          hint="محصولی که برای هر دو است، زیر هر دو شمرده می‌شود."
-          groups={report.pets}
-        />
-      </div>
+      <GroupTable
+        title="دسته‌ها"
+        heading="دسته"
+        hint="بر اساس دسته اصلی هر محصول."
+        groups={report.categories}
+      />
 
       {report.sources && <SourceList sources={report.sources} />}
     </div>

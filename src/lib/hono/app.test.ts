@@ -66,7 +66,6 @@ describe('hono app', () => {
       'maxPrice',
       'minPrice',
       'page',
-      'pet',
       'q',
       'sort',
     ]);

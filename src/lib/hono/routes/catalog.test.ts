@@ -11,7 +11,6 @@ import {
   DEFAULT_PRODUCT_PAGE_SIZE,
   MAX_PRODUCT_PAGE_SIZE,
   MAX_SEARCH_TERM_LENGTH,
-  PET_TYPES,
   PRODUCT_SORTS,
 } from '@/lib/catalog/product-query';
 import { API_PATHS } from '@/lib/constant/paths';
@@ -42,7 +41,6 @@ describe('GET /api/products — query validation', () => {
     ['a limit over the cap', 'limit=49'],
     ['a limit that is not a number', 'limit=abc'],
     ['an unknown sort', 'sort=cheapest'],
-    ['an unknown pet type', 'pet=hamster'],
     ['a negative minimum price', 'minPrice=-1'],
     ['a fractional minimum price', 'minPrice=10.5'],
     ['a minimum price that is not a number', 'minPrice=abc'],
@@ -109,8 +107,6 @@ describe('GET /api/products — query validation', () => {
   });
 
   it.each([
-    ['the pet types the schema names', 'pet=cat'],
-    ['the other pet type', 'pet=dog'],
     ['every sort the storefront offers', 'sort=newest'],
     ['ascending price', 'sort=price-asc'],
     ['descending price', 'sort=price-desc'],
@@ -173,7 +169,6 @@ describe('GET /api/products — generated documentation', () => {
 
     for (const name of [
       'category',
-      'pet',
       'sort',
       'minPrice',
       'maxPrice',
@@ -200,9 +195,6 @@ describe('GET /api/products — generated documentation', () => {
     expect(params.get('sort')?.schema).toMatchObject({
       enum: Object.values(PRODUCT_SORTS),
       default: PRODUCT_SORTS.NEWEST,
-    });
-    expect(params.get('pet')?.schema).toMatchObject({
-      enum: Object.values(PET_TYPES),
     });
     expect(params.get('q')?.schema).toMatchObject({
       maxLength: MAX_SEARCH_TERM_LENGTH,

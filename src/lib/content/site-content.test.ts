@@ -44,8 +44,8 @@ describe('imageKeySchema', () => {
     for (const key of [
       'site/hero-home.jpg',
       'site/community-luna.jpg',
-      'products/dog-dry-food.jpg',
-      'products/cat-treats.png',
+      'products/lamp.jpg',
+      'products/candle.png',
       'site/x.jpeg',
       'site/x.webp',
     ]) {
@@ -184,54 +184,6 @@ describe('CONTENT_SCHEMAS visibility flag', () => {
 });
 
 describe('CONTENT_SCHEMAS fixed-count lists', () => {
-  const slot = (name: string) => ({
-    image: 'site/community-luna.jpg',
-    name,
-    owner: 'o',
-    quote: 'q',
-  });
-
-  const family = (slots: unknown) => ({
-    eyebrow: 'e',
-    headline: 'h',
-    slots,
-  });
-
-  it('requires exactly six family slots', () => {
-    const six = [
-      slot('1'),
-      slot('2'),
-      slot('3'),
-      slot('4'),
-      slot('5'),
-      slot('6'),
-    ];
-    expect(CONTENT_SCHEMAS['home.family'].safeParse(family(six)).success).toBe(
-      true,
-    );
-    expect(
-      CONTENT_SCHEMAS['home.family'].safeParse(family(six.slice(0, 5))).success,
-    ).toBe(false);
-    expect(
-      CONTENT_SCHEMAS['home.family'].safeParse(family([...six, slot('7')]))
-        .success,
-    ).toBe(false);
-  });
-
-  it('validates the image key of every family slot', () => {
-    const bad = [
-      slot('1'),
-      slot('2'),
-      slot('3'),
-      { ...slot('4'), image: 'http://evil/x.jpg' },
-      slot('5'),
-      slot('6'),
-    ];
-    expect(CONTENT_SCHEMAS['home.family'].safeParse(family(bad)).success).toBe(
-      false,
-    );
-  });
-
   it('requires exactly four process steps and four values', () => {
     const steps = [
       { step: 's1', desc: 'd1' },
@@ -341,38 +293,6 @@ describe('CONTENT_SCHEMAS chrome + new home blocks', () => {
     };
     expect(CONTENT_SCHEMAS.footer.safeParse(shortFirst).success).toBe(false);
   });
-
-  it('requires exactly five moment cards, each with a valid image key', () => {
-    const base = DEFAULT_CONTENT['home.moments'];
-    expect(CONTENT_SCHEMAS['home.moments'].safeParse(base).success).toBe(true);
-    expect(
-      CONTENT_SCHEMAS['home.moments'].safeParse({
-        ...base,
-        cards: base.cards.slice(0, 4),
-      }).success,
-    ).toBe(false);
-    const badImage = {
-      ...base,
-      cards: [
-        { ...base.cards[0], image: 'http://evil/x.jpg' },
-        ...base.cards.slice(1),
-      ],
-    };
-    expect(CONTENT_SCHEMAS['home.moments'].safeParse(badImage).success).toBe(
-      false,
-    );
-  });
-
-  it('requires exactly four routine slots', () => {
-    const base = DEFAULT_CONTENT['home.routine'];
-    expect(CONTENT_SCHEMAS['home.routine'].safeParse(base).success).toBe(true);
-    expect(
-      CONTENT_SCHEMAS['home.routine'].safeParse({
-        ...base,
-        slots: base.slots.slice(0, 3),
-      }).success,
-    ).toBe(false);
-  });
 });
 
 describe('CONTENT_SCHEMAS checkout.payment', () => {
@@ -428,39 +348,36 @@ describe('CONTENT_SCHEMAS checkout.payment', () => {
     });
     // A whitespace handle is a cleared one: stored as `''`, never as the default.
     expect(parsed).toEqual({ ...base, instagram: '' });
-    // The default ships one card, already normalized, and two blank spares.
-    expect(base.bankCards[0].number).toMatch(/^\d{16}$/);
-    expect(base.bankCards.slice(1).every((card) => card.number === '')).toBe(
-      true,
-    );
+    // The default ships every slot blank: a shop fills in its own cards.
+    expect(base.bankCards.every((card) => card.number === '')).toBe(true);
   });
 
   it('stores a social handle bare — typed, with an @, or pasted as the profile URL', () => {
-    expect(schema.parse({ ...base, instagram: '@smokey.shop' }).instagram).toBe(
-      'smokey.shop',
+    expect(schema.parse({ ...base, instagram: '@demo.store' }).instagram).toBe(
+      'demo.store',
     );
-    expect(schema.parse({ ...base, telegram: ' smokey_shop ' }).telegram).toBe(
-      'smokey_shop',
+    expect(schema.parse({ ...base, telegram: ' demo_store ' }).telegram).toBe(
+      'demo_store',
     );
     // What an admin pastes from the app: share token, www, trailing slash,
     // no scheme, an @ in the path, upper-case host — all reduce to the handle.
     for (const pasted of [
-      'https://www.instagram.com/smokey.dailies?stkn=NWkxMDlrYWtqY2Jn',
-      'https://instagram.com/smokey.dailies/',
-      'instagram.com/@smokey.dailies',
-      'HTTPS://WWW.INSTAGRAM.COM/smokey.dailies#top',
+      'https://www.instagram.com/demo.daily?stkn=NWkxMDlrYWtqY2Jn',
+      'https://instagram.com/demo.daily/',
+      'instagram.com/@demo.daily',
+      'HTTPS://WWW.INSTAGRAM.COM/demo.daily#top',
     ]) {
       expect(
         schema.parse({ ...base, instagram: pasted }).instagram,
         pasted,
-      ).toBe('smokey.dailies');
+      ).toBe('demo.daily');
     }
     for (const pasted of [
-      'https://t.me/smokeypetshop',
-      'telegram.me/smokeypetshop?start=x',
+      'https://t.me/demoshop',
+      'telegram.me/demoshop?start=x',
     ]) {
       expect(schema.parse({ ...base, telegram: pasted }).telegram, pasted).toBe(
-        'smokeypetshop',
+        'demoshop',
       );
     }
   });
@@ -472,8 +389,8 @@ describe('CONTENT_SCHEMAS checkout.payment', () => {
       return result.success ? '' : result.error.issues[0].message;
     };
     for (const bad of [
-      'smokey shop',
-      'smokey/shop',
+      'demo shop',
+      'demo/shop',
       'a'.repeat(33),
       'https://instagram.com/',
     ]) {
@@ -481,13 +398,13 @@ describe('CONTENT_SCHEMAS checkout.payment', () => {
     }
     // A Telegram link in the Instagram field (and the reverse) is not silently
     // rehosted; nor is any other site's URL.
-    expect(message('https://t.me/smokeypetshop', 'instagram')).toBe(
+    expect(message('https://t.me/demoshop', 'instagram')).toBe(
       HANDLE_MESSAGES.host,
     );
-    expect(message('https://instagram.com/smokey.petshop', 'telegram')).toBe(
+    expect(message('https://instagram.com/demo.shop', 'telegram')).toBe(
       HANDLE_MESSAGES.host,
     );
-    expect(message('https://example.com/smokey', 'instagram')).toBe(
+    expect(message('https://example.com/demo', 'instagram')).toBe(
       HANDLE_MESSAGES.host,
     );
   });
@@ -526,7 +443,7 @@ describe('CONTENT_SCHEMAS link fields (every one optional: compat)', () => {
     '2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f',
     '8f7e6d5c-4b3a-4f2e-8d1c-0b9a8f7e6d5c',
   ];
-  const shop = { type: 'shop', categoryId: IDS[0], pet: 'cat' };
+  const shop = { type: 'shop', categoryId: IDS[0] };
   const external = { type: 'external', url: 'https://example.com/' };
   const d = DEFAULT_CONTENT;
 
@@ -545,17 +462,6 @@ describe('CONTENT_SCHEMAS link fields (every one optional: compat)', () => {
       [
         'home.hero',
         { ...d['home.hero'], shopCtaLink: shop, aboutCtaLink: null },
-      ],
-      [
-        'home.moments',
-        {
-          ...d['home.moments'],
-          ctaLink: external,
-          cards: d['home.moments'].cards.map((card, i) => ({
-            ...card,
-            link: i === 0 ? null : shop,
-          })),
-        },
       ],
       ['home.guide', { ...d['home.guide'], ctaLink: shop }],
       [
@@ -620,22 +526,6 @@ describe('CONTENT_SCHEMAS link fields (every one optional: compat)', () => {
     ]);
   });
 
-  it('lets a routine tab pick one to four distinct categories', () => {
-    const routine = d['home.routine'];
-    const withIds = (categoryIds: unknown) => ({
-      ...routine,
-      slots: [{ ...routine.slots[0], categoryIds }, ...routine.slots.slice(1)],
-    });
-    const parse = (categoryIds: unknown) =>
-      CONTENT_SCHEMAS['home.routine'].safeParse(withIds(categoryIds));
-
-    expect(parse([IDS[0]]).data).toEqual(withIds([IDS[0]]));
-    expect(parse(IDS.slice(0, 4)).success).toBe(true);
-    for (const bad of [[], IDS, [IDS[0], IDS[0]], ['dry-food']]) {
-      expect(parse(bad).success, JSON.stringify(bad)).toBe(false);
-    }
-  });
-
   it('lets the home strip pick one to six distinct categories, or none', () => {
     const six = [...IDS, '4a5b6c7d-8e9f-4a0b-9c1d-2e3f4a5b6c7d'];
     const seven = [...six, '9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a'];
@@ -694,6 +584,11 @@ describe('CONTENT_SCHEMAS footer.social (a shipped key: defaulted, not required)
   const schema = CONTENT_SCHEMAS.footer;
   const { social: _social, ...legacyRow } = DEFAULT_CONTENT.footer;
   const cleared = { instagram: '', instagramDailies: '', telegram: '' };
+  const DEMO_HANDLES = {
+    instagram: 'demo.shop',
+    instagramDailies: 'demo.daily',
+    telegram: 'demoshop',
+  };
 
   it('parses a row saved before the field existed to the real handles', () => {
     // On read AND in the editor (which seeds from the parsed value): a legacy
@@ -724,29 +619,29 @@ describe('CONTENT_SCHEMAS footer.social (a shipped key: defaulted, not required)
       schema.parse({
         ...legacyRow,
         social: {
-          instagram: '@smokey.petshop',
-          instagramDailies: ' smokey.dailies ',
-          telegram: '@smokeypetshop',
+          instagram: '@demo.shop',
+          instagramDailies: ' demo.daily ',
+          telegram: '@demoshop',
         },
       }).social,
-    ).toEqual(FOOTER_SOCIAL_DEFAULT);
-    // The three links exactly as Benyamin pasted them.
+    ).toEqual(DEMO_HANDLES);
+    // The three links as a shop owner pastes them from the app's share sheet.
     expect(
       schema.parse({
         ...legacyRow,
         social: {
           instagram:
-            'https://www.instagram.com/smokey.petshop?stkn=OG9qN2ljaHNmeWU=',
+            'https://www.instagram.com/demo.shop?stkn=OG9qN2ljaHNmeWU=',
           instagramDailies:
-            'https://www.instagram.com/smokey.dailies?stkn=NWkxMDlrYWtqY2Jn',
-          telegram: 'https://t.me/smokeypetshop',
+            'https://www.instagram.com/demo.daily?stkn=NWkxMDlrYWtqY2Jn',
+          telegram: 'https://t.me/demoshop',
         },
       }).social,
-    ).toEqual(FOOTER_SOCIAL_DEFAULT);
+    ).toEqual(DEMO_HANDLES);
 
     const result = schema.safeParse({
       ...legacyRow,
-      social: { ...cleared, instagram: 'https://t.me/smokeypetshop' },
+      social: { ...cleared, instagram: 'https://t.me/demoshop' },
     });
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -756,9 +651,7 @@ describe('CONTENT_SCHEMAS footer.social (a shipped key: defaulted, not required)
   });
 
   it('links a stored handle to its canonical profile URL', () => {
-    expect(instagramUrl('smokey.dailies')).toBe(
-      'https://instagram.com/smokey.dailies',
-    );
-    expect(telegramUrl('smokeypetshop')).toBe('https://t.me/smokeypetshop');
+    expect(instagramUrl('demo.daily')).toBe('https://instagram.com/demo.daily');
+    expect(telegramUrl('demoshop')).toBe('https://t.me/demoshop');
   });
 });

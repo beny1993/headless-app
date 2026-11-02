@@ -24,7 +24,6 @@ import {
 } from 'vitest';
 import {
   categories,
-  PET_TYPES,
   productImages,
   products,
   type Category,
@@ -161,7 +160,6 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       oldPrice: 2_900_000,
       stock: 12,
       categoryId: category.id,
-      petTypes: [PET_TYPES.CAT],
       isActive: true,
       ...over,
     };
@@ -338,39 +336,6 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       );
     });
 
-    it('stores both pets and answers with them in order', async () => {
-      const category = await makeCategory();
-      asAdmin();
-      const { status, body: envelope } = await parse<{ petTypes: string[] }>(
-        await json(
-          API_PATHS.ADMIN_PRODUCTS,
-          'POST',
-          body(category, { petTypes: [PET_TYPES.DOG, PET_TYPES.CAT] }),
-        ),
-      );
-      expect(status).toBe(201);
-      if (envelope.status !== 'success') throw new Error(envelope.message);
-      expect(envelope.data.petTypes).toEqual(['cat', 'dog']);
-    });
-
-    it('400s an empty pet selection with the message the form shows', async () => {
-      const category = await makeCategory();
-      asAdmin();
-      const res = await parse(
-        await json(
-          API_PATHS.ADMIN_PRODUCTS,
-          'POST',
-          body(category, { petTypes: [] }),
-        ),
-      );
-      expect(res.status).toBe(400);
-      if (res.body.status !== 'error') throw new Error('expected error');
-      // Keyed on the bare field name, or the form has no field to show it on.
-      expect(res.body.errors).toContain(
-        `petTypes: ${PRODUCT_MESSAGES.petRequired}`,
-      );
-    });
-
     it('round-trips the additional categories, keeping categoryId the main one', async () => {
       const primary = await makeCategory();
       const extra = await makeCategory();
@@ -454,25 +419,6 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
       );
     });
 
-    it('keys a bad pet value on the bare field, not on its index', async () => {
-      // Same trap as the additional ids above: `petTypes.0` is a key the
-      // form's pet fieldset never reads, so the refusal would be invisible.
-      const category = await makeCategory();
-      asAdmin();
-
-      const res = await parse(
-        await json(
-          API_PATHS.ADMIN_PRODUCTS,
-          'POST',
-          body(category, { petTypes: [PET_TYPES.CAT, 'hamster'] }),
-        ),
-      );
-
-      expect(res.status).toBe(400);
-      if (res.body.status !== 'error') throw new Error('expected error');
-      expect(res.body.errors).toContain(`petTypes: ${PRODUCT_MESSAGES.pet}`);
-    });
-
     it('400s a NUL byte in the title rather than a database 500', async () => {
       const category = await makeCategory();
       asAdmin();
@@ -550,7 +496,6 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
         price: 100_000,
         stock: 3,
         categoryId: category.id,
-        petTypes: [PET_TYPES.CAT],
       });
       asAdmin();
       const { status, body: envelope } = await parse<{
@@ -582,7 +527,6 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
         price: 100_000,
         stock: 3,
         categoryId: primary.id,
-        petTypes: [PET_TYPES.CAT],
         extraCategoryIds: [extra.id],
       });
       asAdmin();
@@ -649,7 +593,6 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
         price: 100_000,
         stock: 3,
         categoryId: category.id,
-        petTypes: [PET_TYPES.CAT],
       });
       asAdmin();
       const res = await json(apiAdminProductPath(product.id), 'PUT', {
@@ -678,7 +621,6 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
         price: 100_000,
         stock: 3,
         categoryId: category.id,
-        petTypes: [PET_TYPES.CAT],
       });
 
     const rowOf = async (id: string) =>
@@ -838,7 +780,6 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
         price: 100_000,
         stock: 3,
         categoryId: category.id,
-        petTypes: [PET_TYPES.CAT],
       });
 
     it('stores a valid image, records the key, and serves the bytes (201)', async () => {
@@ -1077,7 +1018,6 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
         price: 100_000,
         stock: 3,
         categoryId: category.id,
-        petTypes: [PET_TYPES.CAT],
       });
 
     /** A product carrying `count` uploaded photos, and their keys in order. */
@@ -1197,7 +1137,7 @@ describe.skipIf(!databaseReachable)('admin product API', () => {
     });
 
     it.each([
-      ['a bundled seed key', ['products/cat-dry-food.jpg']],
+      ['a bundled seed key', ['products/mug.jpg']],
       ['an arbitrary string', ['../../etc/passwd']],
       ['a repeated key', null],
     ])('refuses %s', async (_name, keys) => {

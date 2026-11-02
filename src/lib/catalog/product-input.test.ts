@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { PET_TYPES } from './product-query';
 import {
   MAX_EXTRA_CATEGORIES,
   MAX_PRODUCT_IMAGES,
@@ -23,7 +22,6 @@ const valid = {
   oldPrice: 2_900_000,
   stock: 12,
   categoryId: '123e4567-e89b-12d3-a456-426614174000',
-  petTypes: [PET_TYPES.CAT],
   isActive: true,
 };
 
@@ -31,7 +29,6 @@ describe('productInputSchema', () => {
   it('accepts a well-formed product', () => {
     const parsed = productInputSchema.parse(valid);
     expect(parsed.price).toBe(2_450_000);
-    expect(parsed.petTypes).toEqual(['cat']);
   });
 
   describe('money is integer Toman', () => {
@@ -147,61 +144,6 @@ describe('productInputSchema', () => {
     it('collapses an empty brand to null', () => {
       const parsed = productInputSchema.parse({ ...valid, brand: '   ' });
       expect(parsed.brand).toBe(null);
-    });
-  });
-
-  describe('the pet selection', () => {
-    const pets = (input: unknown) =>
-      productInputSchema.safeParse({ ...valid, petTypes: input });
-
-    it('accepts both pets and stores them in the canonical order', () => {
-      expect(pets([PET_TYPES.DOG, PET_TYPES.CAT]).data?.petTypes).toEqual([
-        'cat',
-        'dog',
-      ]);
-    });
-
-    it('dedupes a repeated pet rather than storing it twice', () => {
-      expect(pets([PET_TYPES.CAT, PET_TYPES.CAT]).data?.petTypes).toEqual([
-        'cat',
-      ]);
-    });
-
-    it('refuses an empty selection with the message the form shows', () => {
-      const parsed = pets([]);
-      expect(parsed.success).toBe(false);
-      expect(parsed.error?.issues[0]).toMatchObject({
-        path: ['petTypes'],
-        message: PRODUCT_MESSAGES.petRequired,
-      });
-    });
-
-    it('refuses a missing key with the same message', () => {
-      const { petTypes: _omitted, ...withoutPets } = valid;
-      const parsed = productInputSchema.safeParse(withoutPets);
-      expect(parsed.success).toBe(false);
-      expect(parsed.error?.issues[0].message).toBe(
-        PRODUCT_MESSAGES.petRequired,
-      );
-    });
-
-    it('rejects an unknown pet type', () => {
-      expect(pets(['hamster']).success).toBe(false);
-      expect(pets(PET_TYPES.CAT).success).toBe(false);
-    });
-
-    it('keys a bad pet value on the bare field, never on its index', () => {
-      // The form reads `fieldErrors.petTypes`, so an issue keyed `petTypes.0`
-      // is one no field ever shows: the admin would get a refused save with
-      // no message at all.
-      for (const bad of [['hamster'], [PET_TYPES.CAT, 7], [null], [['cat']]]) {
-        const parsed = pets(bad);
-        expect(parsed.success).toBe(false);
-        expect(parsed.error?.issues[0]).toMatchObject({
-          path: ['petTypes'],
-          message: PRODUCT_MESSAGES.pet,
-        });
-      }
     });
   });
 
@@ -587,7 +529,7 @@ describe('the gallery-order body', () => {
   it('takes this product\u2019s own keys, in order', () => {
     const keys = [
       'uploads/11111111-1111-4111-8111-111111111111.jpg',
-      'products/cat-dry-food.jpg',
+      'products/mug.jpg',
     ];
 
     expect(parse(keys).success).toBe(true);

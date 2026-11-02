@@ -17,7 +17,6 @@ import { inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   categories,
-  PET_TYPES,
   productImages,
   products,
   type Category,
@@ -150,7 +149,6 @@ describe.skipIf(!databaseReachable)('the product page', () => {
       price: 285_000,
       stock: 24,
       categoryId: category.id,
-      petTypes: [PET_TYPES.CAT],
       ...overrides,
     };
   };
@@ -233,19 +231,6 @@ describe.skipIf(!databaseReachable)('the product page', () => {
       // navigation check would pass against the very bug it is meant to catch.
       expect(gallery).not.toBeNull();
       expect((gallery as { key?: unknown }).key).toBe(product.id);
-    });
-
-    it('names both pets in one phrase for a product suited to both', async () => {
-      const category = await makeCategory();
-      const both = await ProductDao.create(
-        makeProduct(category, { petTypes: [PET_TYPES.CAT, PET_TYPES.DOG] }),
-      );
-      const catOnly = await ProductDao.create(makeProduct(category));
-
-      expect(await renderedText(both.slug)).toContain('گربه و سگ');
-      const single = await renderedText(catOnly.slug);
-      expect(single).toContain('گربه');
-      expect(single).not.toContain('گربه و سگ');
     });
 
     it('renders the price in Toman with Persian digits', async () => {

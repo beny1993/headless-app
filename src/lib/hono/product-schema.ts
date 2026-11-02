@@ -9,13 +9,12 @@
 //
 // `z` from `zod`, not from `@hono/zod-openapi` — see the note in ./envelope.ts.
 import { z } from 'zod';
-import { PET_TYPE_VALUES } from '@/lib/catalog/product-query';
 
 export const ProductImageSchema = z
   .object({
     id: z.uuid(),
     /**
-     * A storage key, not a URL — `products/cat-toy.jpg`. Resolving it to a URL
+     * A storage key, not a URL — `products/notebook.jpg`. Resolving it to a URL
      * is the storage interface's job, not this endpoint's.
      */
     objectKey: z.string(),
@@ -36,8 +35,6 @@ export const ProductSchema = z
     price: z.number().int().positive(),
     oldPrice: z.number().int().positive().nullable(),
     stock: z.number().int().nonnegative(),
-    /** One pet or both, in the catalog's canonical order. Never empty. */
-    petTypes: z.array(z.enum(PET_TYPE_VALUES)).min(1),
     /** The product's **main** category. */
     categoryId: z.uuid(),
     /**

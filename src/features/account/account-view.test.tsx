@@ -8,7 +8,6 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError } from '@/lib/api-client';
 import { AccountView } from './account-view';
-import type { PetResponse } from '@/lib/hono/routes/me-pets';
 import type { AddressResponse } from '@/lib/hono/routes/me-addresses';
 
 const { postData, patchData, delData } = vi.hoisted(() => ({
@@ -25,18 +24,6 @@ vi.mock('@/lib/api-client', async (original) => ({
 vi.mock('@/features/auth/sign-out-button', () => ({
   SignOutButton: () => null,
 }));
-const pet: PetResponse = {
-  id: 'pet-1',
-  name: 'اسموکی',
-  type: 'cat',
-  gender: 'female',
-  neutered: false,
-  breed: null,
-  age: null,
-  weight: null,
-  photoUrl: null,
-  createdAt: '2026-09-01T00:00:00Z',
-};
 const address: AddressResponse = {
   id: 'address-1',
   title: 'خانه',
@@ -57,7 +44,6 @@ const show = () =>
       name="سارا"
       phone="+989121234567"
       orders={[]}
-      pets={[pet]}
       addresses={[address]}
       provinces={[{ provinceId: 1, name: 'تهران' }]}
     />,
@@ -68,124 +54,106 @@ afterEach(() => {
 });
 
 describe('account resource state', () => {
-  for (const resource of ['pets', 'addresses'] as const) {
-    it(`${resource}: keeps a newly created record after switching tabs`, async () => {
-      postData.mockResolvedValue(
-        resource === 'pets'
-          ? { ...pet, id: 'pet-2', name: 'جدید' }
-          : { ...address, id: 'address-2', recipientName: 'جدید' },
-      );
-      show();
-      click(`account-tab-${resource}`);
-      click(`account-${resource}-add`);
-      const values =
-        resource === 'pets'
-          ? { 'pets-name': 'جدید' }
-          : {
-              'addresses-recipient-name': 'جدید',
-              'addresses-recipient-phone': '+989121234567',
-              'addresses-city': 'تهران',
-              'addresses-postal': '1234567890',
-              'addresses-line': 'خیابان آزادی پلاک یک',
-            };
-      for (const [field, value] of Object.entries(values)) {
-        fireEvent.change(
-          document.querySelector(`[data-umami-event="account-${field}"]`)!,
-          { target: { value } },
-        );
-      }
-      if (resource === 'addresses')
-        fireEvent.change(screen.getByLabelText('استان'), {
-          target: { value: '1' },
-        });
-      await act(async () => {
-        click(`account-${resource}-save`);
-      });
-      expect(postData).toHaveBeenCalledOnce();
-      click('account-tab-profile');
-      click(`account-tab-${resource}`);
-      expect(
-        screen.getByText(resource === 'pets' ? 'جدید' : 'جدید · تهران'),
-      ).toBeTruthy();
+  // One resource today; the tests stay written per resource so a second
+  // owner-scoped tab drops in beside it.
+  const resource = 'addresses';
+
+  it(`${resource}: keeps a newly created record after switching tabs`, async () => {
+    postData.mockResolvedValue({
+      ...address,
+      id: 'address-2',
+      recipientName: 'جدید',
     });
-    it(`${resource}: a failed deletion preserves the item and its open editor`, async () => {
-      // The server's own refusal is what reaches the alert; a 5xx or a dead
-      // connection would read the generic sentence instead.
-      delData.mockRejectedValue(new ApiRequestError(409, 'حذف انجام نشد.'));
-      show();
-      click(`account-tab-${resource}`);
-      click(`account-${resource}-edit`);
-      click(`account-${resource}-delete`);
-      await act(async () => {
-        click(`account-${resource}-delete-confirm`);
-      });
-      expect(screen.getByRole('alert').textContent).toBe('حذف انجام نشد.');
-      expect(
-        document.querySelector(`[data-umami-event="account-${resource}-save"]`),
-      ).not.toBeNull();
-      expect(
-        document.querySelector(`[data-umami-event="account-${resource}-edit"]`),
-      ).not.toBeNull();
-    });
-    it(`${resource}: keeps a deletion after switching tabs`, async () => {
-      delData.mockResolvedValue({
-        id: resource === 'pets' ? pet.id : address.id,
-      });
-      show();
-      click(`account-tab-${resource}`);
-      click(`account-${resource}-delete`);
-      await act(async () => {
-        click(`account-${resource}-delete-confirm`);
-      });
-      click('account-tab-profile');
-      click(`account-tab-${resource}`);
-      expect(
-        document.querySelector(`[data-umami-event="account-${resource}-edit"]`),
-      ).toBeNull();
-    });
-    it(`${resource}: deleting the item being edited closes its form`, async () => {
-      delData.mockResolvedValue({});
-      show();
-      click(`account-tab-${resource}`);
-      click(`account-${resource}-edit`);
-      click(`account-${resource}-delete`);
-      await act(async () => {
-        click(`account-${resource}-delete-confirm`);
-      });
-      expect(
-        document.querySelector(`[data-umami-event="account-${resource}-save"]`),
-      ).toBeNull();
-      expect(
-        screen.getByText(
-          resource === 'pets'
-            ? 'هنوز حیوانی اضافه نکرده‌ای'
-            : 'هنوز آدرسی ذخیره نکرده‌ای',
-        ),
-      ).toBeTruthy();
-    });
-    it(`${resource}: keeps an edit after switching tabs`, async () => {
-      patchData.mockResolvedValue(
-        resource === 'pets'
-          ? { ...pet, name: 'جدید' }
-          : { ...address, recipientName: 'جدید' },
-      );
-      show();
-      click(`account-tab-${resource}`);
-      click(`account-${resource}-edit`);
+    show();
+    click(`account-tab-${resource}`);
+    click(`account-${resource}-add`);
+    const values = {
+      'addresses-recipient-name': 'جدید',
+      'addresses-recipient-phone': '+989121234567',
+      'addresses-city': 'تهران',
+      'addresses-postal': '1234567890',
+      'addresses-line': 'خیابان آزادی پلاک یک',
+    };
+    for (const [field, value] of Object.entries(values)) {
       fireEvent.change(
-        document.querySelector(
-          `[data-umami-event="account-${resource === 'pets' ? 'pets-name' : 'addresses-recipient-name'}"]`,
-        )!,
-        { target: { value: 'جدید' } },
+        document.querySelector(`[data-umami-event="account-${field}"]`)!,
+        { target: { value } },
       );
-      await act(async () => {
-        click(`account-${resource}-save`);
-      });
-      click('account-tab-profile');
-      click(`account-tab-${resource}`);
-      expect(
-        screen.getByText(resource === 'pets' ? 'جدید' : 'جدید · تهران'),
-      ).toBeTruthy();
+    }
+    fireEvent.change(screen.getByLabelText('استان'), {
+      target: { value: '1' },
     });
-  }
+    await act(async () => {
+      click(`account-${resource}-save`);
+    });
+    expect(postData).toHaveBeenCalledOnce();
+    click('account-tab-profile');
+    click(`account-tab-${resource}`);
+    expect(screen.getByText('جدید · تهران')).toBeTruthy();
+  });
+  it(`${resource}: a failed deletion preserves the item and its open editor`, async () => {
+    // The server's own refusal is what reaches the alert; a 5xx or a dead
+    // connection would read the generic sentence instead.
+    delData.mockRejectedValue(new ApiRequestError(409, 'حذف انجام نشد.'));
+    show();
+    click(`account-tab-${resource}`);
+    click(`account-${resource}-edit`);
+    click(`account-${resource}-delete`);
+    await act(async () => {
+      click(`account-${resource}-delete-confirm`);
+    });
+    expect(screen.getByRole('alert').textContent).toBe('حذف انجام نشد.');
+    expect(
+      document.querySelector(`[data-umami-event="account-${resource}-save"]`),
+    ).not.toBeNull();
+    expect(
+      document.querySelector(`[data-umami-event="account-${resource}-edit"]`),
+    ).not.toBeNull();
+  });
+  it(`${resource}: keeps a deletion after switching tabs`, async () => {
+    delData.mockResolvedValue({ id: address.id });
+    show();
+    click(`account-tab-${resource}`);
+    click(`account-${resource}-delete`);
+    await act(async () => {
+      click(`account-${resource}-delete-confirm`);
+    });
+    click('account-tab-profile');
+    click(`account-tab-${resource}`);
+    expect(
+      document.querySelector(`[data-umami-event="account-${resource}-edit"]`),
+    ).toBeNull();
+  });
+  it(`${resource}: deleting the item being edited closes its form`, async () => {
+    delData.mockResolvedValue({});
+    show();
+    click(`account-tab-${resource}`);
+    click(`account-${resource}-edit`);
+    click(`account-${resource}-delete`);
+    await act(async () => {
+      click(`account-${resource}-delete-confirm`);
+    });
+    expect(
+      document.querySelector(`[data-umami-event="account-${resource}-save"]`),
+    ).toBeNull();
+    expect(screen.getByText('هنوز آدرسی ذخیره نکرده‌ای')).toBeTruthy();
+  });
+  it(`${resource}: keeps an edit after switching tabs`, async () => {
+    patchData.mockResolvedValue({ ...address, recipientName: 'جدید' });
+    show();
+    click(`account-tab-${resource}`);
+    click(`account-${resource}-edit`);
+    fireEvent.change(
+      document.querySelector(
+        '[data-umami-event="account-addresses-recipient-name"]',
+      )!,
+      { target: { value: 'جدید' } },
+    );
+    await act(async () => {
+      click(`account-${resource}-save`);
+    });
+    click('account-tab-profile');
+    click(`account-tab-${resource}`);
+    expect(screen.getByText('جدید · تهران')).toBeTruthy();
+  });
 });

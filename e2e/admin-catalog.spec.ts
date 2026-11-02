@@ -1,7 +1,5 @@
-import { formatPetTypes } from '@/lib/catalog/product-query';
 import type { Locator, Page } from '@playwright/test';
 import { z } from 'zod';
-import { PET_TYPES } from '@/db/schema/catalog';
 import { SEED_CATEGORIES, SEED_SUBCATEGORIES } from '@/db/seed/catalog-data';
 import { SUBCATEGORY_PREFIX } from '@/lib/catalog/category-tree';
 import {
@@ -96,12 +94,6 @@ test('an admin adds a product with photos, reorders them, reprices it and delete
     .selectOption({ label: `${SUBCATEGORY_PREFIX}${SUB_CATEGORY.title}` });
   await page.getByLabel('قیمت (تومان)', { exact: true }).fill('150000');
   await page.getByLabel('موجودی', { exact: true }).fill('10');
-  await page
-    .locator('[data-umami-event="admin-panel-product-pet-cat"]')
-    .click();
-  await page
-    .locator('[data-umami-event="admin-panel-product-pet-dog"]')
-    .click();
   // One more category, alongside the main one. A seeded top-level one on
   // purpose: should the spec fail before its delete at the end, the
   // junction's restricting foreign key would pin a category it created.
@@ -218,16 +210,16 @@ test('an admin adds a product with photos, reorders them, reprices it and delete
     await expect(thumbs.nth(2)).toHaveAttribute('aria-pressed', 'true');
     await expect(thumbs.nth(0)).toHaveAttribute('aria-pressed', 'false');
     await expect(thumbs.nth(1)).toHaveAttribute('aria-pressed', 'false');
-    // Both toggles were pressed, so «مناسب برای» names both animals — through
-    // the one helper that wording comes from, never a literal.
+    // Filed under its sub-category and the extra one, so «دسته‌بندی» names
+    // both, each a link to its shelf.
     await page
       .locator('[data-umami-event="product-tab-select"]', {
         hasText: 'مشخصات',
       })
       .click();
-    await expect(page.getByRole('region', { name: 'مشخصات' })).toContainText(
-      formatPetTypes([PET_TYPES.CAT, PET_TYPES.DOG]),
-    );
+    const specs = page.getByRole('region', { name: 'مشخصات' });
+    await expect(specs).toContainText(SUB_CATEGORY.title);
+    await expect(specs).toContainText(EXTRA_CATEGORY.title);
 
     await page.goto(adminEditProductPath(productId));
     // Saved as the slug's code plus a random suffix, and still not editable.
@@ -465,7 +457,6 @@ test('an admin can only deactivate a product a shopper has ordered', async ({
       price: 120_000,
       stock: 5,
       categoryId: category.id,
-      petTypes: [PET_TYPES.CAT],
       isActive: true,
     },
   });

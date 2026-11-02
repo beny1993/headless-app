@@ -269,23 +269,20 @@ describe('content editor destinations', () => {
 
     choose(picker, LINK_PICKER_LABELS.type, 'shop');
     choose(picker, LINK_PICKER_LABELS.category, TOYS.id);
-    choose(picker, LINK_PICKER_LABELS.pet, 'dog');
-    expect(
-      picker.getByText(shopPath({ category: TOYS.slug, pet: 'dog' })),
-    ).toBeTruthy();
-    // Re-pointing the category keeps the pet already chosen.
+    expect(picker.getByText(shopPath({ category: TOYS.slug }))).toBeTruthy();
+    // Re-pointing the category replaces the one chosen before.
     choose(picker, LINK_PICKER_LABELS.category, DRY.id);
 
     await save();
     expect(putData).toHaveBeenCalledWith(
       apiAdminContentPath('home.philosophy'),
       expect.objectContaining({
-        ctaLink: { type: 'shop', categoryId: DRY.id, pet: 'dog' },
+        ctaLink: { type: 'shop', categoryId: DRY.id },
       }),
     );
   });
 
-  it('stores only the filters picked: a category-only shop link has no pet', async () => {
+  it('stores only the filters picked: «all categories» stores no category', async () => {
     putData.mockResolvedValue({
       key: 'about.cta',
       value: DEFAULT_CONTENT['about.cta'],
@@ -300,13 +297,15 @@ describe('content editor destinations', () => {
     const picker = pickerFor('about.cta', 'ctaLink');
     choose(picker, LINK_PICKER_LABELS.type, 'shop');
     choose(picker, LINK_PICKER_LABELS.category, DRY.id);
+    choose(picker, LINK_PICKER_LABELS.category, '');
 
     await save();
-    // «همه حیوانات» stores no `pet` at all; an empty one would fail the schema.
+    // «همه دسته‌بندی‌ها» stores no `categoryId` at all; an empty one would
+    // fail the schema.
     expect(putData).toHaveBeenCalledWith(
       apiAdminContentPath('about.cta'),
       expect.objectContaining({
-        ctaLink: { type: 'shop', categoryId: DRY.id },
+        ctaLink: { type: 'shop' },
       }),
     );
   });
@@ -468,63 +467,6 @@ describe('content editor destinations', () => {
     expect(navLinks[2]).toEqual({ type: 'page', page: 'account' });
   });
 
-  it('keeps a routine tab’s categories in picking order, at most four', async () => {
-    const five = [
-      DRY,
-      TOYS,
-      {
-        id: '7e6d5c4b-3a2f-4e1d-9c0b-a9f8e7d6c5b4',
-        title: 'تشویقی',
-        slug: 'treats',
-      },
-      {
-        id: '2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f',
-        title: 'مکمل',
-        slug: 'supplements',
-      },
-      {
-        id: '8f7e6d5c-4b3a-4f2e-8d1c-0b9a8f7e6d5c',
-        title: 'بهداشت',
-        slug: 'hygiene',
-      },
-    ];
-    putData.mockResolvedValue({
-      key: 'home.routine',
-      value: DEFAULT_CONTENT['home.routine'],
-    });
-    render(
-      <ContentEditor
-        options={{ ...OPTIONS, categories: five }}
-        keys={['home.routine']}
-        values={{ 'home.routine': DEFAULT_CONTENT['home.routine'] }}
-      />,
-    );
-    const picker = pickerFor('home.routine', 'slots.0.categoryIds');
-    for (const category of [five[3], five[0], five[1], five[2]]) {
-      fireEvent.click(picker.getByRole('checkbox', { name: category.title }));
-    }
-    const box = (category: { title: string }) =>
-      picker.getByRole('checkbox', {
-        name: category.title,
-      }) as HTMLInputElement;
-    // A fifth cannot be added: a tab shows four tiles at most…
-    expect(box(five[4]).disabled).toBe(true);
-    // …but a picked one can still be removed, which frees the slot.
-    expect(box(five[0]).disabled).toBe(false);
-    fireEvent.click(box(five[0]));
-    expect(box(five[4]).disabled).toBe(false);
-    fireEvent.click(box(five[4]));
-
-    await save();
-    const slots = sentBody().slots as { categoryIds?: string[] }[];
-    expect(slots[0].categoryIds).toEqual([
-      five[3].id,
-      five[1].id,
-      five[2].id,
-      five[4].id,
-    ]);
-  });
-
   it('picks the home strip from the main categories, listing the six tiles it shows', async () => {
     // Seven main categories in display order, and a sub-category.
     const main = [
@@ -617,7 +559,7 @@ describe('content editor destinations', () => {
       '۶ بهداشت خودکار',
     ]);
 
-    // Six at most — the strip's own count, not a routine tab's four.
+    // Six at most — the strip's own count.
     for (const category of [main[0], main[1], main[3], main[4]]) {
       fireEvent.click(box(category));
     }
@@ -664,111 +606,49 @@ describe('content editor destinations', () => {
     expect(sentBody().categoryIds).toEqual([TOYS.id, DRY.id]);
   });
 
-  it('saves a routine tab’s picks in the list’s order, not the order they were ticked', async () => {
+  it('clears the home strip back to display order when every pick is removed', async () => {
     putData.mockResolvedValue({
-      key: 'home.routine',
-      value: DEFAULT_CONTENT['home.routine'],
+      key: 'home.categories',
+      value: DEFAULT_CONTENT['home.categories'],
     });
     render(
       <ContentEditor
         options={OPTIONS}
-        keys={['home.routine']}
-        values={{ 'home.routine': DEFAULT_CONTENT['home.routine'] }}
+        keys={['home.categories']}
+        values={{ 'home.categories': DEFAULT_CONTENT['home.categories'] }}
       />,
     );
-    const picker = pickerFor('home.routine', 'slots.0.categoryIds');
-    fireEvent.click(picker.getByRole('checkbox', { name: DRY.title }));
-    fireEvent.click(picker.getByRole('checkbox', { name: TOYS.title }));
-    const grips = reorderGrips('admin-panel-content-routine-category-reorder');
-    expect(grips).toHaveLength(2);
-
-    fireEvent.keyDown(grips[1], { key: 'ArrowUp' });
-
-    await save();
-    const slots = sentBody().slots as { categoryIds?: string[] }[];
-    expect(slots[0].categoryIds).toEqual([TOYS.id, DRY.id]);
-  });
-
-  it('clears a routine tab back to its code categories when every pick is removed', async () => {
-    putData.mockResolvedValue({
-      key: 'home.routine',
-      value: DEFAULT_CONTENT['home.routine'],
-    });
-    render(
-      <ContentEditor
-        options={OPTIONS}
-        keys={['home.routine']}
-        values={{ 'home.routine': DEFAULT_CONTENT['home.routine'] }}
-      />,
-    );
-    const picker = pickerFor('home.routine', 'slots.0.categoryIds');
+    const picker = pickerFor('home.categories', 'categoryIds');
     fireEvent.click(picker.getByRole('checkbox', { name: TOYS.title }));
     fireEvent.click(picker.getByRole('checkbox', { name: TOYS.title }));
 
     await save();
     // Unset, not an empty list — which the schema would refuse.
-    const slots = sentBody().slots as { categoryIds?: string[] }[];
-    expect(slots[0].categoryIds).toBeUndefined();
+    expect(sentBody().categoryIds).toBeUndefined();
   });
 
-  it('lists a deleted category a tab still holds, so it can be removed', async () => {
+  it('lists a deleted category the strip still holds, so it can be removed', async () => {
     putData.mockResolvedValue({
-      key: 'home.routine',
-      value: DEFAULT_CONTENT['home.routine'],
+      key: 'home.categories',
+      value: DEFAULT_CONTENT['home.categories'],
     });
-    const routine = DEFAULT_CONTENT['home.routine'];
-    const slots = [...routine.slots] as typeof routine.slots;
-    slots[0] = {
-      ...slots[0],
-      categoryIds: [DELETED_ID],
-    };
     render(
       <ContentEditor
         options={OPTIONS}
-        keys={['home.routine']}
-        values={{ 'home.routine': { ...routine, slots } }}
+        keys={['home.categories']}
+        values={{
+          'home.categories': {
+            ...DEFAULT_CONTENT['home.categories'],
+            categoryIds: [DELETED_ID],
+          },
+        }}
       />,
     );
-    const picker = pickerFor('home.routine', 'slots.0.categoryIds');
+    const picker = pickerFor('home.categories', 'categoryIds');
     fireEvent.click(picker.getByRole('checkbox', { checked: true }));
 
     await save();
-    const sent = sentBody().slots as { categoryIds?: string[] }[];
-    expect(sent[0].categoryIds).toBeUndefined();
-  });
-
-  it('shows a refused routine category on its own tab, and clears only that tab’s error once fixed', async () => {
-    putData.mockRejectedValue(
-      new ApiRequestError(400, 'ورودی نامعتبر است.', [
-        `slots.0.categoryIds: ${LINK_MESSAGES.missingCategory}`,
-        `slots.1.categoryIds: ${LINK_MESSAGES.missingCategory}`,
-      ]),
-    );
-    const routine = DEFAULT_CONTENT['home.routine'];
-    const slots = [...routine.slots] as typeof routine.slots;
-    slots[0] = { ...slots[0], categoryIds: [DELETED_ID] };
-    slots[1] = { ...slots[1], categoryIds: [DELETED_ID] };
-    render(
-      <ContentEditor
-        options={OPTIONS}
-        keys={['home.routine']}
-        values={{ 'home.routine': { ...routine, slots } }}
-      />,
-    );
-    const tab = (i: number) =>
-      pickerFor('home.routine', `slots.${i}.categoryIds`);
-
-    await save();
-    expect(tab(0).getByText(LINK_MESSAGES.missingCategory)).toBeTruthy();
-    expect(tab(1).getByText(LINK_MESSAGES.missingCategory)).toBeTruthy();
-    expect(
-      describedBy(tab(0).getByRole('checkbox', { checked: true })),
-    ).toContain(LINK_MESSAGES.missingCategory);
-
-    // Removing the deleted pick clears that tab's error and leaves the other's.
-    fireEvent.click(tab(0).getByRole('checkbox', { checked: true }));
-    expect(tab(0).queryByText(LINK_MESSAGES.missingCategory)).toBeNull();
-    expect(tab(1).getByText(LINK_MESSAGES.missingCategory)).toBeTruthy();
+    expect(sentBody().categoryIds).toBeUndefined();
   });
 
   describe('the «انتخاب‌های اسموکی» boxes', () => {

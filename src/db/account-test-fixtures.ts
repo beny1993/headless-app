@@ -1,11 +1,11 @@
-// Shared fixtures for the account (pets / addresses / order-history) integration
+// Shared fixtures for the account (addresses / order-history) integration
 // suites. Import-safe with no database: it reaches only `testDb` (the null
 // stand-in) and the schema modules (which never import `@/db`), so a DB-less run
 // still collects and skips cleanly. DAOs are pulled in by each suite through
 // `importWithDb`, never here.
 //
-// Teardown order respects the FKs: pets and addresses `cascade` from the user, so
-// deleting the users clears both; provinces are `restrict`-referenced by
+// Teardown order respects the FKs: addresses `cascade` from the user, so
+// deleting the users clears them; provinces are `restrict`-referenced by
 // addresses, so they come out only after the users that owned those addresses.
 import { inArray } from 'drizzle-orm';
 import { users, type User } from '@/db/schema/auth';
@@ -46,7 +46,7 @@ export class AccountFixtures {
 
   async cleanup(): Promise<void> {
     if (this.userIds.length > 0) {
-      // Cascades this user's pets and addresses.
+      // Cascades this user's addresses.
       await testDb.delete(users).where(inArray(users.id, this.userIds));
       this.userIds.length = 0;
     }

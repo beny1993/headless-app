@@ -3,20 +3,18 @@
 // a new tab), and an unset one keeps the destination the code had before links
 // were editable. The resolution branches are `link.test.ts`, the loading of the
 // targets the pages' integration tests; the pairing of field, fallback and button
-// lives only in JSX, so — like the moments test — it earns a render.
+// lives only in JSX, so it earns a render.
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AboutCta } from '@/features/storefront/about/about-sections';
 import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import type { LinkTargets } from '@/lib/content/link';
-import type { ContentValue } from '@/lib/content/site-content';
 import { imageSrc } from '@/lib/storage/image-url';
 import { CategoriesSection } from './categories';
 import { FeaturedStorySection } from './featured-story';
 import { HeroSection } from './hero';
 import { PhilosophySection } from './philosophy';
-import { RoutineSection } from './routine';
 
 afterEach(cleanup);
 
@@ -54,14 +52,14 @@ describe('HeroSection buttons', () => {
       <HeroSection
         content={{
           ...content,
-          shopCtaLink: { type: 'shop', categoryId: TOYS_ID, pet: 'cat' },
+          shopCtaLink: { type: 'shop', categoryId: TOYS_ID },
           aboutCtaLink: { type: 'external', url: 'https://example.com/story' },
         }}
         targets={targets}
       />,
     );
     expect(hrefOf(container, content.shopCta)).toBe(
-      shopPath({ category: 'toys', pet: 'cat' }),
+      shopPath({ category: 'toys' }),
     );
     const about = anchor(container, content.aboutCta);
     expect(about?.getAttribute('href')).toBe('https://example.com/story');
@@ -73,16 +71,16 @@ describe('HeroSection buttons', () => {
 describe('FeaturedStorySection button', () => {
   const content = DEFAULT_CONTENT['home.guide'];
 
-  it('opens wet food until a destination is saved, then the saved product', () => {
+  it('opens its built-in shelf until a destination is saved, then the saved product', () => {
     const { container, rerender } = render(
       <FeaturedStorySection
         content={content}
         targets={targets}
-        categorySlugs={['wet-food']}
+        categorySlugs={['home-decor']}
       />,
     );
     expect(hrefOf(container, content.cta)).toBe(
-      shopPath({ category: 'wet-food' }),
+      shopPath({ category: 'home-decor' }),
     );
 
     rerender(
@@ -92,18 +90,18 @@ describe('FeaturedStorySection button', () => {
           ctaLink: { type: 'product', productId: PRODUCT_ID },
         }}
         targets={targets}
-        categorySlugs={['wet-food']}
+        categorySlugs={['home-decor']}
       />,
     );
     expect(hrefOf(container, content.cta)).toBe(productPath('cat-toy'));
   });
 
-  it('opens the bare shop instead when the catalogue has no wet-food category', () => {
+  it('opens the bare shop instead when the catalogue has no such category', () => {
     const { container } = render(
       <FeaturedStorySection
         content={content}
         targets={targets}
-        categorySlugs={['cat-wet-food']}
+        categorySlugs={['garden']}
       />,
     );
     expect(hrefOf(container, content.cta)).toBe(shopPath());
@@ -229,7 +227,7 @@ describe('CategoriesSection photos', () => {
 describe('PhilosophySection link', () => {
   const content = DEFAULT_CONTENT['home.philosophy'];
 
-  it('opens /about until a destination is saved, then the saved pet shop', () => {
+  it('opens /about until a destination is saved, then the saved shop link', () => {
     const { container, rerender } = render(
       <PhilosophySection content={content} targets={targets} />,
     );
@@ -237,18 +235,18 @@ describe('PhilosophySection link', () => {
 
     rerender(
       <PhilosophySection
-        content={{ ...content, ctaLink: { type: 'shop', pet: 'dog' } }}
+        content={{ ...content, ctaLink: { type: 'shop', categoryId: TOYS_ID } }}
         targets={targets}
       />,
     );
-    expect(hrefOf(container, content.cta)).toBe(shopPath({ pet: 'dog' }));
+    expect(hrefOf(container, content.cta)).toBe(shopPath({ category: 'toys' }));
   });
 });
 
 describe('AboutCta button', () => {
   const content = DEFAULT_CONTENT['about.cta'];
 
-  it('opens the shop until a destination is saved; a deleted category keeps its pet', () => {
+  it('opens the shop until a destination is saved; a deleted category opens the whole shop', () => {
     const { container, rerender } = render(
       <AboutCta content={content} targets={targets} />,
     );
@@ -258,44 +256,11 @@ describe('AboutCta button', () => {
       <AboutCta
         content={{
           ...content,
-          ctaLink: { type: 'shop', categoryId: DELETED_ID, pet: 'cat' },
+          ctaLink: { type: 'shop', categoryId: DELETED_ID },
         }}
         targets={targets}
       />,
     );
-    expect(hrefOf(container, content.cta)).toBe(shopPath({ pet: 'cat' }));
-  });
-});
-
-describe('RoutineSection tiles', () => {
-  const content = DEFAULT_CONTENT['home.routine'];
-  const categories = [
-    { id: DRY_FOOD_ID, title: 'غذای خشک', slug: 'dry-food', imageKey: null },
-    { id: TOYS_ID, title: 'اسباب‌بازی', slug: 'toys', imageKey: null },
-  ];
-  const tileHrefs = (container: HTMLElement) =>
-    [...container.querySelectorAll('a')].map((a) => a.getAttribute('href'));
-
-  it('shows the active tab’s code categories until categories are saved', () => {
-    const { container } = render(
-      <RoutineSection content={content} categories={categories} />,
-    );
-    // The first tab's code slugs: dry food.
-    expect(tileHrefs(container)).toEqual([shopPath({ category: 'dry-food' })]);
-  });
-
-  it('shows the saved categories in the saved order, dropping a deleted one', () => {
-    const slots = [...content.slots] as ContentValue<'home.routine'>['slots'];
-    slots[0] = { ...slots[0], categoryIds: [TOYS_ID, DELETED_ID, DRY_FOOD_ID] };
-    const { container } = render(
-      <RoutineSection
-        content={{ ...content, slots }}
-        categories={categories}
-      />,
-    );
-    expect(tileHrefs(container)).toEqual([
-      shopPath({ category: 'toys' }),
-      shopPath({ category: 'dry-food' }),
-    ]);
+    expect(hrefOf(container, content.cta)).toBe(shopPath());
   });
 });

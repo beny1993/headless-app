@@ -5,13 +5,11 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   categories,
-  PET_TYPES,
   productCategories,
   productImages,
   products,
   type Category,
   type NewProduct,
-  type PetType,
 } from '@/db/schema/catalog';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import type { ProductInput } from '@/db/dao/ProductDao';
@@ -50,7 +48,6 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       price: 100_000,
       stock: 5,
       categoryId: category.id,
-      petTypes: [PET_TYPES.CAT],
       ...overrides,
     };
   };
@@ -173,45 +170,6 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       expect(rows.map((row) => row.id)).not.toContain(removed.id);
     });
 
-    it('filters by pet type', async () => {
-      const category = await makeCategory();
-      const cat = await ProductDao.create(
-        makeProduct(category, { petTypes: [PET_TYPES.CAT] }),
-      );
-      const dog = await ProductDao.create(
-        makeProduct(category, { petTypes: [PET_TYPES.DOG] }),
-      );
-
-      const { items: dogs } = await ProductDao.list({
-        categorySlug: category.slug,
-        petType: PET_TYPES.DOG,
-      });
-
-      expect(dogs.map((row) => row.id)).toEqual([dog.id]);
-      expect(dogs.map((row) => row.id)).not.toContain(cat.id);
-    });
-
-    it('applies category and pet type together', async () => {
-      const wanted = await makeCategory();
-      const other = await makeCategory();
-      const match = await ProductDao.create(
-        makeProduct(wanted, { petTypes: [PET_TYPES.DOG] }),
-      );
-      await ProductDao.create(
-        makeProduct(wanted, { petTypes: [PET_TYPES.CAT] }),
-      );
-      await ProductDao.create(
-        makeProduct(other, { petTypes: [PET_TYPES.DOG] }),
-      );
-
-      const { items: rows } = await ProductDao.list({
-        categorySlug: wanted.slug,
-        petType: PET_TYPES.DOG,
-      });
-
-      expect(rows.map((row) => row.id)).toEqual([match.id]);
-    });
-
     it('returns nothing for a category slug that does not exist', async () => {
       const { items: rows } = await ProductDao.list({
         categorySlug: 'no-such-category',
@@ -252,9 +210,7 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
           own: await ProductDao.create(makeProduct(parent)),
           under: [
             await ProductDao.create(makeProduct(sub)),
-            await ProductDao.create(
-              makeProduct(sub, { petTypes: [PET_TYPES.DOG] }),
-            ),
+            await ProductDao.create(makeProduct(sub)),
           ],
           elsewhere: await ProductDao.create(makeProduct(other)),
         };
@@ -282,18 +238,6 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
 
         expect(ids(items)).toEqual(ids(under));
         expect(total).toBe(2);
-      });
-
-      it('narrows the parent’s whole set by pet type', async () => {
-        const { parent, under } = await makeFamily();
-
-        const { items, total } = await ProductDao.list({
-          categorySlug: parent.slug,
-          petType: PET_TYPES.DOG,
-        });
-
-        expect(ids(items)).toEqual([under[1].id]);
-        expect(total).toBe(1);
       });
 
       it('does the same on the admin read', async () => {
@@ -399,23 +343,17 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       // storefront would render page links to pages that are always empty.
       const category = await makeCategory();
       const other = await makeCategory();
-      await ProductDao.create(
-        makeProduct(category, { petTypes: [PET_TYPES.DOG] }),
-      );
-      await ProductDao.create(
-        makeProduct(category, { petTypes: [PET_TYPES.CAT] }),
-      );
-      await ProductDao.create(
-        makeProduct(other, { petTypes: [PET_TYPES.DOG] }),
-      );
+      await ProductDao.create(makeProduct(category, { stock: 5 }));
+      await ProductDao.create(makeProduct(category, { stock: 0 }));
+      await ProductDao.create(makeProduct(other, { stock: 5 }));
 
-      const dogs = await ProductDao.list({
+      const inStock = await ProductDao.list({
         categorySlug: category.slug,
-        petType: PET_TYPES.DOG,
+        inStock: true,
       });
 
-      expect(dogs.total).toBe(1);
-      expect(dogs.items).toHaveLength(1);
+      expect(inStock.total).toBe(1);
+      expect(inStock.items).toHaveLength(1);
     });
 
     it('leaves soft-deleted products out of the total as well as the page', async () => {
@@ -768,17 +706,16 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       ).toEqual([active.id]);
     });
 
-    it('filters by category, pet type and a normalized search term', async () => {
+    it('filters by category and a normalized search term', async () => {
       const category = await makeCategory();
       const other = await makeCategory();
       const cat = await ProductDao.create(
         makeProduct(category, {
           title: 'غذای خشک گربه رویال',
-          petTypes: [PET_TYPES.CAT],
         }),
       );
       const dog = await ProductDao.create(
-        makeProduct(category, { title: 'قلاده سگ', petTypes: [PET_TYPES.DOG] }),
+        makeProduct(category, { title: 'قلاده سگ' }),
       );
       await ProductDao.create(makeProduct(other));
 
@@ -787,14 +724,6 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       expect(
         ids(await ProductDao.listForAdmin({ categorySlug: category.slug })),
       ).toEqual([cat.id, dog.id].sort());
-      expect(
-        ids(
-          await ProductDao.listForAdmin({
-            categorySlug: category.slug,
-            petType: PET_TYPES.DOG,
-          }),
-        ),
-      ).toEqual([dog.id]);
       // Arabic yeh in the query still matches the Persian-yeh column (normalized
       // on both sides) — «گربه» typed with the Arabic form.
       expect(
@@ -874,84 +803,6 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       expect(await ids('%')).toEqual([marked.id]);
       expect(await ids('_')).toEqual([marked.id]);
       expect(await ids('\\')).toEqual([marked.id]);
-    });
-  });
-
-  describe('a product for one pet or both', () => {
-    /** cat-only, dog-only and one for both, in one throwaway category. */
-    const makePetCatalog = async () => {
-      const category = await makeCategory();
-      const [cat, dog, both] = await Promise.all([
-        ProductDao.create(makeProduct(category, { petTypes: [PET_TYPES.CAT] })),
-        ProductDao.create(makeProduct(category, { petTypes: [PET_TYPES.DOG] })),
-        ProductDao.create(
-          makeProduct(category, {
-            petTypes: [PET_TYPES.CAT, PET_TYPES.DOG],
-          }),
-        ),
-      ]);
-      return { category, cat, dog, both };
-    };
-
-    const ids = (rows: { id: string }[]) => rows.map((row) => row.id).sort();
-
-    it('reads both pets back as an array, not as a string', async () => {
-      const category = await makeCategory();
-
-      const product = await ProductDao.create(
-        makeProduct(category, { petTypes: [PET_TYPES.CAT, PET_TYPES.DOG] }),
-      );
-
-      expect(product.petTypes).toEqual(['cat', 'dog']);
-      expect((await ProductDao.findByIdForAdmin(product.id))?.petTypes).toEqual(
-        ['cat', 'dog'],
-      );
-    });
-
-    it('stores a widened selection on the seed path too', async () => {
-      // The update branch of the upsert, not the insert: a re-seed that adds a
-      // pet to an existing sku must actually write it.
-      const category = await makeCategory();
-      const input = makeProduct(category, { petTypes: [PET_TYPES.CAT] });
-
-      await ProductDao.upsertBySku(input);
-      const second = await ProductDao.upsertBySku({
-        ...input,
-        petTypes: [PET_TYPES.CAT, PET_TYPES.DOG],
-      });
-
-      expect(second.petTypes).toEqual(['cat', 'dog']);
-    });
-
-    it('lists a both-pets product under each pet filter, and once without one', async () => {
-      const { category, cat, dog, both } = await makePetCatalog();
-      const listed = (petType?: PetType) =>
-        ProductDao.list({ categorySlug: category.slug, petType });
-
-      const cats = await listed(PET_TYPES.CAT);
-      const dogs = await listed(PET_TYPES.DOG);
-      const all = await listed();
-
-      expect(ids(cats.items)).toEqual([cat.id, both.id].sort());
-      expect(ids(dogs.items)).toEqual([dog.id, both.id].sort());
-      expect(ids(all.items)).toEqual([cat.id, dog.id, both.id].sort());
-      // The count is the filtered result, so the pager cannot disagree with it.
-      expect([cats.total, dogs.total, all.total]).toEqual([2, 2, 3]);
-    });
-
-    it('does the same on the admin listing, so no product goes missing there', async () => {
-      const { category, cat, dog, both } = await makePetCatalog();
-      const listed = (petType?: PetType) =>
-        ProductDao.pageForAdmin({ categorySlug: category.slug, petType });
-
-      const cats = await listed(PET_TYPES.CAT);
-      const dogs = await listed(PET_TYPES.DOG);
-      const all = await listed();
-
-      expect(ids(cats.items)).toEqual([cat.id, both.id].sort());
-      expect(ids(dogs.items)).toEqual([dog.id, both.id].sort());
-      expect(ids(all.items)).toEqual([cat.id, dog.id, both.id].sort());
-      expect([cats.total, dogs.total, all.total]).toEqual([2, 2, 3]);
     });
   });
 
@@ -1289,18 +1140,6 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       expect(refused).toBe('products_stock_non_negative');
     });
 
-    it('rejects a product suited to no pet at all', async () => {
-      // zod refuses an empty selection too, but the seed and psql bypass it;
-      // this is the rule that actually holds.
-      const category = await makeCategory();
-
-      const refused = await refusedBy(() =>
-        ProductDao.create(makeProduct(category, { petTypes: [] })),
-      );
-
-      expect(refused).toBe('products_pet_type_not_empty');
-    });
-
     it('rejects a zero price', async () => {
       const category = await makeCategory();
 
@@ -1474,7 +1313,6 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
           title: 'غذای خشک پرمیوم گربه بالغ',
           brand: 'Royal Canin',
           benefit: 'مناسب گوارش حساس',
-          petTypes: [PET_TYPES.CAT],
         }),
       ),
       ProductDao.create(
@@ -1483,7 +1321,6 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
           title: 'اسباب‌بازی تعاملی پر و زنگوله',
           brand: 'Catit',
           benefit: 'تحریک غریزه شکار',
-          petTypes: [PET_TYPES.CAT],
         }),
       ),
       ProductDao.create(
@@ -1491,7 +1328,6 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
           title: 'شامپو ضد کک و کنه سگ',
           brand: 'Beaphar',
           benefit: 'پوست حساس',
-          petTypes: [PET_TYPES.DOG],
         }),
       ),
     ]);
@@ -1739,7 +1575,7 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
       // story exists for is also loose enough to reach the neighbouring word.
       //
       // It reads as a near miss on a shop page, not as a wrong answer — and the
-      // category and pet filters are the narrowing the shopper actually has. If
+      // category filter is the narrowing the shopper actually has. If
       // this ever needs to be tight instead, it is this number that moves, and
       // this test is what will say so.
       const category = await makeCategory();
@@ -1773,14 +1609,6 @@ describe.skipIf(!databaseReachable)('ProductDao', () => {
 
       expect(items).toHaveLength(3);
       expect(total).toBe(3);
-    });
-
-    it('narrows by pet type and search together', async () => {
-      const { category, shampoo } = await makeSearchCatalog();
-
-      expect(
-        await searchIds(category.slug, 'حساس', { petType: PET_TYPES.DOG }),
-      ).toEqual([shampoo.id]);
     });
 
     it('narrows by category and search together', async () => {

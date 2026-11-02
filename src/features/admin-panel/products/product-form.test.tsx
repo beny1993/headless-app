@@ -74,7 +74,6 @@ it('submits the observed inventory when editing a product', async () => {
     extraCategoryIds: [],
     variantOf: null,
     variantLabel: null,
-    petTypes: ['cat'],
     isActive: true,
     images: [],
   };
@@ -131,7 +130,6 @@ const EDIT_PRODUCT: ProductFormInitial = {
   extraCategoryIds: [],
   variantOf: null,
   variantLabel: null,
-  petTypes: ['cat'],
   isActive: true,
   images: [],
 };
@@ -463,82 +461,6 @@ describe('the gallery write order', () => {
   });
 });
 
-describe('the pet control', () => {
-  // The buttons carry an emoji before the word, so they are matched by it.
-  const pet = (name: RegExp) => screen.getByRole('button', { name });
-
-  it('starts a new product with neither pet pressed', () => {
-    // Not «گربه» by default: with toggle semantics a pre-pressed cat turns an
-    // admin who presses only «سگ» into a silent both-pets product.
-    render(<ProductForm categories={[]} />);
-
-    expect(pet(/گربه/).getAttribute('aria-pressed')).toBe('false');
-    expect(pet(/سگ/).getAttribute('aria-pressed')).toBe('false');
-    expect(screen.getByText('یکی یا هر دو را انتخاب کن')).toBeTruthy();
-  });
-
-  it('shows the saved selection when editing', () => {
-    render(
-      <ProductForm
-        product={{ ...EDIT_PRODUCT, petTypes: ['cat', 'dog'] }}
-        categories={[
-          { id: EDIT_PRODUCT.categoryId, title: 'گربه', label: 'گربه' },
-        ]}
-      />,
-    );
-
-    expect(pet(/گربه/).getAttribute('aria-pressed')).toBe('true');
-    expect(pet(/سگ/).getAttribute('aria-pressed')).toBe('true');
-  });
-
-  it('toggles each pet independently and sends both', async () => {
-    api.putData.mockResolvedValue({ id: EDIT_PRODUCT.id });
-    render(
-      <ProductForm
-        product={EDIT_PRODUCT}
-        categories={[
-          { id: EDIT_PRODUCT.categoryId, title: 'گربه', label: 'گربه' },
-        ]}
-      />,
-    );
-
-    fireEvent.click(pet(/سگ/));
-
-    expect(pet(/گربه/).getAttribute('aria-pressed')).toBe('true');
-    expect(pet(/سگ/).getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
-    await waitFor(() =>
-      expect(api.putData).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ petTypes: ['cat', 'dog'] }),
-      ),
-    );
-  });
-
-  it('refuses a save with no pet and sends nothing', async () => {
-    render(
-      <ProductForm
-        product={EDIT_PRODUCT}
-        categories={[
-          { id: EDIT_PRODUCT.categoryId, title: 'گربه', label: 'گربه' },
-        ]}
-      />,
-    );
-
-    fireEvent.click(pet(/گربه/));
-    expect(pet(/گربه/).getAttribute('aria-pressed')).toBe('false');
-    fireEvent.click(screen.getByRole('button', { name: 'ذخیره محصول' }));
-
-    await waitFor(() =>
-      expect(screen.getByText(PRODUCT_MESSAGES.petRequired)).toBeTruthy(),
-    );
-    expect(api.putData).not.toHaveBeenCalled();
-    // Pressing a pet again clears the message, as every other field does.
-    fireEvent.click(pet(/سگ/));
-    expect(screen.queryByText(PRODUCT_MESSAGES.petRequired)).toBeNull();
-  });
-});
-
 describe('the additional categories', () => {
   const MAIN = EDIT_PRODUCT.categoryId;
   const MALT = '123e4567-e89b-12d3-a456-426614174002';
@@ -700,7 +622,6 @@ describe('a product family in the form', () => {
             title: 'غذای خشک سگ',
             variantLabel: '۱۰ کیلوگرم',
             categoryId: HEAD_CATEGORY,
-            petTypes: ['dog'],
           },
         ]}
         {...props}
@@ -731,7 +652,6 @@ describe('a product family in the form', () => {
           title: 'غذای خشک سگ',
           variantLabel: null,
           categoryId: HEAD_CATEGORY,
-          petTypes: ['dog'],
         },
       ],
     });
@@ -745,12 +665,11 @@ describe('a product family in the form', () => {
   it('offers a member no filing controls of its own, and says why', () => {
     renderMember();
 
-    // The shop lists heads, so a member's own category and pets could never
+    // The shop lists heads, so a member's own categories could never
     // reach a shelf. Offering the fields was offering a filing that did
     // nothing; the family is filed once, on the head.
     expect(screen.queryByLabelText('دسته‌بندی')).toBeNull();
     expect(screen.queryByText('دسته‌بندی‌های دیگر (اختیاری)')).toBeNull();
-    expect(screen.queryByText('نوع حیوان')).toBeNull();
     expect(screen.getByText(/از محصول اصلی گرفته می‌شود/)).toBeTruthy();
   });
 
@@ -758,7 +677,7 @@ describe('a product family in the form', () => {
     renderMember({ product: { ...EDIT_PRODUCT, variantOf: null } });
 
     expect(screen.getByLabelText('دسته‌بندی')).toBeTruthy();
-    expect(screen.getByText('نوع حیوان')).toBeTruthy();
+    expect(screen.getByText('دسته‌بندی‌های دیگر (اختیاری)')).toBeTruthy();
   });
 
   it('takes the head’s filing when one is picked', () => {
@@ -777,7 +696,6 @@ describe('a product family in the form', () => {
             title: 'غذای خشک سگ',
             variantLabel: '۱۰ کیلوگرم',
             categoryId: HEAD_CATEGORY,
-            petTypes: ['dog'],
           },
         ]}
       />,

@@ -260,7 +260,7 @@ describe.skipIf(!databaseReachable)(
         const product = await fx.product(category);
         await photos(product, [
           'uploads/one.jpg',
-          'products/cat-dry-food.jpg',
+          'products/mug.jpg',
           receiptKey,
           'uploads/two.webp',
         ]);

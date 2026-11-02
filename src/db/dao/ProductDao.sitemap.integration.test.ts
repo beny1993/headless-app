@@ -3,13 +3,7 @@
 // lists anything.
 import { inArray } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  categories,
-  PET_TYPES,
-  productCategories,
-  products,
-} from '@/db/schema/catalog';
-import type { PetType } from '@/lib/catalog/product-query';
+import { categories, productCategories, products } from '@/db/schema/catalog';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { OrderFixtures } from '@/db/order-test-fixtures';
 
@@ -111,25 +105,6 @@ describe.skipIf(!databaseReachable)('what sitemap.xml reads', () => {
       expect(
         await ProductDao.hasShelfProducts({ categorySlug: extra.slug }),
       ).toBe(true);
-    });
-
-    it('asks a pet shelf by the pet scope the listing uses', async () => {
-      // The seeded catalogue stocks both pets, so the scope is read inside a
-      // category of its own: a dogs-only product lists on the dog shelf alone,
-      // a both-pets one on either.
-      const dogsOnly = await fx.category();
-      await fx.product(dogsOnly, { petTypes: [PET_TYPES.DOG] });
-      const both = await fx.category();
-      await fx.product(both, { petTypes: [PET_TYPES.CAT, PET_TYPES.DOG] });
-
-      const shelfOf = (category: { slug: string }, petType: PetType) =>
-        ProductDao.hasShelfProducts({ categorySlug: category.slug, petType });
-
-      expect(await shelfOf(dogsOnly, PET_TYPES.CAT)).toBe(false);
-      expect(await shelfOf(dogsOnly, PET_TYPES.DOG)).toBe(true);
-      for (const petType of Object.values(PET_TYPES)) {
-        expect(await shelfOf(both, petType)).toBe(true);
-      }
     });
   });
 });

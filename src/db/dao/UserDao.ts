@@ -129,7 +129,7 @@ export class UserDao {
    *
    * `FOR NO KEY UPDATE`, not `FOR UPDATE`: two checkouts still conflict, but
    * the `FOR KEY SHARE` a foreign-key check takes on this row does not, so an
-   * insert that references the user — a `pets` or `addresses` row, whose keys
+   * insert that references the user — an `addresses` row, whose keys
    * are in `src/db/schema/account.ts` — does not wait for a checkout
    * (`UserDao.lockForCheckout.integration.test.ts`). A sign-in still can:
    * Better Auth's verify step UPDATEs this row (`phone_number_verified`,

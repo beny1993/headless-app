@@ -26,7 +26,7 @@ export type CartLine = {
   /** Integer Toman, as `products.price`. Display-only — see the file header. */
   unitPrice: number;
   qty: number;
-  /** Storage key, not a URL: `products/cat-toy.jpg` → `/products/cat-toy.jpg`. */
+  /** Storage key, not a URL: `products/notebook.jpg` → `/products/notebook.jpg`. */
   imageKey?: string;
 };
 

@@ -1,20 +1,11 @@
 // The SQL vocabulary the product listing is built from: the searchable-text
 // derivation and its similarity threshold, the family scalars a storefront
-// card reads, the orderings, and the two scopes behind the category and pet
-// filters. No methods and no transactions — `ProductDao` composes all of it.
+// card reads, the orderings, and the category scope behind the category
+// filter. No methods and no transactions — `ProductDao` composes all of it.
 //
 // Still «never raw SQL outside the DAO layer»: this module is part of that
 // layer, and nothing but `ProductDao` and its own tests may import it.
-import {
-  arrayContains,
-  asc,
-  desc,
-  eq,
-  inArray,
-  or,
-  sql,
-  type SQL,
-} from 'drizzle-orm';
+import { asc, desc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '@/db';
 import { PRODUCT_SORTS, type ProductSort } from '@/lib/catalog/product-query';
@@ -24,7 +15,6 @@ import {
   productCategories,
   products,
   type NewProduct,
-  type PetType,
 } from '@/db/schema/catalog';
 
 /** The fields a shopper can find a product by. */
@@ -217,14 +207,6 @@ export const ORDER_BY: Record<ProductSort, SQL[]> = {
     asc(products.sku),
   ],
 };
-
-/**
- * «Suitable for this pet» — `pet_type @> ARRAY[x]`, so a both-pets product
- * answers the cat filter and the dog filter alike, and appears exactly once
- * under each. Still one pet per query: `?pet=` is single-valued.
- */
-export const petFilter = (petType: PetType): SQL =>
-  arrayContains(products.petTypes, [petType]);
 
 /**
  * The ids a `?category=` slug covers: the category itself and — when it is a

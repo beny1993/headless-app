@@ -319,7 +319,7 @@ describe.skipIf(!databaseReachable)('admin content API', () => {
       asAdmin();
       const cases = [
         [
-          { type: 'shop', categoryId: crypto.randomUUID(), pet: 'cat' },
+          { type: 'shop', categoryId: crypto.randomUUID() },
           LINK_MESSAGES.missingCategory,
         ],
         [

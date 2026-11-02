@@ -70,7 +70,7 @@ type VariantFields = {
 };
 
 /**
- * What a shopper reads: «غذای خشک سگ — ۱۰ کیلوگرم», or just the title when the
+ * What a shopper reads: «شمع معطر — وانیل», or just the title when the
  * product stands alone.
  *
  * The **single** derivation point. The product page heading, the admin list cell

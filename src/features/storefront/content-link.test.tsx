@@ -8,13 +8,13 @@ import { ContentLink } from './content-link';
 describe('ContentLink', () => {
   it('renders a site destination as in-app navigation, in the same tab', () => {
     const link = ContentLink({
-      href: '/shop?pet=cat',
+      href: '/shop?category=kitchen',
       className: 'cta',
       children: 'فروشگاه',
     });
     expect(link.type).toBe(Link);
     expect(link.props).toEqual({
-      href: '/shop?pet=cat',
+      href: '/shop?category=kitchen',
       className: 'cta',
       children: 'فروشگاه',
     });

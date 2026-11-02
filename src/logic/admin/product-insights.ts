@@ -1,5 +1,5 @@
 // The admin «پرطرفدارها» page: what shoppers bought (our orders) beside what
-// they looked at (Umami's pageviews), per product, per category and per pet.
+// they looked at (Umami's pageviews), per product and per category.
 //
 // Two sources, deliberately unequal:
 //   · Sales are ours and exact: `OrderDao.salesByProductSince`, under the
@@ -12,11 +12,6 @@
 // database or a network; `loadProductInsights` is only the wiring.
 import { OrderDao, type ProductSalesRow } from '@/db/dao/OrderDao';
 import { ProductDao, type ProductInsightRow } from '@/db/dao/ProductDao';
-import {
-  PET_LABELS,
-  PET_TYPE_VALUES,
-  type PetType,
-} from '@/lib/catalog/product-query';
 import { displayTitle } from '@/lib/catalog/variant';
 import { PATHS } from '@/lib/constant/paths';
 import type { InsightWindowDays } from '@/lib/insights/window';
@@ -39,8 +34,8 @@ export type InsightNumbers = {
   revenue: number;
   /**
    * Revenue orders holding the product — the conversion rate's numerator.
-   * A group sums its products', so one order with two cat products counts
-   * twice under «گربه»: a purchase per product viewed, matching the views it
+   * A group sums its products', so one order with two kitchen products counts
+   * twice under «آشپزخانه»: a purchase per product viewed, matching the views it
    * is divided by (also summed per product).
    */
   orders: number;
@@ -68,7 +63,6 @@ export type ProductInsights = {
   /** Most sold first, then most viewed; at most `PRODUCT_TABLE_SIZE`. */
   products: ProductInsight[];
   categories: GroupInsight[];
-  pets: GroupInsight[];
   /**
    * Active, in stock, viewed, nothing sold — most viewed first. Sold-out
    * products belong to `soldOutWanted` instead. Empty without views.
@@ -183,7 +177,6 @@ export const buildProductInsights = ({
 
   const productInsights: ProductInsight[] = [];
   const categories = new Map<string, GroupInsight>();
-  const pets = new Map<PetType, GroupInsight>();
   const totals = zeroNumbers(withViews);
 
   for (const row of products) {
@@ -216,19 +209,6 @@ export const buildProductInsights = ({
     };
     addInto(group, numbers);
     categories.set(row.categoryId, group);
-
-    // A both-pets product counts under each: the question is «what do cat
-    // owners buy», and it is an answer to both. So the pet rows can add up
-    // to more than the totals.
-    for (const pet of row.petTypes) {
-      const petGroup = pets.get(pet) ?? {
-        ...zeroNumbers(withViews),
-        key: pet,
-        label: PET_LABELS[pet],
-      };
-      addInto(petGroup, numbers);
-      pets.set(pet, petGroup);
-    }
   }
 
   const viewed = (product: ProductInsight) => (product.views ?? 0) > 0;
@@ -242,7 +222,6 @@ export const buildProductInsights = ({
     categories: [...categories.values()].sort(
       (a, b) => byInterest(a, b) || a.label.localeCompare(b.label, 'fa'),
     ),
-    pets: PET_TYPE_VALUES.flatMap((pet) => pets.get(pet) ?? []),
     seenNotSold: productInsights
       .filter(
         (product) =>

@@ -2,7 +2,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 /**
  * What a shopper sees the moment they open «حساب کاربری» or one of their
- * orders, while the session check and their orders, pets and addresses load
+ * orders, while the session check and their orders and addresses load
  * (`Story - Storefront Caching and Streaming`). Shaped like the account page:
  * the name row, the tab rail, a few order rows.
  *

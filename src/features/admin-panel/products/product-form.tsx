@@ -14,13 +14,6 @@ import {
   productInputSchema,
   productUpdateInputSchema,
 } from '@/lib/catalog/product-input';
-import {
-  PET_EMOJI,
-  PET_LABELS,
-  PET_TYPE_VALUES,
-  normalizePetTypes,
-  type PetType,
-} from '@/lib/catalog/product-query';
 import { SKU_SUFFIX_LENGTH, skuPreview } from '@/lib/catalog/sku';
 import { VARIANT_LABEL_LIMIT } from '@/lib/catalog/variant';
 import {
@@ -70,7 +63,6 @@ export type ProductFormInitial = {
   variantOf: string | null;
   /** «۱۰ کیلوگرم», «قرمز» — set on a member and on its head. */
   variantLabel: string | null;
-  petTypes: PetType[];
   isActive: boolean;
   /** The gallery, in the stored order — the first is the cover. */
   images: { id: string; objectKey: string }[];
@@ -91,7 +83,6 @@ type VariantHeadOption = {
   variantLabel: string | null;
   /** What this head is filed as — a member picking it takes the same. */
   categoryId: string;
-  petTypes: PetType[];
 };
 
 const GENERIC_ERROR = 'خطای غیرمنتظره رخ داد. دوباره تلاش کن.';
@@ -187,11 +178,6 @@ export function ProductForm({
     extraCategoryIds: product?.extraCategoryIds ?? [],
     variantOf: product?.variantOf ?? '',
     variantLabel: product?.variantLabel ?? '',
-    // A new product starts with neither pet pressed: with toggle semantics a
-    // pre-pressed «گربه» turns an admin who presses only «سگ» into a silent
-    // both-pets product. One expression — flip it to `[PET_TYPES.CAT]` to
-    // preselect the cat again.
-    petTypes: product?.petTypes ?? [],
     isActive: product?.isActive ?? true,
   });
   // The gallery as the admin is arranging it: stored photos and just-picked
@@ -221,7 +207,7 @@ export function ProductForm({
 
   const update = (
     key: keyof typeof form,
-    value: string | boolean | string[] | PetType[],
+    value: string | boolean | string[],
   ) => {
     setForm((current) => ({ ...current, [key]: value }));
     setFieldErrors((current) => ({ ...current, [key]: '' }));
@@ -254,7 +240,7 @@ export function ProductForm({
   /**
    * Picking a head files this product where the head is filed.
    *
-   * The controls for those three fields are hidden below while this is set —
+   * The controls for that filing are hidden below while this is set —
    * the shop lists heads, so a member's own filing could never reach a shelf —
    * but the body still has to satisfy the same schema as any other product, so
    * the values come with the head rather than being left blank. `ProductDao`
@@ -266,30 +252,18 @@ export function ProductForm({
     setForm((current) => ({
       ...current,
       variantOf,
-      ...(head ? { categoryId: head.categoryId, petTypes: head.petTypes } : {}),
+      ...(head ? { categoryId: head.categoryId } : {}),
     }));
     setFieldErrors((current) => ({
       ...current,
       variantOf: '',
       categoryId: '',
-      petTypes: '',
     }));
     setPromotedTitle(null);
   };
 
   /** True once this product hangs off another: its filing is the head's. */
   const isMember = form.variantOf !== '';
-
-  /** Add or remove one pet, keeping the stored order. */
-  const togglePet = (pet: PetType) =>
-    update(
-      'petTypes',
-      normalizePetTypes(
-        form.petTypes.includes(pet)
-          ? form.petTypes.filter((value) => value !== pet)
-          : [...form.petTypes, pet],
-      ),
-    );
 
   const buildBody = () => ({
     title: form.title,
@@ -307,7 +281,6 @@ export function ProductForm({
     // field here follows.
     variantOf: form.variantOf === '' ? null : form.variantOf,
     variantLabel: form.variantLabel,
-    petTypes: form.petTypes,
     isActive: form.isActive,
   });
 
@@ -477,14 +450,13 @@ export function ProductForm({
             label="نشانی یکتا (slug)"
             hint={
               // The SKU is derived from this, so the convention matters: brand,
-              // pet, product, then size, so two sizes never share a slug. The
+              // product, then size, so two sizes never share a slug. The
               // example sits in <bdi> so the RTL sentence cannot reorder it.
               <>
-                به ترتیب از چپ: برند، حیوان، نام محصول، وزن یا اندازه — با حروف
-                کوچک انگلیسی و خط تیره؛ مثل{' '}
-                <bdi className="font-mono">royal-canin-cat-sensible-2kg</bdi>.
-                کد کالا از همین ساخته می‌شود. برای محصولی که هم گربه و هم سگ
-                است، بخش حیوان را از نشانی حذف کن.
+                به ترتیب از چپ: برند، نام محصول، وزن یا اندازه — با حروف کوچک
+                انگلیسی و خط تیره؛ مثل{' '}
+                <bdi className="font-mono">acme-steel-bottle-750ml</bdi>. کد
+                کالا از همین ساخته می‌شود.
               </>
             }
             error={fieldErrors.slug}
@@ -494,7 +466,7 @@ export function ProductForm({
               dir="ltr"
               value={form.slug}
               onChange={(e) => update('slug', e.target.value)}
-              placeholder="royal-canin-cat-sensible-2kg"
+              placeholder="acme-steel-bottle-750ml"
               className={controlClass(Boolean(fieldErrors.slug))}
             />
           </FieldShell>
@@ -569,7 +541,7 @@ export function ProductForm({
           )}
           {isMember && (
             <div className="border-border bg-secondary/40 rounded-xl border border-dashed p-3 sm:col-span-2">
-              <p className="text-sm font-medium">دسته‌بندی و نوع حیوان</p>
+              <p className="text-sm font-medium">دسته‌بندی</p>
               <p className="text-muted-foreground mt-1 text-xs">
                 از محصول اصلی گرفته می‌شود. فروشگاه محصول اصلی را فهرست می‌کند،
                 پس یک خانواده یک‌بار دسته‌بندی می‌شود؛ برای تغییر آن، محصول اصلی
@@ -639,7 +611,7 @@ export function ProductForm({
                 place to say what follows from it. */}
             {isMember && (
               <p className="text-muted-foreground mt-1.5 text-xs">
-                دسته‌بندی و نوع حیوان از همین محصول اصلی گرفته می‌شود.
+                دسته‌بندی از همین محصول اصلی گرفته می‌شود.
               </p>
             )}
           </FieldShell>
@@ -816,47 +788,6 @@ export function ProductForm({
             />
           </FieldShell>
         </div>
-
-        {/* Two independent `aria-pressed` toggles already are multi-select
-            semantics — a pressed toggle is a button, not a radio — so «both»
-            needs the handler to toggle rather than replace, and nothing else.
-            The fieldset's legend is the group's label. */}
-        {!isMember && (
-          <fieldset
-            aria-describedby={fid(
-              fieldErrors.petTypes ? 'petTypes-error' : 'petTypes-hint',
-            )}
-          >
-            <legend className="mb-1.5 block text-sm font-medium">
-              نوع حیوان
-            </legend>
-            <div className="flex max-w-xs gap-2">
-              {PET_TYPE_VALUES.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => togglePet(value)}
-                  aria-pressed={form.petTypes.includes(value)}
-                  data-umami-event={`admin-panel-product-pet-${value}`}
-                  className={`flex-1 rounded-xl border-2 py-2.5 text-sm font-medium transition-colors ${
-                    form.petTypes.includes(value)
-                      ? 'border-accent-strong bg-accent/10 text-accent-strong'
-                      : 'border-border hover:border-accent-strong'
-                  }`}
-                >
-                  {PET_EMOJI[value]} {PET_LABELS[value]}
-                </button>
-              ))}
-            </div>
-            {/* Deselecting the last pet is allowed and refused on submit with
-                every other field: silently ignoring the click says nothing. */}
-            <FieldMessage
-              id={fid('petTypes')}
-              hint="یکی یا هر دو را انتخاب کن"
-              error={fieldErrors.petTypes}
-            />
-          </fieldset>
-        )}
 
         <div className="bg-secondary/50 border-border flex items-start gap-3 rounded-xl border p-4">
           <input

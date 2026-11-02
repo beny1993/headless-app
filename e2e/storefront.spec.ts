@@ -1,9 +1,5 @@
-import {
-  MAX_PRODUCT_PAGE_SIZE,
-  formatPetTypes,
-} from '@/lib/catalog/product-query';
+import { MAX_PRODUCT_PAGE_SIZE } from '@/lib/catalog/product-query';
 import type { Page } from '@playwright/test';
-import { PET_TYPES } from '@/db/schema/catalog';
 import { HOME_CATEGORY_TILES } from '@/lib/catalog/category-tree';
 import {
   SEED_CATEGORIES,
@@ -27,25 +23,40 @@ import {
 
 // Picked out of the seed by what makes each one interesting, never by index:
 // appending a row to the catalog must not point these at another product.
-const bothPets = SEED_PRODUCTS.find((product) => product.petTypes.length === 2);
 const multiCategory = SEED_PRODUCTS.find(
   (product) => (product.extraCategorySlugs ?? []).length > 0,
 );
 const subOf = (slug: string) =>
   SEED_SUBCATEGORIES.find((sub) => sub.slug === slug);
-/** One pet each, so each is the control the other pet's shelf must not show. */
-const onlyFor = (pet: (typeof PET_TYPES)[keyof typeof PET_TYPES]) =>
-  SEED_PRODUCTS.find(
-    (product) => product.petTypes.length === 1 && product.petTypes[0] === pet,
+/** Filed under a sub-category alone, so only its parent's shelf reaches down. */
+const subOnly = SEED_PRODUCTS.find(
+  (product) =>
+    subOf(product.categorySlug) &&
+    !product.extraCategorySlugs?.length &&
+    !product.variantOfSku,
+);
+if (!multiCategory || !subOnly) {
+  throw new Error(
+    'The catalog seed needs a two-category row and a sub-category-only row.',
   );
-const catOnly = onlyFor(PET_TYPES.CAT);
-const dogOnly = onlyFor(PET_TYPES.DOG);
-if (!bothPets || !multiCategory) {
-  throw new Error('The catalog seed needs a both-pets and a two-category row.');
 }
-if (!catOnly || !dogOnly) {
-  throw new Error('The catalog seed needs a cat-only and a dog-only row.');
-}
+/** The top-level shelf a product is found under. */
+const topLevelOf = (slug: string) => subOf(slug)?.parentSlug ?? slug;
+/**
+ * A standalone product under another top-level category than `slug`'s: the
+ * control a shelf must keep *out*. Without it a listing that ignored the
+ * filter and showed the whole catalogue would pass.
+ */
+const elsewhereFrom = (slug: string) => {
+  const found = SEED_PRODUCTS.find(
+    (product) =>
+      !product.variantOfSku &&
+      !product.extraCategorySlugs?.length &&
+      topLevelOf(product.categorySlug) !== topLevelOf(slug),
+  );
+  if (!found) throw new Error(`The seed needs a product outside ${slug}.`);
+  return found;
+};
 /** The seeded family: the head and the members that point at it. */
 const familyMembers = SEED_PRODUCTS.filter((product) => product.variantOfSku);
 const familyHead = SEED_PRODUCTS.find((product) =>
@@ -72,16 +83,15 @@ if (familyHead.stock !== 0 || familyHead.price >= cheapest.price || !sibling) {
 }
 
 const mainCategory = subOf(multiCategory.categorySlug);
-const grooming = subOf(bothPets.categorySlug);
-if (!mainCategory || !grooming) {
+const subCategory = subOf(subOnly.categorySlug);
+if (!mainCategory || !subCategory) {
   throw new Error('Both seeded products should sit in a sub-category.');
 }
 
 /**
- * The seeded sold-out product, and the cheapest listed in-stock product of its
- * pet that costs more. Capped there, its pet's shelf has a card a shopper can
- * buy priced above it, so the cheapest-first sort alone would list it ahead
- * of that card.
+ * The seeded sold-out product, and the cheapest listed in-stock product that
+ * costs more. Capped there, the shop has a card a shopper can buy priced above
+ * it, so the cheapest-first sort alone would list it ahead of that card.
  */
 const soldOut = SEED_PRODUCTS.find(
   (product) => product.stock === 0 && !product.variantLabel,
@@ -91,7 +101,6 @@ const dearerInStock = SEED_PRODUCTS.filter(
     soldOut &&
     product.stock > 0 &&
     !product.variantOfSku &&
-    product.petTypes.includes(soldOut.petTypes[0]) &&
     product.price > soldOut.price,
 ).sort((a, b) => a.price - b.price)[0];
 if (!soldOut || !dearerInStock) {
@@ -188,41 +197,33 @@ test('the home category mosaic fills its grid, tall tiles and all', async ({
   );
 });
 
-test('a product for both pets is on both shelves', async ({ page }) => {
-  // Suitable for cats *includes* suitable for both, so the shampoo answers
-  // either pet filter, and its parent category's filter reaches down into the
-  // sub-category it is actually filed under.
-  // Each shelf carries a control the filter must keep *out*: without it a
-  // listing that ignored the filter and showed the whole catalogue would pass
-  // every line below.
-  for (const { href, absent } of [
-    { href: shopPath({ pet: PET_TYPES.CAT }), absent: dogOnly },
-    { href: shopPath({ pet: PET_TYPES.DOG }), absent: catOnly },
-    { href: shopPath({ category: grooming.parentSlug }), absent: catOnly },
+test('a sub-category’s product is on its parent’s shelf too', async ({
+  page,
+}) => {
+  // A parent category's filter reaches down into the sub-category the product
+  // is actually filed under. Each shelf carries a control it must keep out.
+  const control = elsewhereFrom(subOnly.categorySlug);
+  for (const href of [
+    shopPath({ category: subCategory.parentSlug }),
+    shopPath({ category: subOnly.categorySlug }),
   ]) {
     await page.goto(href);
-    await expect(cardsFor(page, bothPets.title)).toHaveCount(1);
-    await expect(cardsFor(page, absent.title)).toHaveCount(0);
+    await expect(cardsFor(page, subOnly.title)).toHaveCount(1);
+    await expect(cardsFor(page, control.title)).toHaveCount(0);
   }
-
-  await page.goto(productPath(bothPets.slug));
-  await page
-    .locator('[data-umami-event="product-tab-select"]', { hasText: 'مشخصات' })
-    .click();
-  await expect(page.getByRole('region', { name: 'مشخصات' })).toContainText(
-    formatPetTypes([PET_TYPES.CAT, PET_TYPES.DOG]),
-  );
 });
 
 test('a product in two categories is listed once under each', async ({
   page,
 }) => {
-  // Its main category and its additional one are both under «مکمل», so the
-  // parent's filter matches it twice over and must still show it once.
+  // Its main category and its additional one share a parent, so the parent's
+  // filter matches it twice over and must still show it once.
   await page.goto(shopPath({ category: mainCategory.parentSlug }));
   await expect(cardsFor(page, multiCategory.title)).toHaveCount(1);
   // The control, as above: a product from another shelf entirely.
-  await expect(cardsFor(page, catOnly.title)).toHaveCount(0);
+  await expect(
+    cardsFor(page, elsewhereFrom(multiCategory.categorySlug).title),
+  ).toHaveCount(0);
   // The total counts what the page lists — once per product, not once per
   // matching category — and goes through src/lib/format.ts on the way out.
   const listed = await page
@@ -242,7 +243,7 @@ test('a product in two categories is listed once under each', async ({
 
   await page.goto(productPath(multiCategory.slug));
   // The breadcrumb follows the main category alone, and a sub-category brings
-  // its parent along: «فروشگاه › مکمل › مالت».
+  // its parent along: «فروشگاه › parent › sub-category».
   await expect(
     page.locator('[data-umami-event="product-breadcrumb-parent-category"]'),
   ).toHaveText(titleOf(mainCategory.parentSlug));
@@ -319,7 +320,6 @@ test('every sort lists the products in stock before the sold-out ones', async ({
   await page.goto(
     buildShopHref({
       ...DEFAULT_SHOP_QUERY,
-      pet: soldOut.petTypes[0],
       maxPrice: dearerInStock.price,
       limit: MAX_PRODUCT_PAGE_SIZE,
     }),

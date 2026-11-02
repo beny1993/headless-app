@@ -1,5 +1,4 @@
-import { PET_TYPES } from '@/db/schema/catalog';
-import { SEED_PRODUCTS } from '@/db/seed/catalog-data';
+import { SEED_CATEGORIES, SEED_PRODUCTS } from '@/db/seed/catalog-data';
 import {
   adminProductFilterSchema,
   productsHref,
@@ -369,14 +368,18 @@ test.describe('an admin', () => {
       {
         filtered: productsHref(
           adminProductFilterSchema.parse({
-            pet: PET_TYPES.CAT,
+            category: SEED_CATEGORIES[0].slug,
             active: 'inactive',
           }),
           1,
         ),
         list: PROTECTED_PATHS.PRODUCTS,
         controls: [
-          { name: 'نوع حیوان', applied: PET_TYPES.CAT, reset: '' },
+          {
+            name: 'دسته‌بندی',
+            applied: SEED_CATEGORIES[0].slug,
+            reset: '',
+          },
           { name: 'وضعیت نمایش', applied: 'inactive', reset: 'all' },
         ],
       },
@@ -481,8 +484,9 @@ test.describe('a product family in the admin panel', () => {
     // head, because the shop lists heads and a member's own category could
     // never reach a shelf. The head's form has all three.
     await expect(page.locator('select[id$="categoryId"]')).toHaveCount(0);
-    // Exact: the note that replaces them reads «دسته‌بندی و نوع حیوان».
-    await expect(page.getByText('نوع حیوان', { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByText('دسته‌بندی‌های دیگر (اختیاری)', { exact: true }),
+    ).toHaveCount(0);
     await expect(page.getByText('از محصول اصلی گرفته می‌شود')).toBeVisible();
 
     await page.goto(

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SITE_NAME, DEFAULT_SITE_ORIGIN } from '@/constants';
-import { PET_TYPES } from '@/lib/catalog/product-query';
 import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
 import {
   absoluteUrl,
@@ -156,7 +155,7 @@ describe('sitemapEntries', () => {
     { slug: 'catsan-litter-deodorizer-ocean', updatedAt },
   ];
   const shelves = [
-    ...Object.values(PET_TYPES).map((pet) => shopPath({ pet })),
+    shopPath({ category: 'kitchen' }),
     shopPath({ category: 'dry-food' }),
   ];
   const entries = sitemapEntries(products, shelves);

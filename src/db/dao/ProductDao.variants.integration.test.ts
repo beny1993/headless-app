@@ -11,7 +11,6 @@ import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   categories,
-  PET_TYPES,
   productImages,
   products,
   type Category,
@@ -76,7 +75,6 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       price: 100_000,
       stock: 5,
       categoryId: category.id,
-      petTypes: [PET_TYPES.DOG],
       ...overrides,
     };
   };
@@ -147,19 +145,6 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
 
       expect(items.map((item) => item.id)).toEqual([alone.id]);
       expect(total).toBe(1);
-    });
-
-    it('hides members from the pet filter too, not just the category one', async () => {
-      const category = await makeCategory();
-      const head = await insert(category, { variantLabel: 'قرمز' });
-      await insert(category, { variantOf: head.id, variantLabel: 'آبی' });
-
-      const { items } = await ProductDao.list({
-        categorySlug: category.slug,
-        petType: PET_TYPES.DOG,
-      });
-
-      expect(items.map((item) => item.id)).toEqual([head.id]);
     });
 
     // Constructed with raw inserts on purpose: this is the state the DAO now
@@ -1376,14 +1361,12 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       const elsewhere = await makeCategory();
       const head = await insert(headCategory, {
         variantLabel: '۵ کیلوگرم',
-        petTypes: [PET_TYPES.DOG],
       });
 
       const member = await ProductDao.create({
         ...productValues(elsewhere, {
           variantOf: head.id,
           variantLabel: '۱۰ کیلوگرم',
-          petTypes: [PET_TYPES.CAT],
         }),
         extraCategoryIds: [elsewhere.id],
       });
@@ -1391,7 +1374,6 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       // The shop lists heads, so a member's own filing could never reach a
       // shelf — the panel was offering a category that did nothing.
       expect(member.categoryId).toBe(headCategory.id);
-      expect(member.petTypes).toEqual([PET_TYPES.DOG]);
       expect(member.extraCategoryIds).toEqual([]);
     });
 
@@ -1400,11 +1382,8 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       const elsewhere = await makeCategory();
       const head = await insert(headCategory, {
         variantLabel: '۵ کیلوگرم',
-        petTypes: [PET_TYPES.DOG],
       });
-      const loner = await ProductDao.create(
-        productValues(elsewhere, { petTypes: [PET_TYPES.CAT] }),
-      );
+      const loner = await ProductDao.create(productValues(elsewhere));
 
       const attached = await ProductDao.update(loner.id, {
         variantOf: head.id,
@@ -1412,7 +1391,6 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       });
 
       expect(attached?.categoryId).toBe(headCategory.id);
-      expect(attached?.petTypes).toEqual([PET_TYPES.DOG]);
     });
 
     it('moves the members when the head moves', async () => {
@@ -1422,7 +1400,6 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       const head = await ProductDao.create(
         productValues(before, {
           variantLabel: '۵ کیلوگرم',
-          petTypes: [PET_TYPES.DOG],
         }),
       );
       const member = await ProductDao.create(
@@ -1434,7 +1411,6 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
 
       await ProductDao.update(head.id, {
         categoryId: after.id,
-        petTypes: [PET_TYPES.CAT, PET_TYPES.DOG],
         extraCategoryIds: [extra.id],
       });
 
@@ -1442,23 +1418,19 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
       // and their own pages disagree with the family's.
       const moved = await ProductDao.findByIdForAdmin(member.id);
       expect(moved?.categoryId).toBe(after.id);
-      expect(moved?.petTypes).toEqual([PET_TYPES.CAT, PET_TYPES.DOG]);
       expect(moved?.extraCategoryIds).toEqual([extra.id]);
     });
 
     it('leaves a standalone product’s own filing alone', async () => {
       const category = await makeCategory();
       const other = await makeCategory();
-      const alone = await ProductDao.create(
-        productValues(category, { petTypes: [PET_TYPES.CAT] }),
-      );
+      const alone = await ProductDao.create(productValues(category));
 
       const moved = await ProductDao.update(alone.id, {
         categoryId: other.id,
       });
 
       expect(moved?.categoryId).toBe(other.id);
-      expect(moved?.petTypes).toEqual([PET_TYPES.CAT]);
     });
   });
 
@@ -1722,7 +1694,7 @@ describe.skipIf(!databaseReachable)('ProductDao — product families', () => {
     // predicate entirely and stay green.
     const listings = await Promise.all([
       ProductDao.list({ categorySlug: category.slug }),
-      ProductDao.list({ categorySlug: category.slug, petType: PET_TYPES.DOG }),
+      ProductDao.list({ categorySlug: category.slug, inStock: true }),
       ProductDao.list({ categorySlug: category.slug, minPrice: 100_000 }),
       ProductDao.list({ categorySlug: category.slug, maxPrice: 300_000 }),
       ProductDao.list({ categorySlug: category.slug, sort: 'price-asc' }),

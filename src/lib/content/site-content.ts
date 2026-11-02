@@ -36,12 +36,8 @@ import { LINK_MESSAGES, linkSchema } from './link';
 export const CONTENT_KEYS = [
   // Home, in page order (matches `src/app/(app)/(store)/page.tsx`).
   'home.hero',
-  'home.moments',
   'home.recommends',
-  'home.journey',
   'home.guide',
-  'home.routine',
-  'home.family',
   'home.categories',
   'home.philosophy',
   // About, in page order.
@@ -64,12 +60,6 @@ export type ContentKey = z.infer<typeof contentKeySchema>;
 // today's longest value, generous room to edit without an unbounded field.
 const t = boundedText;
 const image = z.object({ key: imageKeySchema, alt: t(160) });
-const slot = z.object({
-  image: imageKeySchema,
-  name: t(40),
-  owner: t(40),
-  quote: t(160),
-});
 const step = z.object({ step: t(40), desc: t(160) });
 const item = z.object({ title: t(60), desc: t(200) });
 // A saved destination (`link.ts`). Every key below has shipped, so a link field
@@ -81,15 +71,6 @@ const link = linkSchema.nullish();
 // hole or `null` keeps that label's code destination, and the list is never
 // longer than its labels.
 const linkList = (labels: number) => z.array(link).max(labels).optional();
-// A «خرید بر اساس لحظه» card: a label pair plus a photo. Its alt is derived
-// (`alt=""`, decorative — the title sits next to it), so no alt field. Unset
-// `link` → the same-index `LIFE_MOMENT_TARGETS` shop filters and emoji.
-const card = z.object({
-  title: t(60),
-  desc: t(120),
-  image: imageKeySchema,
-  link,
-});
 // A picked list of 1–`max` distinct category ids, in the order they show. Unset
 // (never `[]`) means the section's code categories. The message spells its bound
 // in Persian digits, never an ASCII numeral.
@@ -102,16 +83,6 @@ const categoryIds = (max: number) => {
     .refine((ids) => new Set(ids).size === ids.length, { error: message })
     .optional();
 };
-// A «روتین روزانه» tab's two labels. Its emoji + category slugs are the same-index
-// entry in `ROUTINE_TARGETS`; a saved `categoryIds` (1–4 distinct ids) replaces the
-// slugs.
-/** A routine tab's category tiles at most; the editor's picker stops there too. */
-export const MAX_ROUTINE_CATEGORIES = 4;
-const routineSlot = z.object({
-  label: t(30),
-  sub: t(30),
-  categoryIds: categoryIds(MAX_ROUTINE_CATEGORIES),
-});
 /**
  * The «انتخاب‌های اسموکی» grid's cards — one row on desktop — and so the most
  * boxes an admin can pick a product for. The storefront rule, the editor's
@@ -155,7 +126,7 @@ const cardNumber = z
   });
 // A social username, stored bare. Admins paste what they have — `@name`, or
 // the profile URL straight from the app, share token and all
-// (`https://www.instagram.com/smokey.dailies?stkn=…`) — so a URL on one of the
+// (`https://www.instagram.com/demo.shop?stkn=…`) — so a URL on one of the
 // network's own hosts is reduced to its first path segment, and only the
 // characters Instagram and Telegram allow may remain; the stored value never
 // becomes `https://instagram.com/https://…` and never carries a tracking
@@ -168,7 +139,7 @@ export const HANDLE_MESSAGES = {
   host: 'لینک باید آدرس پروفایل در همین شبکه باشد.',
 } as const;
 // `host/segment…`, with or without a scheme or `www.`; the host must be dotted,
-// so `smokey/shop` is a bad username, not a URL.
+// so `demo/shop` is a bad username, not a URL.
 const PROFILE_URL =
   /^(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)\/@?([^/?#\s]+)/i;
 const handleOn = (hosts: readonly string[]) =>
@@ -193,16 +164,16 @@ export const instagramUrl = (handle: string) =>
   `https://instagram.com/${handle}`;
 export const telegramUrl = (handle: string) => `https://t.me/${handle}`;
 /**
- * The footer's social pills as shipped: the shop's Instagram, the education-and-
- * fun Instagram («smokey.dailies») and the Telegram channel. Already in stored
- * form (bare, no `@`) — `.default()` short-circuits and never runs the handle
- * schema over it (a test proves it would pass). Lives here, not in `defaults.ts`, because
- * that module imports this one.
+ * The footer's social pills as shipped: none. A shop fills in its Instagram, a
+ * second Instagram account and its Telegram channel in the admin panel; `''`
+ * hides the pill. Already in stored form — `.default()` short-circuits and
+ * never runs the handle schema over it. Lives here, not in `defaults.ts`,
+ * because that module imports this one.
  */
 export const FOOTER_SOCIAL_DEFAULT = {
-  instagram: 'smokey.petshop',
-  instagramDailies: 'smokey.dailies',
-  telegram: 'smokeypetshop',
+  instagram: '',
+  instagramDailies: '',
+  telegram: '',
 };
 /** One card-to-card destination; a slot with an empty `number` is not shown. */
 const bankCard = z.object({
@@ -223,9 +194,7 @@ const visible = z.boolean().optional();
 /**
  * The `value` schema per key. `z.tuple` is what makes "exactly six slots / four
  * steps, no add or remove" structural rather than a UI rule. Extra fields are
- * stripped, not stored. The family
- * slot's alt text is not a field: it stays derived in code (`${name}، حیوان
- * خانگی ${owner}`), as today.
+ * stripped, not stored.
  */
 export const CONTENT_SCHEMAS = {
   'home.hero': z.object({
@@ -241,15 +210,6 @@ export const CONTENT_SCHEMAS = {
     aboutCtaLink: link,
     visible,
   }),
-  'home.moments': z.object({
-    eyebrow: t(60),
-    headline: t(120),
-    // The «مشاهده همه» link label and destination (unset: the bare shop).
-    cta: t(40),
-    ctaLink: link,
-    cards: z.tuple([card, card, card, card, card]),
-    visible,
-  }),
   'home.recommends': z.object({
     eyebrow: t(60),
     headline: t(120),
@@ -258,33 +218,14 @@ export const CONTENT_SCHEMAS = {
     productIds: featuredPicks.optional(),
     visible,
   }),
-  'home.journey': z.object({
-    eyebrow: t(60),
-    headline: t(120),
-    body: t(200),
-    visible,
-  }),
   'home.guide': z.object({
     eyebrow: t(60),
     headline: t(160),
     body: t(1000),
     image,
-    // The «مشاهده غذای مرطوب» link label and destination (unset: wet food).
+    // The call-to-action label and destination (unset: the home-decor shelf).
     cta: t(40),
     ctaLink: link,
-    visible,
-  }),
-  'home.routine': z.object({
-    eyebrow: t(60),
-    headline: t(120),
-    body: t(200),
-    slots: z.tuple([routineSlot, routineSlot, routineSlot, routineSlot]),
-    visible,
-  }),
-  'home.family': z.object({
-    eyebrow: t(60),
-    headline: t(120),
-    slots: z.tuple([slot, slot, slot, slot, slot, slot]),
     visible,
   }),
   'home.categories': z.object({
@@ -410,12 +351,8 @@ export const CONTENT_AREAS = {
     title: 'صفحه اصلی',
     keys: [
       'home.hero',
-      'home.moments',
       'home.recommends',
-      'home.journey',
       'home.guide',
-      'home.routine',
-      'home.family',
       'home.categories',
       'home.philosophy',
     ],

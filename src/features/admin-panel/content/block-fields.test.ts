@@ -43,8 +43,8 @@ const ID_LIST_KINDS: Record<string, FieldDescriptor['kind']> = {
 };
 
 /**
- * Every dotted path where a schema can store a destination: a link, a routine
- * tab's `categoryIds`, or the featured boxes' `productIds`. Read from the schema
+ * Every dotted path where a schema can store a destination: a link, the home
+ * strip's `categoryIds`, or the featured boxes' `productIds`. Read from the schema
  * itself — the defaults carry none — and a destination list (`navLinks`,
  * `linkTargets`) holds up to its `.max()`.
  * The bound is read through `z.toJSONSchema`'s `maxItems`, the public face of
@@ -127,15 +127,14 @@ describe('BLOCK_FIELDS', () => {
     }
   });
 
-  it('offers a picker for each of the 21 links, the 4 routine tabs, the home strip and the featured boxes', () => {
+  it('offers a picker for each of the 15 links, the home strip and the featured boxes', () => {
     const fields = CONTENT_KEYS.flatMap((key) => BLOCK_FIELDS[key].fields);
-    expect(fields.filter((field) => field.kind === 'link')).toHaveLength(21);
-    expect(fields.filter((field) => field.kind === 'categories')).toHaveLength(
-      5,
-    );
-    // The home strip's is the one that fills its tiles, and nothing else does.
+    expect(fields.filter((field) => field.kind === 'link')).toHaveLength(15);
+    // The home strip's is the one category picker there is.
     expect(
-      fields.filter((field) => field.homeTiles).map((field) => field.path),
+      fields
+        .filter((field) => field.kind === 'categories')
+        .map((field) => field.path),
     ).toEqual(['categoryIds']);
     expect(fields.filter((field) => field.kind === 'products')).toHaveLength(1);
   });
@@ -168,11 +167,9 @@ describe('BLOCK_FIELDS', () => {
   it('marks exactly the image-key leaves as kind "image"', () => {
     for (const key of CONTENT_KEYS as readonly ContentKey[]) {
       for (const field of BLOCK_FIELDS[key].fields) {
-        // The `{ key, alt }` images (hero/guide/about) plus the bare-key family
-        // slots and moment cards — nothing else renders an ImagePicker.
-        const isImageKey =
-          field.path === 'image.key' ||
-          /^(slots|cards)\.\d+\.image$/.test(field.path);
+        // The `{ key, alt }` images (hero/guide/about) — nothing else renders
+        // an ImagePicker.
+        const isImageKey = field.path === 'image.key';
         expect(field.kind === 'image', `${key} ${field.path}`).toBe(isImageKey);
       }
     }
@@ -199,19 +196,17 @@ describe('BLOCK_FIELDS', () => {
 
     expect(fallbackOf('home.hero', 'shopCtaLink')).toBe('/shop');
     expect(fallbackOf('home.hero', 'aboutCtaLink')).toBe('/about');
-    expect(fallbackOf('home.guide', 'ctaLink')).toBe('/shop?category=wet-food');
+    expect(fallbackOf('home.guide', 'ctaLink')).toBe(
+      '/shop?category=home-decor',
+    );
     expect(fallbackOf('home.philosophy', 'ctaLink')).toBe('/about');
     expect(fallbackOf('about.cta', 'ctaLink')).toBe('/shop');
     expect(fallbackOf('home.categories', 'ctaLink')).toBe('/shop');
-    expect(fallbackOf('home.moments', 'ctaLink')).toBe('/shop');
-    expect(fallbackOf('home.moments', 'cards.0.link')).toBe(
-      '/shop?category=dry-food&pet=cat',
-    );
     expect(fallbackOf('header', 'navLinks.0')).toBe('/');
     expect(fallbackOf('header', 'navLinks.1')).toBe('/shop');
     expect(fallbackOf('footer', 'columns.1.linkTargets.0')).toBe('/about');
-    expect(fallbackOf('home.routine', 'slots.2.categoryIds')).toBe(
-      'supplements, hygiene',
+    expect(fallbackOf('home.categories', 'categoryIds')).toBe(
+      '۶ دسته‌بندی اصلی اول، به ترتیب نمایش',
     );
   });
 
@@ -234,8 +229,8 @@ describe('getPath', () => {
     expect(getPath(DEFAULT_CONTENT['about.cta'], 'headline')).toBe(
       DEFAULT_CONTENT['about.cta'].headline,
     );
-    expect(getPath(DEFAULT_CONTENT['home.family'], 'slots.0.name')).toBe(
-      'اسموکی',
+    expect(getPath(DEFAULT_CONTENT['about.process'], 'steps.0.step')).toBe(
+      DEFAULT_CONTENT['about.process'].steps[0].step,
     );
     expect(getPath(DEFAULT_CONTENT['about.story'], 'image.alt')).toBe(
       DEFAULT_CONTENT['about.story'].image.alt,
@@ -258,16 +253,16 @@ describe('setPath', () => {
   });
 
   it('sets an array-indexed leaf without mutating the source array', () => {
-    const before = DEFAULT_CONTENT['home.family'];
-    const after = setPath(before, 'slots.1.owner', 'رضا');
+    const before = DEFAULT_CONTENT['about.process'];
+    const after = setPath(before, 'steps.1.desc', 'تازه');
 
-    expect(after.slots[1].owner).toBe('رضا');
-    expect(before.slots[1].owner).not.toBe('رضا');
+    expect(after.steps[1].desc).toBe('تازه');
+    expect(before.steps[1].desc).not.toBe('تازه');
     // The tuple stays an array of the same length.
-    expect(Array.isArray(after.slots)).toBe(true);
-    expect(after.slots).toHaveLength(6);
+    expect(Array.isArray(after.steps)).toBe(true);
+    expect(after.steps).toHaveLength(4);
     // Untouched siblings are carried over.
-    expect(after.slots[0]).toEqual(before.slots[0]);
+    expect(after.steps[0]).toEqual(before.steps[0]);
   });
 
   it('builds an array under a missing parent when the next segment is an index', () => {

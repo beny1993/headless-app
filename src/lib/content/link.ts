@@ -13,7 +13,6 @@
 // free-text `javascript:` has nowhere to go. The one typed URL is an external
 // link, and it must parse as an absolute `https:` URL without credentials.
 import { z } from 'zod';
-import { PET_TYPES } from '@/lib/catalog/product-query';
 import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
 import { boundedText } from '@/lib/validation/text';
 
@@ -21,7 +20,7 @@ import { boundedText } from '@/lib/validation/text';
 export const LINK_TYPES = {
   /** A fixed storefront page. */
   PAGE: 'page',
-  /** The shop, optionally filtered by a category and a pet. */
+  /** The shop, optionally filtered by a category. */
   SHOP: 'shop',
   /** One product's page. */
   PRODUCT: 'product',
@@ -47,7 +46,6 @@ export const LINK_MESSAGES = {
   type: 'نوع مقصد نامعتبر است.',
   page: 'صفحه مقصد نامعتبر است.',
   category: 'دسته‌بندی نامعتبر است.',
-  pet: 'نوع حیوان نامعتبر است.',
   product: 'محصول نامعتبر است.',
   url: 'لینک بیرونی باید یک آدرس کامل با https باشد.',
   missingCategory: 'این دسته‌بندی وجود ندارد.',
@@ -104,9 +102,6 @@ export const linkSchema = z.discriminatedUnion(
     z.object({
       type: z.literal(LINK_TYPES.SHOP),
       categoryId: z.uuid(LINK_MESSAGES.category).optional(),
-      pet: z
-        .enum([PET_TYPES.CAT, PET_TYPES.DOG], { error: LINK_MESSAGES.pet })
-        .optional(),
     }),
     z.object({
       type: z.literal(LINK_TYPES.PRODUCT),
@@ -138,7 +133,7 @@ type ResolvedLink = { href: string; external: boolean };
  * `targets`), and it never dead-ends:
  *   · no link saved               → `fallback`, the destination the code had
  *                                   before links were editable
- *   · a category deleted since    → the shop, still filtered by the pet
+ *   · a category deleted since    → the whole shop
  *   · a product hidden or deleted → the shop
  */
 export function resolveLink(
@@ -154,7 +149,7 @@ export function resolveLink(
       const category = link.categoryId
         ? targets.categories[link.categoryId]
         : undefined;
-      return { href: shopPath({ category, pet: link.pet }), external: false };
+      return { href: shopPath({ category }), external: false };
     }
     case LINK_TYPES.PRODUCT: {
       const slug: string | undefined = targets.products[link.productId];

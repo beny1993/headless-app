@@ -30,21 +30,13 @@ describe('shopPath', () => {
 
   it('carries one filter', () => {
     expect(shopPath({ category: 'toys' })).toBe('/shop?category=toys');
-    expect(shopPath({ pet: 'dog' })).toBe('/shop?pet=dog');
-  });
-
-  it('carries both filters in a stable order', () => {
-    // Stable so the deep links are diffable and cacheable, and so the quiz
-    // test can assert an exact href.
-    expect(shopPath({ category: 'supplements', pet: 'cat' })).toBe(
-      '/shop?category=supplements&pet=cat',
-    );
   });
 
   it('omits an empty or absent filter rather than sending a blank param', () => {
     // `?category=` is a real parameter to the API and its schema rejects it —
     // an unanswered question must drop out of the URL entirely.
-    expect(shopPath({ category: '', pet: undefined })).toBe(PATHS.SHOP);
+    expect(shopPath({ category: '' })).toBe(PATHS.SHOP);
+    expect(shopPath({ category: undefined })).toBe(PATHS.SHOP);
   });
 
   it('encodes a value with URL-significant characters', () => {
