@@ -158,7 +158,7 @@ describe.skipIf(!databaseReachable)('the storefront chrome', () => {
         `لوگوی ${DEFAULT_CONTENT.header.brand}`,
       );
       expect(footerLogo?.props?.alt).toBe(
-        `لوگوی ${DEFAULT_CONTENT.footer.brand}، فروشگاه حیوانات خانگی`,
+        `لوگوی ${DEFAULT_CONTENT.footer.brand}`,
       );
     });
 
@@ -239,12 +239,12 @@ describe.skipIf(!databaseReachable)('the storefront chrome', () => {
         ...DEFAULT_CONTENT.header,
         navLinks: [
           null,
-          { type: 'shop', categoryId: category.id, pet: 'cat' },
+          { type: 'shop', categoryId: category.id },
           { type: 'external', url: 'https://example.com/' },
         ],
       });
       const [home, shop, about] = DEFAULT_CONTENT.header.nav;
-      const categoryShop = shopPath({ category: category.slug, pet: 'cat' });
+      const categoryShop = shopPath({ category: category.slug });
 
       const navbar = findByType(
         await layout.default({ children: null }),
@@ -271,9 +271,7 @@ describe.skipIf(!databaseReachable)('the storefront chrome', () => {
         columns: [
           {
             ...DEFAULT_CONTENT.footer.columns[0],
-            linkTargets: [
-              { type: 'shop', categoryId: category.id, pet: 'cat' },
-            ],
+            linkTargets: [{ type: 'shop', categoryId: category.id }],
           },
           {
             ...DEFAULT_CONTENT.footer.columns[1],
@@ -287,7 +285,7 @@ describe.skipIf(!databaseReachable)('the storefront chrome', () => {
 
       const footer = findByType(await notFound.default(), Footer);
       const rendered = Footer(footer?.props as Parameters<typeof Footer>[0]);
-      const categoryShop = shopPath({ category: category.slug, pet: 'cat' });
+      const categoryShop = shopPath({ category: category.slug });
       expect(hasLink(rendered, categoryShop, cat)).toBe(true);
       expect(hasLink(rendered, FOOTER_TARGETS[0][0], cat)).toBe(false);
       // The next label saved no destination: still its code target.

@@ -1,5 +1,5 @@
 // Shared text-field validators for the input contracts (checkout body, account
-// pet/address forms). One definition so the null-byte gate — a real 500 the `pg`
+// address form). One definition so the null-byte gate — a real 500 the `pg`
 // driver throws on a U+0000 inside a text parameter — is never hand-mirrored
 // across boundaries (the repo's derive-not-mirror rule).
 //

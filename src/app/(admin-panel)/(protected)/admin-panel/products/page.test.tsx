@@ -64,7 +64,6 @@ const product = (
   variantOf: null,
   variantLabel: null,
   categoryId: '22222222-2222-4222-8222-222222222222',
-  petTypes: ['cat'],
   createdAt: new Date('2026-09-01T00:00:00Z'),
   updatedAt: new Date('2026-09-01T00:00:00Z'),
   searchText: '',
@@ -206,12 +205,16 @@ describe('paging', () => {
       total: ADMIN_PAGE_SIZE * 2 + 5,
     });
 
-    await renderPage({ q: 'غذا', pet: 'cat', active: 'inactive', page: '2' });
+    await renderPage({
+      q: 'غذا',
+      category: 'kitchen',
+      active: 'inactive',
+      page: '2',
+    });
 
     expect(pageForAdmin).toHaveBeenCalledWith({
       search: 'غذا',
-      categorySlug: undefined,
-      petType: 'cat',
+      categorySlug: 'kitchen',
       active: false,
       page: 2,
       limit: ADMIN_PAGE_SIZE,
@@ -220,14 +223,14 @@ describe('paging', () => {
     expect(next.pathname).toBe(PROTECTED_PATHS.PRODUCTS);
     expect(Object.fromEntries(next.searchParams)).toEqual({
       q: 'غذا',
-      pet: 'cat',
+      category: 'kitchen',
       active: 'inactive',
       page: '3',
     });
     // Page one is the plain filtered URL, with no `page` at all.
     expect(Object.fromEntries(target('صفحه قبل').searchParams)).toEqual({
       q: 'غذا',
-      pet: 'cat',
+      category: 'kitchen',
       active: 'inactive',
     });
   });

@@ -84,7 +84,7 @@ const jpeg = () => {
 let root: string;
 const originalRoot = process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT];
 beforeAll(async () => {
-  root = await mkdtemp(path.join(tmpdir(), 'smokey-alert-'));
+  root = await mkdtemp(path.join(tmpdir(), 'shop-alert-'));
   process.env[VARS.APP_CONFIG_STORAGE_LOCAL_ROOT] = root;
 });
 afterAll(async () => {

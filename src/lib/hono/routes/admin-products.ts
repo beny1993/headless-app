@@ -101,7 +101,6 @@ const toAdminProduct = (
   extraCategoryIds: p.extraCategoryIds,
   variantOf: p.variantOf,
   variantLabel: p.variantLabel,
-  petTypes: p.petTypes,
   createdAt: p.createdAt.toISOString(),
   updatedAt: p.updatedAt.toISOString(),
 });

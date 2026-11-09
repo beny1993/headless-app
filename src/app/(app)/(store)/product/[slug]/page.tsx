@@ -24,7 +24,7 @@ import { Spec } from '@/features/storefront/product/spec-row';
 import { StockNotice } from '@/features/storefront/product/stock-notice';
 import { VariantChips } from '@/features/storefront/product/variant-chips';
 import { SHOP_TITLE } from '@/features/storefront/shop/shop-metadata';
-import { formatPetTypes, productSlugSchema } from '@/lib/catalog/product-query';
+import { productSlugSchema } from '@/lib/catalog/product-query';
 import { displayTitle } from '@/lib/catalog/variant';
 import type { ProductDetail } from '@/db/schema/catalog';
 import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
@@ -301,10 +301,6 @@ export default async function ProductDetailPage({ params }: Params) {
                       ))}
                     />
                   )}
-                  <Spec
-                    label="مناسب برای"
-                    value={formatPetTypes(product.petTypes)}
-                  />
                 </dl>
               ),
             },

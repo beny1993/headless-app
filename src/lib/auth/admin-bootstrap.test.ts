@@ -67,7 +67,7 @@ describe('provisionAdminByPhone', () => {
 
       expect(mocks.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          email: '989121234567@phone.smokey.invalid',
+          email: '989121234567@phone.invalid',
         }),
       );
     });

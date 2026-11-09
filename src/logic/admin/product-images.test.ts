@@ -184,7 +184,7 @@ describe('appendProductImage', () => {
 
   it('leaves a seeded product’s bundled asset alone when a photo is added', async () => {
     await appendProductImage(
-      productWith('products/cat-dry-food.jpg'),
+      productWith('products/mug.jpg'),
       new Uint8Array([0xff, 0xd8, 0xff]),
       'image/jpeg',
     );
@@ -251,23 +251,20 @@ describe('setProductImageOrder', () => {
 
   it('never hands a bundled `products/…` key to the driver, kept or dropped', async () => {
     const product = productWith(
-      'products/cat-dry-food.jpg',
+      'products/mug.jpg',
       'uploads/a.jpg',
       'uploads/b.jpg',
     );
 
     // The seed asset stays on the product, reordered to the end; one upload is
     // dropped. Only the dropped upload may be deleted.
-    await setProductImageOrder(product, [
-      'uploads/a.jpg',
-      'products/cat-dry-food.jpg',
-    ]);
+    await setProductImageOrder(product, ['uploads/a.jpg', 'products/mug.jpg']);
 
     expect(deletedKeys()).toEqual(['uploads/b.jpg']);
   });
 
   it('never deletes a bundled asset the admin removed either', async () => {
-    const product = productWith('products/cat-dry-food.jpg', 'uploads/a.jpg');
+    const product = productWith('products/mug.jpg', 'uploads/a.jpg');
 
     await setProductImageOrder(product, ['uploads/a.jpg']);
 
@@ -311,7 +308,7 @@ describe('setProductImageOrder', () => {
   describe('ownership', () => {
     it.each([
       ['another product’s upload', 'uploads/somebody-else.jpg'],
-      ['a bundled asset this product does not have', 'products/dog-toy.jpg'],
+      ['a bundled asset this product does not have', 'products/kettle.jpg'],
       ['an arbitrary string', '../../etc/passwd'],
     ])('refuses %s and writes nothing', async (_name, foreign) => {
       const product = productWith('uploads/a.jpg', 'uploads/b.jpg');

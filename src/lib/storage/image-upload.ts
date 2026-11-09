@@ -85,7 +85,7 @@ export const isReceiptKey = (key: string): boolean =>
  * nothing else. The route validates the requested key against this before it
  * touches the filesystem, so a traversal segment (`..`, a slash, a leading dot)
  * or any other shape is a 404, not a file read. Seed keys like
- * `products/cat-dry-food.jpg` deliberately do not match — they are served from
+ * `products/mug.jpg` deliberately do not match — they are served from
  * `public/`, never through the uploads route.
  */
 export const UPLOAD_FILENAME_PATTERN =

@@ -217,7 +217,7 @@ describe('admin users: rows', () => {
   });
 
   it('never renders an email, even one that reached the row', async () => {
-    const email = '989121234567@phone.smokey.invalid';
+    const email = '989121234567@phone.invalid';
     dao.pageForAdmin.mockResolvedValue({
       items: [{ ...CUSTOMER, email }],
       total: 1,

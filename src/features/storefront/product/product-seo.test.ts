@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SITE_ORIGIN } from '@/constants';
-import { PET_TYPES } from '@/lib/catalog/product-query';
 import { productPath } from '@/lib/constant/paths';
 import {
   absoluteUrl,
@@ -26,7 +25,7 @@ vi.mock('@/lib/seo', async (importOriginal) => {
   const seo = await importOriginal<typeof import('@/lib/seo')>();
   return {
     ...seo,
-    SITE_TWITTER: { ...seo.SITE_TWITTER, site: '@smokeypetshop' },
+    SITE_TWITTER: { ...seo.SITE_TWITTER, site: '@demoshop' },
   };
 });
 
@@ -42,14 +41,13 @@ const product = (overrides: Partial<ProductForSeo> = {}): ProductForSeo => ({
   variantLabel: null,
   sku: 'RC-CAT-ADULT-2KG',
   brand: 'رویال کنین',
-  petTypes: [PET_TYPES.CAT],
   description: null,
   benefit: 'مناسب گوارش حساس',
   price: 285_000,
   stock: 12,
   images: [
-    { objectKey: 'products/cat-dry-food.jpg' },
-    { objectKey: 'products/cat-toy.jpg' },
+    { objectKey: 'products/mug.jpg' },
+    { objectKey: 'products/notebook.jpg' },
   ],
   ...overrides,
 });
@@ -137,7 +135,7 @@ describe('productDescription', () => {
 
 describe('productMetadata', () => {
   const canonical = `${DEFAULT_SITE_ORIGIN}/product/royal-canin-adult-cat-dry-food`;
-  const firstPhoto = absoluteUrl(imageSrc('products/cat-dry-food.jpg'));
+  const firstPhoto = absoluteUrl(imageSrc('products/mug.jpg'));
 
   it('names the product, describes it and points at its own URL', () => {
     const metadata = productMetadata(product({ variantLabel: 'لاوندر' }));
@@ -169,7 +167,7 @@ describe('productMetadata', () => {
   it('keeps the site-wide Twitter fields on the large card too', () => {
     expect(productMetadata(product()).twitter).toMatchObject({
       card: 'summary_large_image',
-      site: '@smokeypetshop',
+      site: '@demoshop',
     });
   });
 
@@ -193,18 +191,12 @@ describe('productJsonLd', () => {
       '@type': 'Product',
       name: 'غذای خشک گربه بالغ',
       image: [
-        absoluteUrl(imageSrc('products/cat-dry-food.jpg')),
-        absoluteUrl(imageSrc('products/cat-toy.jpg')),
+        absoluteUrl(imageSrc('products/mug.jpg')),
+        absoluteUrl(imageSrc('products/notebook.jpg')),
       ],
       description: 'مناسب گوارش حساس',
       sku: 'RC-CAT-ADULT-2KG',
       brand: { '@type': 'Brand', name: 'رویال کنین' },
-      category: {
-        '@type': 'CategoryCode',
-        inCodeSet:
-          'https://www.google.com/basepages/producttype/taxonomy-with-ids.en-US.txt',
-        codeValue: '4',
-      },
       offers: {
         '@type': 'Offer',
         url: `${DEFAULT_SITE_ORIGIN}/product/royal-canin-adult-cat-dry-food`,
@@ -250,16 +242,6 @@ describe('productJsonLd', () => {
         },
       },
     });
-  });
-
-  it('files the product under Google’s pet supplies by the pets it is for', () => {
-    const code = (petTypes: ProductForSeo['petTypes']) =>
-      productJsonLd(product({ petTypes }), FLAT_FEES).category.codeValue;
-
-    expect(code([PET_TYPES.CAT])).toBe('4');
-    expect(code([PET_TYPES.DOG])).toBe('5');
-    // Both pets: the branch the two share, never one of them.
-    expect(code([PET_TYPES.CAT, PET_TYPES.DOG])).toBe('2');
   });
 
   it('prices shipping at the most a province pays when the fees differ', () => {

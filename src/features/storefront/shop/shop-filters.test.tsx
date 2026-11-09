@@ -91,13 +91,13 @@ describe('the mobile sheet\u2019s badge', () => {
   });
 
   it('counts the three groups the chips show', () => {
-    renderSheet({ category: 'hygiene', pet: 'cat', maxPrice: '300000' });
+    renderSheet({ category: 'hygiene', inStock: 'true', maxPrice: '300000' });
 
     expect(openButton().textContent).toContain('(۳)');
   });
 
   it('counts the in-stock switch, which has a chip of its own', () => {
-    renderSheet({ inStock: 'true', pet: 'cat' });
+    renderSheet({ inStock: 'true', category: 'hygiene' });
 
     expect(openButton().textContent).toContain('(۲)');
   });
@@ -130,7 +130,7 @@ describe('the mobile sheet while the listing streams in', () => {
     const { container } = await act(async () =>
       render(
         <ShopFilterSheet
-          query={parseShopQuery({ pet: 'cat' })}
+          query={parseShopQuery({ category: 'hygiene' })}
           categories={OPTIONS}
           priceBounds={BOUNDS}
           total={total}
@@ -175,13 +175,13 @@ describe('the active-filter chips', () => {
   });
 
   it('names each filter, so three of them are not three identical controls', () => {
-    renderFilters({ category: 'hygiene', pet: 'cat', minPrice: '100000' });
+    renderFilters({ category: 'hygiene', inStock: 'true', minPrice: '100000' });
 
     // The `aria-label` is the assertion: a screen reader reading three «remove»
     // buttons in a row hears the same word three times.
     expect(chips()).toEqual([
       'حذف فیلتر بهداشت',
-      'حذف فیلتر گربه',
+      'حذف فیلتر فقط محصولات موجود',
       'حذف فیلتر از ۱۰۰٬۰۰۰',
     ]);
   });
@@ -212,12 +212,14 @@ describe('the active-filter chips', () => {
   });
 
   it('drops exactly its own filter and leaves the rest alone', () => {
-    renderFilters({ category: 'hygiene', pet: 'cat', minPrice: '100000' });
+    renderFilters({ category: 'hygiene', inStock: 'true', minPrice: '100000' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'حذف فیلتر گربه' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'حذف فیلتر فقط محصولات موجود' }),
+    );
 
     const href = push.mock.calls[0][0] as string;
-    expect(href).not.toContain('pet=');
+    expect(href).not.toContain('inStock=');
     expect(href).toContain('category=hygiene');
     expect(href).toContain('minPrice=100000');
   });
@@ -242,7 +244,6 @@ describe('«پاک کردن همه»', () => {
     renderFilters({
       inStock: 'true',
       category: 'toys',
-      pet: 'cat',
       minPrice: '100000',
     });
 
@@ -251,7 +252,6 @@ describe('«پاک کردن همه»', () => {
     const href = push.mock.calls[0][0] as string;
     expect(href).not.toContain('inStock');
     expect(href).not.toContain('category');
-    expect(href).not.toContain('pet');
     expect(href).not.toContain('minPrice');
   });
 
@@ -530,14 +530,14 @@ describe('the in-stock switch', () => {
   });
 
   it('turns on by navigating, keeping the other filters and going back to page one', () => {
-    renderFilters({ pet: 'cat', page: '3' });
+    renderFilters({ category: 'toys', page: '3' });
 
     fireEvent.click(box());
 
     expect(push).toHaveBeenCalledTimes(1);
     const href = push.mock.calls[0][0] as string;
     expect(href).toContain('inStock=true');
-    expect(href).toContain('pet=cat');
+    expect(href).toContain('category=toys');
     expect(href).not.toContain('page=');
   });
 
@@ -545,7 +545,7 @@ describe('the in-stock switch', () => {
   // params change, so the box must follow the `query` prop — the pushed URL,
   // then the back button — and never hold a tick of its own.
   it('shows the URL’s state, not its own, across navigations', () => {
-    const { rerender } = renderFilters({ pet: 'cat' });
+    const { rerender } = renderFilters({ category: 'toys' });
     const rerenderAt = (search: URLSearchParams | Record<string, string>) =>
       rerender(
         <ShopFilters
@@ -562,31 +562,35 @@ describe('the in-stock switch', () => {
     rerenderAt(new URL(push.mock.calls[0][0], 'http://shop.test').searchParams);
     expect(box().checked).toBe(true);
 
-    rerenderAt({ pet: 'cat' });
+    rerenderAt({ category: 'toys' });
     expect(box().checked).toBe(false);
   });
 
   it('turns off by dropping the parameter, not by writing false', () => {
-    renderFilters({ inStock: 'true', pet: 'cat' });
+    renderFilters({ inStock: 'true', category: 'toys' });
 
     fireEvent.click(box());
 
-    expect(push.mock.calls[0][0]).toBe('/shop?pet=cat');
+    expect(push.mock.calls[0][0]).toBe('/shop?category=toys');
   });
 
-  it('sits under the categories, before the pet type — Benyamin’s placement', () => {
+  it('sits under the categories, before the price range — Benyamin’s placement', () => {
     renderFilters();
 
     const categories = screen.getByText('دسته‌بندی').closest('fieldset')!;
-    const pets = screen.getByText('نوع حیوان').closest('fieldset')!;
+    const price = screen.getByText('محدوده قیمت (تومان)').closest('fieldset')!;
     const follows = Node.DOCUMENT_POSITION_FOLLOWING;
 
     expect(categories.compareDocumentPosition(box()) & follows).toBeTruthy();
-    expect(box().compareDocumentPosition(pets) & follows).toBeTruthy();
+    expect(box().compareDocumentPosition(price) & follows).toBeTruthy();
   });
 
   it('lists its chip after the category’s, as the panel does', () => {
-    renderFilters({ inStock: 'true', category: 'toys', pet: 'cat' });
+    renderFilters({
+      inStock: 'true',
+      category: 'toys',
+      minPrice: '100000',
+    });
 
     expect(
       screen
@@ -595,7 +599,7 @@ describe('the in-stock switch', () => {
     ).toEqual([
       'حذف فیلتر اسباب‌بازی',
       'حذف فیلتر فقط محصولات موجود',
-      'حذف فیلتر گربه',
+      'حذف فیلتر از ۱۰۰٬۰۰۰',
     ]);
   });
 

@@ -1,26 +1,25 @@
 // The checkout lock's strength: FOR NO KEY UPDATE, not FOR UPDATE. The
 // foreign-key check behind an insert that references the user takes FOR KEY
 // SHARE on that user's row, which only FOR UPDATE blocks, so while a checkout
-// holds the lock the account can still save a pet or an address.
+// holds the lock the account can still save an address.
 //
 // Needs a live database — see src/db/test-db.ts: the conflict is Postgres's
 // row locking, which a mocked `db` does not have.
 import { sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
-import { OrderFixtures } from '@/db/order-test-fixtures';
-import { pets } from '@/db/schema/account';
+import { AccountFixtures } from '@/db/account-test-fixtures';
+import { addresses } from '@/db/schema/account';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
-import { PET_GENDERS } from '@/lib/account/pet';
-import { PET_TYPES } from '@/lib/catalog/product-query';
 
 const { UserDao } = await importWithDb(() => import('@/db/dao/UserDao'));
 
 describe.skipIf(!databaseReachable)('UserDao.lockForCheckout', () => {
-  const fx = new OrderFixtures();
+  const fx = new AccountFixtures();
   afterEach(() => fx.cleanup());
 
-  it('lets the account save a pet while a checkout holds its lock', async () => {
+  it('lets the account save an address while a checkout holds its lock', async () => {
     const user = await fx.user();
+    const province = await fx.province();
     let lockHeld!: () => void;
     const locked = new Promise<void>((resolve) => (lockHeld = resolve));
     let releaseLock!: () => void;
@@ -42,12 +41,15 @@ describe.skipIf(!databaseReachable)('UserDao.lockForCheckout', () => {
       const saved = testDb.transaction(async (tx) => {
         await tx.execute(sql`set local lock_timeout = '1s'`);
         return tx
-          .insert(pets)
+          .insert(addresses)
           .values({
             userId: user.id,
-            name: 'پیشی',
-            type: PET_TYPES.CAT,
-            gender: PET_GENDERS.FEMALE,
+            recipientName: 'مشتری آزمایشی',
+            recipientPhone: '+989120000000',
+            provinceId: province.id,
+            city: 'تهران',
+            postalCode: '1234567890',
+            addressLine: 'خیابان آزمایش، پلاک ۱',
           })
           .returning();
       });

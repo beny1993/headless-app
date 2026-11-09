@@ -7,12 +7,7 @@ import { CategoryDao } from '@/db/dao/CategoryDao';
 import { categoryOptions } from '@/lib/catalog/category-tree';
 import { ProductDao } from '@/db/dao/ProductDao';
 import { hardDeleteBlockers } from '@/logic/admin/product-removal';
-import {
-  MAX_SEARCH_TERM_LENGTH,
-  PET_EMOJI,
-  PET_LABELS,
-  PET_TYPE_VALUES,
-} from '@/lib/catalog/product-query';
+import { MAX_SEARCH_TERM_LENGTH } from '@/lib/catalog/product-query';
 import { adminNewProductPath } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import { ADMIN_PAGE_SIZE } from '@/lib/pagination';
@@ -41,7 +36,6 @@ export default async function AdminProductsPage({
     ProductDao.pageForAdmin({
       search: filters.q,
       categorySlug: filters.category,
-      petType: filters.pet,
       active: activeToFilter(filters.active),
       page: filters.page,
       limit: ADMIN_PAGE_SIZE,
@@ -81,7 +75,7 @@ export default async function AdminProductsPage({
       <form
         key={productsHref(filters, 1)}
         method="get"
-        className="border-border grid grid-cols-1 gap-3 rounded-2xl border bg-white p-4 sm:grid-cols-2 lg:grid-cols-5"
+        className="border-border grid grid-cols-1 gap-3 rounded-2xl border bg-white p-4 sm:grid-cols-2 lg:grid-cols-4"
       >
         <div className="lg:col-span-2">
           <label htmlFor="filter-q" className="sr-only">
@@ -111,24 +105,6 @@ export default async function AdminProductsPage({
             {categoryOptions(categories).map((category) => (
               <option key={category.id} value={category.slug}>
                 {category.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="filter-pet" className="sr-only">
-            نوع حیوان
-          </label>
-          <select
-            id="filter-pet"
-            name="pet"
-            defaultValue={filters.pet ?? ''}
-            className="border-border focus-visible:border-accent-strong h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none"
-          >
-            <option value="">همه حیوانات</option>
-            {PET_TYPE_VALUES.map((pet) => (
-              <option key={pet} value={pet}>
-                {PET_EMOJI[pet]} {PET_LABELS[pet]}
               </option>
             ))}
           </select>

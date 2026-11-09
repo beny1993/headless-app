@@ -50,7 +50,6 @@ import {
   inCategoryScope,
   MEMBER_SCOPE,
   ORDER_BY,
-  petFilter,
   SEARCHABLE_FIELDS,
 } from './product-sql';
 import {
@@ -59,7 +58,6 @@ import {
   productImages,
   products,
   type NewProduct,
-  type PetType,
   type Product,
   type ProductCard,
   type ProductDetail,
@@ -77,7 +75,6 @@ export type ProductInsightRow = {
   variantLabel: string | null;
   stock: number;
   isActive: boolean;
-  petTypes: PetType[];
   categoryId: string;
   categoryTitle: string;
   /** The primary category's parent, or `null` for a top-level category. */
@@ -102,14 +99,13 @@ export type ProductInput = Omit<
 
 /**
  * Where a family is filed. A member does not carry its own: the shop lists
- * heads, so a member's categories and pets could never reach a shelf, and a
+ * heads, so a member's categories could never reach a shelf, and a
  * panel that offered them was offering a filing that did nothing. They are
  * copied from the head on every write that names one, and pushed back down to
  * the members whenever the head itself moves.
  */
 type FamilyFiling = {
   categoryId: string;
-  petTypes: PetType[];
   extraCategoryIds: string[];
 };
 
@@ -119,7 +115,6 @@ type VariantHeadRow = {
   title: string;
   variantLabel: string | null;
   categoryId: string;
-  petTypes: PetType[];
 };
 
 /** A written product plus the additional categories now stored for it. */
@@ -170,8 +165,6 @@ export class StockConflictError extends Error {
 
 type ProductFilters = {
   categorySlug?: string;
-  /** One pet; a product suits it when its selection contains it. */
-  petType?: PetType;
   /** Inclusive, integer Toman. */
   minPrice?: number;
   /** Inclusive, integer Toman. */
@@ -234,25 +227,18 @@ type ProductCardRow = Product & {
 export type AdminProductFilters = {
   search?: string;
   categorySlug?: string;
-  petType?: PetType;
   /** `undefined` = active and inactive; `true` = active only; `false` = inactive only. */
   active?: boolean;
 };
 
 /** The head's filing as the columns a write sets. */
-const columnsOf = ({ categoryId, petTypes }: FamilyFiling) => ({
-  categoryId,
-  petTypes,
-});
+const columnsOf = ({ categoryId }: FamilyFiling) => ({ categoryId });
 
 /** Whether a patch could have moved where a product is filed. */
 const touchesFiling = (
   columns: Partial<ProductInput>,
   extraCategoryIds: string[] | undefined,
-): boolean =>
-  'categoryId' in columns ||
-  'petTypes' in columns ||
-  extraCategoryIds !== undefined;
+): boolean => 'categoryId' in columns || extraCategoryIds !== undefined;
 
 export class ProductDao {
   /**
@@ -297,7 +283,7 @@ export class ProductDao {
    * The storefront cards for these ids, in no particular order — callers key by
    * id. The listing's own row and where clause, so an inactive product or a
    * family member does not come back; no page and no count. What the home
-   * page's «انتخاب‌های اسموکی» boxes show and what the content save check
+   * page's «پیشنهادهای ما» boxes show and what the content save check
    * accepts as a pick both come from here, so the two cannot disagree about what
    * a card is.
    */
@@ -352,15 +338,12 @@ export class ProductDao {
       // **The whole of «one card per family».** A head points at nothing, so
       // this keeps heads and standalone products and drops the members, which
       // are reached from the head's page instead. It rides the shared clause,
-      // so every listing the storefront offers — category, pet, price, search,
+      // so every listing the storefront offers — category, price, search,
       // the home strips — inherits it, and `total` cannot disagree with the page.
       isNull(products.variantOf),
     ];
     if (filters.categorySlug) {
       where.push(inCategoryScope(filters.categorySlug));
-    }
-    if (filters.petType) {
-      where.push(petFilter(filters.petType));
     }
     // Compared against undefined, not truthiness: a `minPrice` of 0 is a real
     // bound, even if the price check makes it a no-op.
@@ -462,9 +445,6 @@ export class ProductDao {
     }
     if (filters.categorySlug) {
       where.push(inCategoryScope(filters.categorySlug));
-    }
-    if (filters.petType) {
-      where.push(petFilter(filters.petType));
     }
     // A plain case-insensitive substring on the normalized search text — an
     // operational lookup, not the storefront's trigram fuzziness, so it needs
@@ -575,12 +555,11 @@ export class ProductDao {
 
   /**
    * Whether a shelf lists anything, by the storefront listing's own clause
-   * (active heads; a category with its sub-categories and extra filings; a
-   * pet's products), so `sitemap.xml` names no shelf that answers with the
+   * (active heads; a category with its sub-categories and extra filings), so `sitemap.xml` names no shelf that answers with the
    * empty state.
    */
   static async hasShelfProducts(
-    shelf: Pick<ProductFilters, 'categorySlug' | 'petType'>,
+    shelf: Pick<ProductFilters, 'categorySlug'>,
   ): Promise<boolean> {
     const [row] = await db
       .select({ id: products.id })
@@ -642,7 +621,6 @@ export class ProductDao {
         // body that satisfies its own schema for a product that has no filing
         // of its own; the DAO copies them again on the way in regardless.
         categoryId: products.categoryId,
-        petTypes: products.petTypes,
       })
       .from(products)
       .where(
@@ -765,7 +743,6 @@ export class ProductDao {
         variantLabel: products.variantLabel,
         isActive: products.isActive,
         categoryId: products.categoryId,
-        petTypes: products.petTypes,
       })
       .from(products)
       .where(inArray(products.id, id ? [variantOf, id] : [variantOf]))
@@ -793,7 +770,6 @@ export class ProductDao {
 
     return {
       categoryId: head.categoryId,
-      petTypes: head.petTypes,
       extraCategoryIds: await ProductDao.readExtraCategories(executor, head.id),
     };
   }
@@ -819,7 +795,7 @@ export class ProductDao {
 
     await tx
       .update(products)
-      .set({ categoryId: filing.categoryId, petTypes: filing.petTypes })
+      .set({ categoryId: filing.categoryId })
       .where(eq(products.variantOf, headId));
     for (const member of members) {
       await ProductDao.replaceExtraCategories(
@@ -938,7 +914,6 @@ export class ProductDao {
       if (row.variantOf === null && touchesFiling(columns, extraCategoryIds)) {
         await ProductDao.refileMembers(tx, id, {
           categoryId: row.categoryId,
-          petTypes: row.petTypes,
           extraCategoryIds: extras,
         });
       }
@@ -1098,7 +1073,7 @@ export class ProductDao {
 
   /**
    * The product facts the admin insights page (`src/logic/admin/product-insights.ts`)
-   * puts beside its sales and views: the display fields, stock, pets, and the
+   * puts beside its sales and views: the display fields, stock, and the
    * primary category with its parent's title. Looks up by id (what sold) **or**
    * slug (what Umami saw), **including soft-deleted rows**: a product sold in
    * the window and deactivated since still belongs in that window's report.
@@ -1125,7 +1100,6 @@ export class ProductDao {
         variantLabel: products.variantLabel,
         stock: products.stock,
         isActive: products.isActive,
-        petTypes: products.petTypes,
         categoryId: products.categoryId,
         categoryTitle: categories.title,
         parentCategoryTitle: parent.title,
@@ -1252,7 +1226,6 @@ export class ProductDao {
             oldPrice: columns.oldPrice ?? null,
             stock: columns.stock ?? 0,
             categoryId: columns.categoryId,
-            petTypes: columns.petTypes,
             // The family shape is part of what the seed asserts, so it is part
             // of what a re-run corrects. Leaving these out while still
             // rewriting `searchText` — which is built FROM `variantLabel` —

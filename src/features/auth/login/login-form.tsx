@@ -1,5 +1,6 @@
 'use client';
 
+import { SITE_FULL_NAME } from '@/constants';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -280,7 +281,9 @@ export function LoginForm({ next }: { next: string }) {
 
           {step === 'phone' ? (
             <>
-              <h1 className="mb-2 text-2xl font-black">ورود به اسموکی</h1>
+              <h1 className="mb-2 text-2xl font-black">
+                ورود به {SITE_FULL_NAME}
+              </h1>
               <p className="text-muted-foreground mb-7 text-sm">
                 شماره موبایلت را وارد کن؛ یک کد شش‌رقمی برایت پیامک می‌کنیم.
               </p>

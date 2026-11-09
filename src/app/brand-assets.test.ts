@@ -38,7 +38,7 @@ describe('brand assets', () => {
     ['favicon-32x32.png', 32],
     ['android-chrome-192x192.png', 192],
     ['android-chrome-512x512.png', 512],
-    ['brand/smokey-mark.png', 512],
+    ['brand/mark.png', 512],
   ])('ships %s as a transparent square at the declared size', (name, size) => {
     expect(readPng(name)).toEqual({
       width: size,
@@ -56,14 +56,11 @@ describe('brand assets', () => {
   });
 
   it('ships the full transparent logo at its intrinsic dimensions', () => {
-    expect(readPng('brand/smokey-logo-primary.png')).toEqual({
-      width: 1375,
-      height: 1144,
+    expect(readPng('brand/logo-primary.png')).toEqual({
+      width: 1200,
+      height: 1000,
       colorType: 6,
     });
-    expect(
-      readFileSync(publicFile('brand/smokey-logo-primary.jpg')).length,
-    ).toBeGreaterThan(100_000);
   });
 
   it('packs 16, 32 and 48 pixel images into favicon.ico', () => {

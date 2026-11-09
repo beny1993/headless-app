@@ -1,5 +1,5 @@
 // Pins the category picker's numbered list: the home strip's six tiles, or a
-// routine tab's picks, dragged or arrowed into the order the section shows.
+// plain capped list of picks, dragged or arrowed into the order a section shows.
 //
 // Why a component test: `value` is a prop this component itself causes to
 // change, so what matters is the moment between «the admin moved a row» and
@@ -20,7 +20,6 @@ import {
 } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HOME_CATEGORY_TILES, homeTiles } from '@/lib/catalog/category-tree';
-import { MAX_ROUTINE_CATEGORIES } from '@/lib/content/site-content';
 import { CategoryPicker, type LinkOption } from './link-picker';
 
 afterEach(cleanup);
@@ -43,9 +42,11 @@ const HOME_UMAMI = {
   toggle: 'admin-panel-content-home-category-toggle',
   reorder: 'admin-panel-content-home-category-reorder',
 };
-const ROUTINE_UMAMI = {
-  toggle: 'admin-panel-content-routine-category-toggle',
-  reorder: 'admin-panel-content-routine-category-reorder',
+/** The plain mode's cap: no section uses it today, the component still has it. */
+const PLAIN_MAX = 4;
+const PLAIN_UMAMI = {
+  toggle: 'test-category-toggle',
+  reorder: 'test-category-reorder',
 };
 
 function Harness({
@@ -67,8 +68,8 @@ function Harness({
       value={value}
       fallback="dry-food, toys"
       categories={categories}
-      max={home ? HOME_CATEGORY_TILES : MAX_ROUTINE_CATEGORIES}
-      umami={home ? HOME_UMAMI : ROUTINE_UMAMI}
+      max={home ? HOME_CATEGORY_TILES : PLAIN_MAX}
+      umami={home ? HOME_UMAMI : PLAIN_UMAMI}
       shows={home ? (picked) => homeTiles(categories, picked) : undefined}
       onChange={(next) => {
         onChange(next);
@@ -87,8 +88,8 @@ const showHome = (initial?: string[]) => {
   return onChange;
 };
 
-/** A routine tab's picker: no «خودکار» rows, at most four picks. */
-const showRoutine = (initial?: string[], categories: LinkOption[] = MAIN) => {
+/** A plain picker: no «خودکار» rows, at most four picks. */
+const showPlain = (initial?: string[], categories: LinkOption[] = MAIN) => {
   const onChange = vi.fn();
   render(
     <Harness
@@ -462,9 +463,9 @@ describe('what a move says', () => {
   });
 });
 
-describe('a routine tab’s list', () => {
+describe('a plain list', () => {
   it('numbers only the picks, with no «خودکار» row, and says the fallback while none is picked', () => {
-    showRoutine();
+    showPlain();
 
     expect(screen.queryByRole('list')).toBeNull();
     expect(screen.getByText('dry-food, toys', { exact: false })).toBeTruthy();
@@ -484,7 +485,7 @@ describe('a routine tab’s list', () => {
       slug: 'grooming',
       label: '— شامپو و نظافت',
     };
-    showRoutine([grooming.id], [HYGIENE, grooming]);
+    showPlain([grooming.id], [HYGIENE, grooming]);
 
     expect(listed()).toEqual(['۱ شامپو و نظافت']);
     expect(grip(grooming).getAttribute('aria-label')).toBe(
@@ -493,7 +494,7 @@ describe('a routine tab’s list', () => {
   });
 
   it('moves a pick by drag and by key, as the home list does', () => {
-    const onChange = showRoutine([DRY.id, TOYS.id, TREATS.id]);
+    const onChange = showPlain([DRY.id, TOYS.id, TREATS.id]);
 
     drag(TREATS, 0);
     press(DRY, 'ArrowDown');

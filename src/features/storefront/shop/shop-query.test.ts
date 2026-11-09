@@ -12,6 +12,7 @@ import {
   MAX_SEARCH_TERM_LENGTH,
   productListQuerySchema,
 } from '@/lib/catalog/product-query';
+import { shopPath } from '@/lib/constant/paths';
 
 /** `buildShopHref` returns a path; parsing it back needs its query half. */
 const hrefParams = (href: string) =>
@@ -27,7 +28,6 @@ describe('parseShopQuery', () => {
     expect(
       parseShopQuery({
         category: 'dry-food',
-        pet: 'cat',
         minPrice: '100000',
         maxPrice: '500000',
         sort: 'price-asc',
@@ -36,7 +36,6 @@ describe('parseShopQuery', () => {
       }),
     ).toEqual({
       category: 'dry-food',
-      pet: 'cat',
       minPrice: 100_000,
       maxPrice: 500_000,
       sort: 'price-asc',
@@ -111,19 +110,6 @@ describe('parseShopQuery', () => {
     it('keeps a term exactly at the cap', () => {
       const term = 'گ'.repeat(MAX_SEARCH_TERM_LENGTH);
       expect(parseShopQuery({ q: term }).q).toBe(term);
-    });
-  });
-
-  describe('pet', () => {
-    it('keeps the two the catalog has', () => {
-      expect(parseShopQuery({ pet: 'cat' }).pet).toBe('cat');
-      expect(parseShopQuery({ pet: 'dog' }).pet).toBe('dog');
-    });
-
-    it('drops anything else, exact case only', () => {
-      expect(parseShopQuery({ pet: 'bird' }).pet).toBeUndefined();
-      expect(parseShopQuery({ pet: 'CAT' }).pet).toBeUndefined();
-      expect(parseShopQuery({ pet: '' }).pet).toBeUndefined();
     });
   });
 
@@ -317,18 +303,19 @@ describe('parseShopQuery', () => {
 
   describe('repeated parameters', () => {
     it('takes the first value, as URLSearchParams.get does', () => {
-      expect(parseShopQuery({ pet: ['cat', 'dog'] }).pet).toBe('cat');
       expect(parseShopQuery({ category: ['toys', 'treats'] }).category).toBe(
         'toys',
       );
     });
 
     it('drops a repeated parameter whose first value is invalid', () => {
-      expect(parseShopQuery({ pet: ['bird', 'cat'] }).pet).toBeUndefined();
+      expect(parseShopQuery({ sort: ['cheapest', 'price-asc'] }).sort).toBe(
+        DEFAULT_SHOP_QUERY.sort,
+      );
     });
 
     it('reads an array-shaped empty list as absent', () => {
-      expect(parseShopQuery({ pet: [] })).toEqual(DEFAULT_SHOP_QUERY);
+      expect(parseShopQuery({ category: [] })).toEqual(DEFAULT_SHOP_QUERY);
     });
   });
 });
@@ -350,7 +337,6 @@ describe('buildShopHref', () => {
     expect(
       buildShopHref({
         category: 'dry-food',
-        pet: 'dog',
         minPrice: 50_000,
         maxPrice: 300_000,
         sort: 'price-desc',
@@ -358,18 +344,20 @@ describe('buildShopHref', () => {
         limit: 24,
       }),
     ).toBe(
-      '/shop?category=dry-food&pet=dog&minPrice=50000&maxPrice=300000&sort=price-desc&page=2&limit=24',
+      '/shop?category=dry-food&minPrice=50000&maxPrice=300000&sort=price-desc&page=2&limit=24',
     );
   });
 
-  it('writes the in-stock switch after the pet, and only when it is on', () => {
-    const on = { ...DEFAULT_SHOP_QUERY, pet: 'cat' as const, inStock: true };
+  it('writes the in-stock switch after the category, and only when it is on', () => {
+    const on = { ...DEFAULT_SHOP_QUERY, category: 'toys', inStock: true };
 
     expect(buildShopHref({ ...on, minPrice: 50_000 })).toBe(
-      '/shop?pet=cat&inStock=true&minPrice=50000',
+      '/shop?category=toys&inStock=true&minPrice=50000',
     );
     // Off is the default, so a switched-off link is the plain shelf's.
-    expect(buildShopHref({ ...on, inStock: false })).toBe('/shop?pet=cat');
+    expect(buildShopHref({ ...on, inStock: false })).toBe(
+      '/shop?category=toys',
+    );
     expect(parseShopQuery(hrefParams(buildShopHref(on)))).toEqual(on);
   });
 
@@ -410,16 +398,15 @@ describe('buildShopHref', () => {
   });
 
   it('matches the deep-link shape the rest of the site builds', () => {
-    // `shopPath` (home quiz, category tiles) writes `?category=…&pet=…`; a
-    // deep link must arrive with those filters active, so the two spellings
+    // `shopPath` (category tiles, editorial links) writes `?category=…`; a
+    // deep link must arrive with that filter active, so the two spellings
     // have to agree exactly.
     expect(
       buildShopHref({
         ...DEFAULT_SHOP_QUERY,
         category: 'supplements',
-        pet: 'cat',
       }),
-    ).toBe('/shop?category=supplements&pet=cat');
+    ).toBe(shopPath({ category: 'supplements' }));
   });
 });
 
@@ -427,7 +414,7 @@ describe('shop query round trip', () => {
   const cases: ShopQuery[] = [
     DEFAULT_SHOP_QUERY,
     { ...DEFAULT_SHOP_QUERY, category: 'toys' },
-    { ...DEFAULT_SHOP_QUERY, pet: 'dog' },
+    { ...DEFAULT_SHOP_QUERY, inStock: true },
     { ...DEFAULT_SHOP_QUERY, minPrice: 0 },
     { ...DEFAULT_SHOP_QUERY, minPrice: 90_000, maxPrice: 250_000 },
     { ...DEFAULT_SHOP_QUERY, sort: 'price-asc' },
@@ -438,11 +425,11 @@ describe('shop query round trip', () => {
     // is normalized where it is matched, not where it is carried.
     { ...DEFAULT_SHOP_QUERY, q: 'اسباب‌بازی گربه' },
     { ...DEFAULT_SHOP_QUERY, q: 'غذاي خشك' },
-    { ...DEFAULT_SHOP_QUERY, q: 'گربه', category: 'toys', pet: 'cat', page: 2 },
+    { ...DEFAULT_SHOP_QUERY, q: 'گربه', category: 'toys', page: 2 },
     {
       q: 'شامپو',
       category: 'wet-food',
-      pet: 'cat',
+      inStock: true,
       minPrice: 10_000,
       maxPrice: 999_000,
       sort: 'price-desc',
@@ -458,7 +445,7 @@ describe('shop query round trip', () => {
   it('normalizes a hand-written URL to the same state its href produces', () => {
     const messy = parseShopQuery({
       category: 'toys',
-      pet: 'lizard',
+      minPrice: '-5',
       sort: 'cheapest',
       page: '0',
       limit: '900',
@@ -480,9 +467,9 @@ describe('updateShopQuery', () => {
   it('returns to the first page whenever a filter changes', () => {
     // Page 5 of "toys" is not page 5 of "cat toys"; keeping the number would
     // land the shopper on an empty page they never asked for.
-    expect(updateShopQuery(listing, { pet: 'cat' })).toEqual({
+    expect(updateShopQuery(listing, { inStock: true })).toEqual({
       ...listing,
-      pet: 'cat',
+      inStock: true,
       page: 1,
     });
   });
@@ -523,7 +510,7 @@ describe('updateShopQuery', () => {
   });
 
   it('leaves the original untouched', () => {
-    updateShopQuery(listing, { pet: 'dog' });
+    updateShopQuery(listing, { inStock: true });
     expect(listing).toEqual({
       ...DEFAULT_SHOP_QUERY,
       category: 'toys',
@@ -557,8 +544,8 @@ describe('agreement with the catalog API', () => {
 
   it.each([
     { category: 'dry-food' },
-    { pet: 'cat' },
-    { pet: 'dog', sort: 'price-asc' },
+    { inStock: 'true' },
+    { category: 'toys', sort: 'price-asc' },
     { minPrice: '0' },
     { minPrice: '90000', maxPrice: '250000' },
     { sort: 'price-desc', page: '4' },
@@ -574,7 +561,7 @@ describe('agreement with the catalog API', () => {
   });
 
   it.each([
-    { pet: 'lizard' },
+    { inStock: 'maybe' },
     { sort: 'cheapest' },
     { page: '0' },
     { page: '1e20' },

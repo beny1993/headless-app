@@ -342,8 +342,7 @@ export const withoutReceiptKeyEvent = (
  * An element's screen-reader text, as the browser SDK writes it into a `ui.*`
  * breadcrumb's element path: `body > a.view[aria-label="…"]`. The users list
  * labels each row's view link with the customer's name and phone number, the
- * pets tab labels its buttons with a pet's name, the addresses tab with an
- * address title. The SDK writes the value unescaped, so a `"]` inside it cannot
+ * addresses tab labels its buttons with an address title. The SDK writes the value unescaped, so a `"]` inside it cannot
  * be told from its end: everything from the first such attribute on is
  * dropped, the rest of the path with it, and only the attribute's name stays.
  */

@@ -58,7 +58,6 @@ export default async function EditProductPage({
         extraCategoryIds: product.extraCategoryIds,
         variantOf: product.variantOf,
         variantLabel: product.variantLabel,
-        petTypes: product.petTypes,
         isActive: product.isActive,
         // The whole gallery, in sort order: the form reorders and removes,
         // not just replaces, so the first photo alone is no longer enough.

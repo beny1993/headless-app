@@ -1,6 +1,6 @@
 // The product SKU, derived — never typed. The create route builds it from the
 // slug the admin already enters plus a short random suffix, so it reads like the
-// product (`ROYAL-CANIN-SENSIBLE-2KG-7K3Q`) and does not clash even when a
+// product (`ACME-STEEL-BOTTLE-750ML-7K3Q`) and does not clash even when a
 // renamed slug is later reused. It is set once: an update never touches it,
 // because it is snapshotted onto order items.
 //

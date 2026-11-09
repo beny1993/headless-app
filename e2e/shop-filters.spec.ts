@@ -24,7 +24,7 @@ if (!category) {
   throw new Error('The catalog seed files no product in a top-level category.');
 }
 
-/** The seeded sold-out product, whose own pet shelf the switch is tried on. */
+/** The seeded sold-out product, whose own category shelf the switch is tried on. */
 const soldOut = SEED_PRODUCTS.find(
   (product) => product.stock === 0 && !product.variantLabel,
 );
@@ -175,12 +175,12 @@ test('a price bound below the catalogue never shows a negative price', async ({
 test('«فقط محصولات موجود» hides what cannot be bought, and its chip brings it back', async ({
   page,
 }) => {
-  // Its pet's shelf, a page wide enough that the sold-out card — listed last
+  // Its own shelf, a page wide enough that the sold-out card — listed last
   // since #107 — is on it before the switch hides it.
   await page.goto(
     buildShopHref({
       ...DEFAULT_SHOP_QUERY,
-      pet: soldOut.petTypes[0],
+      category: soldOut.categorySlug,
       limit: MAX_PRODUCT_PAGE_SIZE,
     }),
   );

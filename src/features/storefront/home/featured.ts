@@ -1,4 +1,4 @@
-// Which products the home page's «انتخاب‌های اسموکی» grid shows.
+// Which products the home page's «پیشنهادهای ما» grid shows.
 //
 // Pure and generic over the fields it reads, so it is testable without a
 // database and reusable if the shop page ever wants the same merchandising.

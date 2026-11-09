@@ -16,15 +16,15 @@ import {
 import { PATHS, productPath } from '@/lib/constant/paths';
 
 /** What the shop is, in the words its title and generated copy share. */
-export const SITE_TAGLINE = 'فروشگاه آنلاین حیوانات خانگی';
+export const SITE_TAGLINE = 'فروشگاه آنلاین';
 
 const SITE_TITLE = `${SITE_FULL_NAME} | ${SITE_TAGLINE}`;
-const SITE_DESCRIPTION = `${SITE_FULL_NAME}؛ خرید آنلاین غذا، تشویقی، مکمل، لوازم بازی و بهداشت گربه و سگ در ایران.`;
+const SITE_DESCRIPTION = `${SITE_FULL_NAME}؛ خرید آنلاین محصولات منتخب با ارسال به سراسر ایران.`;
 const SOCIAL_IMAGE = {
-  url: '/brand/smokey-logo-primary.png',
-  width: 1375,
-  height: 1144,
-  alt: 'لوگوی اسموکی، فروشگاه حیوانات خانگی',
+  url: '/brand/logo-primary.png',
+  width: 1200,
+  height: 1000,
+  alt: `لوگوی ${SITE_FULL_NAME}`,
 };
 
 /**
@@ -61,17 +61,8 @@ export const SITE_METADATA: Metadata = {
   applicationName: DEFAULT_SITE_NAME,
   creator: DEFAULT_SITE_NAME,
   publisher: DEFAULT_SITE_NAME,
-  category: 'فروشگاه حیوانات خانگی',
-  keywords: [
-    'پت شاپ آنلاین',
-    'فروشگاه حیوانات خانگی',
-    'خرید غذای گربه',
-    'خرید غذای سگ',
-    'لوازم گربه',
-    'لوازم سگ',
-    'اسموکی',
-    SITE_LATIN_NAME,
-  ],
+  category: 'فروشگاه آنلاین',
+  keywords: ['فروشگاه آنلاین', 'خرید آنلاین', SITE_FULL_NAME, SITE_LATIN_NAME],
   robots: {
     index: true,
     follow: true,

@@ -12,7 +12,6 @@ import {
   CATEGORY_MESSAGES,
   CATEGORY_PARENT_MESSAGES,
 } from '@/lib/catalog/category-input';
-import { PET_TYPES } from '@/lib/catalog/product-query';
 import { API_PATHS, apiAdminCategoryPath } from '@/lib/constant/paths';
 import { formatNumber } from '@/lib/format';
 import type { ApiResponse } from '@/lib/hono/envelope';
@@ -94,7 +93,6 @@ describe.skipIf(!databaseReachable)('admin category API', () => {
       price: 100_000,
       stock: 1,
       categoryId,
-      petTypes: [PET_TYPES.CAT],
     });
   };
 

@@ -13,7 +13,7 @@ import { imageSrc } from '@/lib/storage/image-url';
  * One line in the summary. `lineTotal` is integer Toman (qty × unit price) —
  * `bigint` from the client cart, `number` from a server order; both format
  * exactly through `formatToman`. `imageKey` is a storage key
- * (`products/cat-toy.jpg` → `/products/cat-toy.jpg`): the cart's own, or on a
+ * (`products/notebook.jpg` → `/products/notebook.jpg`): the cart's own, or on a
  * server order its product's current first photo (`getOwnedOrder`); a line
  * without one degrades to a placeholder.
  */

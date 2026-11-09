@@ -42,7 +42,7 @@ type CacheState = {
   generations: Map<CacheTag, number>;
 };
 
-const STATE = Symbol.for('smokey-shop.read-cache');
+const STATE = Symbol.for('headless-app.read-cache');
 const scope = globalThis as typeof globalThis & { [STATE]?: CacheState };
 
 const freshState = (): CacheState => ({

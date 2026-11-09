@@ -1,5 +1,6 @@
 'use client';
 
+import { SITE_FULL_NAME } from '@/constants';
 import {
   useEffect,
   useId,
@@ -1191,7 +1192,8 @@ export function CheckoutForm({
                       aria-hidden="true"
                     />
                     <p className="text-sm">
-                      اتصال امن به درگاه زرین‌پال. اطلاعات کارت شما نزد اسموکی
+                      اتصال امن به درگاه زرین‌پال. اطلاعات کارت شما نزد{' '}
+                      {SITE_FULL_NAME}
                       ذخیره نمی‌شود.
                     </p>
                   </div>

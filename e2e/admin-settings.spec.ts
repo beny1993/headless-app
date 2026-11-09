@@ -386,13 +386,13 @@ test('the home categories an admin drags into order lead the strip in that order
   }
 });
 
-test('a product an admin picks for the first «انتخاب‌های اسموکی» box is what the home page shows there, and only there', async ({
+test('a product an admin picks for the first «پیشنهادهای ما» box is what the home page shows there, and only there', async ({
   page,
   shopper,
 }) => {
   await page.goto(adminContentAreaPath('home'));
   const block = page.locator('form', {
-    has: page.getByRole('heading', { name: 'انتخاب‌های اسموکی', exact: true }),
+    has: page.getByRole('heading', { name: 'پیشنهادهای ما', exact: true }),
   });
   const headline = await block
     .getByLabel('سرتیتر', { exact: true })
@@ -468,13 +468,16 @@ test('the social handles an admin edits are what the footer links to', async ({
   const block = page.locator('form', {
     has: page.getByRole('heading', { name: 'فوتر' }),
   });
+  const shop = block.getByLabel(/اینستاگرام فروشگاه/);
   const dailies = block.getByLabel(/اینستاگرام آموزش و سرگرمی/);
   const telegram = block.getByLabel(/نام کاربری تلگرام/);
   const original = {
+    shop: await shop.inputValue(),
     dailies: await dailies.inputValue(),
     telegram: await telegram.inputValue(),
   };
   const save = async (values: typeof original) => {
+    await shop.fill(values.shop);
     await dailies.fill(values.dailies);
     await telegram.fill(values.telegram);
     await block
@@ -484,14 +487,15 @@ test('the social handles an admin edits are what the footer links to', async ({
   };
 
   // Another network's URL is refused on its own field, before anything is sent.
-  await dailies.fill('https://t.me/smokeypetshop');
+  await dailies.fill('https://t.me/demoshop');
   await block.locator('[data-umami-event="admin-panel-content-save"]').click();
   await expect(block.getByText(/لینک باید آدرس پروفایل/)).toBeVisible();
 
-  // One handle pasted as the profile URL (share token and all), one cleared:
-  // the pill links the clean profile, the other pill is gone.
+  // One handle typed, one pasted as the profile URL (share token and all), one
+  // cleared: each pill links the clean profile, the cleared one is gone.
   const handle = `e2e.${Date.now().toString(36)}`;
   const edited = {
+    shop: `@${handle}.shop`,
     dailies: `https://www.instagram.com/${handle}?stkn=NWkxMDlrYWtqY2Jn`,
     telegram: '',
   };
@@ -514,7 +518,7 @@ test('the social handles an admin edits are what the footer links to', async ({
     ).toHaveCount(0);
     await expect(
       shopper.locator('[data-umami-event="footer-social-instagram-shop"]'),
-    ).toHaveAttribute('href', /^https:\/\/instagram\.com\/./);
+    ).toHaveAttribute('href', `https://instagram.com/${handle}.shop`);
   } finally {
     await save(original);
   }
@@ -543,7 +547,7 @@ test('a card an admin saves is what card-to-card checkout shows', async ({
   const edited = {
     number: '6037-9975-1234-5678',
     holder: `آزمایشی ${tag}`,
-    instagram: 'smokey.e2e',
+    instagram: 'demo.e2e',
   };
 
   const save = async (values: typeof original) => {
@@ -569,7 +573,7 @@ test('a card an admin saves is what card-to-card checkout shows', async ({
     await expect(shopper.getByText(edited.holder)).toBeVisible();
     await expect(
       shopper.locator('[data-umami-event="checkout-card-instagram"]'),
-    ).toHaveAttribute('href', 'https://instagram.com/smokey.e2e');
+    ).toHaveAttribute('href', 'https://instagram.com/demo.e2e');
 
     await attachReceipt(shopper);
     await shopper.locator('[data-umami-event="checkout-submit-order"]').click();

@@ -36,7 +36,6 @@ describe.skipIf(!databaseReachable)('ProductDao.insightRows', () => {
     const sub = await subCategory(top.id);
     const byId = await fx.product(top, { stock: 0 });
     const bySlug = await fx.product(sub, {
-      petTypes: ['cat', 'dog'],
       variantLabel: '۲ کیلو',
     });
     await fx.product(top); // neither: must not come back
@@ -56,7 +55,6 @@ describe.skipIf(!databaseReachable)('ProductDao.insightRows', () => {
           variantLabel: null,
           stock: 0,
           isActive: true,
-          petTypes: ['cat'],
           categoryId: top.id,
           categoryTitle: top.title,
           parentCategoryTitle: null,
@@ -69,7 +67,6 @@ describe.skipIf(!databaseReachable)('ProductDao.insightRows', () => {
           variantLabel: '۲ کیلو',
           stock: bySlug.stock,
           isActive: true,
-          petTypes: ['cat', 'dog'],
           categoryId: sub.id,
           categoryTitle: sub.title,
           parentCategoryTitle: top.title,

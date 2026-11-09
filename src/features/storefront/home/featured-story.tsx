@@ -6,7 +6,7 @@ import { resolveLink, type LinkTargets } from '@/lib/content/link';
 import { knownShelfPath } from './content';
 
 /**
- * «راهنمای اسموکی» — an editorial block above the fold of the lower page.
+ * «راهنمای خرید» — an editorial block above the fold of the lower page.
  *
  * The magazine it originally linked to is parked on the backlog, so the CTA
  * points at the products the text is actually about (wet food, for a cat that
@@ -54,7 +54,7 @@ export function FeaturedStorySection({
             <ContentLink
               {...resolveLink(
                 content.ctaLink,
-                knownShelfPath({ category: 'wet-food' }, categorySlugs),
+                knownShelfPath({ category: 'home-decor' }, categorySlugs),
                 targets,
               )}
               className="bg-brand hover:bg-brand-hover text-brand-foreground self-start rounded-xl px-6 py-3 font-bold transition-colors"

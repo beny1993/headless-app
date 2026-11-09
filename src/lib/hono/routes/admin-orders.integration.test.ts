@@ -21,7 +21,7 @@ import {
   it,
   vi,
 } from 'vitest';
-import { PET_TYPES, categories, products } from '@/db/schema/catalog';
+import { categories, products } from '@/db/schema/catalog';
 import { users } from '@/db/schema/auth';
 import { orders } from '@/db/schema/orders';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
@@ -93,7 +93,6 @@ describe.skipIf(!databaseReachable)('admin order API', () => {
         price: 100_000,
         stock: 1000,
         categoryId: category.id,
-        petTypes: [PET_TYPES.CAT],
       })
       .returning();
     createdProductIds.push(product.id);

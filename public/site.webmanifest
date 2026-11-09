@@ -1,13 +1,13 @@
 {
-  "name": "Smokey Pet Shop",
-  "short_name": "Smokey",
-  "description": "فروشگاه آنلاین لوازم و غذای حیوانات خانگی",
+  "name": "Demo Shop",
+  "short_name": "Demo",
+  "description": "فروشگاه آنلاین",
   "lang": "fa",
   "dir": "rtl",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#fffaf2",
-  "theme_color": "#6dcefa",
+  "theme_color": "#2f5d62",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",

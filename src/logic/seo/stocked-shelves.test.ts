@@ -1,6 +1,6 @@
 // Which shelves the sitemap names. The DAOs are mocked at their edge; what
-// "lists something" means (active heads, sub-categories, extra filings, the
-// pet scope) is proven against a real database by `hasShelfProducts`'s own
+// "lists something" means (active heads, sub-categories, extra filings) is
+// proven against a real database by `hasShelfProducts`'s own
 // suite.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { shopPath } from '@/lib/constant/paths';
@@ -18,11 +18,11 @@ vi.mock('@/db/dao/CategoryDao', () => ({
 
 import { listStockedShelves } from './stocked-shelves';
 
-/** Every shelf lists something except these, named by pet or category slug. */
+/** Every shelf lists something except these, named by category slug. */
 const listNothing = (...shelves: string[]) =>
   dao.hasShelfProducts.mockImplementation(
-    async (shelf: { categorySlug?: string; petType?: string }) =>
-      !shelves.includes(shelf.categorySlug ?? shelf.petType ?? ''),
+    async (shelf: { categorySlug?: string }) =>
+      !shelves.includes(shelf.categorySlug ?? ''),
   );
 
 describe('listStockedShelves', () => {
@@ -34,22 +34,19 @@ describe('listStockedShelves', () => {
     ]);
   });
 
-  it('names both pet shelves and every category shelf that lists something', async () => {
+  it('names every category shelf that lists something', async () => {
     listNothing();
 
     expect(await listStockedShelves()).toEqual([
-      shopPath({ pet: 'cat' }),
-      shopPath({ pet: 'dog' }),
       shopPath({ category: 'dry-food' }),
       shopPath({ category: 'treats' }),
     ]);
   });
 
-  it('leaves out a shelf that lists nothing, a pet shelf as much as a category', async () => {
-    listNothing('dog', 'treats');
+  it('leaves out a shelf that lists nothing', async () => {
+    listNothing('treats');
 
     expect(await listStockedShelves()).toEqual([
-      shopPath({ pet: 'cat' }),
       shopPath({ category: 'dry-food' }),
     ]);
   });

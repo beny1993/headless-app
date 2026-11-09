@@ -31,16 +31,16 @@ const remotePatternsFor = (base: string): unknown => {
 
 describe('the image optimizer allowlist', () => {
   it('reaches the bucket’s uploads/ only, never its receipts/', () => {
-    expect(
-      remotePatternsFor('https://storage.c2.liara.site/smokeypetshop'),
-    ).toEqual([
-      {
-        protocol: 'https',
-        hostname: 'storage.c2.liara.site',
-        port: '',
-        pathname: '/smokeypetshop/uploads/**',
-      },
-    ]);
+    expect(remotePatternsFor('https://storage.c2.liara.site/demoshop')).toEqual(
+      [
+        {
+          protocol: 'https',
+          hostname: 'storage.c2.liara.site',
+          port: '',
+          pathname: '/demoshop/uploads/**',
+        },
+      ],
+    );
   });
 
   it('allows nothing remote when there is no bucket', () => {

@@ -9,15 +9,11 @@ import {
   storefrontContent,
 } from '@/logic/storefront/cached-reads';
 import { CategoriesSection } from '@/features/storefront/home/categories';
-import { CommunitySection } from '@/features/storefront/home/community';
 import { FeaturedStorySection } from '@/features/storefront/home/featured-story';
 import { selectFeatured } from '@/features/storefront/home/featured';
 import { HeroSection } from '@/features/storefront/home/hero';
-import { JourneySection } from '@/features/storefront/home/journey';
-import { LifeMomentsSection } from '@/features/storefront/home/life-moments';
 import { PhilosophySection } from '@/features/storefront/home/philosophy';
 import { RecommendsSection } from '@/features/storefront/home/recommends';
-import { RoutineSection } from '@/features/storefront/home/routine';
 import { PATHS } from '@/lib/constant/paths';
 import { absoluteUrl, SITE_JSON_LD } from '@/lib/seo';
 
@@ -54,7 +50,7 @@ export default async function HomePage() {
 
   // Saved destinations store catalog ids: resolve them once for every linked
   // section, reusing the categories just read (so only linked products query).
-  // The «انتخاب‌های اسموکی» boxes the admin picked a product for resolve beside
+  // The «پیشنهادهای ما» boxes the admin picked a product for resolve beside
   // them, as cards — from the listing page just read where they are on it, so
   // no query at all then — and only while the section is shown. A hidden
   // product or a family member does not come back; `selectFeatured` refills
@@ -93,23 +89,10 @@ export default async function HomePage() {
       {isVisible(content['home.hero']) && (
         <HeroSection content={content['home.hero']} targets={targets} />
       )}
-      {isVisible(content['home.moments']) && (
-        <LifeMomentsSection
-          content={content['home.moments']}
-          targets={targets}
-          categorySlugs={categorySlugs}
-        />
-      )}
       {isVisible(recommends) && (
         <RecommendsSection
           content={recommends}
           products={selectFeatured(items, picks)}
-        />
-      )}
-      {isVisible(content['home.journey']) && (
-        <JourneySection
-          content={content['home.journey']}
-          categorySlugs={categorySlugs}
         />
       )}
       {isVisible(content['home.guide']) && (
@@ -118,12 +101,6 @@ export default async function HomePage() {
           targets={targets}
           categorySlugs={categorySlugs}
         />
-      )}
-      {isVisible(content['home.routine']) && (
-        <RoutineSection content={content['home.routine']} categories={tiles} />
-      )}
-      {isVisible(content['home.family']) && (
-        <CommunitySection content={content['home.family']} />
       )}
       {isVisible(content['home.categories']) && (
         <CategoriesSection

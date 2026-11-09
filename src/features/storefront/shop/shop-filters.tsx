@@ -3,12 +3,7 @@
 import { Suspense, use, useId, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Filter, X } from 'lucide-react';
-import {
-  SHOP_PET_OPTIONS,
-  buildShopHref,
-  updateShopQuery,
-  type ShopQuery,
-} from './shop-query';
+import { buildShopHref, updateShopQuery, type ShopQuery } from './shop-query';
 import { useModalDialog } from '@/hooks/use-modal-dialog';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -21,7 +16,7 @@ export type ShopCategoryOption = {
 };
 
 /**
- * The shop's filter panel: category, in stock only, pet type and price range.
+ * The shop's filter panel: category, in stock only and price range.
  *
  * Rendered twice (desktop sidebar, mobile sheet), so every id is namespaced
  * with `useId`.
@@ -130,29 +125,6 @@ export function ShopFilters({
         />
       </div>
 
-      <fieldset className="border-border/70 mb-5 border-b pb-5">
-        <legend className="mb-2 text-sm font-semibold">نوع حیوان</legend>
-        <div className="bg-secondary flex gap-1 rounded-xl p-1">
-          <PetSegment
-            label="همه"
-            value=""
-            ids={ids}
-            checked={query.pet === undefined}
-            onSelect={() => go(updateShopQuery(query, { pet: undefined }))}
-          />
-          {SHOP_PET_OPTIONS.map((pet) => (
-            <PetSegment
-              key={pet.value}
-              label={pet.label}
-              value={pet.value}
-              ids={ids}
-              checked={query.pet === pet.value}
-              onSelect={() => go(updateShopQuery(query, { pet: pet.value }))}
-            />
-          ))}
-        </div>
-      </fieldset>
-
       <PriceFilter query={query} bounds={priceBounds} onSubmit={go} />
     </div>
   );
@@ -189,14 +161,6 @@ function ActiveFilters({
       clear: updateShopQuery(query, { inStock: undefined }),
     });
   }
-  if (query.pet !== undefined) {
-    const pet = SHOP_PET_OPTIONS.find((option) => option.value === query.pet);
-    chips.push({
-      key: 'pet',
-      label: pet?.label ?? query.pet,
-      clear: updateShopQuery(query, { pet: undefined }),
-    });
-  }
   if (query.minPrice !== undefined || query.maxPrice !== undefined) {
     chips.push({
       key: 'price',
@@ -223,7 +187,6 @@ function ActiveFilters({
               updateShopQuery(query, {
                 inStock: undefined,
                 category: undefined,
-                pet: undefined,
                 minPrice: undefined,
                 maxPrice: undefined,
               }),
@@ -389,49 +352,6 @@ function CategoryRow({
         {label}
       </label>
     </>
-  );
-}
-
-/** One cell of the pet segmented control — same radio bones as a row. */
-function PetSegment({
-  label,
-  value,
-  ids,
-  checked,
-  onSelect,
-}: {
-  label: string;
-  value: string;
-  ids: string;
-  checked: boolean;
-  onSelect: () => void;
-}) {
-  const id = `${ids}-pet-${value || 'all'}`;
-
-  return (
-    <div className="flex-1">
-      <input
-        type="radio"
-        id={id}
-        name={`${ids}-pet`}
-        className="peer sr-only"
-        checked={checked}
-        onChange={onSelect}
-        data-umami-event="shop-filter-pet-toggle"
-      />
-      <label
-        htmlFor={id}
-        className={cn(
-          'flex min-h-11 cursor-pointer items-center justify-center rounded-lg px-2 text-sm transition-colors duration-200 select-none',
-          'peer-focus-visible:ring-accent-strong peer-focus-visible:ring-2',
-          checked
-            ? 'bg-background text-foreground font-semibold shadow-sm'
-            : 'text-muted-foreground hover:text-foreground',
-        )}
-      >
-        {label}
-      </label>
-    </div>
   );
 }
 
@@ -646,7 +566,6 @@ export function ShopFilterSheet({
   const activeCount = [
     query.inStock || undefined,
     query.category,
-    query.pet,
     query.minPrice ?? query.maxPrice,
   ].filter((value) => value !== undefined).length;
 

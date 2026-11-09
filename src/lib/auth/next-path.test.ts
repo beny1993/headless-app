@@ -7,7 +7,7 @@ describe('safeNextPath', () => {
     it.each([
       ['the admin panel', '/admin-panel'],
       ['a product page', '/product/cat-dry-food'],
-      ['the shop with filters', '/shop?category=food&pet=cat'],
+      ['the shop with filters', '/shop?category=kitchen&inStock=true'],
       ['a path with a fragment', '/checkout#payment'],
       ['the account page', '/account'],
       ['a percent-encoded Persian slug', '/product/%D8%BA%D8%B0%D8%A7'],
@@ -79,7 +79,9 @@ describe('safeNextPath', () => {
   });
 
   it('is idempotent — a sanitized path survives a second pass', () => {
-    expect(safeNextPath(safeNextPath('/shop?pet=cat'))).toBe('/shop?pet=cat');
+    expect(safeNextPath(safeNextPath('/shop?category=kitchen'))).toBe(
+      '/shop?category=kitchen',
+    );
   });
 });
 

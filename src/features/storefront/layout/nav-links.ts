@@ -17,7 +17,7 @@ import { PATHS } from '@/lib/constant/paths';
  * `block-fields.ts` is admin-client code and imports these, and must not drag the
  * `Footer` server component into its bundle.
  *
- * «مجله اسموکی» from the design is deliberately absent: no magazine exists and no
+ * The design's magazine link is deliberately absent: no magazine exists and no
  * story plans one, so it would ship as dead navigation (design review).
  */
 export const NAV_TARGETS = [PATHS.HOME, PATHS.SHOP, PATHS.ABOUT] as const;

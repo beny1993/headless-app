@@ -28,9 +28,7 @@
 // changes with it.
 import { z } from 'zod';
 import {
-  PET_TYPES,
   PRODUCT_SORTS,
-  PET_LABELS,
   productListQueryShape,
   type ProductListQuery,
 } from '@/lib/catalog/product-query';
@@ -38,7 +36,6 @@ import { PATHS } from '@/lib/constant/paths';
 
 /** Borrowed from the catalog API's query schema, never restated. */
 export type ShopSort = ProductListQuery['sort'];
-type ShopPet = NonNullable<ProductListQuery['pet']>;
 
 /** The parsed, always-valid shape the page and its controls both work in. */
 export type ShopQuery = {
@@ -52,7 +49,6 @@ export type ShopQuery = {
   q?: string;
   /** A category *slug*, and at most one — the API takes a single category. */
   category?: string;
-  pet?: ShopPet;
   /** «فقط محصولات موجود». Off — `false` or absent — is the default. */
   inStock?: boolean;
   /** Inclusive, integer Toman. */
@@ -90,7 +86,6 @@ const asAbsentWhenInvalid = <T>(field: z.ZodType<T>) =>
 const shopQuerySchema = z.object({
   q: asAbsentWhenInvalid(productListQueryShape.q),
   category: asAbsentWhenInvalid(productListQueryShape.category),
-  pet: asAbsentWhenInvalid(productListQueryShape.pet),
   inStock: asAbsentWhenInvalid(productListQueryShape.inStock),
   minPrice: asAbsentWhenInvalid(productListQueryShape.minPrice),
   maxPrice: asAbsentWhenInvalid(productListQueryShape.maxPrice),
@@ -122,16 +117,9 @@ export const SHOP_SORT_OPTIONS: readonly { value: ShopSort; label: string }[] =
     label: SORT_LABELS[value],
   }));
 
-/** The pet filter's options. Same two the catalog's `pet_type` enum has. */
-export const SHOP_PET_OPTIONS: readonly { value: ShopPet; label: string }[] =
-  Object.values(PET_TYPES).map((value) => ({
-    value,
-    label: PET_LABELS[value],
-  }));
-
 /**
  * First value wins for a repeated parameter, which is what
- * `URLSearchParams.get` does — a link that accidentally says `?pet=cat&pet=dog`
+ * `URLSearchParams.get` does — a link that accidentally says `?category=a&category=b`
  * still filters instead of erroring.
  */
 function readParam(params: ShopSearchParams, key: string): string | undefined {
@@ -163,7 +151,6 @@ export function parseShopQuery(params: ShopSearchParams): ShopQuery {
   return shopQuerySchema.parse({
     q: readText(params, 'q'),
     category: readText(params, 'category'),
-    pet: readText(params, 'pet'),
     inStock: readText(params, 'inStock'),
     minPrice: readText(params, 'minPrice'),
     maxPrice: readText(params, 'maxPrice'),
@@ -186,7 +173,6 @@ export function buildShopHref(query: ShopQuery): string {
   // First, because it is the thing the shopper asked for; the filters narrow it.
   if (query.q) params.set('q', query.q);
   if (query.category) params.set('category', query.category);
-  if (query.pet) params.set('pet', query.pet);
   // Written only when on: off is the default, and a switched-off link must be
   // the plain shelf's, one URL for one screen.
   if (query.inStock) params.set('inStock', 'true');
@@ -214,7 +200,7 @@ export function buildShopHref(query: ShopQuery): string {
  * The next shop state after a control changes.
  *
  * Anything but an explicit page returns to page one: page 5 of «اسباب‌بازی» is
- * not page 5 of «اسباب‌بازی گربه», and keeping the number would drop the
+ * not page 5 of «اسباب‌بازی چوبی», and keeping the number would drop the
  * shopper on an empty page they never asked for.
  */
 export function updateShopQuery(

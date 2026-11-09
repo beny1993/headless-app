@@ -1,79 +1,77 @@
-// The demo catalog's raw data: the six categories and eight products of the
-// design prototype (`design/src/app/App.tsx`), with its own Persian titles,
-// brands, benefit lines, SKUs and integer-Toman prices — plus the three
-// sub-categories and two products this shop's own stories need, appended.
+// The demo catalog's raw data: six categories and a dozen products of a small
+// general store, with Persian titles, invented brands, benefit lines, SKUs and
+// integer-Toman prices. Every row is here for a reason a test or a story needs:
+// a gallery, a sold-out product, a low-stock one, a product filed under two
+// categories, and a family whose head is sold out and cheapest.
 //
 // Deliberately free of database imports, so the checks on this data — image
 // files present, slugs legal, prices whole Toman — run without a database.
 // `seedCatalog` in ./catalog.ts writes it.
 //
-// `objectKey` is a storage key, not a URL. Until the admin story puts the
-// storage interface behind it, the dev stand-in is a committed file under
-// `public/`, so `products/cat-toy.jpg` is served at `/products/cat-toy.jpg`.
-import { PET_TYPES, type PetType } from '@/db/schema/catalog';
+// `objectKey` is a storage key, not a URL. The dev stand-in is a committed file
+// under `public/`, so `products/mug.jpg` is served at `/products/mug.jpg`.
 
 export const SEED_CATEGORIES = [
   {
-    title: 'غذای خشک',
-    slug: 'dry-food',
+    title: 'آشپزخانه',
+    slug: 'kitchen',
     sortOrder: 1,
-    imageKey: 'products/cat-dry-food.jpg',
+    imageKey: 'products/mug.jpg',
   },
   {
-    title: 'غذای تر',
-    slug: 'wet-food',
+    title: 'نوشت‌افزار',
+    slug: 'stationery',
     sortOrder: 2,
-    imageKey: 'products/cat-wet-food.jpg',
+    imageKey: 'products/notebook.jpg',
   },
   {
-    title: 'تشویقی',
-    slug: 'treats',
+    title: 'صوتی و دیجیتال',
+    slug: 'audio',
     sortOrder: 3,
-    imageKey: 'products/cat-treats.jpg',
+    imageKey: 'products/headphones.jpg',
   },
   {
-    title: 'مکمل',
-    slug: 'supplements',
+    title: 'دکوراسیون',
+    slug: 'home-decor',
     sortOrder: 4,
-    imageKey: 'products/cat-supplement.jpg',
+    imageKey: 'products/lamp.jpg',
   },
   {
-    title: 'اسباب‌بازی',
-    slug: 'toys',
+    title: 'کیف و سفر',
+    slug: 'bags',
     sortOrder: 5,
-    imageKey: 'products/cat-toy.jpg',
+    imageKey: 'products/backpack.jpg',
   },
   {
-    title: 'بهداشت',
-    slug: 'hygiene',
+    title: 'سرگرمی',
+    slug: 'games',
     sortOrder: 6,
-    imageKey: 'site/cat-hygiene.jpg',
+    imageKey: 'products/puzzle.jpg',
   },
 ] as const;
 
 /**
  * One level of sub-categories, kept in an export of its own rather than mixed
  * into `SEED_CATEGORIES`: the home strip shows top-level categories only, each
- * with the photo its seed row carries, and the quiz deep-links at top-level
- * shelves. Both read `SEED_CATEGORIES` and would demand a photo, or a quiz
- * answer, for every sub-category added here.
+ * with the photo its seed row carries, and would demand a photo for every
+ * sub-category added there.
  *
  * `parentSlug` is typed from `SEED_CATEGORIES`, so a sub-category under a
  * sub-category — or under nothing — fails `pnpm type-check`, not a test run.
  */
 export const SEED_SUBCATEGORIES = [
   {
-    title: 'شامپو و نظافت',
-    slug: 'grooming',
+    title: 'روشنایی',
+    slug: 'lighting',
     sortOrder: 1,
-    parentSlug: 'hygiene',
+    parentSlug: 'home-decor',
   },
-  { title: 'مالت', slug: 'malt', sortOrder: 1, parentSlug: 'supplements' },
+  { title: 'ماگ و لیوان', slug: 'mugs', sortOrder: 1, parentSlug: 'kitchen' },
   {
-    title: 'مولتی‌ویتامین',
-    slug: 'multivitamin',
+    title: 'بطری و فلاسک',
+    slug: 'bottles',
     sortOrder: 2,
-    parentSlug: 'supplements',
+    parentSlug: 'kitchen',
   },
 ] as const satisfies readonly {
   title: string;
@@ -90,7 +88,7 @@ type SeedCategorySlug =
 type SeedProduct = {
   title: string;
   slug: string;
-  /** The prototype's own SKUs — the admin screens display these. */
+  /** What the admin screens display; derived from the slug by convention. */
   sku: string;
   brand: string;
   benefit: string;
@@ -102,10 +100,9 @@ type SeedProduct = {
   categorySlug: SeedCategorySlug;
   /** Additional categories the product is also found under. Never the main one. */
   extraCategorySlugs?: SeedCategorySlug[];
-  petTypes: PetType[];
   imageKeys: string[];
   /**
-   * «۱۰ کیلوگرم», «لاوندر» — what tells this member from its siblings. Set on
+   * «۷۵۰ میلی‌لیتر», «وانیل» — what tells this member from its siblings. Set on
    * the family's head too; absent on a standalone product.
    */
   variantLabel?: string;
@@ -119,16 +116,15 @@ type SeedProduct = {
 
 export const SEED_PRODUCTS: SeedProduct[] = [
   {
-    title: 'غذای خشک پرمیوم گربه بالغ',
-    slug: 'royal-canin-adult-cat-dry-food',
-    sku: 'RC-CAT-ADULT-1K',
-    brand: 'Royal Canin',
-    benefit: 'مناسب گوارش حساس',
+    title: 'ماگ سرامیکی لعابی',
+    slug: 'clayform-glazed-mug-350',
+    sku: 'CF-MUG-350',
+    brand: 'Clayform',
+    benefit: 'مناسب ماشین ظرف‌شویی',
     price: 285_000,
     oldPrice: 320_000,
     stock: 24,
-    categorySlug: 'dry-food',
-    petTypes: [PET_TYPES.CAT],
+    categorySlug: 'kitchen',
     // The one seeded gallery. Every other product carries a single photo, which
     // left the thumbnail strip and the swipe track reachable only from a
     // product a spec had built itself — and the admin spec that builds one runs
@@ -136,192 +132,175 @@ export const SEED_PRODUCTS: SeedProduct[] = [
     // The two extra keys are stand-ins from the bundled set; they only have to
     // be visibly different from each other and from the first.
     imageKeys: [
-      'products/cat-dry-food.jpg',
-      'products/cat-toy.jpg',
-      'products/cat-supplement.jpg',
+      'products/mug.jpg',
+      'products/bottle.jpg',
+      'products/candle.jpg',
     ],
   },
   {
-    title: 'غذای خشک سگ با مرغ و برنج',
-    slug: 'hills-science-dog-chicken-rice',
-    sku: 'HS-DOG-CHICKEN-2K',
-    brand: "Hill's Science",
-    benefit: 'تقویت سیستم ایمنی',
+    title: 'بطری آب استیل',
+    slug: 'nordwell-steel-bottle-750',
+    sku: 'NW-BOTTLE-750',
+    brand: 'Nordwell',
+    benefit: 'سرد نگه داشتن تا ۲۴ ساعت',
     price: 340_000,
     oldPrice: null,
     stock: 12,
-    categorySlug: 'dry-food',
-    petTypes: [PET_TYPES.DOG],
-    imageKeys: ['products/dog-dry-food.jpg'],
+    categorySlug: 'kitchen',
+    imageKeys: ['products/bottle.jpg'],
   },
   {
-    title: 'تشویقی طبیعی مرغ و سبزیجات گربه',
-    slug: 'applaws-cat-chicken-veg-treats',
-    sku: 'AP-CAT-TREAT-60',
-    brand: 'Applaws',
-    benefit: 'بدون مواد مصنوعی',
+    title: 'دفتر یادداشت جلد سخت',
+    slug: 'pagecraft-hardcover-notebook-a5',
+    sku: 'PC-NOTEBOOK-A5',
+    brand: 'Pagecraft',
+    benefit: 'کاغذ ۱۰۰ گرمی بدون پشت‌زدگی',
     price: 125_000,
     oldPrice: null,
     stock: 40,
-    categorySlug: 'treats',
-    petTypes: [PET_TYPES.CAT],
-    imageKeys: ['products/cat-treats.jpg'],
+    categorySlug: 'stationery',
+    imageKeys: ['products/notebook.jpg'],
   },
   {
-    title: 'تشویقی نرم سگ با طعم گوشت',
-    slug: 'ziwi-dog-meat-soft-treats',
-    sku: 'ZW-DOG-TREAT-85',
-    brand: 'Ziwi',
-    benefit: 'بدون غلات، طبیعی ۱۰۰٪',
+    title: 'دفتر برنامه‌ریزی هفتگی',
+    slug: 'pagecraft-weekly-planner',
+    sku: 'PC-PLANNER-WEEK',
+    brand: 'Pagecraft',
+    benefit: 'بدون تاریخ، از هر هفته شروع کن',
     price: 165_000,
     oldPrice: 190_000,
     stock: 18,
-    categorySlug: 'treats',
-    petTypes: [PET_TYPES.DOG],
-    imageKeys: ['products/dog-treats.jpg'],
+    categorySlug: 'stationery',
+    imageKeys: ['products/notebook.jpg'],
   },
   {
     // Deliberately out of stock: the design has an "فعلاً ناموجود است" state
     // and the storefront story needs a product that exercises it.
-    title: 'غذای مرطوب سالمون و تن گربه',
-    slug: 'sheba-cat-salmon-tuna-wet-food',
-    sku: 'SH-CAT-WET-85',
-    brand: 'Sheba',
-    benefit: 'غنی از امگا ۳',
+    title: 'هدفون سیمی روگوشی',
+    slug: 'sonora-wired-headphones',
+    sku: 'SN-HEADPHONES-W',
+    brand: 'Sonora',
+    benefit: 'صدای شفاف با کابل جداشدنی',
     price: 95_000,
     oldPrice: null,
     stock: 0,
-    categorySlug: 'wet-food',
-    petTypes: [PET_TYPES.CAT],
-    imageKeys: ['products/cat-wet-food.jpg'],
+    categorySlug: 'audio',
+    imageKeys: ['products/headphones.jpg'],
   },
   {
-    title: 'مکمل پوست و مو گربه',
-    slug: 'beaphar-cat-skin-coat-supplement',
-    sku: 'BP-CAT-SKIN-50',
-    brand: 'Beaphar',
-    benefit: 'کاهش ریزش مو',
+    title: 'کوله‌پشتی روزانه',
+    slug: 'trailpack-daypack-20l',
+    sku: 'TP-DAYPACK-20L',
+    brand: 'Trailpack',
+    benefit: 'ضدآب، با جای لپ‌تاپ',
     price: 178_000,
     oldPrice: 210_000,
     stock: 7,
-    categorySlug: 'supplements',
-    petTypes: [PET_TYPES.CAT],
-    imageKeys: ['products/cat-supplement.jpg'],
+    categorySlug: 'bags',
+    imageKeys: ['products/backpack.jpg'],
   },
   {
-    title: 'مکمل مفصل و استخوان سگ',
-    slug: 'nutramax-dog-joint-supplement',
-    sku: 'NX-DOG-JOINT-60',
-    brand: 'Nutramax',
-    benefit: 'تقویت غضروف و مفاصل',
+    title: 'چراغ رومیزی چوبی',
+    slug: 'lumen-wooden-desk-lamp',
+    sku: 'LM-LAMP-DESK',
+    brand: 'Lumen',
+    benefit: 'نور گرم و قابل تنظیم',
     price: 215_000,
     oldPrice: null,
     stock: 15,
-    categorySlug: 'supplements',
-    petTypes: [PET_TYPES.DOG],
-    // The prototype reuses the dog dry-food photo for this one.
-    imageKeys: ['products/dog-dry-food.jpg'],
+    categorySlug: 'home-decor',
+    imageKeys: ['products/lamp.jpg'],
   },
   {
     // Low stock: drives the design's "تنها ۳ عدد باقی مانده" warning.
-    title: 'اسباب‌بازی تعاملی پر و زنگوله',
-    slug: 'smartykat-interactive-feather-bell-toy',
-    sku: 'SK-CAT-TOY-01',
-    brand: 'SmartyKat',
-    benefit: 'تحریک غریزه شکار',
+    title: 'پازل ۵۰۰ تکه',
+    slug: 'tessera-jigsaw-puzzle-500',
+    sku: 'TS-PUZZLE-500',
+    brand: 'Tessera',
+    benefit: 'سرگرمی خانوادگی برای عصرهای آرام',
     price: 89_000,
     oldPrice: null,
     stock: 3,
-    categorySlug: 'toys',
-    petTypes: [PET_TYPES.CAT],
-    imageKeys: ['products/cat-toy.jpg'],
+    categorySlug: 'games',
+    imageKeys: ['products/puzzle.jpg'],
   },
-  // Appended, never inserted: the two rows above are pinned by index, and
+  // Appended, never inserted: the rows above are pinned by index, and
   // e2e/support.ts picks the best-stocked, the sold-out and the low-stock
   // product out of this list.
   {
-    // For both animals at once, so the slug and the SKU carry no pet segment —
-    // the convention the product form's own hint teaches the admin.
-    title: 'شامپو ملایم حیوان خانگی',
-    slug: 'beaphar-gentle-shampoo-250',
-    sku: 'BP-SHAMPOO-250',
-    brand: 'Beaphar',
-    benefit: 'بدون اشک، مناسب پوست حساس',
+    // Filed under a sub-category only, so a parent shelf has to reach it
+    // through its child.
+    title: 'ریسه نوری LED',
+    slug: 'lumen-led-string-lights-5m',
+    sku: 'LM-LED-5M',
+    brand: 'Lumen',
+    benefit: 'مصرف کم، مناسب فضای داخلی',
     price: 132_000,
     oldPrice: null,
     stock: 22,
-    categorySlug: 'grooming',
-    petTypes: [PET_TYPES.CAT, PET_TYPES.DOG],
-    // No new downloads: the supplement bottle stands in for the shampoo.
-    imageKeys: ['products/cat-supplement.jpg'],
+    categorySlug: 'lighting',
+    imageKeys: ['products/lamp.jpg'],
   },
   {
-    // Benyamin's own example of a product in two categories: a malt paste that
-    // is also a multivitamin, so it is found under both shelves.
-    title: 'خمیر مالت گربه با مولتی‌ویتامین',
-    slug: 'gimcat-cat-malt-paste-100',
-    sku: 'GC-CAT-MALT-100',
-    brand: 'GimCat',
-    benefit: 'کمک به دفع گلوله مویی',
+    // A product in two categories: a travel tumbler is a bottle and a mug at
+    // once, so it is found under both shelves.
+    title: 'لیوان سفری دوجداره',
+    slug: 'nordwell-travel-tumbler-450',
+    sku: 'NW-TUMBLER-450',
+    brand: 'Nordwell',
+    benefit: 'درب ضدنشت برای نوشیدنی گرم و سرد',
     price: 148_000,
     oldPrice: 165_000,
     stock: 16,
-    categorySlug: 'malt',
-    extraCategorySlugs: ['multivitamin'],
-    petTypes: [PET_TYPES.CAT],
-    imageKeys: ['products/cat-supplement.jpg'],
+    categorySlug: 'bottles',
+    extraCategorySlugs: ['mugs'],
+    imageKeys: ['products/bottle.jpg'],
   },
-  // Benyamin's own example of one product in several smells: «our litter box
-  // deodorant has different kinds of smells». The three rows below are one card
-  // in the shop — the head is listed, the members are reached from its page.
-  // «لاوندر», the head, is sold out and the cheapest on purpose (his follow-up:
-  // one colour sold out, the others not). The card then exercises both rules
-  // at once: it prints «از ۱۴۹٬۰۰۰ تومان», the cheapest smell a shopper can
-  // buy, never the sold-out ۱۳۹٬۰۰۰, and it opens «بدون بو», not a page with
-  // nothing to add to the cart.
+  // One product in several scents. The three rows below are one card in the
+  // shop — the head is listed, the members are reached from its page.
+  // «وانیل», the head, is sold out and the cheapest on purpose. The card then
+  // exercises both rules at once: it prints «از ۱۴۹٬۰۰۰ تومان», the cheapest
+  // scent a shopper can buy, never the sold-out ۱۳۹٬۰۰۰, and it opens
+  // «بدون رایحه», not a page with nothing to add to the cart.
   {
-    title: 'خوشبوکننده خاک گربه',
-    slug: 'catsan-litter-deodorizer-lavender',
-    sku: 'CS-DEO-LAVENDER',
-    brand: 'Catsan',
-    benefit: 'کنترل بو تا ۷ روز',
+    title: 'شمع معطر سویا',
+    slug: 'ember-soy-candle-vanilla',
+    sku: 'EM-CANDLE-VANILLA',
+    brand: 'Ember',
+    benefit: 'تا ۴۰ ساعت سوختن',
     price: 139_000,
     oldPrice: null,
     stock: 0,
-    categorySlug: 'hygiene',
-    petTypes: [PET_TYPES.CAT],
-    // No new downloads, as with the shampoo above.
-    imageKeys: ['products/cat-supplement.jpg'],
-    variantLabel: 'لاوندر',
+    categorySlug: 'home-decor',
+    imageKeys: ['products/candle.jpg'],
+    variantLabel: 'وانیل',
   },
   {
-    title: 'خوشبوکننده خاک گربه',
-    slug: 'catsan-litter-deodorizer-ocean',
-    sku: 'CS-DEO-OCEAN',
-    brand: 'Catsan',
-    benefit: 'کنترل بو تا ۷ روز',
+    title: 'شمع معطر سویا',
+    slug: 'ember-soy-candle-cedar',
+    sku: 'EM-CANDLE-CEDAR',
+    brand: 'Ember',
+    benefit: 'تا ۴۰ ساعت سوختن',
     price: 185_000,
     oldPrice: null,
     stock: 12,
-    categorySlug: 'hygiene',
-    petTypes: [PET_TYPES.CAT],
-    imageKeys: ['products/cat-supplement.jpg'],
-    variantLabel: 'اقیانوس',
-    variantOfSku: 'CS-DEO-LAVENDER',
+    categorySlug: 'home-decor',
+    imageKeys: ['products/candle.jpg'],
+    variantLabel: 'سدر',
+    variantOfSku: 'EM-CANDLE-VANILLA',
   },
   {
-    title: 'خوشبوکننده خاک گربه',
-    slug: 'catsan-litter-deodorizer-unscented',
-    sku: 'CS-DEO-UNSCENTED',
-    brand: 'Catsan',
-    benefit: 'مناسب گربه‌های حساس',
+    title: 'شمع معطر سویا',
+    slug: 'ember-soy-candle-unscented',
+    sku: 'EM-CANDLE-UNSCENTED',
+    brand: 'Ember',
+    benefit: 'مناسب افراد حساس به بو',
     price: 149_000,
     oldPrice: null,
     stock: 9,
-    categorySlug: 'hygiene',
-    petTypes: [PET_TYPES.CAT],
-    imageKeys: ['products/cat-supplement.jpg'],
-    variantLabel: 'بدون بو',
-    variantOfSku: 'CS-DEO-LAVENDER',
+    categorySlug: 'home-decor',
+    imageKeys: ['products/candle.jpg'],
+    variantLabel: 'بدون رایحه',
+    variantOfSku: 'EM-CANDLE-VANILLA',
   },
 ];

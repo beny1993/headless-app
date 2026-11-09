@@ -45,7 +45,7 @@ const VERIFY_PATH = '/phone-number/verify';
  * edits with `ctx.body.phoneNumber !== null` (see its `hooks.before` matcher),
  * which means a body of `{"phoneNumber": null}` walks straight through: the
  * plugin's own schema marks `phoneNumberVerified` `input: false` but leaves
- * `phoneNumber` writable. The row keeps `…@phone.smokey.invalid` while losing
+ * `phoneNumber` writable. The row keeps `…@phone.invalid` while losing
  * the number that derived it, and the next sign-in from that number takes the
  * sign-up path and dies on the unique email index — the number can never sign
  * in again, and `pnpm create-admin` hits the same wall. Nothing in this app

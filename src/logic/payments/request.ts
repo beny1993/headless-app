@@ -6,6 +6,7 @@
 // order must belong to the SESSION user (passed by the route from `c.get('user')`,
 // never the body). A mismatch or a missing order is the SAME 404 — the read never
 // leaks that someone else's order exists.
+import { SITE_FULL_NAME } from '@/constants';
 import { db } from '@/db';
 import { OrderDao } from '@/db/dao/OrderDao';
 import { PaymentDao } from '@/db/dao/PaymentDao';
@@ -92,7 +93,7 @@ export async function requestZarinpalPayment(
   const { authority, redirectUrl } = await client.requestPayment({
     amountToman: order.total,
     callbackUrl: `${getAppBaseUrl()}${API_PATHS.PAYMENT_CALLBACK}`,
-    description: `پرداخت سفارش شماره ${order.orderNo} - اسموکی`,
+    description: `پرداخت سفارش شماره ${order.orderNo} - ${SITE_FULL_NAME}`,
     orderId: order.id,
   });
 

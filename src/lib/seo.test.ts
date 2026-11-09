@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SITE_NAME, DEFAULT_SITE_ORIGIN } from '@/constants';
-import { PET_TYPES } from '@/lib/catalog/product-query';
 import { PATHS, productPath, shopPath } from '@/lib/constant/paths';
 import {
   absoluteUrl,
@@ -19,13 +18,10 @@ import {
 describe('the site share cards', () => {
   it('uses the full Persian shop name in the home title and both full names as aliases', () => {
     expect(SITE_METADATA.title).toMatchObject({
-      default: 'پت‌شاپ اسموکی | فروشگاه آنلاین حیوانات خانگی',
+      default: 'فروشگاه نمونه | فروشگاه آنلاین',
     });
     for (const entity of SITE_JSON_LD['@graph']) {
-      expect(entity.alternateName).toEqual([
-        'پت‌شاپ اسموکی',
-        'Smokey Pet Shop',
-      ]);
+      expect(entity.alternateName).toEqual(['فروشگاه نمونه', 'Demo Shop']);
     }
   });
 
@@ -156,7 +152,7 @@ describe('sitemapEntries', () => {
     { slug: 'catsan-litter-deodorizer-ocean', updatedAt },
   ];
   const shelves = [
-    ...Object.values(PET_TYPES).map((pet) => shopPath({ pet })),
+    shopPath({ category: 'kitchen' }),
     shopPath({ category: 'dry-food' }),
   ];
   const entries = sitemapEntries(products, shelves);

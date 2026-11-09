@@ -5,7 +5,6 @@ import { notFound } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { z } from 'zod';
 import { ROLES } from '@/db/schema/auth';
-import { PET_EMOJI, PET_LABELS } from '@/lib/catalog/product-query';
 import { adminOrderPath, PROTECTED_PATHS } from '@/lib/constant/paths';
 import {
   formatJalali,
@@ -15,7 +14,6 @@ import {
 } from '@/lib/format';
 import { orderStatusBadge } from '@/lib/orders/order-status-display';
 import { getAdminUser } from '@/logic/users/get-admin-user';
-import { PetFacts } from '@/features/account/pet-facts';
 import { PaymentRow } from '@/features/admin-panel/orders/order-detail-rows';
 import {
   NO_NAME,
@@ -55,7 +53,7 @@ export default async function AdminUserDetailPage({
   const detail = await getAdminUser(parsed.data);
   if (!detail) notFound();
 
-  const { user, orders, addresses, pets } = detail;
+  const { user, orders, addresses } = detail;
   const phone = userPhone(user.phoneNumber);
 
   return (
@@ -176,39 +174,6 @@ export default async function AdminUserDetailPage({
                     <p className="text-muted-foreground nums">
                       کد پستی: {toPersianDigits(address.postalCode)}
                     </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className={CARD}>
-            <h2 className="mb-3 font-bold">حیوانات خانگی</h2>
-            {pets.length === 0 ? (
-              <p className={EMPTY}>هنوز حیوانی ثبت نشده است.</p>
-            ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {/* The type's emoji and never the photo: that is a URL the
-                    customer typed, and loading it would hand their chosen host
-                    every admin's IP and viewing time. */}
-                {pets.map((pet) => (
-                  <div
-                    key={pet.id}
-                    className="border-border rounded-xl border p-4"
-                  >
-                    <div className="mb-3 flex items-center gap-3">
-                      <span aria-hidden="true" className="text-2xl">
-                        {PET_EMOJI[pet.type]}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="font-bold">{pet.name}</p>
-                        <p className="text-muted-foreground text-sm">
-                          {PET_LABELS[pet.type]}
-                          {pet.breed ? ` · ${pet.breed}` : ''}
-                        </p>
-                      </div>
-                    </div>
-                    <PetFacts pet={pet} />
                   </div>
                 ))}
               </div>

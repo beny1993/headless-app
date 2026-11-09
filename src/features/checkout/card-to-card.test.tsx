@@ -31,8 +31,8 @@ const filled: CardToCardContent = {
     { bank: '', number: '', holder: '' },
     { bank: '', number: '', holder: '' },
   ],
-  instagram: 'smokey.shop',
-  telegram: 'smokey_shop',
+  instagram: 'demo.store',
+  telegram: 'demo_store',
 };
 
 afterEach(cleanup);
@@ -70,9 +70,9 @@ describe('CardToCardPanel', () => {
     const instagram = screen.getByRole('link', { name: 'اینستاگرام' });
     const telegram = screen.getByRole('link', { name: 'تلگرام' });
     expect(instagram.getAttribute('href')).toBe(
-      'https://instagram.com/smokey.shop',
+      'https://instagram.com/demo.store',
     );
-    expect(telegram.getAttribute('href')).toBe('https://t.me/smokey_shop');
+    expect(telegram.getAttribute('href')).toBe('https://t.me/demo_store');
     for (const link of [instagram, telegram]) {
       expect(link.getAttribute('target')).toBe('_blank');
       expect(link.getAttribute('rel')).toBe('noopener noreferrer');

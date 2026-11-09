@@ -248,9 +248,10 @@ test('picking a photo in a row far down the list leaves the panel in place', asy
     page.locator('label', { has: input }).click(),
   ]);
   await chooser.setFiles(PRODUCT_PHOTO);
+  // The preview of the picked file, beside any photo the row already has.
   await expect(
-    page.locator('tr', { has: input }).locator('img'),
-  ).toHaveAttribute('src', /^blob:/);
+    page.locator('tr', { has: input }).locator('img[src^="blob:"]'),
+  ).toBeVisible();
 
   // The frame still reaches the bottom of the screen, and the page is no wider
   // than the screen — the same clip keeps the tables' `sr-only` text from

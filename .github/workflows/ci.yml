@@ -65,6 +65,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm migration:migrate
+      # The suites run against a seeded dev database, as they do locally: a
+      # few read the demo catalog (its categories, a product for the sitemap).
+      - run: pnpm seed-catalog
       # The integration suites skip only when APP_CONFIG_DATABASE_URL is
       # unset; it is set above, so a broken database fails the run.
       - run: pnpm test

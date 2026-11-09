@@ -205,7 +205,7 @@ describe('bodyless requests', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(jsonResponse(200, { status: 'success', data: null }));
 
-    await delData('/api/me/pets/1');
+    await delData('/api/me/addresses/1');
 
     const init = fetchSpy.mock.calls[0][1] as RequestInit;
     expect(init.body).toBeUndefined();

@@ -24,12 +24,11 @@ const skus = SEED_PRODUCTS.map((product) => product.sku);
 
 // Picked by what makes each one interesting, never by index: appending a row
 // to the seed must not be able to point these at a different product.
-const bothPets = SEED_PRODUCTS.find((product) => product.petTypes.length === 2);
 const multiCategory = SEED_PRODUCTS.find(
   (product) => (product.extraCategorySlugs ?? []).length > 0,
 );
-if (!bothPets || !multiCategory) {
-  throw new Error('The catalog seed needs a both-pets and a two-category row.');
+if (!multiCategory) {
+  throw new Error('The catalog seed needs a two-category row.');
 }
 
 /** The seeded family: the members that name a head, and the head they name. */
@@ -95,19 +94,15 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
   });
 
   it('stores Persian titles unchanged, ZWNJ and all', async () => {
-    const toy = await ProductDao.getBySlug(
-      'smartykat-interactive-feather-bell-toy',
-    );
+    const pack = await ProductDao.getBySlug('trailpack-daypack-20l');
 
-    expect(toy?.title).toBe('اسباب‌بازی تعاملی پر و زنگوله');
-    expect(toy?.brand).toBe('SmartyKat');
-    expect(toy?.benefit).toBe('تحریک غریزه شکار');
+    expect(pack?.title).toBe('کوله‌پشتی روزانه');
+    expect(pack?.brand).toBe('Trailpack');
+    expect(pack?.benefit).toBe('ضدآب، با جای لپ‌تاپ');
   });
 
-  it('stores prices as the integer Toman the prototype shows', async () => {
-    const premium = await ProductDao.getBySlug(
-      'royal-canin-adult-cat-dry-food',
-    );
+  it('stores prices as integer Toman', async () => {
+    const premium = await ProductDao.getBySlug('clayform-glazed-mug-350');
 
     expect(premium?.price).toBe(285_000);
     expect(premium?.oldPrice).toBe(320_000);
@@ -133,13 +128,11 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
   });
 
   it('seeds the out-of-stock and low-stock products the design needs', async () => {
-    const wet = await ProductDao.getBySlug('sheba-cat-salmon-tuna-wet-food');
-    const toy = await ProductDao.getBySlug(
-      'smartykat-interactive-feather-bell-toy',
-    );
+    const soldOut = await ProductDao.getBySlug('sonora-wired-headphones');
+    const lowStock = await ProductDao.getBySlug('tessera-jigsaw-puzzle-500');
 
-    expect(wet?.stock).toBe(0);
-    expect(toy?.stock).toBe(3);
+    expect(soldOut?.stock).toBe(0);
+    expect(lowStock?.stock).toBe(3);
   });
 
   it('gives every seeded top-level category its photo', async () => {
@@ -198,12 +191,6 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
     }
   });
 
-  it('seeds a product for both pets at once', async () => {
-    const row = await ProductDao.getBySlug(bothPets.slug);
-
-    expect(row?.petTypes).toEqual(bothPets.petTypes);
-  });
-
   it('seeds a product filed under a second category', async () => {
     const bySlug = new Map(
       (await CategoryDao.list()).map((row) => [row.slug, row]),
@@ -236,16 +223,15 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
   });
 
   it('files products under the categories the storefront filters on', async () => {
-    const { items: dryFood } = await ProductDao.list({
-      categorySlug: 'dry-food',
+    const { items: stationery } = await ProductDao.list({
+      categorySlug: 'stationery',
     });
-    const { items: dogs } = await ProductDao.list({
-      categorySlug: 'dry-food',
-      petType: 'dog',
+    const { items: kitchen } = await ProductDao.list({
+      categorySlug: 'kitchen',
     });
 
-    // Scoped to the seed's own rows. The assertion is still exact — these two
-    // and no other *seeded* product is under dry-food — but it no longer breaks
+    // Scoped to the seed's own rows. The assertion is still exact — these
+    // and no other *seeded* product are on each shelf — but it no longer breaks
     // because somebody added a product on the shared dev database, which is
     // what this suite runs against and what an admin is free to do.
     const seeded = (rows: { sku: string }[]) =>
@@ -254,9 +240,13 @@ describe.skipIf(!databaseReachable)('seedCatalog', () => {
         .filter((sku) => SEED_PRODUCTS.some((product) => product.sku === sku))
         .sort();
 
-    expect(seeded(dryFood)).toEqual(
-      ['HS-DOG-CHICKEN-2K', 'RC-CAT-ADULT-1K'].sort(),
+    expect(seeded(stationery)).toEqual(
+      ['PC-NOTEBOOK-A5', 'PC-PLANNER-WEEK'].sort(),
     );
-    expect(seeded(dogs)).toEqual(['HS-DOG-CHICKEN-2K']);
+    // A parent shelf reaches its sub-categories: the tumbler is filed under
+    // «بطری و فلاسک» and «ماگ و لیوان», both under the kitchen.
+    expect(seeded(kitchen)).toEqual(
+      ['CF-MUG-350', 'NW-BOTTLE-750', 'NW-TUMBLER-450'].sort(),
+    );
   });
 });

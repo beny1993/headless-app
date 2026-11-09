@@ -2,7 +2,7 @@
 // through this module — never a Persian literal in a component, or the site ends
 // up with two thousands separators on the same screen.
 //
-// No date dependency anywhere: Jalali comes from `Intl` (`Smokey Shop Info`).
+// No date dependency anywhere: Jalali comes from `Intl`.
 
 const LOCALE = 'fa-IR';
 

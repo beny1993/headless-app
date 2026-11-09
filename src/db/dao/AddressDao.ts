@@ -1,6 +1,6 @@
 // All Drizzle DB access goes through DAOs like this one. Never write raw SQL.
 //
-// Owner-scoped exactly like `PetDao`: the `userId` from the session is part of the
+// Owner-scoped: the `userId` from the session is part of the
 // `WHERE` on every read and write, so an address id in a URL can never reach
 // someone else's row. "Not yours" and "does not exist" are the same `null`/`false`
 // answer, which the API turns into one 404.

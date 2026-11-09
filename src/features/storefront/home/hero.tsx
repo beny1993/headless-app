@@ -22,7 +22,7 @@ import { resolveLink, type LinkTargets } from '@/lib/content/link';
  * own line breaks come from `whitespace-pre-line`, and the break before the accent
  * line stays a code `<br />`. Each button's destination is content too
  * (`shopCtaLink` / `aboutCtaLink`), falling back to the shop and /about when
- * unset; the badge stays in code.
+ * unset.
  */
 export function HeroSection({
   content,
@@ -52,16 +52,9 @@ export function HeroSection({
 
       <div className="relative z-10 mx-auto w-full max-w-7xl px-4 py-16 sm:px-8 lg:px-12">
         <div className="max-w-2xl">
-          <div className="mb-6 flex flex-wrap items-center gap-3">
+          <div className="mb-6">
             <span className="text-accent-on-dark text-sm font-medium tracking-widest">
               {content.eyebrow}
-            </span>
-            <span className="flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs text-white/80 backdrop-blur-sm">
-              <span aria-hidden="true">🐱</span> گربه
-              <span className="mx-1 text-white/40" aria-hidden="true">
-                ·
-              </span>
-              <span aria-hidden="true">🐶</span> سگ
             </span>
           </div>
 

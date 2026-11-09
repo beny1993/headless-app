@@ -97,12 +97,12 @@ describe.skipIf(!databaseReachable)('the About page', () => {
   });
 
   describe('with an empty site_content table', () => {
-    it('renders the default About copy, including the Smokey story caption + alt', async () => {
+    it('renders the default About copy, including the story caption + alt', async () => {
       const { strings, text } = await inspect();
 
       // Hero + story + process + values + cta defaults all present.
       expect(strings).toContain(DEFAULT_CONTENT['about.hero'].eyebrow);
-      expect(strings).toContain(DEFAULT_CONTENT['about.story'].title); // «این اسموکی‌ه»
+      expect(strings).toContain(DEFAULT_CONTENT['about.story'].title);
       expect(strings).toContain(DEFAULT_CONTENT['about.story'].image.alt);
       expect(strings).toContain(DEFAULT_CONTENT['about.process'].title);
       expect(strings).toContain(DEFAULT_CONTENT['about.values'].title);
@@ -168,20 +168,20 @@ describe.skipIf(!databaseReachable)('the About page', () => {
       }
     });
 
-    it('makes the Smokey identity fixable end to end (title, alt and photo)', async () => {
+    it('makes the shop’s identity fixable end to end (title, alt and photo)', async () => {
       await SiteContentDao.set('about.story', {
-        title: 'این واقعاً اسموکی است',
+        title: 'این واقعاً فروشگاه ماست',
         paragraphs: DEFAULT_CONTENT['about.story'].paragraphs,
         image: {
-          key: 'site/hero-about.jpg',
-          alt: 'اسموکی، با توضیح تازه',
+          key: 'site/about-hero.jpg',
+          alt: 'فروشگاه ما، با توضیح تازه',
         },
       });
 
       const { strings } = await inspect();
-      expect(strings).toContain('این واقعاً اسموکی است');
-      expect(strings).toContain('اسموکی، با توضیح تازه');
-      expect(strings).toContain('/site/hero-about.jpg');
+      expect(strings).toContain('این واقعاً فروشگاه ماست');
+      expect(strings).toContain('فروشگاه ما، با توضیح تازه');
+      expect(strings).toContain('/site/about-hero.jpg');
     });
   });
 

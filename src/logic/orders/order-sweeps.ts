@@ -61,7 +61,7 @@ export async function runOrderSweeps(): Promise<void> {
 
 // On globalThis, not in this module: a dev server re-evaluating the module
 // must not stack a second schedule beside the first.
-const STARTED = Symbol.for('smokey-shop.order-sweeps');
+const STARTED = Symbol.for('headless-app.order-sweeps');
 
 /**
  * Starts the schedule, once per process: the first run FIRST_SWEEP_DELAY_MS

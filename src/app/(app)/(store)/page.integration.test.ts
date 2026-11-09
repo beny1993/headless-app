@@ -22,16 +22,12 @@ import { OrderFixtures } from '@/db/order-test-fixtures';
 import { databaseReachable, importWithDb, testDb } from '@/db/test-db';
 import { DEFAULT_CONTENT } from '@/lib/content/defaults';
 import type { LinkTargets } from '@/lib/content/link';
-import { CONTENT_AREAS, type ContentValue } from '@/lib/content/site-content';
+import { CONTENT_AREAS } from '@/lib/content/site-content';
 import { CategoriesSection } from '@/features/storefront/home/categories';
-import { CommunitySection } from '@/features/storefront/home/community';
 import { FeaturedStorySection } from '@/features/storefront/home/featured-story';
 import { HeroSection } from '@/features/storefront/home/hero';
-import { JourneySection } from '@/features/storefront/home/journey';
-import { LifeMomentsSection } from '@/features/storefront/home/life-moments';
 import { PhilosophySection } from '@/features/storefront/home/philosophy';
 import { RecommendsSection } from '@/features/storefront/home/recommends';
-import { RoutineSection } from '@/features/storefront/home/routine';
 
 const { SiteContentDao } = await importWithDb(
   () => import('@/db/dao/SiteContentDao'),
@@ -46,12 +42,8 @@ const HOME_KEYS = CONTENT_AREAS.home.keys;
 // supersets), and only inspecting each section's own `content` prop catches it.
 const WIRING = [
   [HeroSection, 'home.hero'],
-  [LifeMomentsSection, 'home.moments'],
   [RecommendsSection, 'home.recommends'],
-  [JourneySection, 'home.journey'],
   [FeaturedStorySection, 'home.guide'],
-  [RoutineSection, 'home.routine'],
-  [CommunitySection, 'home.family'],
   [CategoriesSection, 'home.categories'],
   [PhilosophySection, 'home.philosophy'],
 ] as const;
@@ -59,7 +51,6 @@ const WIRING = [
 // The sections that render a content link, and so need the page's link targets.
 const LINKED_SECTIONS = [
   HeroSection,
-  LifeMomentsSection,
   FeaturedStorySection,
   CategoriesSection,
   PhilosophySection,
@@ -112,20 +103,13 @@ describe.skipIf(!databaseReachable)('the home page', () => {
       })
       .returning();
     try {
-      const cards = [
-        ...DEFAULT_CONTENT['home.moments'].cards,
-      ] as ContentValue<'home.moments'>['cards'];
-      cards[2] = {
-        ...cards[2],
-        link: { type: 'shop', categoryId: category.id, pet: 'dog' },
-      };
-      await SiteContentDao.set('home.moments', {
-        ...DEFAULT_CONTENT['home.moments'],
-        cards,
+      await SiteContentDao.set('home.hero', {
+        ...DEFAULT_CONTENT['home.hero'],
+        shopCtaLink: { type: 'shop', categoryId: category.id },
       });
 
       const tree = await page.default();
-      const targets = findSection(tree, LifeMomentsSection)?.props
+      const targets = findSection(tree, HeroSection)?.props
         .targets as LinkTargets;
       expect(targets.categories[category.id]).toBe(category.slug);
       for (const type of LINKED_SECTIONS) {
@@ -148,23 +132,16 @@ describe.skipIf(!databaseReachable)('the home page', () => {
       .values({ title: 'زیردسته', slug: token(), parentId: parent.id })
       .returning();
     try {
-      const cards = [
-        ...DEFAULT_CONTENT['home.moments'].cards,
-      ] as ContentValue<'home.moments'>['cards'];
-      cards[2] = {
-        ...cards[2],
-        link: { type: 'shop', categoryId: sub.id, pet: undefined },
-      };
-      await SiteContentDao.set('home.moments', {
-        ...DEFAULT_CONTENT['home.moments'],
-        cards,
+      await SiteContentDao.set('home.hero', {
+        ...DEFAULT_CONTENT['home.hero'],
+        shopCtaLink: { type: 'shop', categoryId: sub.id },
       });
 
       const tree = await page.default();
       const tiles = findSection(tree, CategoriesSection)?.props.categories as {
         id: string;
       }[];
-      const targets = findSection(tree, LifeMomentsSection)?.props
+      const targets = findSection(tree, HeroSection)?.props
         .targets as LinkTargets;
 
       expect(tiles.map((tile) => tile.id)).toContain(parent.id);
@@ -204,7 +181,7 @@ describe.skipIf(!databaseReachable)('the home page', () => {
     }
   });
 
-  describe('the «انتخاب‌های اسموکی» picks', () => {
+  describe('the «پیشنهادهای ما» picks', () => {
     // Records each row as it is created, so a throw between inserts still
     // leaves nothing behind.
     const fx = new OrderFixtures();
@@ -252,14 +229,14 @@ describe.skipIf(!databaseReachable)('the home page', () => {
   });
 
   it('omits a section the admin has hidden (visible: false), keeps its siblings', async () => {
-    await SiteContentDao.set('home.family', {
-      ...DEFAULT_CONTENT['home.family'],
+    await SiteContentDao.set('home.guide', {
+      ...DEFAULT_CONTENT['home.guide'],
       visible: false,
     });
 
     const tree = await page.default();
-    // The hidden family wall is gone from the page entirely…
-    expect(findSection(tree, CommunitySection)).toBeUndefined();
+    // The hidden editorial block is gone from the page entirely…
+    expect(findSection(tree, FeaturedStorySection)).toBeUndefined();
     // …and an untouched sibling still renders.
     expect(findSection(tree, HeroSection)).toBeDefined();
   });

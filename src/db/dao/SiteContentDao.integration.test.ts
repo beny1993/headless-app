@@ -19,7 +19,7 @@ const { SiteContentDao } = await importWithDb(
 
 describe.skipIf(!databaseReachable)('SiteContentDao', () => {
   // The keys any test in this file may write; cleaned after each.
-  const touched = ['about.cta', 'about.story', 'home.family'] as const;
+  const touched = ['about.cta', 'about.story', 'home.guide'] as const;
 
   // A valid `about.cta` value with a chosen headline — spreads the default so the
   // whole (v2-extended) shape is present and a later required field never breaks
@@ -161,7 +161,7 @@ describe.skipIf(!databaseReachable)('SiteContentDao', () => {
 
     it('returns only the keys asked for, not other rows in the table', async () => {
       await SiteContentDao.set('about.cta', cta('x'));
-      await SiteContentDao.set('home.family', DEFAULT_CONTENT['home.family']);
+      await SiteContentDao.set('home.guide', DEFAULT_CONTENT['home.guide']);
 
       const result = await SiteContentDao.getMany(['about.cta']);
       expect(Object.keys(result)).toEqual(['about.cta']);

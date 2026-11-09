@@ -37,7 +37,6 @@ const product = (
   variantLabel: null,
   stock: 10,
   isActive: true,
-  petTypes: ['cat'],
   categoryId: 'cat-food',
   categoryTitle: 'غذای خشک',
   parentCategoryTitle: 'غذا',
@@ -84,7 +83,7 @@ describe('productSlugOfPath', () => {
 
   it.each([
     ['the home page', '/'],
-    ['the shop', '/shop?pet=cat'],
+    ['the shop', '/shop?category=kitchen'],
     ['the bare prefix', '/product/'],
     ['the prefix without a slash', '/product'],
     ['a deeper path', '/product/a/b'],
@@ -157,7 +156,6 @@ describe('buildProductInsights', () => {
     });
     expect(report.products).toEqual([]);
     expect(report.categories).toEqual([]);
-    expect(report.pets).toEqual([]);
     expect(report.sources).toEqual([]);
   });
 
@@ -317,36 +315,6 @@ describe('buildProductInsights', () => {
           views: 15,
         },
       ]);
-    });
-
-    it('counts a both-pets product under each pet, cat before dog', () => {
-      const report = build({
-        sales: [sale('both', 1, 100), sale('dog', 2, 200)],
-        products: [
-          product('both', { petTypes: ['cat', 'dog'] }),
-          product('dog', { petTypes: ['dog'] }),
-        ],
-      });
-      expect(report.pets).toEqual([
-        {
-          key: 'cat',
-          label: 'گربه',
-          units: 1,
-          revenue: 100,
-          orders: 1,
-          views: null,
-        },
-        {
-          key: 'dog',
-          label: 'سگ',
-          units: 3,
-          revenue: 300,
-          orders: 3,
-          views: null,
-        },
-      ]);
-      // So the pets can add up past the totals, by design.
-      expect(report.totals.units).toBe(3);
     });
   });
 
